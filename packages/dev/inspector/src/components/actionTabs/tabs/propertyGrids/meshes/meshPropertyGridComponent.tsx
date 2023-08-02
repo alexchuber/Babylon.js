@@ -38,6 +38,7 @@ import type { ShaderMaterial } from "core/Materials/shaderMaterial";
 import type { IInspectableOptions } from "core/Misc/iInspectable";
 import { NormalMaterial } from "materials/normal/normalMaterial";
 import { MeshDebugMode, MeshDebugPluginMaterial } from "core/Materials/meshDebugPluginMaterial";
+import type { PBRMaterial } from "core/Materials/PBR/pbrMaterial";
 
 import "core/Physics/physicsEngineComponent";
 import "core/Physics/v1/physicsEngineComponent";
@@ -232,7 +233,7 @@ export class MeshPropertyGridComponent extends React.Component<
         const mesh = this.props.mesh;
         const scene = mesh.getScene();
 
-        if (mesh.material && mesh.material.reservedDataStore && mesh.material.reservedDataStore.isVertexColorMaterial) {
+        if (mesh.material && mesh.material.reservedDataStore && mesh.material.reservedDataStore.isUV0Material) {
             mesh.material.dispose();
 
             mesh.material = mesh.reservedDataStore.originalMaterial;
@@ -246,17 +247,21 @@ export class MeshPropertyGridComponent extends React.Component<
             if (!mesh.reservedDataStore.originalMaterial) {
                 mesh.reservedDataStore.originalMaterial = mesh.material;
             }
-            const uv0Material = new StandardMaterial("uv0", scene);
-            const debugPlugin = new MeshDebugPluginMaterial(uv0Material);
-            debugPlugin.mode = MeshDebugMode.UV0;
-            // uv0Material.disableLighting = true;
-            // uv0Material.emissiveColor = Color3.White();
+
+            if (!mesh.material) return;
+
+            const uv0Material = mesh.material.clone("uv0Material") as PBRMaterial;
+            mesh.material = uv0Material;
+            const debugPlugin = new MeshDebugPluginMaterial(uv0Material, {
+                mode: MeshDebugMode.UV0,
+                multiply: true, // To show material underneath & bypass plugin's BP shading
+                shadedSpecularPower: 0,
+                uvSecondaryColor: new Color3(.8, .8, .8),
+            });
             if (mesh.material) {
                 uv0Material.sideOrientation = mesh.material.sideOrientation;
             }
             uv0Material.reservedDataStore = { hidden: true, isUV0Material: true };
-            // mesh.useVertexColors = true;
-            mesh.material = uv0Material;
             this.setState({ displayUV0: true });
         }
     }
