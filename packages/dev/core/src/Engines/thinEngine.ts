@@ -222,14 +222,14 @@ export class ThinEngine {
      */
     // Not mixed with Version for tooling purpose.
     public static get NpmPackage(): string {
-        return "babylonjs@6.12.3";
+        return "babylonjs@6.14.1";
     }
 
     /**
      * Returns the current version of the framework
      */
     public static get Version(): string {
-        return "6.12.3";
+        return "6.14.1";
     }
 
     /**
@@ -1557,6 +1557,7 @@ export class ThinEngine {
     public stopRenderLoop(renderFunction?: () => void): void {
         if (!renderFunction) {
             this._activeRenderLoops.length = 0;
+            this._cancelFrame();
             return;
         }
 
@@ -1564,6 +1565,26 @@ export class ThinEngine {
 
         if (index >= 0) {
             this._activeRenderLoops.splice(index, 1);
+            if (this._activeRenderLoops.length == 0) {
+                this._cancelFrame();
+            }
+        }
+    }
+
+    protected _cancelFrame() {
+        if (this._renderingQueueLaunched && this._frameHandler) {
+            this._renderingQueueLaunched = false;
+            if (!IsWindowObjectExist()) {
+                if (typeof cancelAnimationFrame === "function") {
+                    return cancelAnimationFrame(this._frameHandler);
+                }
+            } else {
+                const { cancelAnimationFrame } = this.getHostWindow() || window;
+                if (typeof cancelAnimationFrame === "function") {
+                    return cancelAnimationFrame(this._frameHandler);
+                }
+            }
+            return clearTimeout(this._frameHandler);
         }
     }
 
@@ -6070,10 +6091,7 @@ export class ThinEngine {
                 return requestAnimationFrame(func);
             }
         } else {
-            const { requestPostAnimationFrame, requestAnimationFrame } = requester || window;
-            if (typeof requestPostAnimationFrame === "function") {
-                return requestPostAnimationFrame(func);
-            }
+            const { requestAnimationFrame } = requester || window;
             if (typeof requestAnimationFrame === "function") {
                 return requestAnimationFrame(func);
             }

@@ -1010,6 +1010,23 @@ export class HavokPlugin implements IPhysicsEnginePluginV2 {
     }
 
     /**
+     * Set the target transformation (position and rotation) of the body, such that the body will set its velocity to reach that target
+     * @param body The physics body to set the target transformation for.
+     * @param position The target position
+     * @param rotation The target rotation
+     * @param instanceIndex The index of the instance in an instanced body
+     */
+    public setTargetTransform(body: PhysicsBody, position: Vector3, rotation: Quaternion, instanceIndex?: number | undefined): void {
+        this._applyToBodyOrInstances(
+            body,
+            (pluginRef) => {
+                this._hknp.HP_Body_SetTargetQTransform(pluginRef.hpBodyId, [this._bVecToV3(position), this._bQuatToV4(rotation)]);
+            },
+            instanceIndex
+        );
+    }
+
+    /**
      * Sets the gravity factor of a body
      * @param body the physics body to set the gravity factor for
      * @param factor the gravity factor
@@ -1418,6 +1435,12 @@ export class HavokPlugin implements IPhysicsEnginePluginV2 {
                         this._hknp.HP_Constraint_SetAxisMode(jointId, axId, this._hknp.ConstraintAxisLimitMode.LIMITED);
                         this._hknp.HP_Constraint_SetAxisMaxLimit(jointId, axId, l.maxLimit);
                     }
+                }
+                if (l.stiffness) {
+                    this._hknp.HP_Constraint_SetAxisStiffness(jointId, axId, l.stiffness);
+                }
+                if (l.damping) {
+                    this._hknp.HP_Constraint_SetAxisDamping(jointId, axId, l.damping);
                 }
             }
         } else {
