@@ -37,6 +37,7 @@ import { SkeletonViewer } from "core/Debug/skeletonViewer";
 import type { ShaderMaterial } from "core/Materials/shaderMaterial";
 import type { IInspectableOptions } from "core/Misc/iInspectable";
 import { NormalMaterial } from "materials/normal/normalMaterial";
+import { MeshDebugMode, MeshDebugPluginMaterial } from "core/Materials/meshDebugPluginMaterial";
 
 import "core/Physics/physicsEngineComponent";
 import "core/Physics/v1/physicsEngineComponent";
@@ -57,6 +58,7 @@ export class MeshPropertyGridComponent extends React.Component<
     {
         displayNormals: boolean;
         displayVertexColors: boolean;
+        displayUV0: boolean;
         displayBoneWeights: boolean;
         displayBoneIndex: number;
         displaySkeletonMap: boolean;
@@ -70,6 +72,7 @@ export class MeshPropertyGridComponent extends React.Component<
         this.state = {
             displayNormals: false,
             displayVertexColors: false,
+            displayUV0: false,
             displayBoneWeights: !!(mesh.material && mesh.material.getClassName() === "BoneWeightShader"),
             displayBoneIndex: 0,
             displaySkeletonMap: false,
@@ -225,6 +228,39 @@ export class MeshPropertyGridComponent extends React.Component<
         }
     }
 
+    displayUV0() {
+        const mesh = this.props.mesh;
+        const scene = mesh.getScene();
+
+        if (mesh.material && mesh.material.reservedDataStore && mesh.material.reservedDataStore.isVertexColorMaterial) {
+            mesh.material.dispose();
+
+            mesh.material = mesh.reservedDataStore.originalMaterial;
+            mesh.reservedDataStore.originalMaterial = null;
+            this.setState({ displayUV0: false });
+        } else {
+            if (!mesh.reservedDataStore) {
+                mesh.reservedDataStore = {};
+            }
+
+            if (!mesh.reservedDataStore.originalMaterial) {
+                mesh.reservedDataStore.originalMaterial = mesh.material;
+            }
+            const uv0Material = new StandardMaterial("uv0", scene);
+            const debugPlugin = new MeshDebugPluginMaterial(uv0Material);
+            debugPlugin.mode = MeshDebugMode.UV0;
+            // uv0Material.disableLighting = true;
+            // uv0Material.emissiveColor = Color3.White();
+            if (mesh.material) {
+                uv0Material.sideOrientation = mesh.material.sideOrientation;
+            }
+            uv0Material.reservedDataStore = { hidden: true, isUV0Material: true };
+            // mesh.useVertexColors = true;
+            mesh.material = uv0Material;
+            this.setState({ displayUV0: true });
+        }
+    }
+
     displayBoneWeights() {
         const mesh = this.props.mesh;
         const scene = mesh.getScene();
@@ -357,6 +393,7 @@ export class MeshPropertyGridComponent extends React.Component<
 
         const displayNormals = mesh.material != null && mesh.material.getClassName() === "NormalMaterial";
         const displayVertexColors = !!(mesh.material != null && mesh.material.reservedDataStore && mesh.material.reservedDataStore.isVertexColorMaterial);
+        const displayUV0 = !!(mesh.material != null && mesh.material.reservedDataStore && mesh.material.reservedDataStore.isUV0Material);
         const renderNormalVectors = mesh.reservedDataStore && mesh.reservedDataStore.normalLines ? true : false;
         const renderWireframeOver = mesh.reservedDataStore && mesh.reservedDataStore.wireframeOver ? true : false;
         const displayBoneWeights = mesh.material != null && mesh.material.getClassName() === "BoneWeightShader";
@@ -753,11 +790,14 @@ export class MeshPropertyGridComponent extends React.Component<
                 )}
                 <LineContainerComponent title="DEBUG" closed={true} selection={this.props.globalState}>
                     {!mesh.isAnInstance && <CheckBoxLineComponent label="Display normals" isSelected={() => displayNormals} onSelect={() => this.displayNormals()} />}
-                    {!mesh.isAnInstance && (
+                    {!mesh.isAnInstance && mesh.isVerticesDataPresent(VertexBuffer.ColorKind) && (
                         <CheckBoxLineComponent label="Display vertex colors" isSelected={() => displayVertexColors} onSelect={() => this.displayVertexColors()} />
                     )}
                     {mesh.isVerticesDataPresent(VertexBuffer.NormalKind) && (
                         <CheckBoxLineComponent label="Render vertex normals" isSelected={() => renderNormalVectors} onSelect={() => this.renderNormalVectors()} />
+                    )}
+                    {mesh.isVerticesDataPresent(VertexBuffer.UVKind) && (
+                        <CheckBoxLineComponent label="Display UV set 0 grid" isSelected={() => displayUV0} onSelect={() => this.displayUV0()} />
                     )}
                     {!mesh.isAnInstance && (
                         <CheckBoxLineComponent label="Render wireframe over mesh" isSelected={() => renderWireframeOver} onSelect={() => this.renderWireframeOver()} />
