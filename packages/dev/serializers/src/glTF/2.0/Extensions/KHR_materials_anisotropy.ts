@@ -11,7 +11,6 @@ const NAME = "KHR_materials_anisotropy";
 const DEFAULTS: Partial<IKHRMaterialsAnisotropy> = {
     anisotropyStrength: 0.0,
     anisotropyRotation: 0.0,
-    anisotropyTexture: undefined,
 };
 
 /**
@@ -67,8 +66,6 @@ export class KHR_materials_anisotropy implements IGLTFExporterExtensionV2 {
 
                 this._wasUsed = true;
 
-                node.extensions = node.extensions || {};
-
                 const anisotropyTextureInfo = this._exporter._materialExporter.getTextureInfo(babylonMaterial.anisotropy.texture);
 
                 const anisotropyInfo: IKHRMaterialsAnisotropy = {
@@ -81,6 +78,7 @@ export class KHR_materials_anisotropy implements IGLTFExporterExtensionV2 {
                     this._exporter._materialNeedsUVsSet.add(babylonMaterial);
                 }
 
+                node.extensions ||= {};
                 node.extensions[NAME] = omitDefaultValues(anisotropyInfo, DEFAULTS);
             }
             resolve(node);
