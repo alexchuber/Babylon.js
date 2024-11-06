@@ -1,4 +1,4 @@
-{
+﻿{
     "root": "https://cdn.babylonjs.com",
     "tests": [
         {
@@ -935,6 +935,12 @@
             "playgroundId": "#0DG1T2#11",
             "replace": "//options//, roundtrip = true;",
             "referenceImage": "glTFSerializerKhrClearcoat.png"
+        },
+        {
+            "title": "GLTF Serializer KHR diffuse transmission",
+            "playgroundId": "#0DG1T2#8",
+            "replace": "//options//, roundtrip = true;",
+            "referenceImage": "glTFSerializerKhrDiffuseTransmission.png"
         },
         {
             "title": "GLTF Buggy with Draco Mesh Compression",
