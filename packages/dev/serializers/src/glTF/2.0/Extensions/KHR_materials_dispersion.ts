@@ -48,7 +48,7 @@ export class KHR_materials_dispersion implements IGLTFExporterExtensionV2 {
         const subs = mat.subSurface;
 
         // This extension requires refraction to be enabled
-        return subs.isRefractionEnabled && subs.isDispersionEnabled;
+        return subs.isRefractionEnabled && subs.isDispersionEnabled && subs.dispersion != DEFAULTS.dispersion;
     }
 
     /**
@@ -68,7 +68,7 @@ export class KHR_materials_dispersion implements IGLTFExporterExtensionV2 {
                 };
 
                 node.extensions ||= {};
-                node.extensions[NAME] = omitDefaultValues(dispersionInfo, DEFAULTS);
+                node.extensions[NAME] = omitDefaultValues(dispersionInfo, DEFAULTS); // TODO: Unneeded
             }
             resolve(node);
         });
