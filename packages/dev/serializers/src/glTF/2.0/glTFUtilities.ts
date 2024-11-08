@@ -339,7 +339,8 @@ export function getMinMax(data: DataArray, vertexBuffer: VertexBuffer, start: nu
 }
 
 /**
- * Removes keys from an object that have the same value as the default values.
+ * Removes keys from an object that have the same value as the default values,
+ * as well as keys that are undefined just in case.
  * Useful for avoiding unnecessary properties in the glTF JSON.
  * @param object the object to omit default values from
  * @param defaultValues a partial object with default values
@@ -352,7 +353,7 @@ export function omitDefaultValues<T extends Object>(object: T, defaultValues: Pa
             if (Array.isArray(value) && Array.isArray(defaultValue) && value.length === defaultValue.length) {
                 return value.every((val, i) => val !== defaultValue[i]);
             }
-            return value !== defaultValue;
+            return value !== undefined && value !== defaultValue;
         })
     ) as T;
 }

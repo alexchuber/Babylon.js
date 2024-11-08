@@ -1,60 +1,60 @@
-// import type { IMaterial } from "babylonjs-gltf2interface";
-// import type { IGLTFExporterExtensionV2 } from "../glTFExporterExtension";
-// import { GLTFExporter } from "../glTFExporter";
-// import type { Material } from "core/Materials/material";
-// import { PBRMaterial } from "core/Materials/PBR/pbrMaterial";
-// import { StandardMaterial } from "core/Materials/standardMaterial";
+import type { IMaterial } from "babylonjs-gltf2interface";
+import type { IGLTFExporterExtensionV2 } from "../glTFExporterExtension";
+import { GLTFExporter } from "../glTFExporter";
+import type { Material } from "core/Materials/material";
+import { PBRMaterial } from "core/Materials/PBR/pbrMaterial";
+import { StandardMaterial } from "core/Materials/standardMaterial";
 
-// const NAME = "KHR_materials_unlit";
+const NAME = "KHR_materials_unlit";
 
-// /**
-//  * @internal
-//  */
-// // eslint-disable-next-line @typescript-eslint/naming-convention
-// export class KHR_materials_unlit implements IGLTFExporterExtensionV2 {
-//     /** Name of this extension */
-//     public readonly name = NAME;
+/**
+ * @param mat Material to check
+ * @returns Whether KHR_materials_unlit is enabled on a material
+ */
+export function isEnabledKHRMaterialUnlit(mat: Material): boolean {
+    if (mat instanceof PBRMaterial) {
+        return mat.unlit;
+    } else if (mat instanceof StandardMaterial) {
+        return mat.disableLighting;
+    }
+    return false;
+}
 
-//     /** Defines whether this extension is enabled */
-//     public enabled = true;
+/**
+ * @internal
+ */
+// eslint-disable-next-line @typescript-eslint/naming-convention
+export class KHR_materials_unlit implements IGLTFExporterExtensionV2 {
+    /** Name of this extension */
+    public readonly name = NAME;
 
-//     /** Defines whether this extension is required */
-//     public required = false;
+    /** Defines whether this extension is enabled */
+    public enabled = true;
 
-//     private _wasUsed = false;
+    /** Defines whether this extension is required */
+    public required = false;
 
-//     constructor() {}
+    private _wasUsed = false;
 
-//     /** @internal */
-//     public get wasUsed() {
-//         return this._wasUsed;
-//     }
+    constructor() {}
 
-//     public dispose() {}
+    /** @internal */
+    public get wasUsed() {
+        return this._wasUsed;
+    }
 
-//     public postExportMaterialAsync?(context: string, node: IMaterial, babylonMaterial: Material): Promise<IMaterial> {
-//         return new Promise((resolve) => {
-//             let unlitMaterial = false;
+    public dispose() {}
 
-//             if (babylonMaterial instanceof PBRMaterial) {
-//                 unlitMaterial = babylonMaterial.unlit;
-//             } else if (babylonMaterial instanceof StandardMaterial) {
-//                 unlitMaterial = babylonMaterial.disableLighting;
-//             }
+    public postExportMaterialAsync?(context: string, node: IMaterial, babylonMaterial: Material): Promise<IMaterial> {
+        return new Promise((resolve) => {
+            if (isEnabledKHRMaterialUnlit(babylonMaterial)) {
+                this._wasUsed = true;
+                node.extensions ||= {};
+                node.extensions[NAME] = {};
+            }
+            resolve(node);
+        });
+    }
+}
 
-//             if (unlitMaterial) {
-//                 this._wasUsed = true;
-
-//                 if (node.extensions == null) {
-//                     node.extensions = {};
-//                 }
-
-//                 node.extensions[NAME] = {};
-//             }
-
-//             resolve(node);
-//         });
-//     }
-// }
-
-// GLTFExporter.RegisterExtension(NAME, () => new KHR_materials_unlit());
+GLTFExporter.RegisterExtension(NAME, () => new KHR_materials_unlit());

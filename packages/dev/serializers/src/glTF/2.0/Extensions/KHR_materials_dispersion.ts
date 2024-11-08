@@ -44,11 +44,13 @@ export class KHR_materials_dispersion implements IGLTFExporterExtensionV2 {
         if (mat.unlit) {
             return false;
         }
-
         const subs = mat.subSurface;
-
-        // This extension requires refraction to be enabled
-        return subs.isRefractionEnabled && subs.isDispersionEnabled;
+        // This extension should not be enabled if KHR_materials_transmission is not enabled
+        if (!subs.isRefractionEnabled) {
+            return false;
+        }
+        // No need to export the full extension if IOR is the default
+        return subs.isDispersionEnabled && subs.dispersion != DEFAULTS.dispersion;
     }
 
     /**

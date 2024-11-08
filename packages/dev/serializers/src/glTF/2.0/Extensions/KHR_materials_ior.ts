@@ -1,67 +1,73 @@
-// import type { IMaterial, IKHRMaterialsIor } from "babylonjs-gltf2interface";
-// import type { IGLTFExporterExtensionV2 } from "../glTFExporterExtension";
-// import { _Exporter } from "../glTFExporter";
-// import type { Material } from "core/Materials/material";
-// import { PBRMaterial } from "core/Materials/PBR/pbrMaterial";
+import type { IMaterial, IKHRMaterialsIor } from "babylonjs-gltf2interface";
+import type { IGLTFExporterExtensionV2 } from "../glTFExporterExtension";
+import { GLTFExporter } from "../glTFExporter";
+import type { Material } from "core/Materials/material";
+import { PBRMaterial } from "core/Materials/PBR/pbrMaterial";
 
-// const NAME = "KHR_materials_ior";
+const NAME = "KHR_materials_ior";
 
-// /**
-//  * [Specification](https://github.com/KhronosGroup/glTF/blob/main/extensions/2.0/Khronos/KHR_materials_ior/README.md)
-//  */
-// // eslint-disable-next-line @typescript-eslint/naming-convention
-// export class KHR_materials_ior implements IGLTFExporterExtensionV2 {
-//     /** Name of this extension */
-//     public readonly name = NAME;
+const DEFAULTS: Partial<IKHRMaterialsIor> = {
+    ior: 1.5,
+};
 
-//     /** Defines whether this extension is enabled */
-//     public enabled = true;
+/**
+ * [Specification](https://github.com/KhronosGroup/glTF/blob/main/extensions/2.0/Khronos/KHR_materials_ior/README.md)
+ */
+// eslint-disable-next-line @typescript-eslint/naming-convention
+export class KHR_materials_ior implements IGLTFExporterExtensionV2 {
+    /** Name of this extension */
+    public readonly name = NAME;
 
-//     /** Defines whether this extension is required */
-//     public required = false;
+    /** Defines whether this extension is enabled */
+    public enabled = true;
 
-//     private _wasUsed = false;
+    /** Defines whether this extension is required */
+    public required = false;
 
-//     constructor() {}
+    private _wasUsed = false;
 
-//     /** Dispose */
-//     public dispose() {}
+    constructor() {}
 
-//     /** @internal */
-//     public get wasUsed() {
-//         return this._wasUsed;
-//     }
+    /** Dispose */
+    public dispose() {}
 
-//     private _isExtensionEnabled(mat: PBRMaterial): boolean {
-//         // This extension must not be used on a material that also uses KHR_materials_unlit
-//         if (mat.unlit) {
-//             return false;
-//         }
-//         return mat.indexOfRefraction != undefined && mat.indexOfRefraction != 1.5; // 1.5 is normative default value.
-//     }
+    /** @internal */
+    public get wasUsed() {
+        return this._wasUsed;
+    }
 
-//     /**
-//      * After exporting a material
-//      * @param context GLTF context of the material
-//      * @param node exported GLTF node
-//      * @param babylonMaterial corresponding babylon material
-//      * @returns promise, resolves with the material
-//      */
-//     public postExportMaterialAsync?(context: string, node: IMaterial, babylonMaterial: Material): Promise<IMaterial> {
-//         return new Promise((resolve) => {
-//             if (babylonMaterial instanceof PBRMaterial && this._isExtensionEnabled(babylonMaterial)) {
-//                 this._wasUsed = true;
+    private _isExtensionEnabled(mat: PBRMaterial): boolean {
+        // This extension must not be used on a material that also uses KHR_materials_unlit
+        if (mat.unlit) {
+            return false;
+        }
+        // No need to export the full extension if the IOR, which is inherent to the material, is the default value
+        return mat.indexOfRefraction != DEFAULTS.ior;
+    }
 
-//                 const iorInfo: IKHRMaterialsIor = {
-//                     ior: babylonMaterial.indexOfRefraction,
-//                 };
-//                 node.extensions = node.extensions || {};
-//                 node.extensions[NAME] = iorInfo;
-//             }
-//             resolve(node);
-//         });
-//     }
-// }
+    /**
+     * After exporting a material
+     * @param context GLTF context of the material
+     * @param node exported GLTF node
+     * @param babylonMaterial corresponding babylon material
+     * @returns promise, resolves with the material
+     */
+    public postExportMaterialAsync?(context: string, node: IMaterial, babylonMaterial: Material): Promise<IMaterial> {
+        return new Promise((resolve) => {
+            if (babylonMaterial instanceof PBRMaterial && this._isExtensionEnabled(babylonMaterial)) {
+                this._wasUsed = true;
 
-// // eslint-disable-next-line @typescript-eslint/no-unused-vars
-// _Exporter.RegisterExtension(NAME, (exporter) => new KHR_materials_ior());
+                const iorInfo: IKHRMaterialsIor = {
+                    ior: babylonMaterial.indexOfRefraction,
+                };
+
+                node.extensions ||= {};
+                node.extensions[NAME] = iorInfo;
+            }
+            resolve(node);
+        });
+    }
+}
+
+// eslint-disable-next-line @typescript-eslint/no-unused-vars
+GLTFExporter.RegisterExtension(NAME, (exporter) => new KHR_materials_ior());
