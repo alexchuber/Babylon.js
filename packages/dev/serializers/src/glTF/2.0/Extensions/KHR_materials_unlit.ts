@@ -21,6 +21,9 @@ export class KHR_materials_unlit implements IGLTFExporterExtensionV2 {
     /** Defines whether this extension is required */
     public required = false;
 
+    /** Defines order in which this extension is applied. */
+    public order = 10;
+
     private _wasUsed = false;
 
     constructor() {}

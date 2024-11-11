@@ -36,9 +36,18 @@ export class KHR_materials_iridescence implements IGLTFExporterExtensionV2 {
         return this._wasUsed;
     }
 
+    private _isExtensionEnabled(node: IMaterial, babylonMaterial: PBRBaseMaterial): boolean {
+        return (
+            // This extension must not be used on a material that also uses KHR_materials_unlit.
+            !node.extensions?.["KHR_materials_unlit"] &&
+            // If iridescenceFactor is zero (default), the iridescence extension has no effect on the material.
+            babylonMaterial.iridescence.intensity != 0
+        );
+    }
+
     public postExportMaterialAdditionalTextures?(context: string, node: IMaterial, babylonMaterial: Material): BaseTexture[] {
         const additionalTextures: BaseTexture[] = [];
-        if (babylonMaterial instanceof PBRBaseMaterial) {
+        if (babylonMaterial instanceof PBRBaseMaterial && this._isExtensionEnabled(node, babylonMaterial)) {
             if (babylonMaterial.iridescence.isEnabled) {
                 if (babylonMaterial.iridescence.texture) {
                     additionalTextures.push(babylonMaterial.iridescence.texture);
@@ -55,7 +64,7 @@ export class KHR_materials_iridescence implements IGLTFExporterExtensionV2 {
 
     public postExportMaterialAsync?(context: string, node: IMaterial, babylonMaterial: Material): Promise<IMaterial> {
         return new Promise((resolve) => {
-            if (babylonMaterial instanceof PBRBaseMaterial) {
+            if (babylonMaterial instanceof PBRBaseMaterial && this._isExtensionEnabled(node, babylonMaterial)) {
                 if (!babylonMaterial.iridescence.isEnabled) {
                     resolve(node);
                     return;

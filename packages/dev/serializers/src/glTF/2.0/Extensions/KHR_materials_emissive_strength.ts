@@ -30,6 +30,15 @@ export class KHR_materials_emissive_strength implements IGLTFExporterExtensionV2
         return this._wasUsed;
     }
 
+    private _isExtensionEnabled(node: IMaterial, babylonMaterial: PBRMaterial): boolean {
+        return (
+            // This extension must not be used on a material that also uses KHR_materials_unlit
+            !node.extensions?.["KHR_materials_unlit"] &&
+            // This extension should only be used if emissive strength is meaningful, or greater than 1
+            Math.max(...babylonMaterial.emissiveColor.asArray()) > 1
+        );
+    }
+
     /**
      * After exporting a material
      * @param context GLTF context of the material
@@ -39,7 +48,7 @@ export class KHR_materials_emissive_strength implements IGLTFExporterExtensionV2
      */
     public postExportMaterialAsync(context: string, node: IMaterial, babylonMaterial: Material): Promise<IMaterial> {
         return new Promise((resolve) => {
-            if (!(babylonMaterial instanceof PBRMaterial)) {
+            if (!(babylonMaterial instanceof PBRMaterial) || !this._isExtensionEnabled(node, babylonMaterial)) {
                 return resolve(node);
             }
 

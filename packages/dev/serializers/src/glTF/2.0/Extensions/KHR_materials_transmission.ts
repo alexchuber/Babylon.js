@@ -23,6 +23,9 @@ export class KHR_materials_transmission implements IGLTFExporterExtensionV2 {
     /** Defines whether this extension is required */
     public required = false;
 
+    /** Defines order in which this extension is applied. Must follow KHR_materials_unlit. */
+    public order = 60;
+
     private _exporter: GLTFExporter;
 
     private _wasUsed = false;
@@ -50,7 +53,7 @@ export class KHR_materials_transmission implements IGLTFExporterExtensionV2 {
         const additionalTextures: BaseTexture[] = [];
 
         if (babylonMaterial instanceof PBRMaterial) {
-            if (this._isExtensionEnabled(babylonMaterial)) {
+            if (this._isExtensionEnabled(node, babylonMaterial)) {
                 if (babylonMaterial.subSurface.thicknessTexture) {
                     additionalTextures.push(babylonMaterial.subSurface.thicknessTexture);
                 }
@@ -61,13 +64,25 @@ export class KHR_materials_transmission implements IGLTFExporterExtensionV2 {
         return additionalTextures;
     }
 
-    private _isExtensionEnabled(mat: PBRMaterial): boolean {
-        // This extension must not be used on a material that also uses KHR_materials_unlit
-        if (mat.unlit) {
-            return false;
-        }
-        const subs = mat.subSurface;
-        return (subs.isRefractionEnabled && subs.refractionIntensity != undefined && subs.refractionIntensity != 0) || this._hasTexturesExtension(mat);
+    // private _isExtensionEnabled(mat: PBRMaterial): boolean {
+    //     // This extension must not be used on a material that also uses KHR_materials_unlit
+    //     if (mat.unlit) {
+    //         return false;
+    //     }
+    //     const subs = mat.subSurface;
+    //     return (subs.isRefractionEnabled && subs.refractionIntensity != undefined && subs.refractionIntensity != 0) || this._hasTexturesExtension(mat);
+    // }
+
+    private _isExtensionEnabled(node: IMaterial, babylonMaterial: PBRMaterial): boolean {
+        const subs = babylonMaterial.subSurface;
+        return (
+            // This extension must not be used on a material that also uses KHR_materials_unlit
+            !node.extensions?.["KHR_materials_unlit"] &&
+            // This extension should be used only if transmission (called refraction) is enabled and meaningful
+            subs.isRefractionEnabled &&
+            subs.refractionIntensity != 0
+            // TODO: Why does loader set thickness = 0 and volume IoR = 1.0 / -1.0, when it looks like transmission can be used with volume?
+        );
     }
 
     private _hasTexturesExtension(mat: PBRMaterial): boolean {
@@ -82,7 +97,7 @@ export class KHR_materials_transmission implements IGLTFExporterExtensionV2 {
      * @returns true if successful
      */
     public async postExportMaterialAsync?(context: string, node: IMaterial, babylonMaterial: Material): Promise<IMaterial> {
-        if (babylonMaterial instanceof PBRMaterial && this._isExtensionEnabled(babylonMaterial)) {
+        if (babylonMaterial instanceof PBRMaterial && this._isExtensionEnabled(node, babylonMaterial)) {
             this._wasUsed = true;
 
             const subSurface = babylonMaterial.subSurface;

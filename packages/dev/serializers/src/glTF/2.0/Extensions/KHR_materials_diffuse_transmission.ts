@@ -28,6 +28,9 @@ export class KHR_materials_diffuse_transmission implements IGLTFExporterExtensio
     /** Defines whether this extension is required */
     public required = false;
 
+    /** Defines order in which this extension is applied. Must follow unlit ext. */
+    public order = 90;
+
     private _exporter: GLTFExporter;
 
     private _wasUsed = false;
@@ -43,20 +46,33 @@ export class KHR_materials_diffuse_transmission implements IGLTFExporterExtensio
         return this._wasUsed;
     }
 
-    private _isExtensionEnabled(mat: PBRMaterial): boolean {
-        // This extension must not be used on a material that also uses KHR_materials_unlit
-        if (mat.unlit) {
-            return false;
-        }
+    // private _isExtensionEnabled(mat: PBRMaterial): boolean {
+    //     // This extension must not be used on a material that also uses KHR_materials_unlit
+    //     if (mat.unlit) {
+    //         return false;
+    //     }
 
-        const subs = mat.subSurface;
+    //     const subs = mat.subSurface;
+    //     return (
+    //         subs.isTranslucencyEnabled &&
+    //         !subs.useAlbedoToTintTranslucency &&
+    //         subs.useGltfStyleTextures &&
+    //         subs.volumeIndexOfRefraction === 1 &&
+    //         subs.minimumThickness === 0 &&
+    //         subs.maximumThickness === 0 // Why does the above (and the loader) check for thickness = 0 and volume IoR = 1? Doesn't this prevent KHR_materials_volume from being used?
+    //     );
+    // }
+
+    private _isExtensionEnabled(node: IMaterial, babylonMaterial: PBRMaterial): boolean {
+        const subs = babylonMaterial.subSurface;
         return (
+            // This extension must not be used on a material that also uses KHR_materials_unlit
+            !node.extensions?.["KHR_materials_unlit"] &&
+            // This extension should be used only if diffuse transmission (called translucency) is enabled and meaningful
             subs.isTranslucencyEnabled &&
-            !subs.useAlbedoToTintTranslucency &&
-            subs.useGltfStyleTextures &&
-            subs.volumeIndexOfRefraction === 1 &&
-            subs.minimumThickness === 0 &&
-            subs.maximumThickness === 0
+            subs.translucencyIntensity != 0
+            // TODO: Why does the OG version (and the loader) check for thickness = 0 and volume IoR = 1? Doesn't this prevent KHR_materials_volume from being used?
+            // TODO: What does useAlbedoToTintTranslucency do?
         );
     }
 
@@ -72,7 +88,7 @@ export class KHR_materials_diffuse_transmission implements IGLTFExporterExtensio
      * @returns array of additional textures to export
      */
     public postExportMaterialAdditionalTextures?(context: string, node: IMaterial, babylonMaterial: Material): BaseTexture[] {
-        if (!(babylonMaterial instanceof PBRMaterial) || !this._isExtensionEnabled(babylonMaterial)) {
+        if (!(babylonMaterial instanceof PBRMaterial) || !this._isExtensionEnabled(node, babylonMaterial)) {
             return [];
         }
 
@@ -101,7 +117,7 @@ export class KHR_materials_diffuse_transmission implements IGLTFExporterExtensio
      */
     public postExportMaterialAsync?(context: string, node: IMaterial, babylonMaterial: Material): Promise<IMaterial> {
         return new Promise((resolve) => {
-            if (babylonMaterial instanceof PBRMaterial && this._isExtensionEnabled(babylonMaterial)) {
+            if (babylonMaterial instanceof PBRMaterial && this._isExtensionEnabled(node, babylonMaterial)) {
                 this._wasUsed = true;
 
                 const subs = babylonMaterial.subSurface;

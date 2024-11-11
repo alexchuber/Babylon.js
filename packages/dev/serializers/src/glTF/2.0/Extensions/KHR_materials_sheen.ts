@@ -36,9 +36,20 @@ export class KHR_materials_sheen implements IGLTFExporterExtensionV2 {
         return this._wasUsed;
     }
 
+    private _isExtensionEnabled(node: IMaterial, babylonMaterial: PBRMaterial): boolean {
+        return (
+            // This extension must not be used on a material that also uses KHR_materials_unlit
+            !node.extensions?.["KHR_materials_unlit"] &&
+            // This extension should only be used if sheen is enabled
+            babylonMaterial.sheen.isEnabled &&
+            // If sheenColorFactor is zero, the whole sheen layer is disabled
+            !babylonMaterial.sheen.color.equalsFloats(0, 0, 0)
+        );
+    }
+
     public postExportMaterialAdditionalTextures(context: string, node: IMaterial, babylonMaterial: Material): BaseTexture[] {
-        if (babylonMaterial instanceof PBRMaterial) {
-            if (babylonMaterial.sheen.isEnabled && babylonMaterial.sheen.texture) {
+        if (babylonMaterial instanceof PBRMaterial && this._isExtensionEnabled(node, babylonMaterial)) {
+            if (babylonMaterial.sheen.texture) {
                 return [babylonMaterial.sheen.texture];
             }
         }
@@ -48,7 +59,7 @@ export class KHR_materials_sheen implements IGLTFExporterExtensionV2 {
 
     public postExportMaterialAsync(context: string, node: IMaterial, babylonMaterial: Material): Promise<IMaterial> {
         return new Promise((resolve) => {
-            if (babylonMaterial instanceof PBRMaterial) {
+            if (babylonMaterial instanceof PBRMaterial && this._isExtensionEnabled(node, babylonMaterial)) {
                 if (!babylonMaterial.sheen.isEnabled) {
                     resolve(node);
                     return;

@@ -32,12 +32,22 @@ export class KHR_materials_ior implements IGLTFExporterExtensionV2 {
         return this._wasUsed;
     }
 
-    private _isExtensionEnabled(mat: PBRMaterial): boolean {
-        // This extension must not be used on a material that also uses KHR_materials_unlit
-        if (mat.unlit) {
-            return false;
-        }
-        return mat.indexOfRefraction != undefined && mat.indexOfRefraction != 1.5; // 1.5 is normative default value.
+    // private _isExtensionEnabled(mat: PBRMaterial): boolean {
+    //     // This extension must not be used on a material that also uses KHR_materials_unlit
+    //     if (mat.unlit) {
+    //         return false;
+    //     }
+    //     return mat.indexOfRefraction != undefined && mat.indexOfRefraction != 1.5; // 1.5 is normative default value.
+    // }
+
+    private _isExtensionEnabled(node: IMaterial, mat: PBRMaterial): boolean {
+        return (
+            // This extension must not be used on a material that also uses KHR_materials_unlit
+            !node.extensions?.["KHR_materials_unlit"] &&
+            // This extension should only be used if IoR is meaningful, or different from the normative default value.
+            mat.indexOfRefraction != 1.5
+            // TODO: When does IoR have any visual effect? Is there some other var that controls its use?
+        );
     }
 
     /**
@@ -49,7 +59,7 @@ export class KHR_materials_ior implements IGLTFExporterExtensionV2 {
      */
     public postExportMaterialAsync?(context: string, node: IMaterial, babylonMaterial: Material): Promise<IMaterial> {
         return new Promise((resolve) => {
-            if (babylonMaterial instanceof PBRMaterial && this._isExtensionEnabled(babylonMaterial)) {
+            if (babylonMaterial instanceof PBRMaterial && this._isExtensionEnabled(node, babylonMaterial)) {
                 this._wasUsed = true;
 
                 const iorInfo: IKHRMaterialsIor = {

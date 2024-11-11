@@ -39,16 +39,27 @@ export class KHR_materials_dispersion implements IGLTFExporterExtensionV2 {
         return this._wasUsed;
     }
 
-    private _isExtensionEnabled(mat: PBRMaterial): boolean {
-        // This extension must not be used on a material that also uses KHR_materials_unlit
-        if (mat.unlit) {
-            return false;
-        }
+    // private _isExtensionEnabled(mat: PBRMaterial): boolean {
+    //     // This extension must not be used on a material that also uses KHR_materials_unlit
+    //     if (mat.unlit) {
+    //         return false;
+    //     }
 
-        const subs = mat.subSurface;
+    //     const subs = mat.subSurface;
 
-        // This extension requires refraction to be enabled
-        return subs.isRefractionEnabled && subs.isDispersionEnabled && subs.dispersion != DEFAULTS.dispersion;
+    //     // This extension requires refraction to be enabled
+    //     return subs.isRefractionEnabled && subs.isDispersionEnabled && subs.dispersion != 0;
+    // }
+
+    private _isExtensionEnabled(node: IMaterial, babylonMaterial: PBRMaterial): boolean {
+        return (
+            // This extension must not be used on a material that also uses KHR_materials_unlit
+            !node.extensions?.["KHR_materials_unlit"] &&
+            // This extensions depends on KHR_materials_volume extension as it builds upon its volumetric effect.
+            !node.extensions?.["KHR_materials_volume"] &&
+            // This extension should only be used if dispersion is meaningful, or is non-zero.
+            babylonMaterial.subSurface.dispersion != DEFAULTS.dispersion
+        );
     }
 
     /**
@@ -60,7 +71,7 @@ export class KHR_materials_dispersion implements IGLTFExporterExtensionV2 {
      */
     public postExportMaterialAsync?(context: string, node: IMaterial, babylonMaterial: Material): Promise<IMaterial> {
         return new Promise((resolve) => {
-            if (babylonMaterial instanceof PBRMaterial && this._isExtensionEnabled(babylonMaterial)) {
+            if (babylonMaterial instanceof PBRMaterial && this._isExtensionEnabled(node, babylonMaterial)) {
                 this._wasUsed = true;
 
                 const dispersionInfo: IKHRMaterialsDispersion = {

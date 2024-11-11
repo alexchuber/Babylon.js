@@ -42,6 +42,17 @@ export class KHR_materials_anisotropy implements IGLTFExporterExtensionV2 {
         return this._wasUsed;
     }
 
+    private _isExtensionEnabled(node: IMaterial, babylonMaterial: PBRBaseMaterial): boolean {
+        return (
+            // This extension must not be used on a material that also uses KHR_materials_unlit
+            !node.extensions?.["KHR_materials_unlit"] &&
+            // This extension should be used only if anisotropy is enabled
+            babylonMaterial.anisotropy.isEnabled &&
+            // Legacy anisotropy is unsupported
+            !babylonMaterial.anisotropy.legacy
+        );
+    }
+
     public postExportMaterialAdditionalTextures?(context: string, node: IMaterial, babylonMaterial: Material): BaseTexture[] {
         const additionalTextures: BaseTexture[] = [];
         if (babylonMaterial instanceof PBRBaseMaterial) {

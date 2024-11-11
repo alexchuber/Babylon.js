@@ -22,6 +22,9 @@ export class KHR_materials_volume implements IGLTFExporterExtensionV2 {
     /** Defines whether this extension is required */
     public required = false;
 
+    /** Defines order in which this extension is applied. Must follow unlit, transmission, and diffuse transmission exts. */
+    public order = 120;
+
     private _exporter: GLTFExporter;
 
     private _wasUsed = false;
@@ -48,7 +51,7 @@ export class KHR_materials_volume implements IGLTFExporterExtensionV2 {
         const additionalTextures: BaseTexture[] = [];
 
         if (babylonMaterial instanceof PBRMaterial) {
-            if (this._isExtensionEnabled(babylonMaterial)) {
+            if (this._isExtensionEnabled(node, babylonMaterial)) {
                 if (babylonMaterial.subSurface.thicknessTexture) {
                     additionalTextures.push(babylonMaterial.subSurface.thicknessTexture);
                 }
@@ -59,21 +62,33 @@ export class KHR_materials_volume implements IGLTFExporterExtensionV2 {
         return additionalTextures;
     }
 
-    private _isExtensionEnabled(mat: PBRMaterial): boolean {
-        // This extension must not be used on a material that also uses KHR_materials_unlit
-        if (mat.unlit) {
-            return false;
-        }
-        const subs = mat.subSurface;
-        // this extension requires either the KHR_materials_transmission or KHR_materials_diffuse_transmission extensions.
-        if (!subs.isRefractionEnabled && !subs.isTranslucencyEnabled) {
-            return false;
-        }
+    // private _isExtensionEnabled(mat: PBRMaterial): boolean {
+    //     // This extension must not be used on a material that also uses KHR_materials_unlit
+    //     if (mat.unlit) {
+    //         return false;
+    //     }
+    //     const subs = mat.subSurface;
+    //     // this extension requires either the KHR_materials_transmission or KHR_materials_diffuse_transmission extensions.
+    //     if (!subs.isRefractionEnabled && !subs.isTranslucencyEnabled) {
+    //         return false;
+    //     }
+    //     return (
+    //         (subs.maximumThickness != undefined && subs.maximumThickness != 0) ||
+    //         (subs.tintColorAtDistance != undefined && subs.tintColorAtDistance != Number.POSITIVE_INFINITY) ||
+    //         (subs.tintColor != undefined && subs.tintColor != Color3.White()) ||
+    //         this._hasTexturesExtension(mat)
+    //     );
+    // }
+
+    private _isExtensionEnabled(node: IMaterial, babylonMaterial: PBRMaterial): boolean {
+        const subs = babylonMaterial.subSurface;
         return (
-            (subs.maximumThickness != undefined && subs.maximumThickness != 0) ||
-            (subs.tintColorAtDistance != undefined && subs.tintColorAtDistance != Number.POSITIVE_INFINITY) ||
-            (subs.tintColor != undefined && subs.tintColor != Color3.White()) ||
-            this._hasTexturesExtension(mat)
+            // This extension must not be used on a material that also uses KHR_materials_unlit
+            !node.extensions?.["KHR_materials_unlit"] &&
+            // This extension requires either the KHR_materials_transmission or KHR_materials_diffuse_transmission extensions
+            (node.extensions?.["KHR_materials_transmission"] || node.extensions?.["KHR_materials_diffuse_transmission"]) &&
+            // This extension should be used only if there is meaningful thickness
+            subs.maximumThickness != 0
         );
     }
 
@@ -90,7 +105,7 @@ export class KHR_materials_volume implements IGLTFExporterExtensionV2 {
      */
     public postExportMaterialAsync?(context: string, node: IMaterial, babylonMaterial: Material): Promise<IMaterial> {
         return new Promise((resolve) => {
-            if (babylonMaterial instanceof PBRMaterial && this._isExtensionEnabled(babylonMaterial)) {
+            if (babylonMaterial instanceof PBRMaterial && this._isExtensionEnabled(node, babylonMaterial)) {
                 this._wasUsed = true;
 
                 const subs = babylonMaterial.subSurface;

@@ -48,7 +48,7 @@ export class KHR_materials_specular implements IGLTFExporterExtensionV2 {
         const additionalTextures: BaseTexture[] = [];
 
         if (babylonMaterial instanceof PBRMaterial) {
-            if (this._isExtensionEnabled(babylonMaterial)) {
+            if (this._isExtensionEnabled(node, babylonMaterial)) {
                 if (babylonMaterial.metallicReflectanceTexture) {
                     additionalTextures.push(babylonMaterial.metallicReflectanceTexture);
                 }
@@ -62,15 +62,23 @@ export class KHR_materials_specular implements IGLTFExporterExtensionV2 {
         return additionalTextures;
     }
 
-    private _isExtensionEnabled(mat: PBRMaterial): boolean {
-        // This extension must not be used on a material that also uses KHR_materials_unlit
-        if (mat.unlit) {
-            return false;
-        }
+    // private _isExtensionEnabled(mat: PBRMaterial): boolean {
+    //     // This extension must not be used on a material that also uses KHR_materials_unlit
+    //     if (mat.unlit) {
+    //         return false;
+    //     }
+    //     return (
+    //         (mat.metallicF0Factor != undefined && mat.metallicF0Factor != 1.0) ||
+    //         (mat.metallicReflectanceColor != undefined && !mat.metallicReflectanceColor.equalsFloats(1.0, 1.0, 1.0)) ||
+    //         this._hasTexturesExtension(mat)
+    //     );
+    // }
+
+    private _isExtensionEnabled(node: IMaterial, mat: PBRMaterial): boolean {
         return (
-            (mat.metallicF0Factor != undefined && mat.metallicF0Factor != 1.0) ||
-            (mat.metallicReflectanceColor != undefined && !mat.metallicReflectanceColor.equalsFloats(1.0, 1.0, 1.0)) ||
-            this._hasTexturesExtension(mat)
+            // This extension must not be used on a material that also uses KHR_materials_unlit
+            !node.extensions?.["KHR_materials_unlit"]
+            // TODO: Any control variables that dictate whether this extension should be used?
         );
     }
 
@@ -87,7 +95,7 @@ export class KHR_materials_specular implements IGLTFExporterExtensionV2 {
      */
     public postExportMaterialAsync?(context: string, node: IMaterial, babylonMaterial: Material): Promise<IMaterial> {
         return new Promise((resolve) => {
-            if (babylonMaterial instanceof PBRMaterial && this._isExtensionEnabled(babylonMaterial)) {
+            if (babylonMaterial instanceof PBRMaterial && this._isExtensionEnabled(node, babylonMaterial)) {
                 this._wasUsed = true;
 
                 node.extensions = node.extensions || {};

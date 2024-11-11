@@ -43,6 +43,17 @@ export class KHR_materials_clearcoat implements IGLTFExporterExtensionV2 {
         return this._wasUsed;
     }
 
+    private _isExtensionEnabled(node: IMaterial, babylonMaterial: PBRBaseMaterial): boolean {
+        return (
+            // This extension must not be used on a material that also uses KHR_materials_unlit
+            !node.extensions?.["KHR_materials_unlit"] &&
+            // This extension should be used only if clearcoat is enabled
+            babylonMaterial.clearCoat.isEnabled &&
+            // If clearcoatFactor (in the extension) is zero, the whole clearcoat layer is disabled.
+            babylonMaterial.clearCoat.intensity != 0
+        );
+    }
+
     public postExportMaterialAdditionalTextures?(context: string, node: IMaterial, babylonMaterial: Material): BaseTexture[] {
         const additionalTextures: BaseTexture[] = [];
         if (babylonMaterial instanceof PBRBaseMaterial && babylonMaterial.clearCoat.isEnabled) {
