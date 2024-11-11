@@ -5,6 +5,8 @@ import type { Material } from "core/Materials/material";
 import { PBRMaterial } from "core/Materials/PBR/pbrMaterial";
 import type { BaseTexture } from "core/Materials/Textures/baseTexture";
 import { omitDefaultValues } from "../glTFUtilities";
+import { Logger } from "core/Misc/logger";
+import type { Nullable } from "core/types";
 
 const NAME = "KHR_materials_diffuse_transmission";
 
@@ -76,8 +78,28 @@ export class KHR_materials_diffuse_transmission implements IGLTFExporterExtensio
         );
     }
 
-    private _hasTexturesExtension(mat: PBRMaterial): boolean {
-        return mat.subSurface.translucencyIntensityTexture != null || mat.subSurface.translucencyColorTexture != null;
+    /**
+     * Get the appropriate translucency intensity texture for the material.
+     * @internal
+     */
+    private _getTranslucencyIntensityTexture(babylonMaterial: PBRMaterial): Nullable<BaseTexture> {
+        const subs = babylonMaterial.subSurface;
+        let texture = null;
+
+        // Check if translucency intensity texture is available or can be derived from thickness texture
+        if (subs.translucencyIntensityTexture) {
+            texture = subs.translucencyIntensityTexture;
+        } else if (subs.thicknessTexture && subs.useMaskFromThicknessTexture) {
+            texture = subs.thicknessTexture;
+        }
+
+        // If translucency texture is found but not using glTF-style, ignore it
+        if (texture && !subs.useGltfStyleTextures) {
+            Logger.Warn(`Exporting a subsurface translucency intensity texture without \`useGltfStyleTextures\` is not supported. Ignoring for: ${babylonMaterial.name}`, 1);
+            return null;
+        }
+
+        return texture;
     }
 
     /**
@@ -88,21 +110,17 @@ export class KHR_materials_diffuse_transmission implements IGLTFExporterExtensio
      * @returns array of additional textures to export
      */
     public postExportMaterialAdditionalTextures?(context: string, node: IMaterial, babylonMaterial: Material): BaseTexture[] {
-        if (!(babylonMaterial instanceof PBRMaterial) || !this._isExtensionEnabled(node, babylonMaterial)) {
-            return [];
-        }
-
         const additionalTextures: BaseTexture[] = [];
 
-        // Diffuse transmission texture can come from 2 sources, in order of priority:
-        if (babylonMaterial.subSurface.translucencyIntensityTexture) {
-            additionalTextures.push(babylonMaterial.subSurface.translucencyIntensityTexture);
-        } else if (babylonMaterial.subSurface.thicknessTexture && babylonMaterial.subSurface.useMaskFromThicknessTexture) {
-            additionalTextures.push(babylonMaterial.subSurface.thicknessTexture);
-        }
+        if (babylonMaterial instanceof PBRMaterial && this._isExtensionEnabled(node, babylonMaterial)) {
+            const translucencyIntensityTexture = this._getTranslucencyIntensityTexture(babylonMaterial);
+            if (translucencyIntensityTexture) {
+                additionalTextures.push(translucencyIntensityTexture);
+            }
 
-        if (babylonMaterial.subSurface.translucencyColorTexture) {
-            additionalTextures.push(babylonMaterial.subSurface.translucencyColorTexture);
+            if (babylonMaterial.subSurface.translucencyColorTexture) {
+                additionalTextures.push(babylonMaterial.subSurface.translucencyColorTexture);
+            }
         }
 
         return additionalTextures;
@@ -123,7 +141,7 @@ export class KHR_materials_diffuse_transmission implements IGLTFExporterExtensio
                 const subs = babylonMaterial.subSurface;
 
                 const diffuseTransmissionFactor = subs.translucencyIntensity;
-                const diffuseTransmissionTexture = this._exporter._materialExporter.getTextureInfo(subs.translucencyIntensityTexture) ?? undefined;
+                const diffuseTransmissionTexture = this._exporter._materialExporter.getTextureInfo(this._getTranslucencyIntensityTexture(babylonMaterial)) ?? undefined;
                 const diffuseTransmissionColorFactor = subs.translucencyColor?.asArray();
                 const diffuseTransmissionColorTexture = this._exporter._materialExporter.getTextureInfo(subs.translucencyColorTexture) ?? undefined;
 
@@ -134,7 +152,7 @@ export class KHR_materials_diffuse_transmission implements IGLTFExporterExtensio
                     diffuseTransmissionColorTexture,
                 };
 
-                if (this._hasTexturesExtension(babylonMaterial)) {
+                if (diffuseTransmissionTexture || diffuseTransmissionColorTexture) {
                     this._exporter._materialNeedsUVsSet.add(babylonMaterial);
                 }
 
