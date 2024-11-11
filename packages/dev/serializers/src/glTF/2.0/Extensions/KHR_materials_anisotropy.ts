@@ -77,7 +77,7 @@ export class KHR_materials_anisotropy implements IGLTFExporterExtensionV2 {
                     anisotropyTexture: anisotropyTextureInfo ?? undefined,
                 };
 
-                if (anisotropyInfo.anisotropyTexture) {
+                if (anisotropyTextureInfo) {
                     this._exporter._materialNeedsUVsSet.add(babylonMaterial);
                 }
 

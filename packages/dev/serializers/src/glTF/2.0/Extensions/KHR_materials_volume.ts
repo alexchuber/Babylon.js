@@ -92,10 +92,6 @@ export class KHR_materials_volume implements IGLTFExporterExtensionV2 {
         return additionalTextures;
     }
 
-    private _hasTexturesExtension(mat: PBRMaterial): boolean {
-        return mat.subSurface.thicknessTexture != null;
-    }
-
     /**
      * After exporting a material
      * @param context GLTF context of the material
@@ -121,7 +117,7 @@ export class KHR_materials_volume implements IGLTFExporterExtensionV2 {
                     attenuationColor: attenuationColor,
                 };
 
-                if (this._hasTexturesExtension(babylonMaterial)) {
+                if (thicknessTexture) {
                     this._exporter._materialNeedsUVsSet.add(babylonMaterial);
                 }
 

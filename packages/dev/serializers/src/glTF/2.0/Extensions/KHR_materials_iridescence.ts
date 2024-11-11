@@ -60,6 +60,7 @@ export class KHR_materials_iridescence implements IGLTFExporterExtensionV2 {
             if (babylonMaterial.iridescence.texture) {
                 additionalTextures.push(babylonMaterial.iridescence.texture);
             }
+            // TODO: Why the check for the thickness texture being different from the iridescence texture?
             if (babylonMaterial.iridescence.thicknessTexture && babylonMaterial.iridescence.thicknessTexture !== babylonMaterial.iridescence.texture) {
                 additionalTextures.push(babylonMaterial.iridescence.thicknessTexture);
             }
@@ -82,12 +83,11 @@ export class KHR_materials_iridescence implements IGLTFExporterExtensionV2 {
                     iridescenceIor: babylonMaterial.iridescence.indexOfRefraction,
                     iridescenceThicknessMinimum: babylonMaterial.iridescence.minimumThickness,
                     iridescenceThicknessMaximum: babylonMaterial.iridescence.maximumThickness,
-
                     iridescenceTexture: iridescenceTextureInfo ?? undefined,
                     iridescenceThicknessTexture: iridescenceThicknessTextureInfo ?? undefined,
                 };
 
-                if (iridescenceInfo.iridescenceTexture !== null || iridescenceInfo.iridescenceThicknessTexture !== null) {
+                if (iridescenceTextureInfo || iridescenceThicknessTextureInfo) {
                     this._exporter._materialNeedsUVsSet.add(babylonMaterial);
                 }
 

@@ -63,10 +63,6 @@ export class KHR_materials_specular implements IGLTFExporterExtensionV2 {
         );
     }
 
-    private _hasTexturesExtension(mat: PBRMaterial): boolean {
-        return mat.metallicReflectanceTexture != null || mat.reflectanceTexture != null;
-    }
-
     /**
      * After exporting a material, deal with the additional textures
      * @param context GLTF context of the material
@@ -115,7 +111,7 @@ export class KHR_materials_specular implements IGLTFExporterExtensionV2 {
                     specularColorTexture: reflectanceTexture,
                 };
 
-                if (this._hasTexturesExtension(babylonMaterial)) {
+                if (metallicReflectanceTexture || reflectanceTexture) {
                     this._exporter._materialNeedsUVsSet.add(babylonMaterial);
                 }
 

@@ -104,7 +104,7 @@ export class KHR_materials_clearcoat implements IGLTFExporterExtensionV2 {
                     clearcoatNormalTexture: clearCoatNormalTextureInfo ?? undefined,
                 };
 
-                if (clearCoatInfo.clearcoatTexture !== null || clearCoatInfo.clearcoatRoughnessTexture !== null || clearCoatInfo.clearcoatRoughnessTexture !== null) {
+                if (clearCoatTextureInfo || clearCoatTextureRoughnessInfo || clearCoatNormalTextureInfo) {
                     this._exporter._materialNeedsUVsSet.add(babylonMaterial);
                 }
 
