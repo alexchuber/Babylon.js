@@ -72,11 +72,14 @@ export interface IGLTFExporterExtensionV2 extends IGLTFExporterExtension, IDispo
      */
     postExportMaterialAdditionalTextures?(context: string, node: IMaterial, babylonMaterial: Material): BaseTexture[];
 
-    /** Gets a boolean indicating that this extension was used */
-    wasUsed: boolean;
-
     /**
      * Called after the exporter state changes to EXPORTING
      */
     onExporting?(): void;
+
+    /** Gets a boolean indicating that this extension was used */
+    wasUsed: boolean;
+
+    /** Defines a number that determines the order the extensions are applied. Default is Number.MAX_VALUE. */
+    order?: number;
 }

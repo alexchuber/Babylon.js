@@ -297,6 +297,7 @@ export class GLTFExporter {
         for (const name of GLTFExporter._ExtensionNames) {
             extensions.push(this._extensions[name]);
         }
+        extensions.sort((a, b) => (a.order || Number.MAX_VALUE) - (b.order || Number.MAX_VALUE));
 
         return this._applyExtension(node, extensions, 0, actionAsync);
     }
