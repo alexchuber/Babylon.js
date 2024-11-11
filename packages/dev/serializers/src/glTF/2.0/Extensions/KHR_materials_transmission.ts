@@ -1,11 +1,11 @@
 import type { IMaterial, IKHRMaterialsTransmission } from "babylonjs-gltf2interface";
-import { ImageMimeType } from "babylonjs-gltf2interface";
 import type { IGLTFExporterExtensionV2 } from "../glTFExporterExtension";
 import { GLTFExporter } from "../glTFExporter";
 import type { Material } from "core/Materials/material";
 import { PBRMaterial } from "core/Materials/PBR/pbrMaterial";
 import type { BaseTexture } from "core/Materials/Textures/baseTexture";
 import { Logger } from "core/Misc/logger";
+import type { Nullable } from "core/types";
 
 const NAME = "KHR_materials_transmission";
 
@@ -68,6 +68,30 @@ export class KHR_materials_transmission implements IGLTFExporterExtensionV2 {
     }
 
     /**
+     * Get the appropriate refraction intensity texture for the material.
+     * @internal
+     */
+    private _getRefractionIntensityTexture(mat: PBRMaterial): Nullable<BaseTexture> {
+        const subs = mat.subSurface;
+        let texture = null;
+
+        // Check if refraction intensity texture is available or can be derived from thickness texture
+        if (subs.refractionIntensityTexture) {
+            texture = subs.refractionIntensityTexture;
+        } else if (subs.thicknessTexture && subs.useMaskFromThicknessTexture) {
+            texture = subs.thicknessTexture;
+        }
+
+        // If refraction texture is found but not using glTF-style, ignore it
+        if (texture && !subs.useGltfStyleTextures) {
+            Logger.Warn(`Exporting a subsurface refraction intensity texture without \`useGltfStyleTextures\` is not supported. Ignoring for ${mat.name}`, 1);
+            return null;
+        }
+
+        return texture;
+    }
+
+    /**
      * After exporting a material, deal with additional textures
      * @param context GLTF context of the material
      * @param node exported GLTF node
@@ -78,17 +102,13 @@ export class KHR_materials_transmission implements IGLTFExporterExtensionV2 {
         const additionalTextures: BaseTexture[] = [];
 
         if (babylonMaterial instanceof PBRMaterial && this._isExtensionEnabled(node, babylonMaterial)) {
-            if (babylonMaterial.subSurface.thicknessTexture) {
-                additionalTextures.push(babylonMaterial.subSurface.thicknessTexture);
+            const refractionIntensityTexture = this._getRefractionIntensityTexture(babylonMaterial);
+            if (refractionIntensityTexture) {
+                additionalTextures.push(refractionIntensityTexture);
             }
-            return additionalTextures;
         }
 
         return additionalTextures;
-    }
-
-    private _hasTexturesExtension(mat: PBRMaterial): boolean {
-        return mat.subSurface.refractionIntensityTexture != null;
     }
 
     /**
@@ -104,23 +124,14 @@ export class KHR_materials_transmission implements IGLTFExporterExtensionV2 {
 
             const subSurface = babylonMaterial.subSurface;
             const transmissionFactor = subSurface.refractionIntensity === 0 ? undefined : subSurface.refractionIntensity;
+            const transmissionTexture = this._exporter._materialExporter.getTextureInfo(this._getRefractionIntensityTexture(babylonMaterial)) ?? undefined;
 
             const volumeInfo: IKHRMaterialsTransmission = {
                 transmissionFactor: transmissionFactor,
+                transmissionTexture: transmissionTexture,
             };
 
-            if (subSurface.refractionIntensityTexture) {
-                if (subSurface.useGltfStyleTextures) {
-                    const transmissionTexture = await this._exporter._materialExporter.getTextureInfo(subSurface.refractionIntensityTexture);
-                    if (transmissionTexture) {
-                        volumeInfo.transmissionTexture = transmissionTexture;
-                    }
-                } else {
-                    Logger.Warn(`${context}: Exporting a subsurface refraction intensity texture without \`useGltfStyleTextures\` is not supported`);
-                }
-            }
-
-            if (this._hasTexturesExtension(babylonMaterial)) {
+            if (transmissionTexture) {
                 this._exporter._materialNeedsUVsSet.add(babylonMaterial);
             }
 
