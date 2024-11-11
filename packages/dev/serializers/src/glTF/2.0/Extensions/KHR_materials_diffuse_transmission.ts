@@ -111,18 +111,15 @@ export class KHR_materials_diffuse_transmission implements IGLTFExporterExtensio
      */
     public postExportMaterialAdditionalTextures?(context: string, node: IMaterial, babylonMaterial: Material): BaseTexture[] {
         const additionalTextures: BaseTexture[] = [];
-
         if (babylonMaterial instanceof PBRMaterial && this._isExtensionEnabled(node, babylonMaterial)) {
             const translucencyIntensityTexture = this._getTranslucencyIntensityTexture(babylonMaterial);
             if (translucencyIntensityTexture) {
                 additionalTextures.push(translucencyIntensityTexture);
             }
-
             if (babylonMaterial.subSurface.translucencyColorTexture) {
                 additionalTextures.push(babylonMaterial.subSurface.translucencyColorTexture);
             }
         }
-
         return additionalTextures;
     }
 

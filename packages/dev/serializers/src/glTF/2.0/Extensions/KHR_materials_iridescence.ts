@@ -63,10 +63,8 @@ export class KHR_materials_iridescence implements IGLTFExporterExtensionV2 {
             if (babylonMaterial.iridescence.thicknessTexture && babylonMaterial.iridescence.thicknessTexture !== babylonMaterial.iridescence.texture) {
                 additionalTextures.push(babylonMaterial.iridescence.thicknessTexture);
             }
-            return additionalTextures;
         }
-
-        return [];
+        return additionalTextures;
     }
 
     public postExportMaterialAsync?(context: string, node: IMaterial, babylonMaterial: Material): Promise<IMaterial> {

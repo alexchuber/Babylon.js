@@ -84,14 +84,11 @@ export class KHR_materials_volume implements IGLTFExporterExtensionV2 {
      */
     public postExportMaterialAdditionalTextures?(context: string, node: IMaterial, babylonMaterial: Material): BaseTexture[] {
         const additionalTextures: BaseTexture[] = [];
-
         if (babylonMaterial instanceof PBRMaterial && this._isExtensionEnabled(node, babylonMaterial)) {
             if (babylonMaterial.subSurface.thicknessTexture) {
                 additionalTextures.push(babylonMaterial.subSurface.thicknessTexture);
             }
-            return additionalTextures;
         }
-
         return additionalTextures;
     }
 

@@ -53,13 +53,13 @@ export class KHR_materials_sheen implements IGLTFExporterExtensionV2 {
     }
 
     public postExportMaterialAdditionalTextures(context: string, node: IMaterial, babylonMaterial: Material): BaseTexture[] {
+        const additionalTextures: BaseTexture[] = [];
         if (babylonMaterial instanceof PBRMaterial && this._isExtensionEnabled(node, babylonMaterial)) {
             if (babylonMaterial.sheen.texture) {
-                return [babylonMaterial.sheen.texture];
+                additionalTextures.push(babylonMaterial.sheen.texture);
             }
         }
-
-        return [];
+        return additionalTextures;
     }
 
     public postExportMaterialAsync(context: string, node: IMaterial, babylonMaterial: Material): Promise<IMaterial> {

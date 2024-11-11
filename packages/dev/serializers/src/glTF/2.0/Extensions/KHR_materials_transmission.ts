@@ -100,14 +100,12 @@ export class KHR_materials_transmission implements IGLTFExporterExtensionV2 {
      */
     public postExportMaterialAdditionalTextures?(context: string, node: IMaterial, babylonMaterial: Material): BaseTexture[] {
         const additionalTextures: BaseTexture[] = [];
-
         if (babylonMaterial instanceof PBRMaterial && this._isExtensionEnabled(node, babylonMaterial)) {
             const refractionIntensityTexture = this._getRefractionIntensityTexture(babylonMaterial);
             if (refractionIntensityTexture) {
                 additionalTextures.push(refractionIntensityTexture);
             }
         }
-
         return additionalTextures;
     }
 

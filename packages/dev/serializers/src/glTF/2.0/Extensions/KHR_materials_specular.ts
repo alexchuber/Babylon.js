@@ -76,7 +76,6 @@ export class KHR_materials_specular implements IGLTFExporterExtensionV2 {
      */
     public postExportMaterialAdditionalTextures?(context: string, node: IMaterial, babylonMaterial: Material): BaseTexture[] {
         const additionalTextures: BaseTexture[] = [];
-
         if (babylonMaterial instanceof PBRMaterial && this._isExtensionEnabled(node, babylonMaterial)) {
             if (babylonMaterial.metallicReflectanceTexture) {
                 additionalTextures.push(babylonMaterial.metallicReflectanceTexture);
@@ -84,9 +83,7 @@ export class KHR_materials_specular implements IGLTFExporterExtensionV2 {
             if (babylonMaterial.reflectanceTexture) {
                 additionalTextures.push(babylonMaterial.reflectanceTexture);
             }
-            return additionalTextures;
         }
-
         return additionalTextures;
     }
 

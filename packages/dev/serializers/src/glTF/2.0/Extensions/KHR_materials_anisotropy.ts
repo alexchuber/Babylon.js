@@ -60,10 +60,8 @@ export class KHR_materials_anisotropy implements IGLTFExporterExtensionV2 {
             if (babylonMaterial.anisotropy.texture) {
                 additionalTextures.push(babylonMaterial.anisotropy.texture);
             }
-            return additionalTextures;
         }
-
-        return [];
+        return additionalTextures;
     }
 
     public postExportMaterialAsync?(context: string, node: IMaterial, babylonMaterial: Material): Promise<IMaterial> {
