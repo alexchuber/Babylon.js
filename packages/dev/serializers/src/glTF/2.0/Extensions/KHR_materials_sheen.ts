@@ -58,6 +58,9 @@ export class KHR_materials_sheen implements IGLTFExporterExtensionV2 {
             if (babylonMaterial.sheen.texture) {
                 additionalTextures.push(babylonMaterial.sheen.texture);
             }
+            if (!babylonMaterial.sheen.useRoughnessFromMainTexture && babylonMaterial.sheen.textureRoughness) {
+                additionalTextures.push(babylonMaterial.sheen.textureRoughness);
+            }
         }
         return additionalTextures;
     }
@@ -70,23 +73,20 @@ export class KHR_materials_sheen implements IGLTFExporterExtensionV2 {
                 if (node.extensions == null) {
                     node.extensions = {};
                 }
+
+                const sheen = babylonMaterial.sheen;
+                const sheenRoughnessTexture = this._exporter._materialExporter.getTextureInfo(sheen.useRoughnessFromMainTexture ? sheen.texture : sheen.textureRoughness);
+                const sheenColorTexture = this._exporter._materialExporter.getTextureInfo(sheen.texture);
+
                 const sheenInfo: IKHRMaterialsSheen = {
-                    sheenColorFactor: babylonMaterial.sheen.color.asArray(),
-                    sheenRoughnessFactor: babylonMaterial.sheen.roughness ?? 0,
+                    sheenColorFactor: sheen.color.asArray(),
+                    sheenColorTexture: sheenColorTexture ?? undefined,
+                    sheenRoughnessFactor: sheen.roughness ?? 0,
+                    sheenRoughnessTexture: sheenRoughnessTexture ?? undefined,
                 };
 
-                if (sheenInfo.sheenColorTexture !== null || sheenInfo.sheenRoughnessTexture !== null) {
+                if (sheenColorTexture || sheenRoughnessTexture) {
                     this._exporter._materialNeedsUVsSet.add(babylonMaterial);
-                }
-
-                if (babylonMaterial.sheen.texture) {
-                    sheenInfo.sheenColorTexture = this._exporter._materialExporter.getTextureInfo(babylonMaterial.sheen.texture) ?? undefined;
-                }
-
-                if (babylonMaterial.sheen.textureRoughness && !babylonMaterial.sheen.useRoughnessFromMainTexture) {
-                    sheenInfo.sheenRoughnessTexture = this._exporter._materialExporter.getTextureInfo(babylonMaterial.sheen.textureRoughness) ?? undefined;
-                } else if (babylonMaterial.sheen.texture && babylonMaterial.sheen.useRoughnessFromMainTexture) {
-                    sheenInfo.sheenRoughnessTexture = this._exporter._materialExporter.getTextureInfo(babylonMaterial.sheen.texture) ?? undefined;
                 }
 
                 node.extensions[NAME] = sheenInfo;
