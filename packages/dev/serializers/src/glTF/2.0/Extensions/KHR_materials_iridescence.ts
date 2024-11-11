@@ -40,6 +40,8 @@ export class KHR_materials_iridescence implements IGLTFExporterExtensionV2 {
         return (
             // This extension must not be used on a material that also uses KHR_materials_unlit.
             !node.extensions?.["KHR_materials_unlit"] &&
+            // This extension should be used only if iridescence is enabled
+            babylonMaterial.iridescence.isEnabled &&
             // If iridescenceFactor is zero (default), the iridescence extension has no effect on the material.
             babylonMaterial.iridescence.intensity != 0
         );
@@ -48,15 +50,13 @@ export class KHR_materials_iridescence implements IGLTFExporterExtensionV2 {
     public postExportMaterialAdditionalTextures?(context: string, node: IMaterial, babylonMaterial: Material): BaseTexture[] {
         const additionalTextures: BaseTexture[] = [];
         if (babylonMaterial instanceof PBRBaseMaterial && this._isExtensionEnabled(node, babylonMaterial)) {
-            if (babylonMaterial.iridescence.isEnabled) {
-                if (babylonMaterial.iridescence.texture) {
-                    additionalTextures.push(babylonMaterial.iridescence.texture);
-                }
-                if (babylonMaterial.iridescence.thicknessTexture && babylonMaterial.iridescence.thicknessTexture !== babylonMaterial.iridescence.texture) {
-                    additionalTextures.push(babylonMaterial.iridescence.thicknessTexture);
-                }
-                return additionalTextures;
+            if (babylonMaterial.iridescence.texture) {
+                additionalTextures.push(babylonMaterial.iridescence.texture);
             }
+            if (babylonMaterial.iridescence.thicknessTexture && babylonMaterial.iridescence.thicknessTexture !== babylonMaterial.iridescence.texture) {
+                additionalTextures.push(babylonMaterial.iridescence.thicknessTexture);
+            }
+            return additionalTextures;
         }
 
         return [];
@@ -65,11 +65,6 @@ export class KHR_materials_iridescence implements IGLTFExporterExtensionV2 {
     public postExportMaterialAsync?(context: string, node: IMaterial, babylonMaterial: Material): Promise<IMaterial> {
         return new Promise((resolve) => {
             if (babylonMaterial instanceof PBRBaseMaterial && this._isExtensionEnabled(node, babylonMaterial)) {
-                if (!babylonMaterial.iridescence.isEnabled) {
-                    resolve(node);
-                    return;
-                }
-
                 this._wasUsed = true;
 
                 node.extensions = node.extensions || {};

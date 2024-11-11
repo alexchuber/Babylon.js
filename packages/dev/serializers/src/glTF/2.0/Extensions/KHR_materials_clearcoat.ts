@@ -56,7 +56,7 @@ export class KHR_materials_clearcoat implements IGLTFExporterExtensionV2 {
 
     public postExportMaterialAdditionalTextures?(context: string, node: IMaterial, babylonMaterial: Material): BaseTexture[] {
         const additionalTextures: BaseTexture[] = [];
-        if (babylonMaterial instanceof PBRBaseMaterial && babylonMaterial.clearCoat.isEnabled) {
+        if (babylonMaterial instanceof PBRBaseMaterial && this._isExtensionEnabled(node, babylonMaterial)) {
             if (babylonMaterial.clearCoat.texture) {
                 additionalTextures.push(babylonMaterial.clearCoat.texture);
             }
@@ -72,12 +72,7 @@ export class KHR_materials_clearcoat implements IGLTFExporterExtensionV2 {
 
     public postExportMaterialAsync?(context: string, node: IMaterial, babylonMaterial: Material): Promise<IMaterial> {
         return new Promise((resolve) => {
-            if (babylonMaterial instanceof PBRBaseMaterial) {
-                if (!babylonMaterial.clearCoat.isEnabled) {
-                    resolve(node);
-                    return;
-                }
-
+            if (babylonMaterial instanceof PBRBaseMaterial && this._isExtensionEnabled(node, babylonMaterial)) {
                 if (babylonMaterial.clearCoat.isTintEnabled) {
                     Tools.Warn(`Clear Color tint is not supported for glTF export. Ignoring for: ${babylonMaterial.name}`);
                 }

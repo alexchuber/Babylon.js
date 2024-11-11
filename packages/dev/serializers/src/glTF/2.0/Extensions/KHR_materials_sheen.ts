@@ -60,11 +60,6 @@ export class KHR_materials_sheen implements IGLTFExporterExtensionV2 {
     public postExportMaterialAsync(context: string, node: IMaterial, babylonMaterial: Material): Promise<IMaterial> {
         return new Promise((resolve) => {
             if (babylonMaterial instanceof PBRMaterial && this._isExtensionEnabled(node, babylonMaterial)) {
-                if (!babylonMaterial.sheen.isEnabled) {
-                    resolve(node);
-                    return;
-                }
-
                 this._wasUsed = true;
 
                 if (node.extensions == null) {

@@ -42,28 +42,6 @@ export class KHR_materials_transmission implements IGLTFExporterExtensionV2 {
         return this._wasUsed;
     }
 
-    /**
-     * After exporting a material, deal with additional textures
-     * @param context GLTF context of the material
-     * @param node exported GLTF node
-     * @param babylonMaterial corresponding babylon material
-     * @returns array of additional textures to export
-     */
-    public postExportMaterialAdditionalTextures?(context: string, node: IMaterial, babylonMaterial: Material): BaseTexture[] {
-        const additionalTextures: BaseTexture[] = [];
-
-        if (babylonMaterial instanceof PBRMaterial) {
-            if (this._isExtensionEnabled(node, babylonMaterial)) {
-                if (babylonMaterial.subSurface.thicknessTexture) {
-                    additionalTextures.push(babylonMaterial.subSurface.thicknessTexture);
-                }
-                return additionalTextures;
-            }
-        }
-
-        return additionalTextures;
-    }
-
     // private _isExtensionEnabled(mat: PBRMaterial): boolean {
     //     // This extension must not be used on a material that also uses KHR_materials_unlit
     //     if (mat.unlit) {
@@ -83,6 +61,26 @@ export class KHR_materials_transmission implements IGLTFExporterExtensionV2 {
             subs.refractionIntensity != 0
             // TODO: Why does loader set thickness = 0 and volume IoR = 1.0 / -1.0, when it looks like transmission can be used with volume?
         );
+    }
+
+    /**
+     * After exporting a material, deal with additional textures
+     * @param context GLTF context of the material
+     * @param node exported GLTF node
+     * @param babylonMaterial corresponding babylon material
+     * @returns array of additional textures to export
+     */
+    public postExportMaterialAdditionalTextures?(context: string, node: IMaterial, babylonMaterial: Material): BaseTexture[] {
+        const additionalTextures: BaseTexture[] = [];
+
+        if (babylonMaterial instanceof PBRMaterial && this._isExtensionEnabled(node, babylonMaterial)) {
+            if (babylonMaterial.subSurface.thicknessTexture) {
+                additionalTextures.push(babylonMaterial.subSurface.thicknessTexture);
+            }
+            return additionalTextures;
+        }
+
+        return additionalTextures;
     }
 
     private _hasTexturesExtension(mat: PBRMaterial): boolean {

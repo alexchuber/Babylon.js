@@ -46,8 +46,9 @@ export class KHR_materials_anisotropy implements IGLTFExporterExtensionV2 {
         return (
             // This extension must not be used on a material that also uses KHR_materials_unlit
             !node.extensions?.["KHR_materials_unlit"] &&
-            // This extension should be used only if anisotropy is enabled
+            // This extension should be used only if anisotropy is enabled and meaningful
             babylonMaterial.anisotropy.isEnabled &&
+            babylonMaterial.anisotropy.intensity !== DEFAULTS.anisotropyStrength &&
             // Legacy anisotropy is unsupported
             !babylonMaterial.anisotropy.legacy
         );
@@ -55,13 +56,11 @@ export class KHR_materials_anisotropy implements IGLTFExporterExtensionV2 {
 
     public postExportMaterialAdditionalTextures?(context: string, node: IMaterial, babylonMaterial: Material): BaseTexture[] {
         const additionalTextures: BaseTexture[] = [];
-        if (babylonMaterial instanceof PBRBaseMaterial) {
-            if (babylonMaterial.anisotropy.isEnabled && !babylonMaterial.anisotropy.legacy) {
-                if (babylonMaterial.anisotropy.texture) {
-                    additionalTextures.push(babylonMaterial.anisotropy.texture);
-                }
-                return additionalTextures;
+        if (babylonMaterial instanceof PBRBaseMaterial && this._isExtensionEnabled(node, babylonMaterial)) {
+            if (babylonMaterial.anisotropy.texture) {
+                additionalTextures.push(babylonMaterial.anisotropy.texture);
             }
+            return additionalTextures;
         }
 
         return [];
@@ -69,12 +68,7 @@ export class KHR_materials_anisotropy implements IGLTFExporterExtensionV2 {
 
     public postExportMaterialAsync?(context: string, node: IMaterial, babylonMaterial: Material): Promise<IMaterial> {
         return new Promise((resolve) => {
-            if (babylonMaterial instanceof PBRBaseMaterial) {
-                if (!babylonMaterial.anisotropy.isEnabled || babylonMaterial.anisotropy.legacy) {
-                    resolve(node);
-                    return;
-                }
-
+            if (babylonMaterial instanceof PBRBaseMaterial && this._isExtensionEnabled(node, babylonMaterial)) {
                 this._wasUsed = true;
 
                 const anisotropyTextureInfo = this._exporter._materialExporter.getTextureInfo(babylonMaterial.anisotropy.texture);
