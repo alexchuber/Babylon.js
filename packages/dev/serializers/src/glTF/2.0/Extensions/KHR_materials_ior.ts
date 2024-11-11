@@ -49,7 +49,7 @@ export class KHR_materials_ior implements IGLTFExporterExtensionV2 {
             // This extension must not be used on a material that also uses KHR_materials_unlit
             !node.extensions?.["KHR_materials_unlit"] &&
             // This extension should only be used if IoR is meaningful, or different from the normative default value.
-            mat.indexOfRefraction != 1.5
+            mat.indexOfRefraction != DEFAULTS.ior
             // TODO: When does IoR have any visual effect? Is there some other var that controls its use?
         );
     }
