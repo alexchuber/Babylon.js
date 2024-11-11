@@ -9,7 +9,7 @@ import { omitDefaultValues } from "../glTFUtilities";
 const NAME = "KHR_materials_diffuse_transmission";
 
 const DEFAULTS: Partial<IKHRMaterialsDiffuseTransmission> = {
-    diffuseTransmissionFactor: 0,
+    diffuseTransmissionFactor: 0, // Essentially makes this extension unnecessary
     diffuseTransmissionColorFactor: [1, 1, 1],
 };
 
@@ -70,7 +70,7 @@ export class KHR_materials_diffuse_transmission implements IGLTFExporterExtensio
             !node.extensions?.["KHR_materials_unlit"] &&
             // This extension should be used only if diffuse transmission (called translucency) is enabled and meaningful
             subs.isTranslucencyEnabled &&
-            subs.translucencyIntensity != 0
+            subs.translucencyIntensity != DEFAULTS.diffuseTransmissionFactor
             // TODO: Why does the OG version (and the loader) check for thickness = 0 and volume IoR = 1? Doesn't this prevent KHR_materials_volume from being used?
             // TODO: What does useAlbedoToTintTranslucency do?
         );

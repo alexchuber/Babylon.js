@@ -7,6 +7,11 @@ import type { BaseTexture } from "core/Materials/Textures/baseTexture";
 
 const NAME = "KHR_materials_specular";
 
+const DEFAULTS: Partial<IKHRMaterialsSpecular> = {
+    specularFactor: 1.0, // TODO: Does this make the extension unnecessary?
+    specularColorFactor: [1, 1, 1],
+};
+
 /**
  * [Specification](https://github.com/KhronosGroup/glTF/blob/main/extensions/2.0/Khronos/KHR_materials_specular/README.md)
  */
@@ -54,6 +59,7 @@ export class KHR_materials_specular implements IGLTFExporterExtensionV2 {
             // This extension must not be used on a material that also uses KHR_materials_unlit
             !node.extensions?.["KHR_materials_unlit"]
             // TODO: Any control variables that dictate whether this extension should be used?
+            // I see "a (specular) value of zero disables the specular reflection, resulting in a pure diffuse material."
         );
     }
 

@@ -7,6 +7,12 @@ import type { BaseTexture } from "core/Materials/Textures/baseTexture";
 
 const NAME = "KHR_materials_volume";
 
+const DEFAULTS: Partial<IKHRMaterialsVolume> = {
+    thicknessFactor: 0, // Essentially makes this extension unnecessary
+    attenuationDistance: Number.POSITIVE_INFINITY,
+    attenuationColor: [1, 1, 1],
+};
+
 /**
  * [Specification](https://github.com/KhronosGroup/glTF/blob/main/extensions/2.0/Khronos/KHR_materials_volume/README.md)
  */
@@ -65,7 +71,7 @@ export class KHR_materials_volume implements IGLTFExporterExtensionV2 {
             // This extension requires either the KHR_materials_transmission or KHR_materials_diffuse_transmission extensions
             (node.extensions?.["KHR_materials_transmission"] || node.extensions?.["KHR_materials_diffuse_transmission"]) &&
             // If the thicknessFactor (called maximumThickness) is 0 the material is thin-walled (extension is disabled).
-            subs.maximumThickness != 0
+            subs.maximumThickness != DEFAULTS.thicknessFactor
         );
     }
 

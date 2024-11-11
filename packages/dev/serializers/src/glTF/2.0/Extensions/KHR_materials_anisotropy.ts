@@ -9,7 +9,7 @@ import { omitDefaultValues } from "../glTFUtilities";
 const NAME = "KHR_materials_anisotropy";
 
 const DEFAULTS: Partial<IKHRMaterialsAnisotropy> = {
-    anisotropyStrength: 0.0,
+    anisotropyStrength: 0.0, // Essentially makes this extension unnecessary
     anisotropyRotation: 0.0,
 };
 

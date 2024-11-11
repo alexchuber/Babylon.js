@@ -7,6 +7,13 @@ import type { BaseTexture } from "core/Materials/Textures/baseTexture";
 
 const NAME = "KHR_materials_iridescence";
 
+const DEFAULTS: Partial<IKHRMaterialsIridescence> = {
+    iridescenceFactor: 0, // Disables the iridescence effect
+    iridescenceIor: 1.5,
+    iridescenceThicknessMinimum: 0,
+    iridescenceThicknessMaximum: 0.1,
+};
+
 /**
  * @internal
  */
@@ -43,7 +50,7 @@ export class KHR_materials_iridescence implements IGLTFExporterExtensionV2 {
             // This extension should be used only if iridescence is enabled
             babylonMaterial.iridescence.isEnabled &&
             // If iridescenceFactor is zero (default), the iridescence extension has no effect on the material.
-            babylonMaterial.iridescence.intensity != 0
+            babylonMaterial.iridescence.intensity != DEFAULTS.iridescenceFactor
         );
     }
 

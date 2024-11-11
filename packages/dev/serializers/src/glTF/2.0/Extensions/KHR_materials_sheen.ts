@@ -7,6 +7,11 @@ import type { BaseTexture } from "core/Materials/Textures/baseTexture";
 
 const NAME = "KHR_materials_sheen";
 
+const DEFAULTS: Partial<IKHRMaterialsSheen> = {
+    sheenColorFactor: [0, 0, 0], // Disables the sheen effect
+    sheenRoughnessFactor: 0,
+};
+
 /**
  * @internal
  */

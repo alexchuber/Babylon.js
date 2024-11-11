@@ -6,6 +6,10 @@ import type { IMaterial, IKHRMaterialsEmissiveStrength } from "babylonjs-gltf2in
 
 const NAME = "KHR_materials_emissive_strength";
 
+const DEFAULTS: Partial<IKHRMaterialsEmissiveStrength> = {
+    emissiveStrength: 1, // Essentially makes this extension unnecessary
+};
+
 /**
  * [Specification](https://github.com/KhronosGroup/glTF/blob/main/extensions/2.0/Khronos/KHR_materials_emissive_strength/README.md)
  */
@@ -34,8 +38,8 @@ export class KHR_materials_emissive_strength implements IGLTFExporterExtensionV2
         return (
             // This extension must not be used on a material that also uses KHR_materials_unlit
             !node.extensions?.["KHR_materials_unlit"] &&
-            // This extension should only be used if emissive strength is meaningful, or greater than 1
-            Math.max(...babylonMaterial.emissiveColor.asArray()) > 1
+            // This extension should only be used if emissive strength is meaningful
+            Math.max(...babylonMaterial.emissiveColor.asArray()) != DEFAULTS.emissiveStrength
         );
     }
 

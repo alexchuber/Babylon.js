@@ -8,7 +8,7 @@ import { omitDefaultValues } from "../glTFUtilities";
 const NAME = "KHR_materials_dispersion";
 
 const DEFAULTS: Partial<IKHRMaterialsDispersion> = {
-    dispersion: 0,
+    dispersion: 0, // Essentially makes this extension unnecessary
 };
 
 /**
@@ -57,7 +57,7 @@ export class KHR_materials_dispersion implements IGLTFExporterExtensionV2 {
             !node.extensions?.["KHR_materials_unlit"] &&
             // This extensions depends on KHR_materials_volume extension as it builds upon its volumetric effect.
             !node.extensions?.["KHR_materials_volume"] &&
-            // This extension should only be used if dispersion is meaningful, or is non-zero.
+            // This extension should only be used if dispersion is meaningful.
             babylonMaterial.subSurface.dispersion != DEFAULTS.dispersion
         );
     }

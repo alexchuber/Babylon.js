@@ -6,6 +6,10 @@ import { PBRMaterial } from "core/Materials/PBR/pbrMaterial";
 
 const NAME = "KHR_materials_ior";
 
+const DEFAULTS: Partial<IKHRMaterialsIor> = {
+    ior: 1.5, // Essentially makes this extension unnecessary
+};
+
 /**
  * [Specification](https://github.com/KhronosGroup/glTF/blob/main/extensions/2.0/Khronos/KHR_materials_ior/README.md)
  */

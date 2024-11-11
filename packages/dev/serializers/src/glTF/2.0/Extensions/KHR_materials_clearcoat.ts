@@ -10,7 +10,7 @@ import { omitDefaultValues } from "../glTFUtilities";
 const NAME = "KHR_materials_clearcoat";
 
 const DEFAULTS: Partial<IKHRMaterialsClearcoat> = {
-    clearcoatFactor: 0,
+    clearcoatFactor: 0, // Disables the clearcoat effect
     clearcoatRoughnessFactor: 0,
 };
 
@@ -50,7 +50,7 @@ export class KHR_materials_clearcoat implements IGLTFExporterExtensionV2 {
             // This extension should be used only if clearcoat is enabled
             babylonMaterial.clearCoat.isEnabled &&
             // If clearcoatFactor (in the extension) is zero, the whole clearcoat layer is disabled.
-            babylonMaterial.clearCoat.intensity != 0
+            babylonMaterial.clearCoat.intensity != DEFAULTS.clearcoatFactor
         );
     }
 

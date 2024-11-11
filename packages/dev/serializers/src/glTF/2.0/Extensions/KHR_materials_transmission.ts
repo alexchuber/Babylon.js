@@ -9,6 +9,10 @@ import { Logger } from "core/Misc/logger";
 
 const NAME = "KHR_materials_transmission";
 
+const DEFAULTS: Partial<IKHRMaterialsTransmission> = {
+    transmissionFactor: 0, // Essentially makes this extension unnecessary
+};
+
 /**
  * [Specification](https://github.com/KhronosGroup/glTF/blob/main/extensions/2.0/Khronos/KHR_materials_transmission/README.md)
  */
@@ -58,7 +62,7 @@ export class KHR_materials_transmission implements IGLTFExporterExtensionV2 {
             !node.extensions?.["KHR_materials_unlit"] &&
             // This extension should be used only if transmission (called refraction) is enabled and meaningful
             subs.isRefractionEnabled &&
-            subs.refractionIntensity != 0
+            subs.refractionIntensity != DEFAULTS.transmissionFactor
             // TODO: Why does loader set thickness = 0 and volume IoR = 1.0 / -1.0, when it looks like transmission can be used with volume?
         );
     }
