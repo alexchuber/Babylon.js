@@ -926,13 +926,13 @@
         },
         {
             "title": "GLTF Serializer KHR anisotropy",
-            "playgroundId": "#0DG1T2",
+            "playgroundId": "#0DG1T2#18",
             "replace": "//options//, roundtrip = true;",
             "referenceImage": "glTFSerializerKhrAnisotropy.png"
         },
         {
             "title": "GLTF Serializer KHR clearcoat",
-            "playgroundId": "#0DG1T2#11",
+            "playgroundId": "#0DG1T2#20",
             "replace": "//options//, roundtrip = true;",
             "referenceImage": "glTFSerializerKhrClearcoat.png"
         },
