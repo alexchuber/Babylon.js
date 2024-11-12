@@ -4,14 +4,15 @@ import { GLTFExporter } from "../glTFExporter";
 import type { Material } from "core/Materials/material";
 import { PBRBaseMaterial } from "core/Materials/PBR/pbrBaseMaterial";
 import type { BaseTexture } from "core/Materials/Textures/baseTexture";
+import { omitDefaultValues } from "../glTFUtilities";
 
 const NAME = "KHR_materials_iridescence";
 
 const DEFAULTS: Partial<IKHRMaterialsIridescence> = {
     iridescenceFactor: 0, // Disables the iridescence effect
-    iridescenceIor: 1.5,
-    iridescenceThicknessMinimum: 0,
-    iridescenceThicknessMaximum: 0.1,
+    iridescenceIor: 1.3,
+    iridescenceThicknessMinimum: 100,
+    iridescenceThicknessMaximum: 400,
 };
 
 /**
@@ -60,7 +61,7 @@ export class KHR_materials_iridescence implements IGLTFExporterExtensionV2 {
             if (babylonMaterial.iridescence.texture) {
                 additionalTextures.push(babylonMaterial.iridescence.texture);
             }
-            // TODO: Why the check for the thickness texture being different from the iridescence texture?
+            // TODO: Why the check for the thickness texture != iridescence texture? Implies there might be BJS way to store both in same texture?
             if (babylonMaterial.iridescence.thicknessTexture && babylonMaterial.iridescence.thicknessTexture !== babylonMaterial.iridescence.texture) {
                 additionalTextures.push(babylonMaterial.iridescence.thicknessTexture);
             }
@@ -72,8 +73,6 @@ export class KHR_materials_iridescence implements IGLTFExporterExtensionV2 {
         return new Promise((resolve) => {
             if (babylonMaterial instanceof PBRBaseMaterial && this._isExtensionEnabled(node, babylonMaterial)) {
                 this._wasUsed = true;
-
-                node.extensions = node.extensions || {};
 
                 const iridescenceTextureInfo = this._exporter._materialExporter.getTextureInfo(babylonMaterial.iridescence.texture);
                 const iridescenceThicknessTextureInfo = this._exporter._materialExporter.getTextureInfo(babylonMaterial.iridescence.thicknessTexture);
@@ -91,7 +90,8 @@ export class KHR_materials_iridescence implements IGLTFExporterExtensionV2 {
                     this._exporter._materialNeedsUVsSet.add(babylonMaterial);
                 }
 
-                node.extensions[NAME] = iridescenceInfo;
+                node.extensions ||= {};
+                node.extensions[NAME] = omitDefaultValues(iridescenceInfo, DEFAULTS);
             }
             resolve(node);
         });
