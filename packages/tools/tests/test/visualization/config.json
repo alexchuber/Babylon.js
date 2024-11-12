@@ -949,6 +949,12 @@
             "referenceImage": "glTFSerializerKhrEmissiveStrength.png"
         },
         {
+            "title": "GLTF Serializer KHR materials iridescence",
+            "playgroundId": "#0DG1T2#22",
+            "replace": "//options//, roundtrip = true;",
+            "referenceImage": "glTFSerializerKhrMaterialsIridescence.png"
+        },
+        {
             "title": "GLTF Buggy with Draco Mesh Compression",
             "playgroundId": "#JNW207#1",
             "referenceImage": "gltfBuggyDraco.png"
