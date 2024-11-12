@@ -3,11 +3,12 @@ import { GLTFExporter } from "../glTFExporter";
 import type { Material } from "core/Materials/material";
 import { PBRMaterial } from "core/Materials/PBR/pbrMaterial";
 import type { IMaterial, IKHRMaterialsEmissiveStrength } from "babylonjs-gltf2interface";
+import { omitDefaultValues } from "../glTFUtilities";
 
 const NAME = "KHR_materials_emissive_strength";
 
 const DEFAULTS: Partial<IKHRMaterialsEmissiveStrength> = {
-    emissiveStrength: 1, // Essentially makes this extension unnecessary
+    emissiveStrength: 1, // If <=, essentially makes this extension unnecessary
 };
 
 /**
@@ -38,8 +39,8 @@ export class KHR_materials_emissive_strength implements IGLTFExporterExtensionV2
         return (
             // This extension must not be used on a material that also uses KHR_materials_unlit
             !node.extensions?.["KHR_materials_unlit"] &&
-            // This extension should only be used if emissive strength is meaningful
-            Math.max(...babylonMaterial.emissiveColor.asArray()) != DEFAULTS.emissiveStrength
+            // This extension should only be used if emissive factor needs to be scaled down to range of [0,1], or emissive strength is not 1
+            (Math.max(...babylonMaterial.emissiveColor.asArray()) > 1 || babylonMaterial.emissiveIntensity != DEFAULTS.emissiveStrength)
         );
     }
 
@@ -52,29 +53,31 @@ export class KHR_materials_emissive_strength implements IGLTFExporterExtensionV2
      */
     public postExportMaterialAsync(context: string, node: IMaterial, babylonMaterial: Material): Promise<IMaterial> {
         return new Promise((resolve) => {
-            if (!(babylonMaterial instanceof PBRMaterial) || !this._isExtensionEnabled(node, babylonMaterial)) {
-                return resolve(node);
-            }
-
-            const emissiveColor = babylonMaterial.emissiveColor.asArray();
-            const tempEmissiveStrength = Math.max(...emissiveColor);
-
-            if (tempEmissiveStrength > 1) {
+            if (babylonMaterial instanceof PBRMaterial && this._isExtensionEnabled(node, babylonMaterial)) {
                 this._wasUsed = true;
 
-                node.extensions ||= {};
+                // Get the original emissive color and strength
+                let emissiveColor = babylonMaterial.emissiveColor.asArray();
+                let emissiveStrength = babylonMaterial.emissiveIntensity;
 
+                // If any color components are > 1, we must scale down the whole color and factor that into the emissive strength
+                // Why: HDR values can be > 1, but glTF expects colors to be in [0,1] range
+                const maxColorComponent = Math.max(...emissiveColor);
+                if (maxColorComponent > 1) {
+                    const scaleDownFactor = maxColorComponent;
+                    emissiveColor = emissiveColor.map((c) => c / scaleDownFactor) as [number, number, number];
+                    emissiveStrength *= scaleDownFactor;
+                }
+
+                // Update the node's original emissive color and add the extension
+                node.emissiveFactor = emissiveColor;
                 const emissiveStrengthInfo: IKHRMaterialsEmissiveStrength = {
-                    emissiveStrength: tempEmissiveStrength,
+                    emissiveStrength: emissiveStrength,
                 };
 
-                // Normalize each value of the emissive factor to have a max value of 1
-                const newEmissiveFactor = babylonMaterial.emissiveColor.scale(1 / emissiveStrengthInfo.emissiveStrength);
-
-                node.emissiveFactor = newEmissiveFactor.asArray();
-                node.extensions[NAME] = emissiveStrengthInfo;
+                node.extensions ||= {};
+                node.extensions[NAME] = omitDefaultValues(emissiveStrengthInfo, DEFAULTS); // Omitting because emissiveStrength could now technically be 1
             }
-
             return resolve(node);
         });
     }
