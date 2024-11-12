@@ -81,10 +81,6 @@ export class KHR_materials_clearcoat implements IGLTFExporterExtensionV2 {
                     Tools.Warn(`Clear Color F0 remapping is not supported for glTF export. Ignoring for: ${babylonMaterial.name}`);
                 }
 
-                if (babylonMaterial.clearCoat.useRoughnessFromMainTexture) {
-                    Tools.Warn(`Using Clear Color roughness from main texture is not supported for glTF export. Ignoring for: ${babylonMaterial.name}`);
-                }
-
                 this._wasUsed = true;
 
                 const clearCoatTextureInfo = this._exporter._materialExporter.getTextureInfo(babylonMaterial.clearCoat.texture);
