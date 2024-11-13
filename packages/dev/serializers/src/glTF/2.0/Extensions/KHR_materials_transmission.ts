@@ -121,10 +121,10 @@ export class KHR_materials_transmission implements IGLTFExporterExtensionV2 {
             this._wasUsed = true;
 
             const subSurface = babylonMaterial.subSurface;
-            const transmissionFactor = subSurface.refractionIntensity === 0 ? undefined : subSurface.refractionIntensity;
+            const transmissionFactor = subSurface.refractionIntensity;
             const transmissionTexture = this._exporter._materialExporter.getTextureInfo(this._getRefractionIntensityTexture(babylonMaterial)) ?? undefined;
 
-            const volumeInfo: IKHRMaterialsTransmission = {
+            const transmissionInfo: IKHRMaterialsTransmission = {
                 transmissionFactor: transmissionFactor,
                 transmissionTexture: transmissionTexture,
             };
@@ -134,7 +134,7 @@ export class KHR_materials_transmission implements IGLTFExporterExtensionV2 {
             }
 
             node.extensions ||= {};
-            node.extensions[NAME] = volumeInfo;
+            node.extensions[NAME] = transmissionInfo;
         }
 
         return node;

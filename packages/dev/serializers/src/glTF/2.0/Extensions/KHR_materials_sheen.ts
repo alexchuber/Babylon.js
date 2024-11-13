@@ -4,6 +4,7 @@ import { GLTFExporter } from "../glTFExporter";
 import type { Material } from "core/Materials/material";
 import { PBRMaterial } from "core/Materials/PBR/pbrMaterial";
 import type { BaseTexture } from "core/Materials/Textures/baseTexture";
+import { omitDefaultValues } from "../glTFUtilities";
 
 const NAME = "KHR_materials_sheen";
 
@@ -70,10 +71,6 @@ export class KHR_materials_sheen implements IGLTFExporterExtensionV2 {
             if (babylonMaterial instanceof PBRMaterial && this._isExtensionEnabled(node, babylonMaterial)) {
                 this._wasUsed = true;
 
-                if (node.extensions == null) {
-                    node.extensions = {};
-                }
-
                 const sheen = babylonMaterial.sheen;
                 const sheenRoughnessTexture = this._exporter._materialExporter.getTextureInfo(sheen.useRoughnessFromMainTexture ? sheen.texture : sheen.textureRoughness);
                 const sheenColorTexture = this._exporter._materialExporter.getTextureInfo(sheen.texture);
@@ -89,7 +86,8 @@ export class KHR_materials_sheen implements IGLTFExporterExtensionV2 {
                     this._exporter._materialNeedsUVsSet.add(babylonMaterial);
                 }
 
-                node.extensions[NAME] = sheenInfo;
+                node.extensions ||= {};
+                node.extensions[NAME] = omitDefaultValues(sheenInfo, DEFAULTS);
             }
             resolve(node);
         });

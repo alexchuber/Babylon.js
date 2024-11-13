@@ -69,7 +69,8 @@ export class KHR_materials_ior implements IGLTFExporterExtensionV2 {
                 const iorInfo: IKHRMaterialsIor = {
                     ior: babylonMaterial.indexOfRefraction,
                 };
-                node.extensions = node.extensions || {};
+
+                node.extensions ||= {};
                 node.extensions[NAME] = iorInfo;
             }
             resolve(node);

@@ -3,7 +3,6 @@ import type { IGLTFExporterExtensionV2 } from "../glTFExporterExtension";
 import { GLTFExporter } from "../glTFExporter";
 import type { Material } from "core/Materials/material";
 import { PBRMaterial } from "core/Materials/PBR/pbrMaterial";
-import { omitDefaultValues } from "../glTFUtilities";
 
 const NAME = "KHR_materials_dispersion";
 
@@ -56,7 +55,7 @@ export class KHR_materials_dispersion implements IGLTFExporterExtensionV2 {
             // This extension must not be used on a material that also uses KHR_materials_unlit
             !node.extensions?.["KHR_materials_unlit"] &&
             // This extensions depends on KHR_materials_volume extension as it builds upon its volumetric effect.
-            !node.extensions?.["KHR_materials_volume"] &&
+            node.extensions?.["KHR_materials_volume"] &&
             // This extension should only be used if dispersion is meaningful.
             babylonMaterial.subSurface.dispersion != DEFAULTS.dispersion
         );
@@ -79,7 +78,7 @@ export class KHR_materials_dispersion implements IGLTFExporterExtensionV2 {
                 };
 
                 node.extensions ||= {};
-                node.extensions[NAME] = omitDefaultValues(dispersionInfo, DEFAULTS); // TODO: Unneeded
+                node.extensions[NAME] = dispersionInfo;
             }
             resolve(node);
         });

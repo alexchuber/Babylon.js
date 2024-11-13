@@ -48,10 +48,7 @@ export class KHR_materials_unlit implements IGLTFExporterExtensionV2 {
             if (unlitMaterial) {
                 this._wasUsed = true;
 
-                if (node.extensions == null) {
-                    node.extensions = {};
-                }
-
+                node.extensions ||= {};
                 node.extensions[NAME] = {};
             }
 

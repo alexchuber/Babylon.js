@@ -4,6 +4,7 @@ import { GLTFExporter } from "../glTFExporter";
 import type { Material } from "core/Materials/material";
 import { PBRMaterial } from "core/Materials/PBR/pbrMaterial";
 import type { BaseTexture } from "core/Materials/Textures/baseTexture";
+import { omitDefaultValues } from "../glTFUtilities";
 
 const NAME = "KHR_materials_volume";
 
@@ -105,10 +106,10 @@ export class KHR_materials_volume implements IGLTFExporterExtensionV2 {
                 this._wasUsed = true;
 
                 const subs = babylonMaterial.subSurface;
-                const thicknessFactor = subs.maximumThickness == 0 ? undefined : subs.maximumThickness;
+                const thicknessFactor = subs.maximumThickness;
                 const thicknessTexture = this._exporter._materialExporter.getTextureInfo(subs.thicknessTexture) ?? undefined;
-                const attenuationDistance = subs.tintColorAtDistance == Number.POSITIVE_INFINITY ? undefined : subs.tintColorAtDistance;
-                const attenuationColor = subs.tintColor.equalsFloats(1.0, 1.0, 1.0) ? undefined : subs.tintColor.asArray();
+                const attenuationDistance = subs.tintColorAtDistance;
+                const attenuationColor = subs.tintColor.asArray();
 
                 const volumeInfo: IKHRMaterialsVolume = {
                     thicknessFactor: thicknessFactor,
@@ -121,8 +122,8 @@ export class KHR_materials_volume implements IGLTFExporterExtensionV2 {
                     this._exporter._materialNeedsUVsSet.add(babylonMaterial);
                 }
 
-                node.extensions = node.extensions || {};
-                node.extensions[NAME] = volumeInfo;
+                node.extensions ||= {};
+                node.extensions[NAME] = omitDefaultValues(volumeInfo, DEFAULTS);
             }
             resolve(node);
         });
