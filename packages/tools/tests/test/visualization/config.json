@@ -925,6 +925,12 @@
             "referenceImage": "glTFSerializerKHRPunctualLightRH.png"
         },
         {
+            "title": "GLTF Serializer inverted normal maps",
+            "playgroundId": "#0DG1T2#32",
+            "replace": "//options//, roundtrip = true; useRightHandedSystem = false;",
+            "referenceImage": "glTFSerializerKHRInvertedNormalsLH.png"
+        },
+        {
             "title": "GLTF Buggy with Draco Mesh Compression",
             "playgroundId": "#JNW207#1",
             "referenceImage": "gltfBuggyDraco.png"
