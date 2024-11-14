@@ -870,8 +870,49 @@ export class GLTFExporter {
 
         //  TODO:
         //  deal with this from the loader:
+        //  texture.invertY = false;
         //  babylonMaterial.invertNormalMapX = !this._babylonScene.useRightHandedSystem;
         //  babylonMaterial.invertNormalMapY = this._babylonScene.useRightHandedSystem;
+
+        //  invertedYMaterial.invertNormalMapX = !this._babylonScene.useRightHandedSystem;
+        //  invertedYMaterial.invertNormalMapY = this._babylonScene.useRightHandedSystem;
+
+        /**
+         * glTF (OpenGL format) expects the Y axis of the babylon texture (DirectX format) to be flipped
+         * if (babylonMaterial.invertNormalMapY) {
+         *     // Use normal map as-is. glTF expects the flipped version of the Babylon normal map.
+         * } else {
+         *    // Invert normal map on Y.
+         * }
+         *
+         * if (babylonMaterial.invertNormalMapY && !scene.useRightHandedSystem) {
+         *    // ???
+         * }
+         * if (babylonMaterial.invertNormalMapX && scene.useRightHandedSystem) {
+         * }
+         */
+
+        /**
+         * if (babylonMaterial.invertNormalMapY && scene.useRightHandedSystem) {
+         *     // Use normal map as-is.
+         * }
+         * if (babylonMaterial.invertNormalMapY && !scene.useRightHandedSystem) {
+         *    // ???
+         * }
+         * if (babylonMaterial.invertNormalMapX && scene.useRightHandedSystem) {
+         * }
+         */
+
+        // Babylon uses directX
+        // glTF uses OpenGL
+        // Normal maps must be inverted on Y on export.
+
+        // Translation:
+        // If glTF -> left handed scene, X is inverted, Y is the same.
+        // If glTF -> right handed scene, X is the same, Y is inverted.
+        // Thus, on export, we need to:
+        // - invert X if the system is left handed
+        // - invert Y if the system is right handed
 
         const rootNodesRH = new Array<Node>();
         const rootNodesLH = new Array<Node>();
