@@ -64,28 +64,26 @@ export class KHR_materials_anisotropy implements IGLTFExporterExtensionV2 {
         return additionalTextures;
     }
 
-    public postExportMaterialAsync?(context: string, node: IMaterial, babylonMaterial: Material): Promise<IMaterial> {
-        return new Promise((resolve) => {
-            if (babylonMaterial instanceof PBRBaseMaterial && this._isExtensionEnabled(node, babylonMaterial)) {
-                this._wasUsed = true;
+    public async postExportMaterialAsync?(context: string, node: IMaterial, babylonMaterial: Material): Promise<IMaterial> {
+        if (babylonMaterial instanceof PBRBaseMaterial && this._isExtensionEnabled(node, babylonMaterial)) {
+            this._wasUsed = true;
 
-                const anisotropyTextureInfo = this._exporter._materialExporter.getTextureInfo(babylonMaterial.anisotropy.texture);
+            const anisotropyTextureInfo = await this._exporter._materialExporter.getTextureInfo(babylonMaterial.anisotropy.texture);
 
-                const anisotropyInfo: IKHRMaterialsAnisotropy = {
-                    anisotropyStrength: babylonMaterial.anisotropy.intensity,
-                    anisotropyRotation: babylonMaterial.anisotropy.angle,
-                    anisotropyTexture: anisotropyTextureInfo ?? undefined,
-                };
+            const anisotropyInfo: IKHRMaterialsAnisotropy = {
+                anisotropyStrength: babylonMaterial.anisotropy.intensity,
+                anisotropyRotation: babylonMaterial.anisotropy.angle,
+                anisotropyTexture: anisotropyTextureInfo ?? undefined,
+            };
 
-                if (anisotropyTextureInfo) {
-                    this._exporter._materialNeedsUVsSet.add(babylonMaterial);
-                }
-
-                node.extensions ||= {};
-                node.extensions[NAME] = omitDefaultValues(anisotropyInfo, DEFAULTS);
+            if (anisotropyTextureInfo) {
+                this._exporter._materialNeedsUVsSet.add(babylonMaterial);
             }
-            resolve(node);
-        });
+
+            node.extensions ||= {};
+            node.extensions[NAME] = omitDefaultValues(anisotropyInfo, DEFAULTS);
+        }
+        return node;
     }
 }
 

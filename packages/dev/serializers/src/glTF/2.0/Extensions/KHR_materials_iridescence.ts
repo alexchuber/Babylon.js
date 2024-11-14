@@ -69,32 +69,30 @@ export class KHR_materials_iridescence implements IGLTFExporterExtensionV2 {
         return additionalTextures;
     }
 
-    public postExportMaterialAsync?(context: string, node: IMaterial, babylonMaterial: Material): Promise<IMaterial> {
-        return new Promise((resolve) => {
-            if (babylonMaterial instanceof PBRBaseMaterial && this._isExtensionEnabled(node, babylonMaterial)) {
-                this._wasUsed = true;
+    public async postExportMaterialAsync?(context: string, node: IMaterial, babylonMaterial: Material): Promise<IMaterial> {
+        if (babylonMaterial instanceof PBRBaseMaterial && this._isExtensionEnabled(node, babylonMaterial)) {
+            this._wasUsed = true;
 
-                const iridescenceTextureInfo = this._exporter._materialExporter.getTextureInfo(babylonMaterial.iridescence.texture);
-                const iridescenceThicknessTextureInfo = this._exporter._materialExporter.getTextureInfo(babylonMaterial.iridescence.thicknessTexture);
+            const iridescenceTextureInfo = await this._exporter._materialExporter.getTextureInfo(babylonMaterial.iridescence.texture);
+            const iridescenceThicknessTextureInfo = await this._exporter._materialExporter.getTextureInfo(babylonMaterial.iridescence.thicknessTexture);
 
-                const iridescenceInfo: IKHRMaterialsIridescence = {
-                    iridescenceFactor: babylonMaterial.iridescence.intensity,
-                    iridescenceIor: babylonMaterial.iridescence.indexOfRefraction,
-                    iridescenceThicknessMinimum: babylonMaterial.iridescence.minimumThickness,
-                    iridescenceThicknessMaximum: babylonMaterial.iridescence.maximumThickness,
-                    iridescenceTexture: iridescenceTextureInfo ?? undefined,
-                    iridescenceThicknessTexture: iridescenceThicknessTextureInfo ?? undefined,
-                };
+            const iridescenceInfo: IKHRMaterialsIridescence = {
+                iridescenceFactor: babylonMaterial.iridescence.intensity,
+                iridescenceIor: babylonMaterial.iridescence.indexOfRefraction,
+                iridescenceThicknessMinimum: babylonMaterial.iridescence.minimumThickness,
+                iridescenceThicknessMaximum: babylonMaterial.iridescence.maximumThickness,
+                iridescenceTexture: iridescenceTextureInfo ?? undefined,
+                iridescenceThicknessTexture: iridescenceThicknessTextureInfo ?? undefined,
+            };
 
-                if (iridescenceTextureInfo || iridescenceThicknessTextureInfo) {
-                    this._exporter._materialNeedsUVsSet.add(babylonMaterial);
-                }
-
-                node.extensions ||= {};
-                node.extensions[NAME] = omitDefaultValues(iridescenceInfo, DEFAULTS);
+            if (iridescenceTextureInfo || iridescenceThicknessTextureInfo) {
+                this._exporter._materialNeedsUVsSet.add(babylonMaterial);
             }
-            resolve(node);
-        });
+
+            node.extensions ||= {};
+            node.extensions[NAME] = omitDefaultValues(iridescenceInfo, DEFAULTS);
+        }
+        return node;
     }
 }
 

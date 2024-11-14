@@ -70,45 +70,40 @@ export class KHR_materials_clearcoat implements IGLTFExporterExtensionV2 {
         return additionalTextures;
     }
 
-    public postExportMaterialAsync?(context: string, node: IMaterial, babylonMaterial: Material): Promise<IMaterial> {
-        return new Promise((resolve) => {
-            if (babylonMaterial instanceof PBRBaseMaterial && this._isExtensionEnabled(node, babylonMaterial)) {
-                if (babylonMaterial.clearCoat.isTintEnabled) {
-                    Tools.Warn(`Clear Color tint is not supported for glTF export. Ignoring for: ${babylonMaterial.name}`);
-                }
-
-                if (babylonMaterial.clearCoat.remapF0OnInterfaceChange) {
-                    Tools.Warn(`Clear Color F0 remapping is not supported for glTF export. Ignoring for: ${babylonMaterial.name}`);
-                }
-
-                this._wasUsed = true;
-
-                const clearCoatTextureInfo = this._exporter._materialExporter.getTextureInfo(babylonMaterial.clearCoat.texture);
-                const clearCoatNormalTextureInfo = this._exporter._materialExporter.getTextureInfo(babylonMaterial.clearCoat.bumpTexture);
-                let clearCoatTextureRoughnessInfo;
-                if (babylonMaterial.clearCoat.useRoughnessFromMainTexture) {
-                    clearCoatTextureRoughnessInfo = this._exporter._materialExporter.getTextureInfo(babylonMaterial.clearCoat.texture);
-                } else {
-                    clearCoatTextureRoughnessInfo = this._exporter._materialExporter.getTextureInfo(babylonMaterial.clearCoat.textureRoughness);
-                }
-
-                const clearCoatInfo: IKHRMaterialsClearcoat = {
-                    clearcoatFactor: babylonMaterial.clearCoat.intensity,
-                    clearcoatTexture: clearCoatTextureInfo ?? undefined,
-                    clearcoatRoughnessFactor: babylonMaterial.clearCoat.roughness,
-                    clearcoatRoughnessTexture: clearCoatTextureRoughnessInfo ?? undefined,
-                    clearcoatNormalTexture: clearCoatNormalTextureInfo ?? undefined,
-                };
-
-                if (clearCoatTextureInfo || clearCoatTextureRoughnessInfo || clearCoatNormalTextureInfo) {
-                    this._exporter._materialNeedsUVsSet.add(babylonMaterial);
-                }
-
-                node.extensions ||= {};
-                node.extensions[NAME] = omitDefaultValues(clearCoatInfo, DEFAULTS);
+    public async postExportMaterialAsync?(context: string, node: IMaterial, babylonMaterial: Material): Promise<IMaterial> {
+        if (babylonMaterial instanceof PBRBaseMaterial && this._isExtensionEnabled(node, babylonMaterial)) {
+            if (babylonMaterial.clearCoat.isTintEnabled) {
+                Tools.Warn(`Clear Color tint is not supported for glTF export. Ignoring for: ${babylonMaterial.name}`);
             }
-            resolve(node);
-        });
+
+            if (babylonMaterial.clearCoat.remapF0OnInterfaceChange) {
+                Tools.Warn(`Clear Color F0 remapping is not supported for glTF export. Ignoring for: ${babylonMaterial.name}`);
+            }
+
+            this._wasUsed = true;
+
+            const clearCoatTextureInfo = await this._exporter._materialExporter.getTextureInfo(babylonMaterial.clearCoat.texture);
+            const clearCoatNormalTextureInfo = await this._exporter._materialExporter.getTextureInfo(babylonMaterial.clearCoat.bumpTexture);
+            const clearCoatTextureRoughnessInfo = await this._exporter._materialExporter.getTextureInfo(
+                babylonMaterial.clearCoat.useRoughnessFromMainTexture ? babylonMaterial.clearCoat.texture : babylonMaterial.clearCoat.textureRoughness
+            );
+
+            const clearCoatInfo: IKHRMaterialsClearcoat = {
+                clearcoatFactor: babylonMaterial.clearCoat.intensity,
+                clearcoatTexture: clearCoatTextureInfo ?? undefined,
+                clearcoatRoughnessFactor: babylonMaterial.clearCoat.roughness,
+                clearcoatRoughnessTexture: clearCoatTextureRoughnessInfo ?? undefined,
+                clearcoatNormalTexture: clearCoatNormalTextureInfo ?? undefined,
+            };
+
+            if (clearCoatTextureInfo || clearCoatTextureRoughnessInfo || clearCoatNormalTextureInfo) {
+                this._exporter._materialNeedsUVsSet.add(babylonMaterial);
+            }
+
+            node.extensions ||= {};
+            node.extensions[NAME] = omitDefaultValues(clearCoatInfo, DEFAULTS);
+        }
+        return node;
     }
 }
 

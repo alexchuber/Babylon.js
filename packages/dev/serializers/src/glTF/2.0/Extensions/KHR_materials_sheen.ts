@@ -66,31 +66,29 @@ export class KHR_materials_sheen implements IGLTFExporterExtensionV2 {
         return additionalTextures;
     }
 
-    public postExportMaterialAsync(context: string, node: IMaterial, babylonMaterial: Material): Promise<IMaterial> {
-        return new Promise((resolve) => {
-            if (babylonMaterial instanceof PBRMaterial && this._isExtensionEnabled(node, babylonMaterial)) {
-                this._wasUsed = true;
+    public async postExportMaterialAsync(context: string, node: IMaterial, babylonMaterial: Material): Promise<IMaterial> {
+        if (babylonMaterial instanceof PBRMaterial && this._isExtensionEnabled(node, babylonMaterial)) {
+            this._wasUsed = true;
 
-                const sheen = babylonMaterial.sheen;
-                const sheenRoughnessTexture = this._exporter._materialExporter.getTextureInfo(sheen.useRoughnessFromMainTexture ? sheen.texture : sheen.textureRoughness);
-                const sheenColorTexture = this._exporter._materialExporter.getTextureInfo(sheen.texture);
+            const sheen = babylonMaterial.sheen;
+            const sheenRoughnessTexture = await this._exporter._materialExporter.getTextureInfo(sheen.useRoughnessFromMainTexture ? sheen.texture : sheen.textureRoughness);
+            const sheenColorTexture = await this._exporter._materialExporter.getTextureInfo(sheen.texture);
 
-                const sheenInfo: IKHRMaterialsSheen = {
-                    sheenColorFactor: sheen.color.asArray(),
-                    sheenColorTexture: sheenColorTexture ?? undefined,
-                    sheenRoughnessFactor: sheen.roughness ?? 0,
-                    sheenRoughnessTexture: sheenRoughnessTexture ?? undefined,
-                };
+            const sheenInfo: IKHRMaterialsSheen = {
+                sheenColorFactor: sheen.color.asArray(),
+                sheenColorTexture: sheenColorTexture,
+                sheenRoughnessFactor: sheen.roughness ?? 0,
+                sheenRoughnessTexture: sheenRoughnessTexture,
+            };
 
-                if (sheenColorTexture || sheenRoughnessTexture) {
-                    this._exporter._materialNeedsUVsSet.add(babylonMaterial);
-                }
-
-                node.extensions ||= {};
-                node.extensions[NAME] = omitDefaultValues(sheenInfo, DEFAULTS);
+            if (sheenColorTexture || sheenRoughnessTexture) {
+                this._exporter._materialNeedsUVsSet.add(babylonMaterial);
             }
-            resolve(node);
-        });
+
+            node.extensions ||= {};
+            node.extensions[NAME] = omitDefaultValues(sheenInfo, DEFAULTS);
+        }
+        return node;
     }
 }
 

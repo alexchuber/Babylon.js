@@ -130,34 +130,32 @@ export class KHR_materials_diffuse_transmission implements IGLTFExporterExtensio
      * @param babylonMaterial corresponding babylon material
      * @returns promise that resolves with the updated node
      */
-    public postExportMaterialAsync?(context: string, node: IMaterial, babylonMaterial: Material): Promise<IMaterial> {
-        return new Promise((resolve) => {
-            if (babylonMaterial instanceof PBRMaterial && this._isExtensionEnabled(node, babylonMaterial)) {
-                this._wasUsed = true;
+    public async postExportMaterialAsync?(context: string, node: IMaterial, babylonMaterial: Material): Promise<IMaterial> {
+        if (babylonMaterial instanceof PBRMaterial && this._isExtensionEnabled(node, babylonMaterial)) {
+            this._wasUsed = true;
 
-                const subs = babylonMaterial.subSurface;
+            const subs = babylonMaterial.subSurface;
 
-                const diffuseTransmissionFactor = subs.translucencyIntensity;
-                const diffuseTransmissionTexture = this._exporter._materialExporter.getTextureInfo(this._getTranslucencyIntensityTexture(babylonMaterial)) ?? undefined;
-                const diffuseTransmissionColorFactor = subs.translucencyColor?.asArray();
-                const diffuseTransmissionColorTexture = this._exporter._materialExporter.getTextureInfo(subs.translucencyColorTexture) ?? undefined;
+            const diffuseTransmissionFactor = subs.translucencyIntensity;
+            const diffuseTransmissionTexture = await this._exporter._materialExporter.getTextureInfo(this._getTranslucencyIntensityTexture(babylonMaterial));
+            const diffuseTransmissionColorFactor = subs.translucencyColor?.asArray();
+            const diffuseTransmissionColorTexture = await this._exporter._materialExporter.getTextureInfo(subs.translucencyColorTexture);
 
-                const diffuseTransmissionInfo: IKHRMaterialsDiffuseTransmission = {
-                    diffuseTransmissionFactor,
-                    diffuseTransmissionTexture,
-                    diffuseTransmissionColorFactor,
-                    diffuseTransmissionColorTexture,
-                };
+            const diffuseTransmissionInfo: IKHRMaterialsDiffuseTransmission = {
+                diffuseTransmissionFactor,
+                diffuseTransmissionTexture,
+                diffuseTransmissionColorFactor,
+                diffuseTransmissionColorTexture,
+            };
 
-                if (diffuseTransmissionTexture || diffuseTransmissionColorTexture) {
-                    this._exporter._materialNeedsUVsSet.add(babylonMaterial);
-                }
-
-                node.extensions ||= {};
-                node.extensions[NAME] = omitDefaultValues(diffuseTransmissionInfo, DEFAULTS);
+            if (diffuseTransmissionTexture || diffuseTransmissionColorTexture) {
+                this._exporter._materialNeedsUVsSet.add(babylonMaterial);
             }
-            resolve(node);
-        });
+
+            node.extensions ||= {};
+            node.extensions[NAME] = omitDefaultValues(diffuseTransmissionInfo, DEFAULTS);
+        }
+        return node;
     }
 }
 

@@ -142,8 +142,23 @@ export class GLTFMaterialExporter {
         this._exporter = exporter;
     }
 
-    public getTextureInfo(babylonTexture: Nullable<BaseTexture>): Nullable<ITextureInfo> {
-        return babylonTexture ? this._textureMap.get(babylonTexture) || null : null;
+    /**
+     * Gets or generates the glTF texture info for the Babylon texture
+     * @param babylonTexture the texture to export
+     * @returns  the glTF texture info, or undefined if the texture or its pixels do not exist
+     */
+    public async getTextureInfo(babylonTexture: Nullable<BaseTexture>): Promise<ITextureInfo | undefined> {
+        if (!babylonTexture) {
+            return undefined;
+        }
+
+        let textureInfo = this._textureMap.get(babylonTexture);
+        if (!textureInfo) {
+            // Use PNG as the default mime type (this is how it is everywhere else)
+            textureInfo = (await this._exportTextureAsync(babylonTexture, ImageMimeType.PNG)) ?? undefined;
+        }
+
+        return textureInfo;
     }
 
     public async exportStandardMaterialAsync(babylonStandardMaterial: StandardMaterial, mimeType: ImageMimeType, hasUVs: boolean): Promise<number> {

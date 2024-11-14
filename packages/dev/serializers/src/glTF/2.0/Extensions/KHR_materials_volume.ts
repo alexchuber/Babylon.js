@@ -100,33 +100,31 @@ export class KHR_materials_volume implements IGLTFExporterExtensionV2 {
      * @param babylonMaterial corresponding babylon material
      * @returns promise that resolves with the updated node
      */
-    public postExportMaterialAsync?(context: string, node: IMaterial, babylonMaterial: Material): Promise<IMaterial> {
-        return new Promise((resolve) => {
-            if (babylonMaterial instanceof PBRMaterial && this._isExtensionEnabled(node, babylonMaterial)) {
-                this._wasUsed = true;
+    public async postExportMaterialAsync?(context: string, node: IMaterial, babylonMaterial: Material): Promise<IMaterial> {
+        if (babylonMaterial instanceof PBRMaterial && this._isExtensionEnabled(node, babylonMaterial)) {
+            this._wasUsed = true;
 
-                const subs = babylonMaterial.subSurface;
-                const thicknessFactor = subs.maximumThickness;
-                const thicknessTexture = this._exporter._materialExporter.getTextureInfo(subs.thicknessTexture) ?? undefined;
-                const attenuationDistance = subs.tintColorAtDistance;
-                const attenuationColor = subs.tintColor.asArray();
+            const subs = babylonMaterial.subSurface;
+            const thicknessFactor = subs.maximumThickness;
+            const thicknessTexture = await this._exporter._materialExporter.getTextureInfo(subs.thicknessTexture);
+            const attenuationDistance = subs.tintColorAtDistance;
+            const attenuationColor = subs.tintColor.asArray();
 
-                const volumeInfo: IKHRMaterialsVolume = {
-                    thicknessFactor: thicknessFactor,
-                    thicknessTexture: thicknessTexture,
-                    attenuationDistance: attenuationDistance,
-                    attenuationColor: attenuationColor,
-                };
+            const volumeInfo: IKHRMaterialsVolume = {
+                thicknessFactor: thicknessFactor,
+                thicknessTexture: thicknessTexture,
+                attenuationDistance: attenuationDistance,
+                attenuationColor: attenuationColor,
+            };
 
-                if (thicknessTexture) {
-                    this._exporter._materialNeedsUVsSet.add(babylonMaterial);
-                }
-
-                node.extensions ||= {};
-                node.extensions[NAME] = omitDefaultValues(volumeInfo, DEFAULTS);
+            if (thicknessTexture) {
+                this._exporter._materialNeedsUVsSet.add(babylonMaterial);
             }
-            resolve(node);
-        });
+
+            node.extensions ||= {};
+            node.extensions[NAME] = omitDefaultValues(volumeInfo, DEFAULTS);
+        }
+        return node;
     }
 }
 

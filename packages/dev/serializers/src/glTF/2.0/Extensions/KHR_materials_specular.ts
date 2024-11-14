@@ -92,32 +92,30 @@ export class KHR_materials_specular implements IGLTFExporterExtensionV2 {
      * @param babylonMaterial corresponding babylon material
      * @returns promise, resolves with the material
      */
-    public postExportMaterialAsync?(context: string, node: IMaterial, babylonMaterial: Material): Promise<IMaterial> {
-        return new Promise((resolve) => {
-            if (babylonMaterial instanceof PBRMaterial && this._isExtensionEnabled(node, babylonMaterial)) {
-                this._wasUsed = true;
+    public async postExportMaterialAsync?(context: string, node: IMaterial, babylonMaterial: Material): Promise<IMaterial> {
+        if (babylonMaterial instanceof PBRMaterial && this._isExtensionEnabled(node, babylonMaterial)) {
+            this._wasUsed = true;
 
-                const metallicReflectanceTexture = this._exporter._materialExporter.getTextureInfo(babylonMaterial.metallicReflectanceTexture) ?? undefined;
-                const reflectanceTexture = this._exporter._materialExporter.getTextureInfo(babylonMaterial.reflectanceTexture) ?? undefined;
-                const metallicF0Factor = babylonMaterial.metallicF0Factor;
-                const metallicReflectanceColor = babylonMaterial.metallicReflectanceColor.asArray();
+            const metallicReflectanceTexture = await this._exporter._materialExporter.getTextureInfo(babylonMaterial.metallicReflectanceTexture);
+            const reflectanceTexture = await this._exporter._materialExporter.getTextureInfo(babylonMaterial.reflectanceTexture);
+            const metallicF0Factor = babylonMaterial.metallicF0Factor;
+            const metallicReflectanceColor = babylonMaterial.metallicReflectanceColor.asArray();
 
-                const specularInfo: IKHRMaterialsSpecular = {
-                    specularFactor: metallicF0Factor,
-                    specularTexture: metallicReflectanceTexture,
-                    specularColorFactor: metallicReflectanceColor,
-                    specularColorTexture: reflectanceTexture,
-                };
+            const specularInfo: IKHRMaterialsSpecular = {
+                specularFactor: metallicF0Factor,
+                specularTexture: metallicReflectanceTexture,
+                specularColorFactor: metallicReflectanceColor,
+                specularColorTexture: reflectanceTexture,
+            };
 
-                if (metallicReflectanceTexture || reflectanceTexture) {
-                    this._exporter._materialNeedsUVsSet.add(babylonMaterial);
-                }
-
-                node.extensions ||= {};
-                node.extensions[NAME] = omitDefaultValues(specularInfo, DEFAULTS);
+            if (metallicReflectanceTexture || reflectanceTexture) {
+                this._exporter._materialNeedsUVsSet.add(babylonMaterial);
             }
-            resolve(node);
-        });
+
+            node.extensions ||= {};
+            node.extensions[NAME] = omitDefaultValues(specularInfo, DEFAULTS);
+        }
+        return node;
     }
 }
 
