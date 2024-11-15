@@ -925,10 +925,52 @@
             "referenceImage": "glTFSerializerKHRPunctualLightRH.png"
         },
         {
-            "title": "GLTF Serializer inverted normal maps",
+            "title": "GLTF Serializer inverted normal maps, left-handed",
+            "playgroundId": "#0DG1T2#32",
+            "replace": "//options//, roundtrip = false; useRightHandedSystem = false;",
+            "referenceImage": "glTFSerializerKHRInvertedNormalsLH.png"
+        },
+        {
+            "title": "GLTF Serializer inverted normal maps, right-handed",
+            "playgroundId": "#0DG1T2#32",
+            "replace": "//options//, roundtrip = false; useRightHandedSystem = true;",
+            "referenceImage": "glTFSerializerKHRInvertedNormalsRH.png"
+        },
+        {
+            "title": "GLTF Serializer inverted normal maps, roundtrip left-handed",
             "playgroundId": "#0DG1T2#32",
             "replace": "//options//, roundtrip = true; useRightHandedSystem = false;",
-            "referenceImage": "glTFSerializerKHRInvertedNormalsLH.png"
+            "referenceImage": "glTFSerializerKHRInvertedNormalsLHRoundtrip.png"
+        },
+        {
+            "title": "GLTF Serializer inverted normal maps, roundtrip right-handed",
+            "playgroundId": "#0DG1T2#32",
+            "replace": "//options//, roundtrip = true; useRightHandedSystem = true;",
+            "referenceImage": "glTFSerializerKHRInvertedNormalsRHRoundtrip.png"
+        },
+        {
+            "title": "GLTF Serializer inverted normal maps, roundtrip twice left-handed",
+            "playgroundId": "#0DG1T2#34",
+            "replace": "//options//, roundtripCount = 2; useRightHandedSystem = false;",
+            "referenceImage": "glTFSerializerKHRInvertedNormalsLHRoundtrip2.png"
+        },
+        {
+            "title": "GLTF Serializer inverted normal maps, roundtrip twice right-handed",
+            "playgroundId": "#0DG1T2#34",
+            "replace": "//options//, roundtripCount = 2; useRightHandedSystem = true;",
+            "referenceImage": "glTFSerializerKHRInvertedNormalsRHRoundtrip2.png"
+        },
+        {
+            "title": "GLTF Serializer inverted normal maps, roundtrip thrice left-handed",
+            "playgroundId": "#0DG1T2#34",
+            "replace": "//options//, roundtripCount = 3; useRightHandedSystem = false;",
+            "referenceImage": "glTFSerializerKHRInvertedNormalsLHRoundtrip3.png"
+        },
+        {
+            "title": "GLTF Serializer inverted normal maps, roundtrip thrice right-handed",
+            "playgroundId": "#0DG1T2#34",
+            "replace": "//options//, roundtripCount = 3; useRightHandedSystem = true;",
+            "referenceImage": "glTFSerializerKHRInvertedNormalsRHRoundtrip3.png"
         },
         {
             "title": "GLTF Buggy with Draco Mesh Compression",
