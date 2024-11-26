@@ -424,7 +424,7 @@
         },
         {
             "title": "Chibi Rex",
-            "playgroundId": "#NZ2RZY#3",
+            "playgroundId": "#NZ2RZY#4",
             "renderCount": 50,
             "referenceImage": "chibi-rex.png"
         },
@@ -995,6 +995,11 @@
             "title": "GLTF Texture Linear Interpolation Test",
             "playgroundId": "#WGZLGJ#3009",
             "referenceImage": "gltfTextureLinearInterpolation.png"
+        },
+        {
+            "title": "GLTF Node visibility test",
+            "playgroundId": "#80DN99#3",
+            "referenceImage": "gltfNodeVisibility.png"
         },
         {
             "title": "Asset Containers",
@@ -1653,7 +1658,7 @@
         },
         {
             "title": "GLTF ext MSFT_LOD",
-            "playgroundId": "#2YZFA0#234",
+            "playgroundId": "#2YZFA0#422",
             "referenceImage": "gltfMSFTLOD.png"
         },
         {
@@ -2277,10 +2282,43 @@
         },
         {
             "title": "IBL Voxel Shadowing",
-            "playgroundId": "#8R5SSE#180",
+            "playgroundId": "#8R5SSE#408",
             "referenceImage": "voxelShadows.png",
             "renderCount": 15,
-            "excludedEngines": ["webgl1", "webgpu"]
+            "excludedEngines": ["webgl1"]
+        },
+        {
+            "title": "Glow layer with vertex alpha",
+            "playgroundId": "#GWAX2G#7",
+            "referenceImage": "Glow-layer-with-vertex-alpha.png"
+        },
+        {
+            "title": "IBL Voxel Shadowing Right-Handed",
+            "playgroundId": "#8R5SSE#409",
+            "referenceImage": "voxelShadowsRightHanded.png",
+            "renderCount": 15,
+            "excludedEngines": ["webgl1"]
+        },
+        {
+            "title": "IBL Voxel Shadowing Left-Handed",
+            "playgroundId": "#8R5SSE#410",
+            "referenceImage": "voxelShadowsLeftHanded.png",
+            "renderCount": 15,
+            "excludedEngines": ["webgl1"]
+        },
+        {
+            "title": "IBL Screen-space Shadowing Left-Handed",
+            "playgroundId": "#8R5SSE#380",
+            "referenceImage": "ssShadowsLeftHanded.png",
+            "renderCount": 15,
+            "excludedEngines": ["webgl1"]
+        },
+        {
+            "title": "IBL Screen-space Shadowing Right-Handed",
+            "playgroundId": "#8R5SSE#381",
+            "referenceImage": "ssShadowsRightHanded.png",
+            "renderCount": 15,
+            "excludedEngines": ["webgl1"]
         }
     ]
 }

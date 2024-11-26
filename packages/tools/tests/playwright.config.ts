@@ -1,6 +1,9 @@
 import { defineConfig, devices } from "@playwright/test";
 import { getCdpEndpoint } from "./browserstack.config";
 
+import { populateEnvironment } from "@dev/build-tools";
+populateEnvironment();
+
 const isCI = !!process.env.CI;
 const browserType = process.env.BROWSER || (isCI ? "Firefox" : "Chrome");
 const numberOfWorkers = process.env.CIWORKERS ? +process.env.CIWORKERS : process.env.CI ? 1 : browserType === "BrowserStack" ? 1 : undefined;
@@ -103,6 +106,14 @@ export default defineConfig({
                       },
         },
         {
+            name: "interaction",
+            testMatch: "**/interaction.test.ts",
+            use: {
+                ...devices["Desktop Safari"],
+                headless,
+            },
+        },
+        {
             name: "performance",
             testMatch: "**/performance.test.ts",
             use: forceChrome
@@ -130,4 +141,3 @@ export default defineConfig({
 
     snapshotPathTemplate: "test/visualization/ReferenceImages/{arg}{ext}",
 });
-
