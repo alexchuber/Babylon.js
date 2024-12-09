@@ -20,55 +20,20 @@ interface MeshData {
     totalVertices: number;
 }
 
-/**
- * @experimental This class is an experimental version of `DracoCompression` and is subject to change.
- *
- * Draco compression (https://google.github.io/draco/)
- *
- * This class wraps the Draco decoder module.
- *
- * By default, the configuration points to a copy of the Draco decoder files for glTF from the Babylon.js preview cdn https://preview.babylonjs.com/draco_wasm_wrapper_gltf.js.
- *
- * To update the configuration, use the following code:
- * ```javascript
- *     DracoDecoder.Config = {
- *          wasmUrl: "<url to the WebAssembly library>",
- *          wasmBinaryUrl: "<url to the WebAssembly binary>",
- *          fallbackUrl: "<url to the fallback JavaScript library>",
- *     };
- * ```
- *
- * Draco has two versions, one for WebAssembly and one for JavaScript. The decoder configuration can be set to only support WebAssembly or only support the JavaScript version.
- * Decoding will automatically fallback to the JavaScript version if WebAssembly version is not configured or if WebAssembly is not supported by the browser.
- * Use `DracoDecoder.Available` to determine if the decoder configuration is available for the current context.
- *
- * To decode Draco compressed data, get the default DracoDecoder object and call decodeMeshToGeometryAsync:
- * ```javascript
- *     var geometry = await DracoDecoder.Default.decodeMeshToGeometryAsync(data);
- * ```
- */
-export class DracoDecoder extends DracoCodec<DecoderModule> {
-    protected static override _Default: Nullable<DracoDecoder> = null;
-    /**
-     * Default instance for the DracoDecoder.
-     */
-    public static get Default(): DracoDecoder {
-        DracoDecoder._Default ??= new DracoDecoder();
-        return DracoDecoder._Default;
-    }
+/** @internal Used for `DracoCompression` */
+export const DefaultDecoderConfig: IDracoCodecConfiguration = {
+    wasmUrl: `${Tools._DefaultCdnUrl}/draco_wasm_wrapper_gltf.js`,
+    wasmBinaryUrl: `${Tools._DefaultCdnUrl}/draco_decoder_gltf.wasm`,
+    fallbackUrl: `${Tools._DefaultCdnUrl}/draco_decoder_gltf.js`,
+};
 
-    /**
-     * Configuration for the DracoDecoder. Defaults to the following:
-     * - numWorkers: 50% of the available logical processors, capped to 4. If no logical processors are available, defaults to 1.
-     * - wasmUrl: `"https://cdn.babylonjs.com/draco_wasm_wrapper_gltf.js"`
-     * - wasmBinaryUrl: `"https://cdn.babylonjs.com/draco_decoder_gltf.wasm"`
-     * - fallbackUrl: `"https://cdn.babylonjs.com/draco_decoder_gltf.js"`
-     */
-    public static override Config: IDracoCodecConfiguration = {
-        wasmUrl: `${Tools._DefaultCdnUrl}/draco_wasm_wrapper_gltf.js`,
-        wasmBinaryUrl: `${Tools._DefaultCdnUrl}/draco_decoder_gltf.wasm`,
-        fallbackUrl: `${Tools._DefaultCdnUrl}/draco_decoder_gltf.js`,
-    };
+/**
+ * This class wraps the Draco decoder module.
+ * It should not be constructed directly. Use `DracoDecoder` instead.
+ * @internal
+ */
+export class DracoDecoderClass extends DracoCodec<DecoderModule> {
+    protected override readonly _defaultConfig: IDracoCodecConfiguration = DefaultDecoderConfig;
 
     protected override _isModuleAvailable(): boolean {
         return typeof DracoDecoderModule !== "undefined";
@@ -81,15 +46,6 @@ export class DracoDecoder extends DracoCodec<DecoderModule> {
 
     protected override _getWorkerContent(): string {
         return `${decodeMesh}(${workerFunction})()`;
-    }
-
-    /**
-     * Creates a new Draco decoder.
-     * @param config Optional override of the configuration for the DracoDecoder. If not provided, defaults to `DracoDecoder.Config`.
-     */
-    constructor(config?: IDracoCodecConfiguration) {
-        // Order of final config will be config > DracoDecoder.Config.
-        super({ ...DracoDecoder.Config, ...(config ?? {}) });
     }
 
     /**
@@ -200,7 +156,8 @@ export class DracoDecoder extends DracoCodec<DecoderModule> {
             });
         }
 
-        throw new Error("Draco decoder module is not available");
+        throw new Error("Draco decoder module is not available. Have you called initialize()?");
+        // NOTE: Alternatively, we could initialize the module here if the user forgot.
     }
 
     /**
@@ -279,3 +236,36 @@ export class DracoDecoder extends DracoCodec<DecoderModule> {
         return geometry;
     }
 }
+
+/**
+ * @experimental
+ * Draco compression (https://google.github.io/draco/)
+ *
+ * DracoDecoder is a singleton for decoding Draco-compressed meshes.
+ * It is automatically constructed when the module is imported.
+ *
+ * To decode Draco compressed data, see the following example:
+ * ```javascript
+ *     DracoDecoder.initialize(//Optional configuration//);
+ *     var geometry = await DracoDecoder.decodeMeshToGeometryAsync(data);
+       // Perform any additional decoding here
+ *     DracoDecoder.dispose();
+ * ```
+ * 
+ * Before using the DracoDecoder, call initialize to ensure the decoder is ready.
+ * By default, the initialization configuration points to a copy of the Draco decoder files for glTF from the Babylon.js preview cdn https://preview.babylonjs.com/draco_wasm_wrapper_gltf.js.
+ *
+ * This configuration can be customized at initialization using the following code:
+ * ```javascript
+ *     DracoDecoder.initialize({
+ *          wasmUrl: "<url to the WebAssembly library>",
+ *          wasmBinaryUrl: "<url to the WebAssembly binary>",
+ *          fallbackUrl: "<url to the fallback JavaScript library>",
+ *     });
+ * ```
+ *
+ * Draco has two versions, one for WebAssembly and one for JavaScript. The decoder configuration can be set to only support WebAssembly or only support the JavaScript version.
+ * Decoding will automatically fallback to the JavaScript version if WebAssembly version is not configured or if WebAssembly is not supported by the browser.
+ * For custom configurations, it is assumed that the developer has verified its availability in the current context (i.e., the WebAssembly version is correctly configured or a valid fallback exists.)
+ */
+export const DracoDecoder = new DracoDecoderClass();

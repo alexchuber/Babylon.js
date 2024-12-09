@@ -1,8 +1,9 @@
 import { _GetDefaultNumWorkers } from "./dracoCodec";
 import type { IDracoCodecConfiguration } from "./dracoCodec";
-import { DracoDecoder } from "./dracoDecoder";
+import { DefaultDecoderConfig, DracoDecoderClass } from "./dracoDecoder";
 import { VertexBuffer } from "../buffer";
 import { VertexData } from "../mesh.vertexData";
+import type { Nullable } from "core/types";
 
 /**
  * Configuration for Draco compression
@@ -54,7 +55,7 @@ export interface IDracoCompressionOptions extends Pick<IDracoCodecConfiguration,
  *
  * @see https://playground.babylonjs.com/#DMZIBD#0
  */
-export class DracoCompression extends DracoDecoder {
+export class DracoCompression extends DracoDecoderClass {
     /**
      * The configuration. Defaults to the following urls:
      * - wasmUrl: "https://cdn.babylonjs.com/draco_wasm_wrapper_gltf.js"
@@ -62,14 +63,15 @@ export class DracoCompression extends DracoDecoder {
      * - fallbackUrl: "https://cdn.babylonjs.com/draco_decoder_gltf.js"
      */
     public static Configuration: IDracoCompressionConfiguration = {
-        decoder: DracoDecoder.Config, // TODO: Remove this reference or update the JSDoc with warning.
+        decoder: { ...DefaultDecoderConfig },
     };
 
     /**
      * Returns true if the decoder configuration is available.
      */
     public static get DecoderAvailable(): boolean {
-        return DracoDecoder.Available; // TODO: Remove this reference or update the JSDoc with warning.
+        const decoder = DracoCompression.Configuration.decoder;
+        return !!((decoder.wasmUrl && decoder.wasmBinaryUrl && typeof WebAssembly === "object") || decoder.fallbackUrl);
     }
 
     /**
@@ -77,13 +79,60 @@ export class DracoCompression extends DracoDecoder {
      */
     public static DefaultNumWorkers = _GetDefaultNumWorkers();
 
+    protected static _Default: Nullable<DracoCompression>;
+
+    /**
+     * Default instance for the draco compression object.
+     */
+    public static get Default(): DracoCompression {
+        DracoCompression._Default ??= new DracoCompression();
+        return DracoCompression._Default;
+    }
+
+    /**
+     * Reset the default draco compression object to null and disposing the removed default instance.
+     * Note that if the workerPool is a member of the static Configuration object it is recommended not to run dispose,
+     * unless the static worker pool is no longer needed.
+     * @param skipDispose set to true to not dispose the removed default instance
+     */
+    public static ResetDefault(skipDispose?: boolean): void {
+        if (DracoCompression._Default) {
+            if (!skipDispose) {
+                DracoCompression._Default.dispose();
+            }
+            DracoCompression._Default = null;
+        }
+    }
+
     /**
      * Constructor
      * @param numWorkersOrConfig The number of workers for async operations or a config object. Specify `0` to disable web workers and run synchronously in the current context.
      */
     constructor(numWorkersOrConfig: number | IDracoCompressionOptions = DracoCompression.DefaultNumWorkers) {
-        const config = typeof numWorkersOrConfig === "number" ? { ...DracoDecoder.Config, numWorkers: numWorkersOrConfig } : { ...DracoDecoder.Config, ...numWorkersOrConfig };
-        super(config);
+        super();
+        // Derive config this way to maintain backwards compatibility with "numWorkers"
+        const mergedConfig = {
+            ...DracoCompression.Configuration.decoder,
+            ...(typeof numWorkersOrConfig === "number" ? { numWorkers: numWorkersOrConfig } : numWorkersOrConfig),
+        };
+        // Explicitly initialize here for backwards compatibility
+        this.initialize(mergedConfig);
+    }
+
+    /**
+     * Returns a promise that resolves when ready. Call this manually to ensure draco compression is ready before use.
+     * @returns a promise that resolves when ready
+     */
+    public async whenReadyAsync(): Promise<void> {
+        if (this._workerPoolPromise) {
+            await this._workerPoolPromise;
+            return;
+        }
+
+        if (this._modulePromise) {
+            await this._modulePromise;
+            return;
+        }
     }
 
     /**

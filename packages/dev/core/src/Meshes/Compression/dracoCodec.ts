@@ -1,8 +1,8 @@
-import type { Nullable } from "core/types";
 import { Tools } from "../../Misc/tools";
 import { AutoReleaseWorkerPool } from "../../Misc/workerPool";
 import type { IDisposable } from "../../scene";
 import { initializeWebWorker } from "./dracoCompressionWorker";
+import { Logger } from "core/Misc";
 
 /**
  * Configuration for using a Draco codec.
@@ -68,39 +68,9 @@ export abstract class DracoCodec<M> implements IDisposable {
     protected _modulePromise?: Promise<{ module: M }>;
 
     /**
-     * The configuration for the Draco codec.
-     * Subclasses should override this value with a valid configuration.
+     * The default configuration for the codec.
      */
-    public static Config: IDracoCodecConfiguration;
-
-    /**
-     * Returns true if the codec's `Configuration` is available.
-     */
-    public static get Available(): boolean {
-        return !!((this.Config.wasmUrl && this.Config.wasmBinaryUrl && typeof WebAssembly === "object") || this.Config.fallbackUrl);
-    }
-
-    /**
-     * The default draco compression object
-     * Subclasses should override this value using the narrowed type of the subclass,
-     * and define a public `get Default()` that returns the narrowed instance.
-     */
-    protected static _Default: Nullable<DracoCodec<unknown>>;
-
-    /**
-     * Reset the default draco compression object to null and disposing the removed default instance.
-     * Note that if the workerPool is a member of the static Configuration object it is recommended not to run dispose,
-     * unless the static worker pool is no longer needed.
-     * @param skipDispose set to true to not dispose the removed default instance
-     */
-    public static ResetDefault(skipDispose?: boolean): void {
-        if (this._Default) {
-            if (!skipDispose) {
-                this._Default.dispose();
-            }
-            this._Default = null;
-        }
-    }
+    protected abstract readonly _defaultConfig: IDracoCodecConfiguration;
 
     /**
      * Checks if the default codec JS module is in scope.
@@ -118,11 +88,21 @@ export abstract class DracoCodec<M> implements IDisposable {
     protected abstract _getWorkerContent(): string;
 
     /**
-     * Constructor
-     * @param _config The configuration for the DracoCodec instance.
+     * Loads the codec module and worker pool if needed.
+     * @param _config An optional configuration for this DracoDecoder. Defaults to the following:
+     * - `numWorkers`: 50% of the available logical processors, capped to 4. If no logical processors are available, defaults to 1.
+     * - `wasmUrl`: `"https://cdn.babylonjs.com/draco_wasm_wrapper_gltf.js"` (decoder)
+     * - `wasmBinaryUrl`: `"https://cdn.babylonjs.com/draco_decoder_gltf.wasm"` (decoder)
+     * - `fallbackUrl`: `"https://cdn.babylonjs.com/draco_decoder_gltf.js"` (decoder)
+     * @returns A promise that resolves when the decoder is ready (module loaded and/or worker pool initialized)
      */
-    constructor(_config: IDracoCodecConfiguration) {
-        const config = { numWorkers: _GetDefaultNumWorkers(), ..._config };
+    public async initialize(_config?: IDracoCodecConfiguration): Promise<void> {
+        if (this._workerPoolPromise || this._modulePromise) {
+            Logger.Warn("Draco codec is already initialized. If a configuration change is needed, call dispose() before re-initializing.");
+            return;
+        }
+
+        const config = { numWorkers: _GetDefaultNumWorkers(), ...this._defaultConfig, ..._config };
         // check if the decoder binary and worker pool was injected
         // Note - it is expected that the developer checked if WebWorker, WebAssembly and the URL object are available
         if (config.workerPool) {
@@ -148,7 +128,7 @@ export abstract class DracoCodec<M> implements IDisposable {
                       url: urlNeeded ? Tools.GetBabylonScriptURL(config.fallbackUrl!) : "",
                       wasmBinaryPromise: Promise.resolve(undefined),
                   };
-        // If using workers, initialize a worker pool with either the wasm or url?
+        // If using workers, initialize a worker pool with either the wasm or url
         if (useWorkers) {
             this._workerPoolPromise = codecInfo.wasmBinaryPromise.then((wasmBinary) => {
                 const workerContent = this._getWorkerContent();
@@ -159,6 +139,8 @@ export abstract class DracoCodec<M> implements IDisposable {
                     return initializeWebWorker(worker, wasmBinary, codecInfo.url);
                 });
             });
+            await this._workerPoolPromise;
+            return;
         } else {
             this._modulePromise = codecInfo.wasmBinaryPromise.then(async (wasmBinary) => {
                 if (this._isModuleAvailable()) {
@@ -171,20 +153,6 @@ export abstract class DracoCodec<M> implements IDisposable {
                 }
                 return this._createModuleAsync(wasmBinary as ArrayBuffer, config.jsModule);
             });
-        }
-    }
-
-    /**
-     * Returns a promise that resolves when ready. Call this manually to ensure draco compression is ready before use.
-     * @returns a promise that resolves when ready
-     */
-    public async whenReadyAsync(): Promise<void> {
-        if (this._workerPoolPromise) {
-            await this._workerPoolPromise;
-            return;
-        }
-
-        if (this._modulePromise) {
             await this._modulePromise;
             return;
         }
