@@ -1,5 +1,5 @@
 import { DracoDecoderModule } from "draco3dgltf";
-import { DracoCodec, type IDracoCodecConfiguration } from "./dracoCodec";
+import { _IsConfigurationAvailable, DracoCodec, type IDracoCodecConfiguration } from "./dracoCodec";
 import { Tools } from "../../Misc/tools";
 import { Geometry } from "../geometry";
 import { VertexBuffer } from "../buffer";
@@ -7,22 +7,16 @@ import { Logger } from "../../Misc/logger";
 import type { BoundingInfo } from "../../Culling/boundingInfo";
 import type { Scene } from "../../scene";
 import type { Nullable } from "../../types";
-import { decodeMesh, workerFunction } from "./dracoCompressionWorker";
-import type { AttributeData, Message } from "./dracoCompressionWorker";
+import { DecodeMesh, DecoderWorkerFunction } from "./dracoCompressionWorker";
+import type { AttributeData, MeshData, DecoderMessage } from "./dracoDecoder.types";
 
 // eslint-disable-next-line @typescript-eslint/naming-convention
 declare let DracoDecoderModule: DracoDecoderModule;
 
-interface MeshData {
-    indices?: Uint16Array | Uint32Array;
-    attributes: Array<AttributeData>;
-    totalVertices: number;
-}
-
 /**
  * @experimental This class is an experimental version of `DracoCompression` and is subject to change.
  *
- * Draco compression (https://google.github.io/draco/)
+ * Draco Decoder (https://google.github.io/draco/)
  *
  * This class wraps the Draco decoder module.
  *
@@ -54,19 +48,41 @@ export class DracoDecoder extends DracoCodec {
      * - wasmBinaryUrl: `"https://cdn.babylonjs.com/draco_decoder_gltf.wasm"`
      * - fallbackUrl: `"https://cdn.babylonjs.com/draco_decoder_gltf.js"`
      */
-    public static override DefaultConfiguration: IDracoCodecConfiguration = {
+    public static DefaultConfiguration: IDracoCodecConfiguration = {
         wasmUrl: `${Tools._DefaultCdnUrl}/draco_wasm_wrapper_gltf.js`,
         wasmBinaryUrl: `${Tools._DefaultCdnUrl}/draco_decoder_gltf.wasm`,
         fallbackUrl: `${Tools._DefaultCdnUrl}/draco_decoder_gltf.js`,
     };
 
-    protected static override _Default: Nullable<DracoDecoder> = null;
+    /**
+     * Returns true if the decoder's `DefaultConfiguration` is available.
+     */
+    public static get DefaultAvailable(): boolean {
+        return _IsConfigurationAvailable(DracoDecoder.DefaultConfiguration);
+    }
+
+    protected static _Default: Nullable<DracoDecoder> = null;
     /**
      * Default instance for the DracoDecoder.
      */
     public static get Default(): DracoDecoder {
         DracoDecoder._Default ??= new DracoDecoder();
         return DracoDecoder._Default;
+    }
+
+    /**
+     * Reset the default DracoDecoder object to null and disposing the removed default instance.
+     * Note that if the workerPool is a member of the static DefaultConfiguration object it is recommended not to run dispose,
+     * unless the static worker pool is no longer needed.
+     * @param skipDispose set to true to not dispose the removed default instance
+     */
+    public static ResetDefault(skipDispose?: boolean): void {
+        if (DracoDecoder._Default) {
+            if (!skipDispose) {
+                DracoDecoder._Default.dispose();
+            }
+            DracoDecoder._Default = null;
+        }
     }
 
     protected override _isModuleAvailable(): boolean {
@@ -79,7 +95,7 @@ export class DracoDecoder extends DracoCodec {
     }
 
     protected override _getWorkerContent(): string {
-        return `${decodeMesh}(${workerFunction})()`;
+        return `${DecodeMesh}(${DecoderWorkerFunction})()`;
     }
 
     /**
@@ -92,7 +108,7 @@ export class DracoDecoder extends DracoCodec {
 
     /**
      * Decode Draco compressed mesh data to mesh data.
-     * @param data The ArrayBuffer or ArrayBufferView for the Draco compression data
+     * @param data The ArrayBuffer or ArrayBufferView of the compressed Draco data
      * @param attributes A map of attributes from vertex buffer kinds to Draco unique ids
      * @param gltfNormalizedOverride A map of attributes from vertex buffer kinds to normalized flags to override the Draco normalization
      * @returns A promise that resolves with the decoded mesh data
@@ -132,7 +148,7 @@ export class DracoDecoder extends DracoCodec {
                             onComplete();
                         };
 
-                        const onMessage = (event: MessageEvent<Message>) => {
+                        const onMessage = (event: MessageEvent<DecoderMessage>) => {
                             const message = event.data;
                             switch (message.id) {
                                 case "indices": {
@@ -175,7 +191,7 @@ export class DracoDecoder extends DracoCodec {
                 let resultIndices: Nullable<Uint16Array | Uint32Array> = null;
                 const resultAttributes: Array<AttributeData> = [];
 
-                const numPoints = decodeMesh(
+                const numPoints = DecodeMesh(
                     decoder.module,
                     dataView,
                     attributes,
@@ -205,7 +221,7 @@ export class DracoDecoder extends DracoCodec {
      * Decode Draco compressed mesh data to Babylon geometry.
      * @param name The name to use when creating the geometry
      * @param scene The scene to use when creating the geometry
-     * @param data The ArrayBuffer or ArrayBufferView for the Draco compression data
+     * @param data The ArrayBuffer or ArrayBufferView of the Draco compressed data
      * @param attributes A map of attributes from vertex buffer kinds to Draco unique ids
      * @returns A promise that resolves with the decoded geometry
      */
