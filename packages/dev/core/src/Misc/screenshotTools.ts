@@ -15,6 +15,49 @@ import type { AbstractEngine } from "../Engines/abstractEngine";
 
 let screenshotCanvas: Nullable<HTMLCanvasElement> = null;
 
+interface IScreenshotOptions {
+    /**
+     * Either a single number or an object.
+     * If an object is passed, the screenshot size will be derived from the (optional) properties: precision, width, height.
+     * The precision property is a multiplier allowing rendering at a higher or lower resolution
+     */
+    size?: IScreenshotSize | number;
+    /**
+     * Defines the callback receives a single parameter which contains the screenshot as
+     * a string of base64-encoded characters. This string can be assigned to the
+     * src parameter of an <img> to display it
+     */
+    successCallback?: (data: string) => void;
+    /**
+     * Defines the MIME type of the screenshot image (default: image/png).
+     * Check your browser for supported MIME types
+     */
+    mimeType?: string;
+    /**
+     * Defines the quality of the image if lossy mimeType is used (e.g. image/jpeg, image/webp).
+     * See {@link https://developer.mozilla.org/en-US/docs/Web/API/HTMLCanvasElement/toBlob | HTMLCanvasElement.toBlob()}'s `quality` parameter.
+     */
+    quality?: number;
+    /**
+     * Defines if the system should download the image even if a successCallback is provided
+     */
+    forceDownload?: boolean;
+    /**
+     * Defines if the screenshot dimensions should be filled with the render canvas and clip any overflow.
+     * If false, the canvas will fit within the screenshot, as in letterboxing.
+     */
+    useFill?: boolean;
+}
+
+const ScreenshotOptionDefaults: IScreenshotOptions = {
+    size: undefined,
+    successCallback: undefined,
+    mimeType: "image/png",
+    quality: undefined,
+    forceDownload: false,
+    useFill: false,
+};
+
 /**
  * Captures a screenshot of the current rendering
  * @see https://doc.babylonjs.com/features/featuresDeepDive/scene/renderToPNG
@@ -412,14 +455,21 @@ export function CreateScreenshotUsingRenderTargetAsync(
  * @param size
  * @private
  */
-function _GetScreenshotSize(engine: AbstractEngine, camera: Camera, size: IScreenshotSize | number): { height: number; width: number; finalWidth: number; finalHeight: number } {
+function _GetScreenshotSize(engine: AbstractEngine, camera: Camera, size?: IScreenshotSize | number): { height: number; width: number; finalWidth: number; finalHeight: number } {
     let height = 0;
     let width = 0;
     let finalWidth = 0;
     let finalHeight = 0;
 
+    // If no size value defined, using the current render size
+    if (size === undefined) {
+        width = engine.getRenderWidth();
+        height = engine.getRenderHeight();
+        finalWidth = width;
+        finalHeight = height;
+    }
     //If a size value defined as object
-    if (typeof size === "object") {
+    else if (typeof size === "object") {
         const precision = size.precision
             ? Math.abs(size.precision) // prevent GL_INVALID_VALUE : glViewport: negative width/height
             : 1;
