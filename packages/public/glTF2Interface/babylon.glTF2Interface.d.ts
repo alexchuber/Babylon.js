@@ -73,6 +73,20 @@ declare module BABYLON.GLTF2 {
     }
 
     /**
+     * The intended GPU buffer type to use with a buffer view for vertex or index data.
+     */
+    const enum BufferViewTarget {
+        /**
+         * ArrayBuffer
+         */
+        ARRAY_BUFFER = 34962,
+        /**
+         * ElementArrayBuffer
+         */
+        ELEMENT_ARRAY_BUFFER = 34963,
+    }
+
+    /**
      * The name of the node's TRS property to modify,
      * or the weights of the Morph Targets it instantiates,
      * or pointer is use of KHR_animation_pointer extension
@@ -502,6 +516,10 @@ declare module BABYLON.GLTF2 {
          * The stride, in bytes
          */
         byteStride?: number;
+        /**
+         * The hint representing the intended GPU buffer type to use with this buffer view.
+         */
+        target?: BufferViewTarget;
     }
 
     /**

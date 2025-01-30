@@ -16,7 +16,7 @@ import type {
     ISkin,
     ICamera,
 } from "babylonjs-gltf2interface";
-import { AccessorComponentType, AccessorType, CameraType, ImageMimeType } from "babylonjs-gltf2interface";
+import { AccessorComponentType, AccessorType, BufferViewTarget, CameraType, ImageMimeType } from "babylonjs-gltf2interface";
 
 import type { FloatArray, IndicesArray, Nullable } from "core/types";
 import { TmpVectors, Quaternion, Matrix } from "core/Maths/math.vector";
@@ -1058,7 +1058,7 @@ export class GLTFExporter {
             }
 
             // Create buffer view, but defer accessor creation for later. Instead, track it via ExporterState.
-            const bufferView = this._bufferManager.createBufferView(bytes, byteStride);
+            const bufferView = this._bufferManager.createBufferView(bytes, BufferViewTarget.ARRAY_BUFFER, byteStride);
             state.setVertexBufferView(buffer, bufferView);
 
             const floatMatricesIndices = new Map<VertexBuffer, FloatArray>();
@@ -1100,7 +1100,7 @@ export class GLTFExporter {
                 for (let index = 0; index < array.length; index++) {
                     newArray[index] = array[index];
                 }
-                const bufferView = this._bufferManager.createBufferView(newArray, 4 * (is16Bit ? 2 : 1));
+                const bufferView = this._bufferManager.createBufferView(newArray, BufferViewTarget.ARRAY_BUFFER, 4 * (is16Bit ? 2 : 1));
                 state.setRemappedBufferView(buffer, vertexBuffer, bufferView);
             }
         }
@@ -1340,7 +1340,7 @@ export class GLTFExporter {
             let accessorIndex = state.getIndicesAccessor(indices, start, count, offset, flip);
             if (accessorIndex === undefined) {
                 const bytes = IndicesArrayToTypedArray(indicesToExport, start, count, is32Bits);
-                const bufferView = this._bufferManager.createBufferView(bytes);
+                const bufferView = this._bufferManager.createBufferView(bytes, BufferViewTarget.ELEMENT_ARRAY_BUFFER);
 
                 const componentType = is32Bits ? AccessorComponentType.UNSIGNED_INT : AccessorComponentType.UNSIGNED_SHORT;
                 this._accessors.push(this._bufferManager.createAccessor(bufferView, AccessorType.SCALAR, componentType, count, 0));

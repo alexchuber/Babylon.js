@@ -1,5 +1,5 @@
 import type { TypedArray } from "core/types";
-import type { AccessorComponentType, AccessorType, IAccessor, IBufferView } from "babylonjs-gltf2interface";
+import type { AccessorComponentType, AccessorType, BufferViewTarget, IAccessor, IBufferView } from "babylonjs-gltf2interface";
 import { DataWriter } from "./dataWriter";
 
 type TypedArrayForglTF = Exclude<TypedArray, Float64Array | BigInt64Array | BigUint64Array>;
@@ -72,15 +72,17 @@ export class BufferManager {
     /**
      * Creates a buffer view based on the supplied arguments
      * @param data a TypedArray to create the bufferView for
+     * @param target target usage of the bufferView
      * @param byteStride byte distance between consecutive elements
      * @returns bufferView for glTF
      */
-    public createBufferView(data: TypedArrayForglTF, byteStride?: number): IBufferView {
+    public createBufferView(data: TypedArrayForglTF, target?: BufferViewTarget, byteStride?: number): IBufferView {
         const bufferView: IBufferView = {
             buffer: 0,
             byteOffset: undefined, // byteOffset will be set later, when we write the binary and decide bufferView ordering
             byteLength: data.byteLength,
             byteStride: byteStride,
+            target: target,
         };
         this._bufferViewToData.set(bufferView, data);
         return bufferView;
