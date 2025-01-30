@@ -55,6 +55,7 @@ import {
     FloatsNeed16BitInteger,
     IsStandardVertexAttribute,
     IndicesArrayToTypedArray,
+    GetFileExtensionFromMimeType,
 } from "./glTFUtilities";
 import { BufferManager } from "./bufferManager";
 import { Camera } from "core/Cameras/camera";
@@ -233,7 +234,6 @@ export class GLTFExporter {
     public readonly _textures: ITexture[] = [];
 
     public readonly _babylonScene: Scene;
-    public readonly _imageData: { [fileName: string]: { data: ArrayBuffer; mimeType: ImageMimeType } } = {};
 
     /**
      * Baked animation sample rate
@@ -241,8 +241,6 @@ export class GLTFExporter {
     private _animationSampleRate: number;
 
     private readonly _options: Required<IExportOptions>;
-
-    public _shouldUseGlb: boolean = false;
 
     public readonly _materialExporter = new GLTFMaterialExporter(this);
 
@@ -451,7 +449,7 @@ export class GLTFExporter {
         return true;
     }
 
-    private _generateJSON(bufferByteLength: number, fileName?: string, prettyPrint?: boolean): string {
+    private _generateJSON(shouldUseGlb: boolean, bufferByteLength: number, fileName?: string, prettyPrint?: boolean): string {
         const buffer: IBuffer = { byteLength: bufferByteLength };
 
         if (buffer.byteLength) {
@@ -495,7 +493,7 @@ export class GLTFExporter {
             this._glTF.images = this._images;
         }
 
-        if (!this._shouldUseGlb) {
+        if (!shouldUseGlb) {
             buffer.uri = fileName + ".bin";
         }
 
@@ -503,10 +501,12 @@ export class GLTFExporter {
     }
 
     public async generateGLTFAsync(glTFPrefix: string): Promise<GLTFData> {
+        await this._exportSceneAsync();
+        const imageData: Record<string, Blob> = this._generateImageBlobs();
         const binaryBuffer = await this._generateBinaryAsync();
 
         this._extensionsOnExporting();
-        const jsonText = this._generateJSON(binaryBuffer.byteLength, glTFPrefix, true);
+        const jsonText = this._generateJSON(false, binaryBuffer.byteLength, glTFPrefix, true);
         const bin = new Blob([binaryBuffer], { type: "application/octet-stream" });
 
         const glTFFileName = glTFPrefix + ".gltf";
@@ -517,19 +517,40 @@ export class GLTFExporter {
         container.files[glTFFileName] = jsonText;
         container.files[glTFBinFile] = bin;
 
-        if (this._imageData) {
-            for (const image in this._imageData) {
-                container.files[image] = new Blob([this._imageData[image].data], { type: this._imageData[image].mimeType });
-            }
+        for (const fileName in imageData) {
+            container.files[fileName] = imageData[fileName];
         }
 
         return container;
     }
 
     private async _generateBinaryAsync(): Promise<Uint8Array> {
-        await this._exportSceneAsync();
         await this._extensionsPreGenerateBinaryAsync();
         return this._bufferManager.generateBinary(this._bufferViews);
+    }
+
+    private _generateImageBlobs(): Record<string, Blob> {
+        const imageData: Record<string, Blob> = {};
+        for (const image of this._images) {
+            // Build a unique URI
+            const baseName = image.name!.replace(/\.\/|\/|\.\\|\\/g, "_");
+            const extension = GetFileExtensionFromMimeType(image.mimeType!);
+            let fileName = baseName + extension;
+            if (this._images.some((image) => image.uri === fileName)) {
+                fileName = `${baseName}_${Tools.RandomId()}${extension}`;
+            }
+
+            // Create a blob from the image data in buffer view, and remove the buffer view
+            const bufferView = this._bufferManager.getBufferViewFromProperty(image);
+            const data = this._bufferManager.getData(bufferView);
+            imageData[fileName] = new Blob([data], { type: image.mimeType });
+            this._bufferManager.removeBufferView(bufferView);
+
+            // Update image object with new URI
+            image.uri = fileName;
+            delete image.mimeType;
+        }
+        return imageData;
     }
 
     /**
@@ -545,11 +566,11 @@ export class GLTFExporter {
     }
 
     public async generateGLBAsync(glTFPrefix: string): Promise<GLTFData> {
-        this._shouldUseGlb = true;
+        await this._exportSceneAsync();
         const binaryBuffer = await this._generateBinaryAsync();
 
         this._extensionsOnExporting();
-        const jsonText = this._generateJSON(binaryBuffer.byteLength);
+        const jsonText = this._generateJSON(true, binaryBuffer.byteLength);
         const glbFileName = glTFPrefix + ".glb";
         const headerLength = 12;
         const chunkLengthPrefix = 8;

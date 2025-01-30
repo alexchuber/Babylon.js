@@ -1,7 +1,7 @@
 /* eslint-disable babylonjs/available */
 
-import type { ITextureInfo, IMaterial, IMaterialPbrMetallicRoughness, IMaterialOcclusionTextureInfo, ISampler, IImage } from "babylonjs-gltf2interface";
-import { ImageMimeType, MaterialAlphaMode, TextureMagFilter, TextureMinFilter, TextureWrapMode } from "babylonjs-gltf2interface";
+import type { ImageMimeType, ITextureInfo, IMaterial, IMaterialPbrMetallicRoughness, IMaterialOcclusionTextureInfo, ISampler, IImage } from "babylonjs-gltf2interface";
+import { MaterialAlphaMode, TextureMagFilter, TextureMinFilter, TextureWrapMode } from "babylonjs-gltf2interface";
 
 import type { Nullable } from "core/types";
 import { Vector2 } from "core/Maths/math.vector";
@@ -48,19 +48,6 @@ interface IPBRMetallicRoughness {
     roughness: Nullable<number>;
     metallicRoughnessTextureData?: Nullable<ArrayBuffer>;
     baseColorTextureData?: Nullable<ArrayBuffer>;
-}
-
-function GetFileExtensionFromMimeType(mimeType: ImageMimeType): string {
-    switch (mimeType) {
-        case ImageMimeType.JPEG:
-            return ".jpg";
-        case ImageMimeType.PNG:
-            return ".png";
-        case ImageMimeType.WEBP:
-            return ".webp";
-        case ImageMimeType.AVIF:
-            return ".avif";
-    }
 }
 
 /**
@@ -962,30 +949,13 @@ export class GLTFMaterialExporter {
     private _exportImage(name: string, mimeType: ImageMimeType, data: ArrayBuffer): number {
         const images = this._exporter._images;
 
-        let image: IImage;
-        if (this._exporter._shouldUseGlb) {
-            image = {
-                name: name,
-                mimeType: mimeType,
-                bufferView: undefined, // Will be updated later by BufferManager
-            };
-            const bufferView = this._exporter._bufferManager.createBufferView(new Uint8Array(data));
-            this._exporter._bufferManager.setBufferView(image, bufferView);
-        } else {
-            // Build a unique URI
-            const baseName = name.replace(/\.\/|\/|\.\\|\\/g, "_");
-            const extension = GetFileExtensionFromMimeType(mimeType);
-            let fileName = baseName + extension;
-            if (images.some((image) => image.uri === fileName)) {
-                fileName = `${baseName}_${Tools.RandomId()}${extension}`;
-            }
-
-            image = {
-                name: name,
-                uri: fileName,
-            };
-            this._exporter._imageData[fileName] = { data: data, mimeType: mimeType }; // Save image data to be written to file later
-        }
+        const image: IImage = {
+            name: name,
+            mimeType: mimeType,
+            bufferView: undefined, // Will be updated later by BufferManager if exporting to GLB
+        };
+        const bufferView = this._exporter._bufferManager.createBufferView(new Uint8Array(data));
+        this._exporter._bufferManager.setBufferView(image, bufferView);
 
         images.push(image);
 

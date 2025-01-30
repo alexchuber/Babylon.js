@@ -41,7 +41,7 @@ export class GLTFData {
     public downloadFiles(): void {
         for (const key in this.files) {
             const value = this.files[key];
-            const blob = new Blob([value], { type: GetMimeType(key) });
+            const blob = value instanceof Blob ? value : new Blob([value], { type: GetMimeType(key) });
             Tools.Download(blob, key);
         }
     }

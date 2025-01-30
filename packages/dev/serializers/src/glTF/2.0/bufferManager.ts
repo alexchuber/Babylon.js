@@ -164,6 +164,18 @@ export class BufferManager {
         return bufferView!;
     }
 
+    public getBufferViewFromProperty(property: IPropertyWithBufferView): IBufferView {
+        const bufferViews = Array.from(this._bufferViewToProperties.keys()); // for UMD
+        for (const bufferView of bufferViews) {
+            const properties = this._bufferViewToProperties.get(bufferView);
+            if (properties && properties.includes(property)) {
+                this._verifyBufferView(bufferView);
+                return bufferView;
+            }
+        }
+        throw new Error(`BufferView for ${property} not found in BufferManager.`);
+    }
+
     public getPropertiesWithBufferView(bufferView: IBufferView): IPropertyWithBufferView[] {
         this._verifyBufferView(bufferView);
         this._bufferViewToProperties.set(bufferView, this._bufferViewToProperties.get(bufferView) ?? []);

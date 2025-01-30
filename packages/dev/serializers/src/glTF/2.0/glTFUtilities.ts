@@ -1,7 +1,7 @@
 /* eslint-disable jsdoc/require-jsdoc */
 
 import type { INode } from "babylonjs-gltf2interface";
-import { AccessorType, MeshPrimitiveMode } from "babylonjs-gltf2interface";
+import { ImageMimeType, AccessorType, MeshPrimitiveMode } from "babylonjs-gltf2interface";
 import type { FloatArray, DataArray, IndicesArray } from "core/types";
 import type { Vector4 } from "core/Maths/math.vector";
 import { Quaternion, TmpVectors, Matrix, Vector3 } from "core/Maths/math.vector";
@@ -23,6 +23,19 @@ const rotation180Y = new Quaternion(0, 1, 0, 0);
 const epsilon = 1e-6;
 const defaultTranslation = Vector3.Zero();
 const defaultScale = Vector3.One();
+
+export function GetFileExtensionFromMimeType(mimeType: ImageMimeType): string {
+    switch (mimeType) {
+        case ImageMimeType.JPEG:
+            return ".jpg";
+        case ImageMimeType.PNG:
+            return ".png";
+        case ImageMimeType.WEBP:
+            return ".webp";
+        case ImageMimeType.AVIF:
+            return ".avif";
+    }
+}
 
 export function GetAccessorElementCount(accessorType: AccessorType): number {
     switch (accessorType) {
