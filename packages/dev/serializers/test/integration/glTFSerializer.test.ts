@@ -1,4 +1,5 @@
 import { evaluateDisposeEngine, evaluateCreateScene, evaluateInitEngine, getGlobalConfig, logPageErrors } from "@tools/test-tools";
+import { IGLTF, INode } from "babylonjs-gltf2interface";
 import type { IAnimationKey } from "core/Animations/animationKey";
 declare const BABYLON: typeof import("core/index") &
     typeof import("serializers/index") & {
@@ -607,7 +608,6 @@ describe("Babylon glTF Serializer", () => {
                 expect(node.rotation).toEqual(transformsRH.rotation);
             });
         });
-
         it("should reparent children of unexported node to nearest ancestor", async () => {
             const assertionData = await page.evaluate(async () => {
                 const parent = BABYLON.MeshBuilder.CreateBox("parent");
@@ -628,6 +628,106 @@ describe("Babylon glTF Serializer", () => {
             expect(assertionData.scenes[0].nodes).toHaveLength(2);
             expect(assertionData.scenes[0].nodes).toContain(0);
             expect(assertionData.scenes[0].nodes).toContain(1);
+        });
+    });
+    describe("Exported camera transformations", () => {
+        let leftHandedGLTF: IGLTF;
+        let rightHandedGLTF: IGLTF;
+
+        const testValues = {
+            unrotatedParentName: "unrotatedParent",
+            unrotatedChildName: "unrotatedChild1",
+            collapsedNodeName: "unrotatedCollapsed",
+            rotatedParentName: "rotatedParent",
+            rotatedChildName: "unrotatedChild2",
+            rotate180Y: [0, 1, 0, 0],
+            translationLH: [1, 2, -4],
+            translationRH: [-1, 2, -4],
+            rotationLH: [0.5, 0.5, 0.5, 0.5],
+            rotationRH: [-0.5, -0.5, 0.5, 0.5],
+        };
+
+        async function createScene(rh: boolean): Promise<IGLTF> {
+            return await page.evaluate(
+                async (rh, testValues) => {
+                    window.scene!.useRightHandedSystem = rh;
+
+                    const translation = rh ? testValues.translationRH : testValues.translationLH;
+                    const rotation = rh ? testValues.rotationRH : testValues.rotationLH;
+
+                    const parent1 = new BABYLON.TransformNode(testValues.unrotatedParentName, window.scene!);
+                    parent1.position = BABYLON.Vector3.FromArray(translation).addInPlace(BABYLON.Vector3.One()); // Offset for testing
+
+                    const child1 = new BABYLON.FreeCamera(testValues.unrotatedChildName, BABYLON.Vector3.Zero(), window.scene!);
+                    child1.position = BABYLON.Vector3.FromArray(translation).subtractInPlace(BABYLON.Vector3.One()); // Equal offset
+
+                    const parent2 = parent1.clone(testValues.rotatedParentName, null)!;
+                    parent2.rotationQuaternion = BABYLON.Quaternion.FromArray(rotation);
+
+                    const child2 = child1.clone(testValues.rotatedChildName, null)!;
+
+                    child1.parent = parent1;
+                    child2.parent = parent2;
+
+                    new BABYLON.FreeCamera(testValues.collapsedNodeName, BABYLON.Vector3.FromArray(translation), window.scene!);
+
+                    // const parent1 = new BABYLON.TransformNode(testValues.unrotatedParentName, window.scene!);
+                    // parent1.position = BABYLON.Vector3.FromArray(translation).addInPlace(BABYLON.Vector3.One()); // Offset for testing
+                    // const child1 = new BABYLON.FreeCamera(testValues.unrotatedChildName, BABYLON.Vector3.Zero(), window.scene!);
+                    // child1.position = BABYLON.Vector3.FromArray(translation).subtractInPlace(BABYLON.Vector3.One()); // Equal offset
+                    // child1.parent = parent1;
+                    // new BABYLON.FreeCamera(testValues.collapsedNodeName, BABYLON.Vector3.FromArray(translation), window.scene!);
+
+                    // const parent2 = parent1.clone(testValues.rotatedParentName, null)!;
+                    // parent2.rotationQuaternion = BABYLON.Quaternion.FromArray(rotation);
+                    // child1.clone(testValues.rotatedChildName, parent2)!;
+
+                    const glTFData = await BABYLON.GLTF2Export.GLTFAsync(window.scene!, "test");
+                    const jsonString = glTFData.files["test.gltf"] as string;
+                    return JSON.parse(jsonString);
+                },
+                rh,
+                testValues
+            );
+        }
+
+        beforeEach(async () => {
+            leftHandedGLTF ??= await createScene(false);
+            rightHandedGLTF ??= await createScene(true);
+        });
+        it("exports the correct glTF shape", () => {
+            for (const gltf of [leftHandedGLTF, rightHandedGLTF]) {
+                expect(gltf.scene).toBeDefined();
+                expect(gltf.nodes).toBeDefined();
+                expect(gltf.nodes).toHaveLength(3);
+            }
+        });
+        it("exports unrotated camera correctly", () => {
+            const lhNode = leftHandedGLTF.nodes!.find((node: INode) => node.name === testValues.collapsedNodeName);
+            const rhNode = rightHandedGLTF.nodes!.find((node: INode) => node.name === testValues.collapsedNodeName);
+            for (const node of [lhNode, rhNode]) {
+                expect(node).toBeDefined();
+                expect(node!.translation).toEqual(testValues.translationLH);
+                expect(node!.rotation).toEqual(testValues.rotate180Y);
+            }
+        });
+        it("exports unrotated camera w/ unrotated parent correctly", () => {
+            const lhNode = leftHandedGLTF.nodes!.find((node: INode) => node.name === testValues.unrotatedChildName);
+            const rhNode = rightHandedGLTF.nodes!.find((node: INode) => node.name === testValues.unrotatedChildName);
+            for (const node of [lhNode, rhNode]) {
+                expect(node).toBeDefined();
+                expect(node!.translation).toEqual(testValues.translationRH);
+                expect(node!.rotation).toEqual(testValues.rotate180Y);
+            }
+        });
+        it("exports unrotated camera w/ rotated parent correctly", () => {
+            const lhNode = leftHandedGLTF.nodes!.find((node: INode) => node.name === testValues.rotatedChildName);
+            const rhNode = rightHandedGLTF.nodes!.find((node: INode) => node.name === testValues.rotatedChildName);
+            for (const node of [lhNode, rhNode]) {
+                expect(node).toBeDefined();
+                expect(node!.translation).toEqual(testValues.translationRH);
+                expect(node!.rotation).toEqual(testValues.rotationRH);
+            }
         });
     });
 });
