@@ -626,12 +626,12 @@ export class _GLTFAnimation {
                                 Quaternion.FromEulerVectorToRef(eulerVec3, rotationQuaternion);
                             }
 
+                            if (!Quaternion.IsIdentity(rotationQuaternion)) {
+                                ConvertToRightHandedRotation(rotationQuaternion);
+                            }
+
                             if (isCamera) {
                                 ConvertCameraRotationToGLTF(rotationQuaternion);
-                            } else {
-                                if (!Quaternion.IsIdentity(rotationQuaternion)) {
-                                    ConvertToRightHandedRotation(rotationQuaternion);
-                                }
                             }
 
                             rotationQuaternion.toArray(outputToWrite);

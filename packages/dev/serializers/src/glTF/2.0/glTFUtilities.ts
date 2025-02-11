@@ -209,7 +209,8 @@ export function ConvertToRightHandedNode(value: INode) {
  * @returns Ref to camera rotation.
  */
 export function ConvertCameraRotationToGLTF(rotation: Quaternion): Quaternion {
-    return rotation.multiplyInPlace(rotation180Y);
+    rotation180Y.multiplyToRef(rotation, rotation);
+    return rotation;
 }
 
 export function RotateNode180Y(node: INode) {
