@@ -59,38 +59,62 @@ export class TextInputLineComponent extends React.Component<ITextInputLineCompon
     }
 
     override componentWillUnmount() {
-        this.updateValue(undefined, false);
+        // Save input into target before closing
+        const value = this._formatValue(this.state.input, this.props);
+        this._updateTargetValue(value, this.props);
         if (this.props.lockObject) {
             this.props.lockObject.lock = false;
         }
     }
 
-    override shouldComponentUpdate(nextProps: ITextInputLineComponentProps, nextState: ITextInputLineComponentState) {
+    override componentDidUpdate(prevProps: Readonly<ITextInputLineComponentProps>, prevState: Readonly<ITextInputLineComponentState>, snapshot?: any): void {
         if (this._localChange) {
             this._localChange = false;
-            return true;
+            return;
         }
 
-        if (nextState.dragging != this.state.dragging || nextProps.unit !== this.props.unit) {
-            return true;
-        }
-
-        return false;
+        // Save previous input into target if the update was not result of a local change
+        const value = this._formatValue(prevState.input, prevProps);
+        this._updateTargetValue(value, prevProps);
     }
 
-    raiseOnPropertyChanged(newValue: string, previousValue: string) {
-        if (this.props.onChange) {
-            this.props.onChange(newValue);
+    // override shouldComponentUpdate(nextProps: ITextInputLineComponentProps, nextState: ITextInputLineComponentState) {
+    //     if (this._localChange) {
+    //         this._localChange = false;
+    //         return true;
+    //     }
+
+    //     if (nextProps.value === undefined && this.props.target !== nextProps.target) {
+    //         this.updateValue(this.state.input, false);
+    //         nextState.input = nextProps.target[nextProps.propertyName!] || "";
+    //         return true;
+    //     }
+    //     if (nextProps.value !== undefined && this.props.value !== nextProps.value) {
+    //         this.updateValue(this.state.input, false);
+    //         nextState.input = nextProps.value || "";
+    //         return true;
+    //     }
+
+    //     if (nextState.dragging != this.state.dragging || nextProps.unit !== this.props.unit) {
+    //         return true;
+    //     }
+
+    //     return false;
+    // }
+
+    raiseOnPropertyChanged(newValue: string, previousValue: string, props: ITextInputLineComponentProps) {
+        if (props.onChange) {
+            props.onChange(newValue);
             return;
         }
 
-        if (!this.props.onPropertyChangedObservable) {
+        if (!props.onPropertyChangedObservable) {
             return;
         }
 
-        this.props.onPropertyChangedObservable.notifyObservers({
-            object: this.props.target,
-            property: this.props.propertyName!,
+        props.onPropertyChangedObservable.notifyObservers({
+            object: props.target,
+            property: props.propertyName!,
             value: newValue,
             initialValue: previousValue,
         });
@@ -127,10 +151,8 @@ export class TextInputLineComponent extends React.Component<ITextInputLineCompon
         });
     }
 
-    updateValue(adjustedInput?: string, updateState: boolean = true) {
-        let value = adjustedInput ?? this.state.input;
-
-        if (this.props.numbersOnly) {
+    _formatValue(value: string, props: ITextInputLineComponentProps) {
+        if (props.numbersOnly) {
             if (!value) {
                 value = "0";
             }
@@ -141,46 +163,58 @@ export class TextInputLineComponent extends React.Component<ITextInputLineCompon
             }
         }
 
-        if (this.props.numeric) {
+        if (props.numeric) {
             let numericValue = this.getCurrentNumericValue(value);
-            if (this.props.roundValues) {
+            if (props.roundValues) {
                 numericValue = Math.round(numericValue);
             }
-            if (this.props.min !== undefined) {
-                numericValue = Math.max(this.props.min, numericValue);
+            if (props.min !== undefined) {
+                numericValue = Math.max(props.min, numericValue);
             }
-            if (this.props.max !== undefined) {
-                numericValue = Math.min(this.props.max, numericValue);
+            if (props.max !== undefined) {
+                numericValue = Math.min(props.max, numericValue);
             }
             value = numericValue.toString();
         }
 
-        const store = this.props.value !== undefined ? this.props.value : this.props.target[this.props.propertyName!];
+        return value;
+    }
+
+    _updateTargetValue(value: string, props: ITextInputLineComponentProps) {
+        const store = props.value !== undefined ? props.value : props.target[props.propertyName!];
+
+        if (props.validator && props.validator(value) == false && props.onValidateChangeFailed) {
+            props.onValidateChangeFailed(value);
+            return;
+        }
+
+        if (props.propertyName && !props.delayInput) {
+            props.target[props.propertyName] = value;
+        }
+
+        if (props.throttlePropertyChangedNotification) {
+            if (throttleTimerId >= 0) {
+                window.clearTimeout(throttleTimerId);
+            }
+            throttleTimerId = window.setTimeout(() => {
+                this.raiseOnPropertyChanged(value, store, props);
+            }, props.throttlePropertyChangedNotificationDelay ?? 200);
+        } else {
+            this.raiseOnPropertyChanged(value, store, props);
+        }
+    }
+
+    updateValue(adjustedInput?: string, updateState: boolean = true) {
+        let value = adjustedInput ?? this.state.input;
+
+        value = this._formatValue(value, this.props);
 
         if (updateState) {
             this._localChange = true;
             this.setState({ input: value });
         }
 
-        if (this.props.validator && this.props.validator(value) == false && this.props.onValidateChangeFailed) {
-            this.props.onValidateChangeFailed(value);
-            return;
-        }
-
-        if (this.props.propertyName && !this.props.delayInput) {
-            this.props.target[this.props.propertyName] = value;
-        }
-
-        if (this.props.throttlePropertyChangedNotification) {
-            if (throttleTimerId >= 0) {
-                window.clearTimeout(throttleTimerId);
-            }
-            throttleTimerId = window.setTimeout(() => {
-                this.raiseOnPropertyChanged(value, store);
-            }, this.props.throttlePropertyChangedNotificationDelay ?? 200);
-        } else {
-            this.raiseOnPropertyChanged(value, store);
-        }
+        this._updateTargetValue(value, this.props);
     }
 
     incrementValue(amount: number) {
