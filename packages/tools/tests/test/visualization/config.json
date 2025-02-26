@@ -1007,6 +1007,18 @@
             "referenceImage": "glTFSerializerCameraRightHand.png"
         },
         {
+            "title": "GLTF Serializer camera rotation animation, left-handed",
+            "playgroundId": "#3A00GJ#20",
+            "replace": "//options//, roundtrip = true; useRightHandedSystem = false;",
+            "referenceImage": "glTFSerializerCameraRotationAnimationLH.png"
+        },
+        {
+            "title": "GLTF Serializer camera rotation animation, right-handed",
+            "playgroundId": "#3A00GJ#20",
+            "replace": "//options//, roundtrip = true; useRightHandedSystem = true;",
+            "referenceImage": "glTFSerializerCameraRotationAnimationRH.png"
+        },
+        {
             "title": "GLTF Buggy with Draco Mesh Compression",
             "playgroundId": "#JNW207#1",
             "referenceImage": "gltfBuggyDraco.png"
