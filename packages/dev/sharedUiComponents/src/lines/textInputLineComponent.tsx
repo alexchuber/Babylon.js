@@ -4,6 +4,7 @@ import type { PropertyChangedEvent } from "../propertyChangedEvent";
 import type { LockObject } from "../tabs/propertyGrids/lockObject";
 import { conflictingValuesPlaceholder } from "./targetsProxy";
 import { InputArrowsComponent } from "./inputArrowsComponent";
+import { Logger } from "core/Misc";
 
 export interface ITextInputLineComponentProps {
     label?: string;
@@ -44,7 +45,7 @@ interface ITextInputLineComponentState {
 let throttleTimerId = -1;
 
 export class TextInputLineComponent extends React.Component<ITextInputLineComponentProps, ITextInputLineComponentState> {
-    private _localChange = false;
+    private _localChange: boolean;
 
     constructor(props: ITextInputLineComponentProps) {
         super(props);
@@ -56,6 +57,8 @@ export class TextInputLineComponent extends React.Component<ITextInputLineCompon
             dragging: false,
             inputValid: true,
         };
+
+        this._localChange = true; // to avoid update on mount
     }
 
     override componentWillUnmount() {
@@ -67,40 +70,27 @@ export class TextInputLineComponent extends React.Component<ITextInputLineCompon
         }
     }
 
-    override componentDidUpdate(prevProps: Readonly<ITextInputLineComponentProps>, prevState: Readonly<ITextInputLineComponentState>, snapshot?: any): void {
+    override shouldComponentUpdate(nextProps: ITextInputLineComponentProps, nextState: ITextInputLineComponentState): boolean {
         if (this._localChange) {
             this._localChange = false;
-            return;
+            return true;
         }
 
-        // Save previous input into target if the update was not result of a local change
-        const value = this._formatValue(prevState.input, prevProps);
-        this._updateTargetValue(value, prevProps);
+        if (this.props.target !== nextProps.target || this.props.value !== nextProps.value) {
+            // Save previous input into target if the update was not result of a local change
+            const value = this._formatValue(this.state.input, this.props);
+            this._updateTargetValue(value, this.props);
+
+            // Update input if target or value changed
+            const newValue = nextProps.value !== undefined ? nextProps.value : nextProps.target[nextProps.propertyName!];
+            nextState.input = newValue || "";
+
+            Logger.Warn("eeee");
+            return true;
+        }
+
+        return false;
     }
-
-    // override shouldComponentUpdate(nextProps: ITextInputLineComponentProps, nextState: ITextInputLineComponentState) {
-    //     if (this._localChange) {
-    //         this._localChange = false;
-    //         return true;
-    //     }
-
-    //     if (nextProps.value === undefined && this.props.target !== nextProps.target) {
-    //         this.updateValue(this.state.input, false);
-    //         nextState.input = nextProps.target[nextProps.propertyName!] || "";
-    //         return true;
-    //     }
-    //     if (nextProps.value !== undefined && this.props.value !== nextProps.value) {
-    //         this.updateValue(this.state.input, false);
-    //         nextState.input = nextProps.value || "";
-    //         return true;
-    //     }
-
-    //     if (nextState.dragging != this.state.dragging || nextProps.unit !== this.props.unit) {
-    //         return true;
-    //     }
-
-    //     return false;
-    // }
 
     raiseOnPropertyChanged(newValue: string, previousValue: string, props: ITextInputLineComponentProps) {
         if (props.onChange) {
