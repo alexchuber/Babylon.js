@@ -1,3 +1,4 @@
+/* eslint-disable no-console */
 import * as React from "react";
 import type { Observable } from "core/Misc/observable";
 import type { PropertyChangedEvent } from "../propertyChangedEvent";
@@ -43,6 +44,91 @@ interface ITextInputLineComponentState {
 
 let throttleTimerId = -1;
 
+function getCurrentNumericValue(value: string, props: ITextInputLineComponentProps) {
+    const numeric = parseFloat(value);
+    if (!isNaN(numeric)) {
+        return numeric;
+    }
+    if (props.placeholder !== undefined) {
+        const placeholderNumeric = parseFloat(props.placeholder);
+        if (!isNaN(placeholderNumeric)) {
+            return placeholderNumeric;
+        }
+    }
+    return 0;
+}
+
+function raiseOnPropertyChanged(newValue: string, previousValue: string, props: ITextInputLineComponentProps) {
+    if (props.onChange) {
+        console.log("Raising onChange event", newValue, props);
+        props.onChange(newValue);
+        return;
+    }
+
+    if (!props.onPropertyChangedObservable) {
+        return;
+    }
+
+    props.onPropertyChangedObservable.notifyObservers({
+        object: props.target,
+        property: props.propertyName!,
+        value: newValue,
+        initialValue: previousValue,
+    });
+}
+
+function updateValue(value: string, props: ITextInputLineComponentProps) {
+    console.log("updateValue to", value, props);
+    if (props.numbersOnly) {
+        if (!value) {
+            value = "0";
+        }
+
+        //Removing starting zero if there is a number of a minus after it.
+        if (value.search(/0+[0-9-]/g) === 0) {
+            value = value.substring(1);
+        }
+    }
+
+    if (props.numeric) {
+        let numericValue = getCurrentNumericValue(value, props);
+        if (props.roundValues) {
+            numericValue = Math.round(numericValue);
+        }
+        if (props.min !== undefined) {
+            numericValue = Math.max(props.min, numericValue);
+        }
+        if (props.max !== undefined) {
+            numericValue = Math.min(props.max, numericValue);
+        }
+        value = numericValue.toString();
+    }
+
+    const store = props.value !== undefined ? props.value : props.target[props.propertyName!];
+
+    if (props.validator && props.validator(value) == false) {
+        if (props.onValidateChangeFailed) {
+            props.onValidateChangeFailed(value);
+        }
+        return;
+    }
+
+    if (props.propertyName && !props.delayInput) {
+        props.target[props.propertyName] = value;
+    }
+
+    if (props.throttlePropertyChangedNotification) {
+        if (throttleTimerId >= 0) {
+            window.clearTimeout(throttleTimerId);
+        }
+        throttleTimerId = window.setTimeout(() => {
+            raiseOnPropertyChanged(value, store, props);
+        }, props.throttlePropertyChangedNotificationDelay ?? 200);
+    } else {
+        raiseOnPropertyChanged(value, store, props);
+    }
+}
+
 export class TextInputLineComponent extends React.Component<ITextInputLineComponentProps, ITextInputLineComponentState> {
     private _localChange = false;
 
@@ -59,7 +145,8 @@ export class TextInputLineComponent extends React.Component<ITextInputLineCompon
     }
 
     override componentWillUnmount() {
-        this.updateValue(undefined, false);
+        console.log("onComponentWillUnmount", this.props, this.state);
+        updateValue(this.state.input, this.props);
         if (this.props.lockObject) {
             this.props.lockObject.lock = false;
         }
@@ -71,46 +158,66 @@ export class TextInputLineComponent extends React.Component<ITextInputLineCompon
             return true;
         }
 
-        if (nextState.dragging != this.state.dragging || nextProps.unit !== this.props.unit) {
-            return true;
+        if (nextProps.value !== undefined && nextProps.value === this.props.value) {
+            return false;
         }
-
-        return false;
-    }
-
-    raiseOnPropertyChanged(newValue: string, previousValue: string) {
-        if (this.props.onChange) {
-            this.props.onChange(newValue);
-            return;
-        }
-
-        if (!this.props.onPropertyChangedObservable) {
-            return;
-        }
-
-        this.props.onPropertyChangedObservable.notifyObservers({
-            object: this.props.target,
-            property: this.props.propertyName!,
-            value: newValue,
-            initialValue: previousValue,
-        });
-    }
-
-    getCurrentNumericValue(value: string) {
-        const numeric = parseFloat(value);
-        if (!isNaN(numeric)) {
-            return numeric;
-        }
-        if (this.props.placeholder !== undefined) {
-            const placeholderNumeric = parseFloat(this.props.placeholder);
-            if (!isNaN(placeholderNumeric)) {
-                return placeholderNumeric;
+        if (nextProps.target === this.props.target && nextProps.propertyName === this.props.propertyName) {
+            if (nextProps.propertyName !== undefined && nextProps.target[nextProps.propertyName] === this.props.target[this.props.propertyName!]) {
+                return false;
             }
         }
-        return 0;
+
+        // const newValue = nextProps.value !== undefined ? nextProps.value : nextProps.target[nextProps.propertyName!];
+        // if (newValue !== nextState.value) {
+        //     nextState.value = newValue || "";
+        //     return true;
+        // }
+
+        // From here on, this means the component has changed from the outside (e.g. prop changed)
+
+        // Store previous value
+        console.log(`onComponentDidUpdate (not local) - storing previous value ${this.state.input}`);
+        updateValue(this.state.input, this.props);
+
+        // Construct state for new target / value
+        const emptyValue = this.props.numeric ? "0" : "";
+
+        this._localChange = true;
+        nextState.input = (nextProps.value !== undefined ? nextProps.value : nextProps.target[nextProps.propertyName!]) || emptyValue;
+
+        return true;
     }
 
-    updateInput(input: string) {
+    // override componentDidUpdate(prevProps: ITextInputLineComponentProps, prevState: ITextInputLineComponentState) {
+    //     if (this._localChange) {
+    //         this._localChange = false;
+    //         return;
+    //     }
+    //     if (prevProps.target === this.props.target && prevProps.propertyName === this.props.propertyName) {
+    //         return;
+    //     }
+    //     if (prevProps.value !== undefined && prevProps.value === this.props.value) {
+    //         return;
+    //     }
+
+    //     // From here on, this means the value has changed from the outside (e.g. prop changed)
+
+    //     // Store previous value
+    //     console.log(`onComponentDidUpdate (not local) - storing previous value ${prevState.input}`);
+    //     updateValue(prevState.input, prevProps);
+
+    //     // Construct state for new target / value
+    //     const emptyValue = this.props.numeric ? "0" : "";
+
+    //     this._localChange = true;
+    //     this.setState({
+    //         input: (this.props.value !== undefined ? this.props.value : this.props.target[this.props.propertyName!]) || emptyValue,
+    //         dragging: false,
+    //         inputValid: true,
+    //     });
+    // }
+
+    setInput(input: string) {
         if (this.props.disabled) {
             return;
         }
@@ -127,78 +234,42 @@ export class TextInputLineComponent extends React.Component<ITextInputLineCompon
         });
     }
 
-    updateValue(adjustedInput?: string, updateState: boolean = true) {
-        let value = adjustedInput ?? this.state.input;
+    // Event handlers
 
-        if (this.props.numbersOnly) {
-            if (!value) {
-                value = "0";
-            }
+    setDragging = (dragging: boolean) => {
+        this._localChange = true;
+        this.setState({ dragging });
+    };
 
-            //Removing starting zero if there is a number of a minus after it.
-            if (value.search(/0+[0-9-]/g) === 0) {
-                value = value.substring(1);
-            }
-        }
-
-        if (this.props.numeric) {
-            let numericValue = this.getCurrentNumericValue(value);
-            if (this.props.roundValues) {
-                numericValue = Math.round(numericValue);
-            }
-            if (this.props.min !== undefined) {
-                numericValue = Math.max(this.props.min, numericValue);
-            }
-            if (this.props.max !== undefined) {
-                numericValue = Math.min(this.props.max, numericValue);
-            }
-            value = numericValue.toString();
-        }
-
-        const store = this.props.value !== undefined ? this.props.value : this.props.target[this.props.propertyName!];
-
-        if (updateState) {
-            this._localChange = true;
-            this.setState({ input: value });
-        }
-
-        if (this.props.validator && this.props.validator(value) == false && this.props.onValidateChangeFailed) {
-            this.props.onValidateChangeFailed(value);
-            return;
-        }
-
-        if (this.props.propertyName && !this.props.delayInput) {
-            this.props.target[this.props.propertyName] = value;
-        }
-
-        if (this.props.throttlePropertyChangedNotification) {
-            if (throttleTimerId >= 0) {
-                window.clearTimeout(throttleTimerId);
-            }
-            throttleTimerId = window.setTimeout(() => {
-                this.raiseOnPropertyChanged(value, store);
-            }, this.props.throttlePropertyChangedNotificationDelay ?? 200);
-        } else {
-            this.raiseOnPropertyChanged(value, store);
-        }
-    }
-
-    incrementValue(amount: number) {
+    incrementValue = (amount: number) => {
         if (this.props.step) {
             amount *= this.props.step;
         }
         if (this.props.arrowsIncrement) {
             this.props.arrowsIncrement(amount);
-            return;
         }
-        const currentValue = this.getCurrentNumericValue(this.state.input);
-        this.updateValue((currentValue + amount).toFixed(2));
-    }
+        const currentValue = getCurrentNumericValue(this.state.input, this.props);
+        const newValue = (currentValue + amount).toFixed(2);
 
-    onKeyDown(event: React.KeyboardEvent) {
+        console.log(`incrementValue to ${newValue}`);
+
+        this.setInput(newValue);
+
+        if (!this.props.arrowsIncrement) {
+            updateValue(newValue, this.props);
+        }
+    };
+
+    onChange = (event: React.ChangeEvent<HTMLTextAreaElement | HTMLInputElement>) => {
+        console.log("onChange", event.target.value);
+        this.setInput(event.target.value);
+    };
+
+    onKeyDown = (event: React.KeyboardEvent) => {
         if (!this.props.disabled) {
+            // Submit on enter
             if (event.key === "Enter") {
-                this.updateValue();
+                updateValue(this.state.input, this.props);
             }
             if (this.props.arrows) {
                 if (event.key === "ArrowUp") {
@@ -211,7 +282,22 @@ export class TextInputLineComponent extends React.Component<ITextInputLineCompon
                 }
             }
         }
-    }
+    };
+
+    onBlur = () => {
+        console.log("onBlur", this.state.input);
+        updateValue(this.state.input, this.props);
+        if (this.props.lockObject) {
+            this.props.lockObject.lock = false;
+        }
+    };
+
+    onFocus = () => {
+        console.log("onFocus");
+        if (this.props.lockObject) {
+            this.props.lockObject.lock = true;
+        }
+    };
 
     override render() {
         const value = this.state.input === conflictingValuesPlaceholder ? "" : this.state.input;
@@ -233,18 +319,9 @@ export class TextInputLineComponent extends React.Component<ITextInputLineCompon
                             className={this.props.disabled ? "disabled" : ""}
                             style={style}
                             value={this.state.input}
-                            onFocus={() => {
-                                if (this.props.lockObject) {
-                                    this.props.lockObject.lock = true;
-                                }
-                            }}
-                            onChange={(evt) => this.updateInput(evt.target.value)}
-                            onBlur={(evt) => {
-                                this.updateValue();
-                                if (this.props.lockObject) {
-                                    this.props.lockObject.lock = false;
-                                }
-                            }}
+                            onBlur={this.onBlur}
+                            onFocus={this.onFocus}
+                            onChange={this.onChange}
                             disabled={this.props.disabled}
                         />
                     </>
@@ -257,27 +334,16 @@ export class TextInputLineComponent extends React.Component<ITextInputLineCompon
                             className={this.props.disabled ? "disabled" : ""}
                             style={style}
                             value={value}
-                            onBlur={(evt) => {
-                                if (this.props.lockObject) {
-                                    this.props.lockObject.lock = false;
-                                }
-                                this.updateValue();
-                            }}
-                            onFocus={() => {
-                                if (this.props.lockObject) {
-                                    this.props.lockObject.lock = true;
-                                }
-                            }}
-                            onChange={(evt) => this.updateInput(evt.target.value)}
-                            onKeyDown={(evt) => this.onKeyDown(evt)}
+                            onBlur={this.onBlur}
+                            onFocus={this.onFocus}
+                            onChange={this.onChange}
+                            onKeyDown={this.onKeyDown}
                             placeholder={placeholder}
                             type={this.props.numeric ? "number" : "text"}
                             step={step}
                             disabled={this.props.disabled}
                         />
-                        {this.props.arrows && (
-                            <InputArrowsComponent incrementValue={(amount) => this.incrementValue(amount)} setDragging={(dragging) => this.setState({ dragging })} />
-                        )}
+                        {this.props.arrows && <InputArrowsComponent incrementValue={this.incrementValue} setDragging={this.setDragging} />}
                     </div>
                 )}
                 {this.props.unit}

@@ -766,7 +766,14 @@ export class CommonControlPropertyGridComponent extends React.Component<ICommonC
                         </div>
                         <div className="ge-divider">
                             <IconComponent icon={fontWeightIcon} label={"Font Weight"} />
-                            <TextInputLineComponent lockObject={this.props.lockObject} label="" target={proxy} propertyName="fontWeight" />
+                            <TextInputLineComponent
+                                lockObject={this.props.lockObject}
+                                label=""
+                                // target={proxy}
+                                // propertyName="fontWeight"
+                                value={proxy.fontWeight}
+                                // onPropertyChangedObservable={this.props.onPropertyChangedObservable}
+                            />
                         </div>
                         <div className="ge-divider">
                             <IconComponent icon={fontStyleIcon} label={"Font Style"} />

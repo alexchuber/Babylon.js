@@ -54,7 +54,6 @@ export class GeneralPropertyTabComponent extends React.Component<IPropertyCompon
                             target={block}
                             lockObject={this.props.stateManager.lockObject}
                             onChange={() => this.props.stateManager.onUpdateRequiredObservable.notifyObservers(block)}
-                            throttlePropertyChangedNotification={true}
                             validator={(newName) => block.validateBlockName(newName)}
                             onValidateChangeFailed={(invalidInput) =>
                                 this.props.stateManager.onErrorMessageDialogRequiredObservable.notifyObservers(`"${invalidInput}" is a reserved name, please choose another`)
@@ -83,7 +82,6 @@ export class GeneralPropertyTabComponent extends React.Component<IPropertyCompon
                         lockObject={this.props.stateManager.lockObject}
                         target={block}
                         onChange={() => this.props.stateManager.onUpdateRequiredObservable.notifyObservers(block)}
-                        throttlePropertyChangedNotification={true}
                     />
                 </LineContainerComponent>
             </>
