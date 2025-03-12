@@ -49,12 +49,14 @@ import {
     GetPrimitiveMode,
     IsNoopNode,
     IsTriangleFillMode,
-    IsParentAddedByImporter,
+    // IsParentAddedByImporter,
     ConvertToRightHandedNode,
-    RotateNode180Y,
     FloatsNeed16BitInteger,
     IsStandardVertexAttribute,
     IndicesArrayToTypedArray,
+    ComposeQuaternions,
+    rotate180Y,
+    IsParentAddedByImporter,
 } from "./glTFUtilities";
 import { BufferManager } from "./bufferManager";
 import { Camera } from "core/Cameras/camera";
@@ -1263,10 +1265,17 @@ export class GLTFExporter {
                         return null; // Skip exporting this node
                     }
                 }
+
                 if (state.convertToRightHanded) {
                     ConvertToRightHandedNode(node);
-                    RotateNode180Y(node);
+
+                    // Negate look direction for glTF
+                    node.rotation ??= [0, 0, 0, 1];
+                    let rotation = Quaternion.FromArray(node.rotation);
+                    rotation = ComposeQuaternions(rotate180Y, rotation);
+                    rotation.toArray(node.rotation);
                 }
+
                 this._nodesCameraMap.get(gltfCamera)?.push(node);
             }
         }

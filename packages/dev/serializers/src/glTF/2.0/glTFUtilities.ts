@@ -17,7 +17,7 @@ import type { Node } from "core/node";
 const convertHandednessMatrix = Matrix.Compose(new Vector3(-1, 1, 1), Quaternion.Identity(), Vector3.Zero());
 
 // 180 degrees rotation in Y.
-const rotation180Y = new Quaternion(0, 1, 0, 0);
+export const rotate180Y = new Quaternion(0, 1, 0, 0);
 
 // Default values for comparison.
 const epsilon = 1e-6;
@@ -206,17 +206,18 @@ export function ConvertToRightHandedNode(value: INode) {
 /**
  * Rotation by 180 as glTF has a different convention than Babylon.
  * @param rotation Target camera rotation.
+ * @param convertToRightHanded True if the original rotation was defined in right-handed system.
  * @returns Ref to camera rotation.
  */
-export function ConvertCameraRotationToGLTF(rotation: Quaternion): Quaternion {
-    rotation180Y.multiplyToRef(rotation, rotation);
+export function NegateLookDirection(rotation: Quaternion, convertToRightHanded: boolean): Quaternion {
+    // If converted LH -> RH, apply 180 rotation after conversion of original.
+    // If already in RH, apply 180 rotation before original.
+    if (convertToRightHanded) {
+        rotate180Y.multiplyToRef(rotation, rotation);
+    } else {
+        rotation.multiplyToRef(rotate180Y, rotation);
+    }
     return rotation;
-}
-
-export function RotateNode180Y(node: INode) {
-    const rotation = Quaternion.FromArrayToRef(node.rotation || [0, 0, 0, 1], 0, TmpVectors.Quaternion[1]);
-    rotation180Y.multiplyToRef(rotation, rotation);
-    node.rotation = rotation.asArray();
 }
 
 /**
@@ -358,4 +359,19 @@ export function OmitDefaultValues<T extends Object>(object: T, defaultValues: Pa
 
 function AreArraysEqual(array1: unknown[], array2: unknown[]): boolean {
     return array1.length === array2.length && array1.every((val, i) => val === array2[i]);
+}
+
+/**
+ * Computes q0 x q1.
+ * @param q0 the second rotation to be applied
+ * @param q1 the first rotation to be applied
+ * @returns q0 x q1
+ */
+export function ComposeQuaternions(q0: Quaternion, q1: Quaternion): Quaternion {
+    /**
+     *  It is non commutative and for rotation quaternions q0 and q1
+        q0.multiply(q1) the first rotation to be applied is q1 and 
+        then followed by q0
+     */
+    return q0.multiply(q1);
 }
