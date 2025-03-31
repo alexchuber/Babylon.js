@@ -13,18 +13,38 @@ import type { TransformNode } from "../Meshes/transformNode";
 import type { Camera } from "../Cameras/camera";
 import { Logger } from "core/Misc/logger";
 
+// function _incrementalJSONStringify(obj: unknown): string {
+//     if (typeof obj === "object" && obj !== null) {
+//         return Object.entries(obj)
+//             .map((el) => incrementalJSONStringify(el))
+//             .join(",");
+//     } else if (Array.isArray(obj)) {
+//         return "[" + obj.map((el) => JSON.stringify(el)).join(",") + "]";
+//     } else {
+//         return JSON.stringify(obj);
+//     }
+// }
+
+// function incrementalJSONStringify(obj: any) {
+//     return "{" + _incrementalJSONStringify(obj) + "}";
+// }
+
+interface ISceneSerializerOptions {
+    geometryAsBase64?: boolean;
+}
+
 let serializedGeometries: Geometry[] = [];
-const SerializeGeometry = (geometry: Geometry, serializationGeometries: any): any => {
+const SerializeGeometry = (geometry: Geometry, serializationGeometries: any, toBase64: boolean = false): any => {
     if (geometry.doNotSerialize) {
         return;
     }
 
-    serializationGeometries.vertexData.push(geometry.serializeVerticeData());
+    serializationGeometries.vertexData.push(geometry.serializeVerticeData(toBase64));
 
     (<any>serializedGeometries)[geometry.id] = true;
 };
 
-const SerializeMesh = (mesh: Mesh, serializationScene: any): any => {
+const SerializeMesh = (mesh: Mesh, serializationScene: any, toBase64: boolean = false): any => {
     const serializationObject: any = {};
 
     // Geometry
@@ -44,7 +64,7 @@ const SerializeMesh = (mesh: Mesh, serializationScene: any): any => {
     return serializationObject;
 };
 
-const FinalizeSingleNode = (node: Node, serializationObject: any) => {
+const FinalizeSingleNode = (node: Node, serializationObject: any, toBase64: boolean = true) => {
     if ((node as Mesh)._isMesh) {
         const mesh = node as Mesh;
         //only works if the mesh is already loaded
@@ -91,7 +111,7 @@ const FinalizeSingleNode = (node: Node, serializationObject: any) => {
                     serializationObject.geometries.vertexData = [];
                 }
 
-                SerializeGeometry(geometry, serializationObject.geometries);
+                SerializeGeometry(geometry, serializationObject.geometries, toBase64);
             }
             // Skeletons
             if (mesh.skeleton && !mesh.skeleton.doNotSerialize) {
@@ -131,13 +151,20 @@ export class SceneSerializer {
      * Note that if the current engine does not support synchronous texture reading (like WebGPU), you should use SerializeAsync instead
      * as else you may not retrieve the proper base64 encoded texture data (when using the Texture.ForceSerializeBuffers flag)
      * @param scene defines the scene to serialize
+     * @param options defines the serialization options
      * @returns a JSON compatible object
      */
-    public static Serialize(scene: Scene): any {
-        return SceneSerializer._Serialize(scene);
+    public static Serialize(scene: Scene, options?: ISceneSerializerOptions): any {
+        return SceneSerializer._Serialize(scene, undefined, options);
     }
 
-    private static _Serialize(scene: Scene, checkSyncReadSupported = true): any {
+    // // Incrementally stringify the serialization object to avoid memory issues with large scenes
+    // public static SerializeToString(scene: Scene): string {
+    //     const serializationObject = SceneSerializer._Serialize(scene);
+    //     return incrementalJSONStringify(serializationObject);
+    // }
+
+    private static _Serialize(scene: Scene, checkSyncReadSupported: boolean = true, options?: ISceneSerializerOptions): any {
         const serializationObject: any = {};
 
         if (checkSyncReadSupported && !scene.getEngine()._features.supportSyncTextureRead && Texture.ForceSerializeBuffers) {
@@ -316,7 +343,7 @@ export class SceneSerializer {
             const geometry = geometries[index];
 
             if (geometry.isReady()) {
-                SerializeGeometry(geometry, serializationObject.geometries);
+                SerializeGeometry(geometry, serializationObject.geometries, options?.geometryAsBase64);
             }
         }
 

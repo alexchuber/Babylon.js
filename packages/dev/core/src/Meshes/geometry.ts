@@ -25,6 +25,7 @@ import type { AbstractEngine } from "../Engines/abstractEngine";
 import type { ThinEngine } from "../Engines/thinEngine";
 import { CopyFloatData } from "../Buffers/bufferUtils";
 import type { IAssetContainer } from "core/IAssetContainer";
+import { DecodeBase64ToBinary, EncodeArrayBufferToBase64 } from "core/Misc/stringTools";
 
 /**
  * Class used to store geometry data (vertex buffers + index buffer)
@@ -765,10 +766,7 @@ export class Geometry implements IGetSetVerticesData {
 
     private _updateExtend(data: Nullable<FloatArray> = null) {
         if (this.useBoundingInfoFromGeometry && this._boundingInfo) {
-            this._extend = {
-                minimum: this._boundingInfo.minimum.clone(),
-                maximum: this._boundingInfo.maximum.clone(),
-            };
+            this._extend = { minimum: this._boundingInfo.minimum.clone(), maximum: this._boundingInfo.maximum.clone() };
         } else {
             if (!data) {
                 data = this.getVerticesData(VertexBuffer.PositionKind)!;
@@ -1127,93 +1125,40 @@ export class Geometry implements IGetSetVerticesData {
 
     /**
      * Serialize all vertices data into a JSON object
+     * @param toBase64 defines if the data must be encoded in base64 (default: false)
      * @returns a JSON representation of the current geometry data
      */
-    public serializeVerticeData(): any {
+    public serializeVerticeData(toBase64: boolean = false): any {
         const serializationObject = this.serialize();
 
-        if (this.isVerticesDataPresent(VertexBuffer.PositionKind)) {
-            serializationObject.positions = this._toNumberArray(this.getVerticesData(VertexBuffer.PositionKind));
-            if (this.isVertexBufferUpdatable(VertexBuffer.PositionKind)) {
-                serializationObject.positions._updatable = true;
-            }
-        }
+        const serializableAttributes = [
+            VertexBuffer.PositionKind,
+            VertexBuffer.NormalKind,
+            VertexBuffer.TangentKind,
+            VertexBuffer.UVKind,
+            VertexBuffer.UV2Kind,
+            VertexBuffer.UV3Kind,
+            VertexBuffer.UV4Kind,
+            VertexBuffer.UV5Kind,
+            VertexBuffer.UV6Kind,
+            VertexBuffer.ColorKind,
+            VertexBuffer.MatricesIndicesKind,
+            VertexBuffer.MatricesWeightsKind,
+            VertexBuffer.MatricesIndicesExtraKind,
+            VertexBuffer.MatricesWeightsExtraKind,
+        ];
 
-        if (this.isVerticesDataPresent(VertexBuffer.NormalKind)) {
-            serializationObject.normals = this._toNumberArray(this.getVerticesData(VertexBuffer.NormalKind));
-            if (this.isVertexBufferUpdatable(VertexBuffer.NormalKind)) {
-                serializationObject.normals._updatable = true;
-            }
-        }
-
-        if (this.isVerticesDataPresent(VertexBuffer.TangentKind)) {
-            serializationObject.tangents = this._toNumberArray(this.getVerticesData(VertexBuffer.TangentKind));
-            if (this.isVertexBufferUpdatable(VertexBuffer.TangentKind)) {
-                serializationObject.tangents._updatable = true;
-            }
-        }
-
-        if (this.isVerticesDataPresent(VertexBuffer.UVKind)) {
-            serializationObject.uvs = this._toNumberArray(this.getVerticesData(VertexBuffer.UVKind));
-            if (this.isVertexBufferUpdatable(VertexBuffer.UVKind)) {
-                serializationObject.uvs._updatable = true;
-            }
-        }
-
-        if (this.isVerticesDataPresent(VertexBuffer.UV2Kind)) {
-            serializationObject.uvs2 = this._toNumberArray(this.getVerticesData(VertexBuffer.UV2Kind));
-            if (this.isVertexBufferUpdatable(VertexBuffer.UV2Kind)) {
-                serializationObject.uvs2._updatable = true;
-            }
-        }
-
-        if (this.isVerticesDataPresent(VertexBuffer.UV3Kind)) {
-            serializationObject.uvs3 = this._toNumberArray(this.getVerticesData(VertexBuffer.UV3Kind));
-            if (this.isVertexBufferUpdatable(VertexBuffer.UV3Kind)) {
-                serializationObject.uvs3._updatable = true;
-            }
-        }
-
-        if (this.isVerticesDataPresent(VertexBuffer.UV4Kind)) {
-            serializationObject.uvs4 = this._toNumberArray(this.getVerticesData(VertexBuffer.UV4Kind));
-            if (this.isVertexBufferUpdatable(VertexBuffer.UV4Kind)) {
-                serializationObject.uvs4._updatable = true;
-            }
-        }
-
-        if (this.isVerticesDataPresent(VertexBuffer.UV5Kind)) {
-            serializationObject.uvs5 = this._toNumberArray(this.getVerticesData(VertexBuffer.UV5Kind));
-            if (this.isVertexBufferUpdatable(VertexBuffer.UV5Kind)) {
-                serializationObject.uvs5._updatable = true;
-            }
-        }
-
-        if (this.isVerticesDataPresent(VertexBuffer.UV6Kind)) {
-            serializationObject.uvs6 = this._toNumberArray(this.getVerticesData(VertexBuffer.UV6Kind));
-            if (this.isVertexBufferUpdatable(VertexBuffer.UV6Kind)) {
-                serializationObject.uvs6._updatable = true;
-            }
-        }
-
-        if (this.isVerticesDataPresent(VertexBuffer.ColorKind)) {
-            serializationObject.colors = this._toNumberArray(this.getVerticesData(VertexBuffer.ColorKind));
-            if (this.isVertexBufferUpdatable(VertexBuffer.ColorKind)) {
-                serializationObject.colors._updatable = true;
-            }
-        }
-
-        if (this.isVerticesDataPresent(VertexBuffer.MatricesIndicesKind)) {
-            serializationObject.matricesIndices = this._toNumberArray(this.getVerticesData(VertexBuffer.MatricesIndicesKind));
-            serializationObject.matricesIndices._isExpanded = true;
-            if (this.isVertexBufferUpdatable(VertexBuffer.MatricesIndicesKind)) {
-                serializationObject.matricesIndices._updatable = true;
-            }
-        }
-
-        if (this.isVerticesDataPresent(VertexBuffer.MatricesWeightsKind)) {
-            serializationObject.matricesWeights = this._toNumberArray(this.getVerticesData(VertexBuffer.MatricesWeightsKind));
-            if (this.isVertexBufferUpdatable(VertexBuffer.MatricesWeightsKind)) {
-                serializationObject.matricesWeights._updatable = true;
+        for (const kind of serializableAttributes) {
+            if (this.isVerticesDataPresent(kind)) {
+                if (toBase64) {
+                    const floatData = this.getVertexBuffer(kind)!.getFloatData(this.getTotalVertices())!;
+                    serializationObject[kind] = EncodeArrayBufferToBase64(Array.isArray(floatData) ? new Float32Array(floatData) : floatData);
+                } else {
+                    serializationObject[kind] = this._toNumberArray(this.getVerticesData(kind)!);
+                }
+                if (this.isVertexBufferUpdatable(kind)) {
+                    serializationObject[kind]._updatable = true;
+                }
             }
         }
 
@@ -1409,40 +1354,33 @@ export class Geometry implements IGetSetVerticesData {
                 }
             }
         } else if (parsedGeometry.positions && parsedGeometry.normals && parsedGeometry.indices) {
-            mesh.setVerticesData(VertexBuffer.PositionKind, parsedGeometry.positions, parsedGeometry.positions._updatable);
+            const serializableAttributes = [
+                VertexBuffer.PositionKind,
+                VertexBuffer.NormalKind,
+                VertexBuffer.TangentKind,
+                VertexBuffer.UVKind,
+                VertexBuffer.UV2Kind,
+                VertexBuffer.UV3Kind,
+                VertexBuffer.UV4Kind,
+                VertexBuffer.UV5Kind,
+                VertexBuffer.UV6Kind,
+                VertexBuffer.ColorKind,
+            ];
 
-            mesh.setVerticesData(VertexBuffer.NormalKind, parsedGeometry.normals, parsedGeometry.normals._updatable);
+            for (const kind of serializableAttributes) {
+                if (parsedGeometry[kind]) {
+                    const data = Array.isArray(parsedGeometry[kind]) ? (parsedGeometry[kind] as number[]) : new Float32Array(DecodeBase64ToBinary(parsedGeometry[kind]));
 
-            if (parsedGeometry.tangents) {
-                mesh.setVerticesData(VertexBuffer.TangentKind, parsedGeometry.tangents, parsedGeometry.tangents._updatable);
-            }
-
-            if (parsedGeometry.uvs) {
-                mesh.setVerticesData(VertexBuffer.UVKind, parsedGeometry.uvs, parsedGeometry.uvs._updatable);
-            }
-
-            if (parsedGeometry.uvs2) {
-                mesh.setVerticesData(VertexBuffer.UV2Kind, parsedGeometry.uvs2, parsedGeometry.uvs2._updatable);
-            }
-
-            if (parsedGeometry.uvs3) {
-                mesh.setVerticesData(VertexBuffer.UV3Kind, parsedGeometry.uvs3, parsedGeometry.uvs3._updatable);
-            }
-
-            if (parsedGeometry.uvs4) {
-                mesh.setVerticesData(VertexBuffer.UV4Kind, parsedGeometry.uvs4, parsedGeometry.uvs4._updatable);
-            }
-
-            if (parsedGeometry.uvs5) {
-                mesh.setVerticesData(VertexBuffer.UV5Kind, parsedGeometry.uvs5, parsedGeometry.uvs5._updatable);
-            }
-
-            if (parsedGeometry.uvs6) {
-                mesh.setVerticesData(VertexBuffer.UV6Kind, parsedGeometry.uvs6, parsedGeometry.uvs6._updatable);
-            }
-
-            if (parsedGeometry.colors) {
-                mesh.setVerticesData(VertexBuffer.ColorKind, Color4.CheckColors4(parsedGeometry.colors, parsedGeometry.positions.length / 3), parsedGeometry.colors._updatable);
+                    if (kind === VertexBuffer.ColorKind) {
+                        mesh.setVerticesData(
+                            VertexBuffer.ColorKind,
+                            Color4.CheckColors4(parsedGeometry.colors, parsedGeometry.positions.length / 3),
+                            parsedGeometry[kind]._updatable
+                        );
+                    } else {
+                        mesh.setVerticesData(kind, data, parsedGeometry[kind]._updatable);
+                    }
+                }
             }
 
             if (parsedGeometry.matricesIndices) {
