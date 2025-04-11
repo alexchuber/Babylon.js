@@ -47,7 +47,7 @@ export class KHR_texture_transform implements IGLTFExporterExtensionV2 {
         return this._wasUsed;
     }
 
-    public postExportTexture?(context: string, textureInfo: ITextureInfo, babylonTexture: Texture): void {
+    public postExportTextureInfo?(context: string, textureInfo: ITextureInfo, babylonTexture: Texture): void {
         const scene = babylonTexture.getScene();
         if (!scene) {
             Tools.Warn(`${context}: "scene" is not defined for Babylon texture ${babylonTexture.name}!`);

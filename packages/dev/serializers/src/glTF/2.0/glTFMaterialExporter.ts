@@ -905,7 +905,7 @@ export class GLTFMaterialExporter {
 
             textureInfo = this._exportTextureInfo(await imageIndexPromise, samplerIndex, babylonTexture.coordinatesIndex);
             this._textureMap.set(babylonTexture, textureInfo);
-            this._exporter._extensionsPostExportTextures("exporter", textureInfo, babylonTexture);
+            this._exporter._extensionsPostExportTextureInfo("exporter", textureInfo, babylonTexture);
         }
 
         return textureInfo;

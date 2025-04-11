@@ -322,12 +322,12 @@ export class GLTFExporter {
         return output;
     }
 
-    public _extensionsPostExportTextures(context: string, textureInfo: ITextureInfo, babylonTexture: BaseTexture): void {
+    public _extensionsPostExportTextureInfo(context: string, textureInfo: ITextureInfo, babylonTexture: BaseTexture): void {
         for (const name of GLTFExporter._ExtensionNames) {
             const extension = this._extensions[name];
 
-            if (extension.postExportTexture) {
-                extension.postExportTexture(context, textureInfo, babylonTexture);
+            if (extension.postExportTextureInfo) {
+                extension.postExportTextureInfo(context, textureInfo, babylonTexture);
             }
         }
     }

@@ -20,12 +20,12 @@ export var __IGLTFExporterExtensionV2 = 0; // I am here to allow dts to be creat
  */
 export interface IGLTFExporterExtensionV2 extends IGLTFExporterExtension, IDisposable {
     /**
-     * Define this method to get notified when a texture info is created
+     * Define this method to get notified when a reference to a texture is created
      * @param context The context when loading the asset
      * @param textureInfo The glTF texture info
      * @param babylonTexture The Babylon.js texture
      */
-    postExportTexture?(context: string, textureInfo: ITextureInfo, babylonTexture: BaseTexture): void;
+    postExportTextureInfo?(context: string, textureInfo: ITextureInfo, babylonTexture: BaseTexture): void;
 
     /**
      * Define this method to get notified when a primitive is created
