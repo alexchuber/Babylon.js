@@ -297,10 +297,6 @@ export class GLTFExporter {
         return this._applyExtension(node, extensions, 0, actionAsync);
     }
 
-    public _extensionsPreExportTextureAsync(context: string, babylonTexture: Texture, mimeType: ImageMimeType): Promise<Nullable<BaseTexture>> {
-        return this._applyExtensions(babylonTexture, (extension, node) => extension.preExportTextureAsync && extension.preExportTextureAsync(context, node, mimeType));
-    }
-
     public _extensionsPostExportNodeAsync(context: string, node: INode, babylonNode: Node, nodeMap: Map<Node, number>, convertToRightHanded: boolean): Promise<Nullable<INode>> {
         return this._applyExtensions(
             node,

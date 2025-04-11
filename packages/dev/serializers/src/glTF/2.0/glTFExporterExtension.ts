@@ -20,15 +20,6 @@ export var __IGLTFExporterExtensionV2 = 0; // I am here to allow dts to be creat
  */
 export interface IGLTFExporterExtensionV2 extends IGLTFExporterExtension, IDisposable {
     /**
-     * Define this method to modify the default behavior before exporting a texture
-     * @param context The context when loading the asset
-     * @param babylonTexture The Babylon.js texture
-     * @param mimeType The mime-type of the generated image
-     * @returns A promise that resolves with the exported texture
-     */
-    preExportTextureAsync?(context: string, babylonTexture: Texture, mimeType: ImageMimeType): Promise<Nullable<Texture>>;
-
-    /**
      * Define this method to get notified when a texture info is created
      * @param context The context when loading the asset
      * @param textureInfo The glTF texture info
