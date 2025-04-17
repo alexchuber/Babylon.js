@@ -353,6 +353,9 @@ export class PropertyTabComponent extends React.Component<IPropertyTabComponentP
                 case NodeMaterialModes.Material:
                     this.props.globalState.nodeMaterial!.setToDefault();
                     break;
+                case NodeMaterialModes.SFE:
+                    this.props.globalState.nodeMaterial!.setToDefaultSFE();
+                    break;
                 case NodeMaterialModes.PostProcess:
                     this.props.globalState.nodeMaterial!.setToDefaultPostProcess();
                     break;
@@ -437,6 +440,7 @@ export class PropertyTabComponent extends React.Component<IPropertyTabComponentP
             { label: "Particle", value: NodeMaterialModes.Particle },
             { label: "Procedural", value: NodeMaterialModes.ProceduralTexture },
             { label: "Gaussian Splatting", value: NodeMaterialModes.GaussianSplatting },
+            { label: "SFE", value: NodeMaterialModes.SFE },
         ];
 
         const engineList = [
@@ -506,6 +510,9 @@ export class PropertyTabComponent extends React.Component<IPropertyTabComponentP
                                         break;
                                     case NodeMaterialModes.PostProcess:
                                         this.props.globalState.nodeMaterial!.setToDefaultPostProcess();
+                                        break;
+                                    case NodeMaterialModes.SFE:
+                                        this.props.globalState.nodeMaterial!.setToDefaultSFE();
                                         break;
                                     case NodeMaterialModes.Particle:
                                         this.props.globalState.nodeMaterial!.setToDefaultParticle();
@@ -588,6 +595,16 @@ export class PropertyTabComponent extends React.Component<IPropertyTabComponentP
                                 StringTools.DownloadAsFile(this.props.globalState.hostDocument, this.props.globalState.nodeMaterial!.compiledShaders, "shaders.txt");
                             }}
                         />
+                        {this.props.globalState.mode === NodeMaterialModes.SFE && (
+                            <ButtonLineComponent
+                                label="Export SFE"
+                                onClick={async () => {
+                                    this.props.globalState.nodeMaterial.build();
+                                    const compiledString = await this.props.globalState.nodeMaterial!._generateSFEAsync();
+                                    StringTools.DownloadAsFile(this.props.globalState.hostDocument, compiledString, "sfe.block.glsl");
+                                }}
+                            />
+                        )}
                         {this.props.globalState.customSave && (
                             <ButtonLineComponent
                                 label={this.props.globalState.customSave!.label}

@@ -6,7 +6,7 @@ import type { AbstractMesh } from "../../Meshes/abstractMesh";
 import { Matrix, Vector2 } from "../../Maths/math.vector";
 import { Color3, Color4 } from "../../Maths/math.color";
 import { Mesh } from "../../Meshes/mesh";
-import { NodeMaterialBuildState } from "./nodeMaterialBuildState";
+import { NodeMaterialBuildState, sfeSyntaxDefine } from "./nodeMaterialBuildState";
 import type { IEffectCreationOptions } from "../effect";
 import { Effect } from "../effect";
 import type { BaseTexture } from "../../Materials/Textures/baseTexture";
@@ -71,6 +71,9 @@ import { ShaderLanguage } from "../shaderLanguage";
 import { AbstractEngine } from "../../Engines/abstractEngine";
 import type { LoopBlock } from "./Blocks/loopBlock";
 import { MaterialHelperGeometryRendering } from "../materialHelper.geometryrendering";
+import { Process } from "core/Engines/Processors/shaderProcessor";
+import type { ProcessingOptions } from "core/Engines/Processors";
+import { ShaderStore } from "core/Engines";
 
 const onCreatedEffectParameters = { effect: null as unknown as Effect, subMesh: null as unknown as Nullable<SubMesh> };
 
@@ -1253,6 +1256,126 @@ export class NodeMaterial extends PushMaterial {
     }
 
     /**
+     * Create a post process from the material
+     * @param camera The camera to apply the render pass to.
+     * @param options The required width/height ratio to downsize to before computing the render pass. (Use 1.0 for full size)
+     * @param samplingMode The sampling mode to be used when computing the pass. (default: 0)
+     * @param engine The engine which the post process will be applied. (default: current engine)
+     * @param reusable If the post process can be reused on the same frame. (default: false)
+     * @param textureType Type of textures used when performing the post process. (default: 0)
+     * @param textureFormat Format of textures used when performing the post process. (default: TEXTUREFORMAT_RGBA)
+     * @returns the post process created
+     */
+    public createSFE(
+        camera: Nullable<Camera>,
+        options: number | PostProcessOptions = 1,
+        samplingMode: number = Constants.TEXTURE_NEAREST_SAMPLINGMODE,
+        engine?: AbstractEngine,
+        reusable?: boolean,
+        textureType: number = Constants.TEXTURETYPE_UNSIGNED_BYTE,
+        textureFormat = Constants.TEXTUREFORMAT_RGBA
+    ): Nullable<PostProcess> {
+        if (this.mode !== NodeMaterialModes.SFE) {
+            Logger.Log("Incompatible material mode");
+            return null;
+        }
+        return this._createEffectForSFE(null, camera, options, samplingMode, engine, reusable, textureType, textureFormat);
+    }
+
+    private _createEffectForSFE(
+        postProcess: Nullable<PostProcess>,
+        camera?: Nullable<Camera>,
+        options: number | PostProcessOptions = 1,
+        samplingMode: number = Constants.TEXTURE_NEAREST_SAMPLINGMODE,
+        engine?: AbstractEngine,
+        reusable?: boolean,
+        textureType: number = Constants.TEXTURETYPE_UNSIGNED_BYTE,
+        textureFormat = Constants.TEXTUREFORMAT_RGBA
+    ): PostProcess {
+        let tempName = this.name + this._buildId;
+
+        const defines = new NodeMaterialDefines();
+
+        const dummyMesh = new Mesh(tempName + "SFE", this.getScene());
+
+        let buildId = this._buildId;
+
+        this._processDefines(dummyMesh, defines);
+
+        Effect.RegisterShader(tempName, this._fragmentCompilationState._builtCompilationString, undefined, this.shaderLanguage);
+
+        if (!postProcess) {
+            postProcess = new PostProcess(
+                this.name + "SFE",
+                tempName,
+                this._fragmentCompilationState.uniforms,
+                this._fragmentCompilationState.samplers,
+                options,
+                camera!,
+                samplingMode,
+                engine,
+                reusable,
+                defines.toString(),
+                textureType,
+                "postprocess",
+                { maxSimultaneousLights: this.maxSimultaneousLights },
+                false,
+                textureFormat,
+                this.shaderLanguage
+            );
+        } else {
+            postProcess.updateEffect(
+                defines.toString(),
+                this._fragmentCompilationState.uniforms,
+                this._fragmentCompilationState.samplers,
+                { maxSimultaneousLights: this.maxSimultaneousLights },
+                undefined,
+                undefined,
+                tempName,
+                tempName
+            );
+        }
+
+        postProcess.nodeMaterialSource = this;
+
+        postProcess.onApplyObservable.add((effect) => {
+            if (buildId !== this._buildId) {
+                delete Effect.ShadersStore[tempName + "VertexShader"];
+                delete Effect.ShadersStore[tempName + "PixelShader"];
+
+                tempName = this.name + this._buildId;
+
+                defines.markAllAsDirty();
+
+                buildId = this._buildId;
+            }
+
+            const result = this._processDefines(dummyMesh, defines);
+
+            if (result) {
+                Effect.RegisterShader(tempName, this._fragmentCompilationState._builtCompilationString, this._vertexCompilationState._builtCompilationString);
+
+                TimingTools.SetImmediate(() =>
+                    postProcess!.updateEffect(
+                        defines.toString(),
+                        this._fragmentCompilationState.uniforms,
+                        this._fragmentCompilationState.samplers,
+                        { maxSimultaneousLights: this.maxSimultaneousLights },
+                        undefined,
+                        undefined,
+                        tempName,
+                        tempName
+                    )
+                );
+            }
+
+            this._checkInternals(effect);
+        });
+
+        return postProcess;
+    }
+
+    /**
      * Create the post process effect from the material
      * @param postProcess The post process to create the effect for
      */
@@ -1837,6 +1960,44 @@ export class NodeMaterial extends PushMaterial {
     }
 
     /**
+     * @internal
+     */
+    public _generateSFEAsync(): Promise<string> {
+        if (!this._buildWasSuccessful) {
+            this.build();
+        }
+
+        const engine = this.getScene().getEngine();
+        const processorOptions: ProcessingOptions = {
+            defines: [sfeSyntaxDefine],
+            indexParameters: undefined,
+            isFragment: true,
+            shouldUseHighPrecisionShader: engine._shouldUseHighPrecisionShader,
+            processor: engine._getShaderProcessor(this._shaderLanguage),
+            supportsUniformBuffers: engine.supportsUniformBuffers,
+            shadersRepository: ShaderStore.GetShadersRepository(this._shaderLanguage),
+            includesShadersStore: ShaderStore.GetIncludesShadersStore(this._shaderLanguage),
+            version: (engine.version * 100).toString(),
+            platformName: "WEBGL1", // Output WebGL1-compatible shaders for max compatibility
+            processingContext: null,
+            isNDCHalfZRange: engine.isNDCHalfZRange,
+            useReverseDepthBuffer: engine.useReverseDepthBuffer,
+            processCodeAfterIncludes: undefined,
+        };
+
+        return new Promise((resolve) => {
+            Process(
+                this._fragmentCompilationState.compilationString,
+                processorOptions,
+                (migratedFragmentCode, _) => {
+                    resolve(migratedFragmentCode.replace("texture(", "texture2D(")); // todo
+                },
+                engine
+            );
+        });
+    }
+
+    /**
      * Binds the world matrix to the material
      * @param world defines the world transformation matrix
      */
@@ -2144,6 +2305,38 @@ export class NodeMaterial extends PushMaterial {
         this.addOutputNode(fragmentOutput);
 
         this._mode = NodeMaterialModes.PostProcess;
+    }
+
+    /**
+     * Clear the current material and set it to a default state for SFE
+     */
+    public setToDefaultSFE() {
+        this.clear();
+
+        this.editorData = null;
+
+        const uv = new InputBlock("uv");
+        uv.setAsAttribute("uv");
+
+        const currentScreen = new CurrentScreenBlock("Main Input Texture");
+        uv.connectTo(currentScreen);
+        const textureUrl = Tools.GetAssetUrl("https://assets.babylonjs.com/core/nme/currentScreenPostProcess.png");
+        currentScreen.texture = new Texture(textureUrl, this.getScene());
+
+        const color = new InputBlock("Color4");
+        color.value = new Color4(1, 0, 0, 1);
+
+        const multiply = new MultiplyBlock("Multiply");
+        color.connectTo(multiply);
+        currentScreen.connectTo(multiply);
+
+        const fragmentOutput = new FragmentOutputBlock("FragmentOutput");
+        multiply.connectTo(fragmentOutput);
+
+        // Add to nodes
+        this.addOutputNode(fragmentOutput);
+
+        this._mode = NodeMaterialModes.SFE;
     }
 
     /**

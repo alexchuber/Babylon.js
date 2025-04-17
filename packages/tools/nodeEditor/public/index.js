@@ -194,6 +194,9 @@ checkBabylonVersionAsync().then(() => {
                         case BABYLON.NodeMaterialModes.PostProcess:
                             nodeMaterial.setToDefaultPostProcess();
                             break;
+                        case BABYLON.NodeMaterialModes.SFE:
+                            nodeMaterial.setToDefaultSFE();
+                            break;
                         case BABYLON.NodeMaterialModes.Particle:
                             nodeMaterial.setToDefaultParticle();
                             break;

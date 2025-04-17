@@ -377,6 +377,7 @@ export class PreviewManager {
                 this._handleAnimations();
                 break;
             }
+            case NodeMaterialModes.SFE:
             case NodeMaterialModes.PostProcess:
             case NodeMaterialModes.ProceduralTexture: {
                 this._camera.radius = 4;
@@ -672,6 +673,26 @@ export class PreviewManager {
             }
 
             switch (this._globalState.mode) {
+                case NodeMaterialModes.SFE:
+                    this._globalState.onIsLoadingChanged.notifyObservers(false);
+
+                    this._postprocess = tempMaterial.createSFE(this._camera, 1.0, Constants.TEXTURE_NEAREST_SAMPLINGMODE, this._engine);
+
+                    const currentScreen = tempMaterial.getBlockByPredicate((block) => block instanceof CurrentScreenBlock);
+                    if (currentScreen && this._postprocess) {
+                        this._postprocess.externalTextureSamplerBinding = true;
+                        this._postprocess.onApplyObservable.add((effect) => {
+                            effect.setTexture("textureSampler", (currentScreen as CurrentScreenBlock).texture);
+                        });
+                    }
+
+                    if (this._material) {
+                        this._material.dispose();
+                    }
+                    this._material = tempMaterial;
+
+                    this._globalState.onPreviewUpdatedObservable.notifyObservers(tempMaterial);
+                    break;
                 case NodeMaterialModes.PostProcess: {
                     this._globalState.onIsLoadingChanged.notifyObservers(false);
 

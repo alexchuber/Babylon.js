@@ -182,7 +182,7 @@ export class BlockTools {
             case "VectorSplitterBlock":
                 return new VectorSplitterBlock("VectorSplitter");
             case "TextureBlock":
-                return new TextureBlock("Texture", nodeMaterial.mode === NodeMaterialModes.Particle);
+                return new TextureBlock("Texture", nodeMaterial.mode === NodeMaterialModes.Particle || nodeMaterial.mode === NodeMaterialModes.SFE);
             case "ReflectionTextureBlock":
                 return new ReflectionTextureBlock("Reflection texture");
             case "LightBlock":
@@ -615,6 +615,11 @@ export class BlockTools {
                 const pos = new InputBlock("PositionWorld");
                 pos.setAsAttribute("particle_positionw");
                 return pos;
+            }
+            case "ScreenUVBlock": {
+                const uv = new InputBlock("uv");
+                uv.setAsAttribute("postprocess_uv");
+                return uv;
             }
             case "ParticleRampGradientBlock":
                 return new ParticleRampGradientBlock("ParticleRampGradient");
