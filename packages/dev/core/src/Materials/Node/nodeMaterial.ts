@@ -6,7 +6,7 @@ import type { AbstractMesh } from "../../Meshes/abstractMesh";
 import { Matrix, Vector2 } from "../../Maths/math.vector";
 import { Color3, Color4 } from "../../Maths/math.color";
 import { Mesh } from "../../Meshes/mesh";
-import { NodeMaterialBuildState, sfeSyntaxDefine } from "./nodeMaterialBuildState";
+import { NodeMaterialBuildState, SfeSyntaxDefine } from "./nodeMaterialBuildState";
 import type { IEffectCreationOptions } from "../effect";
 import { Effect } from "../effect";
 import type { BaseTexture } from "../../Materials/Textures/baseTexture";
@@ -913,7 +913,7 @@ export class NodeMaterial extends PushMaterial {
         this._buildWasSuccessful = false;
         const engine = this.getScene().getEngine();
 
-        const allowEmptyVertexProgram = this._mode === NodeMaterialModes.Particle;
+        const allowEmptyVertexProgram = this._mode === NodeMaterialModes.Particle || this._mode === NodeMaterialModes.SFE;
 
         if (this._vertexOutputNodes.length === 0 && !allowEmptyVertexProgram) {
             // eslint-disable-next-line no-throw-literal
@@ -1969,7 +1969,7 @@ export class NodeMaterial extends PushMaterial {
 
         const engine = this.getScene().getEngine();
         const processorOptions: ProcessingOptions = {
-            defines: [sfeSyntaxDefine],
+            defines: [SfeSyntaxDefine],
             indexParameters: undefined,
             isFragment: true,
             shouldUseHighPrecisionShader: engine._shouldUseHighPrecisionShader,
@@ -2316,7 +2316,7 @@ export class NodeMaterial extends PushMaterial {
         this.editorData = null;
 
         const uv = new InputBlock("uv");
-        uv.setAsAttribute("uv");
+        uv.setAsAttribute("postprocess_uv");
 
         const currentScreen = new CurrentScreenBlock("Main Input Texture");
         uv.connectTo(currentScreen);
