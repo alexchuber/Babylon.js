@@ -1,5 +1,72 @@
 # Changelog
 
+## 8.3.1
+
+### Core
+
+- Remove legacy copyTexture and bump the native protocol version - by [ryantrem](https://github.com/ryantrem) ([#16508](https://github.com/BabylonJS/Babylon.js/pull/16508))
+
+### Playground
+
+- Playground: Prevents crashes when running multiple PG's in succession - [_Bug Fix_] by [Popov72](https://github.com/Popov72) ([#16504](https://github.com/BabylonJS/Babylon.js/pull/16504))
+
+### Serializers
+
+- glTF Exporter: Export compressed textures as PNG - by [alexchuber](https://github.com/alexchuber) ([#16507](https://github.com/BabylonJS/Babylon.js/pull/16507))
+
+## 8.3.0
+
+### Core
+
+- FrameGraph: add FXAA and Grain post-processes - [_New Feature_] by [Popov72](https://github.com/Popov72) ([#16499](https://github.com/BabylonJS/Babylon.js/pull/16499))
+- CopyTexture Native rendering command - by [CedricGuillemet](https://github.com/CedricGuillemet) ([#16497](https://github.com/BabylonJS/Babylon.js/pull/16497))
+- Viewer: Remove unused UV sets - by [ryantrem](https://github.com/ryantrem) ([#16495](https://github.com/BabylonJS/Babylon.js/pull/16495))
+
+### Inspector
+
+- update treeitemselectablecomponent to accept shiftclick to expand all - [_New Feature_] by [georginahalpern](https://github.com/georginahalpern) ([#16500](https://github.com/BabylonJS/Babylon.js/pull/16500))
+
+### Viewer
+
+- Viewer: Remove unused UV sets - by [ryantrem](https://github.com/ryantrem) ([#16495](https://github.com/BabylonJS/Babylon.js/pull/16495))
+
+## 8.2.2
+
+### Core
+
+- Clear engine and webgl state on program delete - by [EvgeniyPeshkov](https://github.com/EvgeniyPeshkov) ([#16488](https://github.com/BabylonJS/Babylon.js/pull/16488))
+- Clear engine and webgl state on program delete - by [sebavan](https://github.com/sebavan) ([#16494](https://github.com/BabylonJS/Babylon.js/pull/16494))
+- Fix for null TypeError in dynamicTexture - by [kircher1](https://github.com/kircher1) ([#16491](https://github.com/BabylonJS/Babylon.js/pull/16491))
+
+### Loaders
+
+
+## 8.2.1
+
+### Core
+
+- Prevent floats and integers from working together in glTF interactivity - by [RaananW](https://github.com/RaananW) ([#16486](https://github.com/BabylonJS/Babylon.js/pull/16486))
+- glTF Exporter: Replace AbstractMesh with Mesh to capture InstancedMesh - by [alexchuber](https://github.com/alexchuber) ([#16469](https://github.com/BabylonJS/Babylon.js/pull/16469))
+- NME: Fix wrong prefix for vReflectivityColor in WebGPU - [_Bug Fix_] by [Popov72](https://github.com/Popov72) ([#16485](https://github.com/BabylonJS/Babylon.js/pull/16485))
+- Post processes: Fix Depth of Field effect - [_Bug Fix_] by [Popov72](https://github.com/Popov72) ([#16480](https://github.com/BabylonJS/Babylon.js/pull/16480))
+- NME - indexOfRefraction is optional, so it has no variable name. defaulting to 1.5 - [_Bug Fix_] by [RaananW](https://github.com/RaananW) ([#16479](https://github.com/BabylonJS/Babylon.js/pull/16479))
+- Shader pre-processor: Improve parsing + fix WGSL - by [Popov72](https://github.com/Popov72) ([#16474](https://github.com/BabylonJS/Babylon.js/pull/16474))
+- Interactivity fixes - by [RaananW](https://github.com/RaananW) ([#16473](https://github.com/BabylonJS/Babylon.js/pull/16473))
+- GS Kernel size & opacity compensation - by [CedricGuillemet](https://github.com/CedricGuillemet) ([#16472](https://github.com/BabylonJS/Babylon.js/pull/16472))
+
+### Inspector
+
+- force npm to re-install the contextmenu dependency - by [RaananW](https://github.com/RaananW) ([#16475](https://github.com/BabylonJS/Babylon.js/pull/16475))
+
+### Loaders
+
+- Prevent floats and integers from working together in glTF interactivity - by [RaananW](https://github.com/RaananW) ([#16486](https://github.com/BabylonJS/Babylon.js/pull/16486))
+- Interactivity fixes - by [RaananW](https://github.com/RaananW) ([#16473](https://github.com/BabylonJS/Babylon.js/pull/16473))
+
+### Serializers
+
+- glTF Exporter: Replace AbstractMesh with Mesh to capture InstancedMesh - by [alexchuber](https://github.com/alexchuber) ([#16469](https://github.com/BabylonJS/Babylon.js/pull/16469))
+
 ## 8.2.0
 
 ### Core
