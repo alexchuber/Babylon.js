@@ -299,6 +299,14 @@ export class GLTFMaterialExporter {
         await this._exporter._extensionsPostExportMaterialAsync("exportMaterial", glTFMaterial, babylonMaterial);
     }
 
+    /**
+     * Encode raw pixel data to an image format supported by glTF
+     * @param buffer
+     * @param width
+     * @param height
+     * @param mimeType
+     * @returns
+     */
     private async _getImageDataAsync(buffer: Uint8Array | Float32Array, width: number, height: number, mimeType: ImageMimeType): Promise<ArrayBuffer> {
         const textureType = Constants.TEXTURETYPE_UNSIGNED_BYTE;
 
@@ -928,6 +936,7 @@ export class GLTFMaterialExporter {
                 }
             }
 
+            // Export the image, if not already done by a previous texture
             const internalTextureToImage = this._internalTextureToImage;
             const internalTextureUniqueId = babylonTexture.getInternalTexture()!.uniqueId;
             internalTextureToImage[internalTextureUniqueId] ||= {};
