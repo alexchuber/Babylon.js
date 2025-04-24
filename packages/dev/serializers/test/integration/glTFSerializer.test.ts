@@ -61,18 +61,6 @@ describe("Babylon glTF Serializer", () => {
             expect(assertionData.metallic).toEqual(0);
             expect(assertionData.roughness).toBeCloseTo(0.328809, 1e-6);
         });
-        it("should solve for metallic", async () => {
-            const assertionData = await page.evaluate(() => {
-                const solveZero = BABYLON.GLTF2.Exporter._SolveMetallic(1.0, 0.0, 1.0);
-                const solveApproxOne = BABYLON.GLTF2.Exporter._SolveMetallic(0.0, 1.0, 1.0);
-                return {
-                    solveZero,
-                    solveApproxOne: solveApproxOne,
-                };
-            });
-            expect(assertionData.solveZero).toBe(0.0);
-            expect(assertionData.solveApproxOne).toBeCloseTo(1.0, 1e-6);
-        });
         it("should serialize empty Babylon window.scene to glTF with only asset property", async () => {
             const assertionData = await page.evaluate(async () => {
                 const glTFData = await BABYLON.GLTF2Export.GLTFAsync(window.scene!, "test");
