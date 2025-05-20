@@ -265,7 +265,12 @@ export class TargetCamera extends Camera {
 
         this._referencePoint.normalize().scaleInPlace(this._initialFocalDistance);
 
-        Matrix.LookAtLHToRef(this.position, target, this._defaultUp, this._camMatrix);
+        // TODO: Check me. I added the RH because it looked like it belonged, but not because I traced a bug here or tested.
+        if (this.getScene().useRightHandedSystem) {
+            Matrix.LookAtRHToRef(this.position, target, this._defaultUp, this._camMatrix);
+        } else {
+            Matrix.LookAtLHToRef(this.position, target, this._defaultUp, this._camMatrix);
+        }
         this._camMatrix.invert();
 
         this.rotation.x = Math.atan(this._camMatrix.m[6] / this._camMatrix.m[10]);
