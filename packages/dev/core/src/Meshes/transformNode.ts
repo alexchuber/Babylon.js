@@ -12,6 +12,7 @@ import type { AbstractMesh } from "../Meshes/abstractMesh";
 import { Space } from "../Maths/math.axis";
 import { GetClass } from "../Misc/typeStore";
 
+// Note: This is incorrect. A 180 rotation preserves handedness.
 const ConvertRHSToLHS = Matrix.Compose(Vector3.One(), Quaternion.FromEulerAngles(0, Math.PI, 0), Vector3.Zero());
 
 /**

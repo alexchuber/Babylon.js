@@ -1270,10 +1270,16 @@ export class GLTFExporter {
                         return null; // Skip exporting this node
                     }
                 }
+                // TODO: Whaaaat? Why does this work? Why different here than in glTFAnimation and glTFLoader?
                 if (state.convertToRightHanded) {
                     ConvertToRightHandedNode(node);
                     RotateNode180Y(node);
                 }
+                // When I'd expect something like this:
+                // if (state.convertToRightHanded) {
+                //     ConvertToRightHandedNode(node);
+                // }
+                // RotateNode180Y(node);
                 this._nodesCameraMap.get(gltfCamera)?.push(node);
             }
         }
