@@ -22,9 +22,6 @@ export class TargetCamera extends Camera {
     private static _TargetTransformMatrix = new Matrix();
     private static _TargetFocalPoint = new Vector3();
 
-    private _tmpUpVector = Vector3.Zero();
-    private _tmpTargetVector = Vector3.Zero();
-
     /**
      * Define the current direction the camera is moving to
      */
@@ -33,10 +30,6 @@ export class TargetCamera extends Camera {
      * Define the current rotation the camera is rotating to
      */
     public cameraRotation = new Vector2(0, 0);
-
-    /** Gets or sets a boolean indicating that the scaling of the parent hierarchy will not be taken in account by the camera */
-    @serialize()
-    public ignoreParentScaling = false;
 
     /**
      * When set, the up vector of the camera will be updated by the rotation of the camera
@@ -273,12 +266,11 @@ export class TargetCamera extends Camera {
         this._referencePoint.normalize().scaleInPlace(this._initialFocalDistance);
 
         // TODO: Check me. I added the RH because it looked like it belonged, but not because I traced a bug here or tested.
-        // if (this.getScene().useRightHandedSystem) {
-        //     Matrix.LookAtRHToRef(this.position, target, this._defaultUp, this._camMatrix);
-        // } else {
-        Matrix.LookAtLHToRef(this.position, target, this._defaultUp, this._camMatrix);
-        // }
-
+        if (this.getScene().useRightHandedSystem) {
+            Matrix.LookAtRHToRef(this.position, target, this._defaultUp, this._camMatrix);
+        } else {
+            Matrix.LookAtLHToRef(this.position, target, this._defaultUp, this._camMatrix);
+        }
         this._camMatrix.invert();
 
         this.rotation.x = Math.atan(this._camMatrix.m[6] / this._camMatrix.m[10]);
@@ -504,27 +496,6 @@ export class TargetCamera extends Camera {
     }
 
     protected _computeViewMatrix(position: Vector3, target: Vector3, up: Vector3): void {
-        if (this.ignoreParentScaling) {
-            if (this.parent) {
-                const parentWorldMatrix = this.parent.getWorldMatrix();
-                Vector3.TransformCoordinatesToRef(position, parentWorldMatrix, this._globalPosition);
-                Vector3.TransformCoordinatesToRef(target, parentWorldMatrix, this._tmpTargetVector);
-                Vector3.TransformNormalToRef(up, parentWorldMatrix, this._tmpUpVector);
-                this._markSyncedWithParent();
-            } else {
-                this._globalPosition.copyFrom(position);
-                this._tmpTargetVector.copyFrom(target);
-                this._tmpUpVector.copyFrom(up);
-            }
-
-            if (this.getScene().useRightHandedSystem) {
-                Matrix.LookAtRHToRef(this._globalPosition, this._tmpTargetVector, this._tmpUpVector, this._viewMatrix);
-            } else {
-                Matrix.LookAtLHToRef(this._globalPosition, this._tmpTargetVector, this._tmpUpVector, this._viewMatrix);
-            }
-            return;
-        }
-
         if (this.getScene().useRightHandedSystem) {
             Matrix.LookAtRHToRef(position, target, up, this._viewMatrix);
         } else {
@@ -537,6 +508,7 @@ export class TargetCamera extends Camera {
             this._viewMatrix.multiplyToRef(parentWorldMatrix, this._viewMatrix);
             this._viewMatrix.getTranslationToRef(this._globalPosition);
             this._viewMatrix.invert();
+
             this._markSyncedWithParent();
         } else {
             this._globalPosition.copyFrom(position);

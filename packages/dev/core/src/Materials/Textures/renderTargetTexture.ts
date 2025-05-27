@@ -717,6 +717,7 @@ export class RenderTargetTexture extends Texture implements IRenderTargetTexture
                 if (!this._dumpTools) {
                     Logger.Error("dumpTools module is still being loaded. To speed up the process import dump tools directly in your project");
                 } else {
+                    // eslint-disable-next-line @typescript-eslint/no-floating-promises
                     this._dumpTools.DumpFramebuffer(this.getRenderWidth(), this.getRenderHeight(), engine);
                 }
             }
@@ -1050,6 +1051,7 @@ export class RenderTargetTexture extends Texture implements IRenderTargetTexture
         if (!this._dumpToolsLoading) {
             this._dumpToolsLoading = true;
             // avoid a static import to allow ignoring the import in some cases
+            // eslint-disable-next-line @typescript-eslint/no-floating-promises, github/no-then
             import("../../Misc/dumpTools").then((module) => (this._dumpTools = module));
         }
 
@@ -1147,7 +1149,9 @@ export class RenderTargetTexture extends Texture implements IRenderTargetTexture
     public _prepareFrame(scene: Scene, faceIndex?: number, layer?: number, useCameraPostProcess?: boolean) {
         if (this._postProcessManager) {
             if (!this._prePassEnabled) {
-                this._postProcessManager._prepareFrame(this._texture, this._postProcesses);
+                if (!this._postProcessManager._prepareFrame(this._texture, this._postProcesses)) {
+                    this._bindFrameBuffer(faceIndex, layer);
+                }
             }
         } else if (!useCameraPostProcess || !scene.postProcessManager._prepareFrame(this._texture)) {
             this._bindFrameBuffer(faceIndex, layer);
