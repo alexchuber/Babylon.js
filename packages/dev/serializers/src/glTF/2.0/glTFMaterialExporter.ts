@@ -24,6 +24,8 @@ import type { Material } from "core/Materials/material";
 import type { StandardMaterial } from "core/Materials/standardMaterial";
 import type { PBRBaseMaterial } from "core/Materials/PBR/pbrBaseMaterial";
 import { SpecularPowerToRoughness } from "core/Helpers/materialConversionHelper";
+import { NativeEngine } from "core/Engines";
+import { Clamp } from "core/Maths/math.scalar.functions";
 
 const Epsilon = 1e-6;
 const DielectricSpecular = new Color3(0.04, 0.04, 0.04);
@@ -49,7 +51,9 @@ interface IPBRMetallicRoughness {
     metallic: Nullable<number>;
     roughness: Nullable<number>;
     metallicRoughnessTextureData?: Nullable<ArrayBuffer>;
+    metallicRoughnessMimeType?: ImageMimeType;
     baseColorTextureData?: Nullable<ArrayBuffer>;
+    baseColorMimeType?: ImageMimeType;
 }
 
 function GetFileExtensionFromMimeType(mimeType: ImageMimeType): string {
@@ -301,21 +305,33 @@ export class GLTFMaterialExporter {
         await this._exporter._extensionsPostExportMaterialAsync("exportMaterial", glTFMaterial, babylonMaterial);
     }
 
-    private async _getImageDataAsync(buffer: Uint8Array | Float32Array, width: number, height: number, mimeType: ImageMimeType): Promise<ArrayBuffer> {
-        const textureType = Constants.TEXTURETYPE_UNSIGNED_BYTE;
+    private async _getEncodedImageDataAsync(buffer: Uint8Array, width: number, height: number, mimeType: ImageMimeType): Promise<{ data: ArrayBuffer; mimeType: ImageMimeType }> {
+        // TODO: Don't think there is a need to do all of this below? DumpDataAsync handles it
+        // const textureType = Constants.TEXTURETYPE_UNSIGNED_BYTE;
 
-        const hostingScene = this._exporter._babylonScene;
-        const engine = hostingScene.getEngine();
+        // const hostingScene = this._exporter._babylonScene;
+        // const engine = hostingScene.getEngine();
 
-        // Create a temporary texture with the texture buffer data
-        const tempTexture = engine.createRawTexture(buffer, width, height, Constants.TEXTUREFORMAT_RGBA, false, true, Texture.NEAREST_SAMPLINGMODE, null, textureType);
+        // // Create a temporary texture with the texture buffer data
+        // const tempTexture = engine.createRawTexture(buffer, width, height, Constants.TEXTUREFORMAT_RGBA, false, true, Texture.NEAREST_SAMPLINGMODE, null, textureType);
 
-        engine.isWebGPU ? await import("core/ShadersWGSL/pass.fragment") : await import("core/Shaders/pass.fragment");
-        await TextureTools.ApplyPostProcess("pass", tempTexture, hostingScene, textureType, Constants.TEXTURE_NEAREST_SAMPLINGMODE, Constants.TEXTUREFORMAT_RGBA);
+        // engine.isWebGPU ? await import("core/ShadersWGSL/pass.fragment") : await import("core/Shaders/pass.fragment");
+        // await TextureTools.ApplyPostProcess("pass", tempTexture, hostingScene, textureType, Constants.TEXTURE_NEAREST_SAMPLINGMODE, Constants.TEXTUREFORMAT_RGBA);
 
-        const data = await engine._readTexturePixels(tempTexture, width, height);
+        // const data = await engine._readTexturePixels(tempTexture, width, height);
 
-        return (await DumpTools.DumpDataAsync(width, height, data, mimeType, undefined, true, true)) as ArrayBuffer;
+        const engine = this._exporter._babylonScene.getEngine();
+        if (engine instanceof NativeEngine) {
+            return {
+                data: engine._encodeImageData(buffer, width, height),
+                mimeType: ImageMimeType.PNG, // Native engine currently only supports PNG encoding
+            };
+        }
+
+        return {
+            data: await DumpTools.DumpDataAsync(width, height, buffer, mimeType, undefined, false, true),
+            mimeType: mimeType,
+        };
     }
 
     /**
@@ -495,15 +511,17 @@ export class GLTFMaterialExporter {
 
             if (writeOutMetallicRoughnessTexture) {
                 promises.push(
-                    this._getImageDataAsync(metallicRoughnessBuffer, width, height, mimeType).then((data) => {
+                    this._getEncodedImageDataAsync(metallicRoughnessBuffer, width, height, mimeType).then(({ data, mimeType }) => {
                         metallicRoughnessFactors.metallicRoughnessTextureData = data;
+                        metallicRoughnessFactors.metallicRoughnessMimeType = mimeType;
                     })
                 );
             }
             if (writeOutBaseColorTexture) {
                 promises.push(
-                    this._getImageDataAsync(baseColorBuffer, width, height, mimeType).then((data) => {
+                    this._getEncodedImageDataAsync(baseColorBuffer, width, height, mimeType).then(({ data, mimeType }) => {
                         metallicRoughnessFactors.baseColorTextureData = data;
+                        metallicRoughnessFactors.baseColorMimeType = mimeType;
                     })
                 );
             }
@@ -753,12 +771,16 @@ export class GLTFMaterialExporter {
             const textures = this._exporter._textures;
 
             if (metallicRoughnessFactors.baseColorTextureData) {
-                const imageIndex = this._exportImage(`baseColor${textures.length}`, mimeType, metallicRoughnessFactors.baseColorTextureData);
+                const imageIndex = this._exportImage(`baseColor${textures.length}`, metallicRoughnessFactors.baseColorMimeType!, metallicRoughnessFactors.baseColorTextureData);
                 pbrMetallicRoughness.baseColorTexture = this._exportTextureInfo(imageIndex, samplerIndex, albedoTexture?.coordinatesIndex);
             }
 
             if (metallicRoughnessFactors.metallicRoughnessTextureData) {
-                const imageIndex = this._exportImage(`metallicRoughness${textures.length}`, mimeType, metallicRoughnessFactors.metallicRoughnessTextureData);
+                const imageIndex = this._exportImage(
+                    `metallicRoughness${textures.length}`,
+                    metallicRoughnessFactors.metallicRoughnessMimeType!,
+                    metallicRoughnessFactors.metallicRoughnessTextureData
+                );
                 pbrMetallicRoughness.metallicRoughnessTexture = this._exportTextureInfo(imageIndex, samplerIndex, reflectivityTexture?.coordinatesIndex);
             }
 
@@ -894,15 +916,26 @@ export class GLTFMaterialExporter {
      * @returns an array buffer promise containing the pixel data
      */
     // eslint-disable-next-line no-restricted-syntax, @typescript-eslint/promise-function-async
-    private _getPixelsFromTextureAsync(babylonTexture: BaseTexture): Promise<Nullable<Uint8Array | Float32Array>> {
+    private async _getPixelsFromTextureAsync(babylonTexture: BaseTexture): Promise<Nullable<Uint8Array>> {
         // If the internal texture format is compressed, we cannot read the pixels directly.
         if (IsCompressedTextureFormat(babylonTexture.textureFormat)) {
-            return GetTextureDataAsync(babylonTexture, babylonTexture._texture!.width, babylonTexture._texture!.height);
+            return await GetTextureDataAsync(babylonTexture, babylonTexture._texture!.width, babylonTexture._texture!.height);
         }
 
-        return babylonTexture.textureType === Constants.TEXTURETYPE_UNSIGNED_BYTE
-            ? (babylonTexture.readPixels() as Promise<Uint8Array>)
-            : (babylonTexture.readPixels() as Promise<Float32Array>);
+        let data = (await babylonTexture.readPixels()) as Uint8Array | Float32Array;
+
+        // Convert if data are floats
+        if (data instanceof Float32Array) {
+            const data2 = new Uint8Array(data.length);
+            let n = data.length;
+            while (n--) {
+                const v = data[n];
+                data2[n] = Math.round(Clamp(v) * 255);
+            }
+            data = data2;
+        }
+
+        return data;
     }
 
     public async exportTextureAsync(babylonTexture: BaseTexture, mimeType: ImageMimeType): Promise<Nullable<ITextureInfo>> {
@@ -952,8 +985,8 @@ export class GLTFMaterialExporter {
             if (imageIndexPromise === undefined) {
                 const size = babylonTexture.getSize();
                 imageIndexPromise = (async () => {
-                    const data = await this._getImageDataAsync(pixels, size.width, size.height, mimeType);
-                    return this._exportImage(babylonTexture.name, mimeType, data);
+                    const result = await this._getEncodedImageDataAsync(pixels, size.width, size.height, mimeType);
+                    return this._exportImage(babylonTexture.name, result.mimeType, result.data);
                 })();
                 internalTextureToImage[internalTextureUniqueId][mimeType] = imageIndexPromise;
             }

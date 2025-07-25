@@ -114,14 +114,7 @@ export function CreateScreenshot(
 
         renderContext.drawImage(renderingCanvas, 0, 0, srcWidth, srcHeight, offsetX, offsetY, newWidth, newHeight);
 
-        if (forceDownload) {
-            Tools.EncodeScreenshotCanvasData(screenshotCanvas, undefined, mimeType, undefined, quality);
-            if (successCallback) {
-                successCallback("");
-            }
-        } else {
-            Tools.EncodeScreenshotCanvasData(screenshotCanvas, successCallback, mimeType, undefined, quality);
-        }
+        Tools.EncodeScreenshotCanvasData(screenshotCanvas, successCallback as (data: string | ArrayBuffer) => void, mimeType, "screenshot", quality);
     });
 }
 

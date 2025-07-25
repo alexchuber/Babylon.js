@@ -2746,6 +2746,11 @@ export class NativeEngine extends Engine {
         );
     }
 
+    /** @internal */
+    public _encodeImageData(data: Uint8Array, width: number, height: number): ArrayBuffer {
+        return this._engine.encodeImageData(data, width, height);
+    }
+
     override startTimeQuery(): Nullable<_TimeToken> {
         if (!this._gpuFrameTimeToken) {
             this._gpuFrameTimeToken = new _TimeToken();

@@ -873,22 +873,6 @@ export class Tools {
      * @param quality The quality of the image if lossy mimeType is used (e.g. image/jpeg, image/webp). See {@link https://developer.mozilla.org/en-US/docs/Web/API/HTMLCanvasElement/toBlob | HTMLCanvasElement.toBlob()}'s `quality` parameter.
      */
     static ToBlob(canvas: HTMLCanvasElement | OffscreenCanvas, successCallback: (blob: Nullable<Blob>) => void, mimeType = "image/png", quality?: number): void {
-        // We need HTMLCanvasElement.toBlob for HD screenshots
-        if (!Tools._IsOffScreenCanvas(canvas) && !canvas.toBlob) {
-            //  low performance polyfill based on toDataURL (https://developer.mozilla.org/en-US/docs/Web/API/HTMLCanvasElement/toBlob)
-            canvas.toBlob = function (callback, type, quality) {
-                setTimeout(() => {
-                    const binStr = atob(this.toDataURL(type, quality).split(",")[1]),
-                        len = binStr.length,
-                        arr = new Uint8Array(len);
-
-                    for (let i = 0; i < len; i++) {
-                        arr[i] = binStr.charCodeAt(i);
-                    }
-                    callback(new Blob([arr]));
-                });
-            };
-        }
         if (Tools._IsOffScreenCanvas(canvas)) {
             // eslint-disable-next-line @typescript-eslint/no-floating-promises
             canvas
@@ -899,6 +883,23 @@ export class Tools {
                 // eslint-disable-next-line github/no-then
                 .then((blob) => successCallback(blob));
         } else {
+            // We need HTMLCanvasElement.toBlob for HD screenshots
+            if (!canvas.toBlob) {
+                //  low performance polyfill based on toDataURL (https://developer.mozilla.org/en-US/docs/Web/API/HTMLCanvasElement/toBlob)
+                canvas.toBlob = function (callback, type, quality) {
+                    setTimeout(() => {
+                        const binStr = atob(this.toDataURL(type, quality).split(",")[1]),
+                            len = binStr.length,
+                            arr = new Uint8Array(len);
+
+                        for (let i = 0; i < len; i++) {
+                            arr[i] = binStr.charCodeAt(i);
+                        }
+                        callback(new Blob([arr]));
+                    });
+                };
+            }
+
             canvas.toBlob(
                 function (blob) {
                     successCallback(blob);
@@ -946,54 +947,58 @@ export class Tools {
     /**
      * Encodes the canvas data to base 64, or automatically downloads the result if `fileName` is defined.
      * @param canvas The canvas to get the data from, which can be an offscreen canvas.
-     * @param successCallback The callback which is triggered once the data is available. If `fileName` is defined, the callback will be invoked after the download occurs, and the `data` argument will be an empty string.
+     * @param successCallback The callback which is triggered once the data is available. If `fileName` is defined, the callback will be invoked after the download occurs, and the `data` argument will be an empty string or ArrayBuffer.
      * @param mimeType The mime type of the result.
      * @param fileName The name of the file to download. If defined, the result will automatically be downloaded. If not defined, and `successCallback` is also not defined, the result will automatically be downloaded with an auto-generated file name.
      * @param quality The quality of the image if lossy mimeType is used (e.g. image/jpeg, image/webp). See {@link https://developer.mozilla.org/en-US/docs/Web/API/HTMLCanvasElement/toBlob | HTMLCanvasElement.toBlob()}'s `quality` parameter.
+     * @param toArrayBuffer If true, the data will be returned as an ArrayBuffer instead of a base64 string.
      */
     static EncodeScreenshotCanvasData(
         canvas: HTMLCanvasElement | OffscreenCanvas,
-        successCallback?: (data: string) => void,
+        successCallback?: (data: string | ArrayBuffer) => void,
         mimeType = "image/png",
         fileName?: string,
-        quality?: number
+        quality?: number,
+        toArrayBuffer?: boolean
     ): void {
-        if (typeof fileName === "string" || !successCallback) {
-            this.ToBlob(
-                canvas,
-                function (blob) {
-                    if (blob) {
-                        Tools.DownloadBlob(blob, fileName);
-                    }
+        // Download file if user explicitly says to (fileName option) or if no successCallback is provided
+        const needsDownload = typeof fileName === "string" || !successCallback;
+        // Except for when a Canvas has no toBlob method, this function remains just as fast.
+        // (In the event the canvas has no toBlob, it will polywill using dataUrl; and if the user has specified they want a string (dataurl), we will convert it back to base64, eventually using todataurl twice.)
+        Tools.ToBlob(
+            canvas,
+            (blob) => {
+                if (!blob) {
+                    throw new Error("Failed to create blob from canvas.");
+                }
+
+                if (needsDownload) {
+                    Tools.DownloadBlob(blob, fileName);
+
+                    // For backcompat: if user specified both a fileName and a successCallback, call it with an empty string.
                     if (successCallback) {
-                        successCallback("");
+                        successCallback(toArrayBuffer ? new ArrayBuffer(0) : "");
                     }
-                },
-                mimeType,
-                quality
-            );
-        } else if (successCallback) {
-            if (Tools._IsOffScreenCanvas(canvas)) {
-                // eslint-disable-next-line @typescript-eslint/no-floating-promises
-                canvas
-                    .convertToBlob({
-                        type: mimeType,
-                        quality,
-                    })
-                    // eslint-disable-next-line github/no-then
-                    .then((blob) => {
-                        const reader = new FileReader();
+
+                    return;
+                }
+
+                if (successCallback) {
+                    const reader = new FileReader();
+                    reader.onloadend = () => {
+                        successCallback(reader.result!);
+                    };
+
+                    if (toArrayBuffer) {
+                        reader.readAsArrayBuffer(blob);
+                    } else {
                         reader.readAsDataURL(blob);
-                        reader.onloadend = () => {
-                            const base64data = reader.result;
-                            successCallback(base64data as string);
-                        };
-                    });
-                return;
-            }
-            const base64Image = canvas.toDataURL(mimeType, quality);
-            successCallback(base64Image);
-        }
+                    }
+                }
+            },
+            mimeType,
+            quality
+        );
     }
 
     /**

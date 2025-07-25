@@ -80,6 +80,7 @@ export interface INativeEngine {
         bufferOffset: number,
         bufferLength: number
     ): Promise<ArrayBuffer>;
+    encodeImageData(data: Uint8Array, width: number, height: number): ArrayBuffer;
 
     createImageBitmap(data: ArrayBufferView | IImage): ImageBitmap;
     resizeImageBitmap(image: ImageBitmap, bufferWidth: number, bufferHeight: number): Uint8Array;
@@ -369,6 +370,7 @@ interface INativeCanvasConstructor {
     new (): ICanvas;
 
     loadTTFAsync(fontName: string, buffer: ArrayBuffer): void;
+    parseColor(color: string): number; // TODO: there's also getCanvasTexture
 }
 
 /** @internal */

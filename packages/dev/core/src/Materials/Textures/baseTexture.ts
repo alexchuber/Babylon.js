@@ -891,6 +891,35 @@ export class BaseTexture extends ThinTexture implements IAnimatable {
     }
 
     /**
+     * Wait for when the texture is ready to be used (downloaded, converted, mip mapped...).
+     * @returns a promise that resolves to the texture when it is ready
+     */
+    public async whenReadyAsync(): Promise<BaseTexture> {
+        if (this.isReady()) {
+            return this;
+        }
+
+        const onLoadObservable = (this as any).onLoadObservable as Observable<BaseTexture> | undefined;
+        if (onLoadObservable) {
+            return await new Promise<BaseTexture>((resolve) => {
+                onLoadObservable.addOnce(() => {
+                    resolve(this);
+                });
+            });
+        }
+
+        if (this._texture?.onLoadedObservable) {
+            return await new Promise<BaseTexture>((resolve) => {
+                this._texture!.onLoadedObservable.addOnce(() => {
+                    resolve(this);
+                });
+            });
+        }
+
+        throw new Error("Texture is not ready and no onLoadObservable is available to wait for it.");
+    }
+
+    /**
      * Helper function to be called back once a list of texture contains only ready textures.
      * @param textures Define the list of textures to wait for
      * @param callback Define the callback triggered once the entire list will be ready

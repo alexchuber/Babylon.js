@@ -346,6 +346,8 @@ export async function GetTextureDataAsync(texture: BaseTexture, width: number, h
             });
         });
     }
+    // TODO: Make this generic for all textures, not just compressed textures.
+    // Consider impl from gltfMaterialExporter, its read pixels method.
     return await ProcessAsync(texture, width, height, face, lod);
 }
 

@@ -568,7 +568,7 @@ describe("Babylon glTF Serializer", () => {
             });
         });
 
-        it("should not export a root conversion node", async () => {
+        it("should not export a root conversion node, LH", async () => {
             const assertionData = await page.evaluate(async () => {
                 await BABYLON.SceneLoader.AppendAsync("https://assets.babylonjs.com/meshes/Tests/TwoQuads/", "TwoQuads.gltf", window.scene);
                 window.scene!.getMeshByName("__root__")!.name = "renamedRoot";
@@ -580,6 +580,10 @@ describe("Babylon glTF Serializer", () => {
             expect(assertionData.scenes).toHaveLength(1);
             expect(assertionData.scenes[0].nodes).toHaveLength(2);
         });
+        // TODO: These
+        // it("should not export a root conversion node, RH", async () => {
+        // it("should not export a root conversion node that falls within epsilon, LH", async () => {
+        // it("should not export a root conversion node that falls within epsilon, RH", async () => {
         it("should not duplicate a shared texture between materials", async () => {
             const assertionData = await page.evaluate(async () => {
                 const texture = new BABYLON.Texture("https://assets.babylonjs.com/environments/backgroundGround.png", window.scene!);
