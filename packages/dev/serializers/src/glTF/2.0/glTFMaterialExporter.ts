@@ -18,7 +18,7 @@ import type { Scene } from "core/scene";
 
 import type { GLTFExporter } from "./glTFExporter";
 import { Constants } from "core/Engines/constants";
-import { DumpTools } from "core/Misc/dumpTools";
+import { DumpDataAsync } from "core/Misc/dumpTools";
 
 import type { Material } from "core/Materials/material";
 import type { StandardMaterial } from "core/Materials/standardMaterial";
@@ -301,21 +301,21 @@ export class GLTFMaterialExporter {
         await this._exporter._extensionsPostExportMaterialAsync("exportMaterial", glTFMaterial, babylonMaterial);
     }
 
-    private async _getImageDataAsync(buffer: Uint8Array | Float32Array, width: number, height: number, mimeType: ImageMimeType): Promise<ArrayBuffer> {
-        const textureType = Constants.TEXTURETYPE_UNSIGNED_BYTE;
+    private async _getEncodedImageDataAsync(buffer: Uint8Array | Float32Array, width: number, height: number, mimeType: ImageMimeType): Promise<ArrayBuffer> {
+        // const textureType = Constants.TEXTURETYPE_UNSIGNED_BYTE;
 
-        const hostingScene = this._exporter._babylonScene;
-        const engine = hostingScene.getEngine();
+        // const hostingScene = this._exporter._babylonScene;
+        // const engine = hostingScene.getEngine();
 
-        // Create a temporary texture with the texture buffer data
-        const tempTexture = engine.createRawTexture(buffer, width, height, Constants.TEXTUREFORMAT_RGBA, false, true, Texture.NEAREST_SAMPLINGMODE, null, textureType);
+        // // Create a temporary texture with the texture buffer data
+        // const tempTexture = engine.createRawTexture(buffer, width, height, Constants.TEXTUREFORMAT_RGBA, false, true, Texture.NEAREST_SAMPLINGMODE, null, textureType);
 
-        engine.isWebGPU ? await import("core/ShadersWGSL/pass.fragment") : await import("core/Shaders/pass.fragment");
-        await TextureTools.ApplyPostProcess("pass", tempTexture, hostingScene, textureType, Constants.TEXTURE_NEAREST_SAMPLINGMODE, Constants.TEXTUREFORMAT_RGBA);
+        // engine.isWebGPU ? await import("core/ShadersWGSL/pass.fragment") : await import("core/Shaders/pass.fragment");
+        // await TextureTools.ApplyPostProcess("pass", tempTexture, hostingScene, textureType, Constants.TEXTURE_NEAREST_SAMPLINGMODE, Constants.TEXTUREFORMAT_RGBA);
 
-        const data = await engine._readTexturePixels(tempTexture, width, height);
+        // const data = await engine._readTexturePixels(tempTexture, width, height);
 
-        return (await DumpTools.DumpDataAsync(width, height, data, mimeType, undefined, true, true)) as ArrayBuffer;
+        return await DumpDataAsync(width, height, buffer, mimeType, undefined, false, true);
     }
 
     /**
@@ -495,14 +495,14 @@ export class GLTFMaterialExporter {
 
             if (writeOutMetallicRoughnessTexture) {
                 promises.push(
-                    this._getImageDataAsync(metallicRoughnessBuffer, width, height, mimeType).then((data) => {
+                    this._getEncodedImageDataAsync(metallicRoughnessBuffer, width, height, mimeType).then((data) => {
                         metallicRoughnessFactors.metallicRoughnessTextureData = data;
                     })
                 );
             }
             if (writeOutBaseColorTexture) {
                 promises.push(
-                    this._getImageDataAsync(baseColorBuffer, width, height, mimeType).then((data) => {
+                    this._getEncodedImageDataAsync(baseColorBuffer, width, height, mimeType).then((data) => {
                         metallicRoughnessFactors.baseColorTextureData = data;
                     })
                 );
@@ -952,7 +952,7 @@ export class GLTFMaterialExporter {
             if (imageIndexPromise === undefined) {
                 const size = babylonTexture.getSize();
                 imageIndexPromise = (async () => {
-                    const data = await this._getImageDataAsync(pixels, size.width, size.height, mimeType);
+                    const data = await this._getEncodedImageDataAsync(pixels, size.width, size.height, mimeType);
                     return this._exportImage(babylonTexture.name, mimeType, data);
                 })();
                 internalTextureToImage[internalTextureUniqueId][mimeType] = imageIndexPromise;
