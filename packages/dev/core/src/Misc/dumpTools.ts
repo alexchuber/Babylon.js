@@ -1,96 +1,25 @@
 /* eslint-disable @typescript-eslint/no-unused-vars */
 import { _WarnImport } from "./devTools";
-
-import type { ThinEngine } from "../Engines/thinEngine";
-import { Constants } from "../Engines/constants";
-import { EffectRenderer, EffectWrapper } from "../Materials/effectRenderer";
 import { Tools } from "./tools";
 import type { Nullable } from "../types";
 import { Clamp } from "../Maths/math.scalar.functions";
 import type { AbstractEngine } from "../Engines/abstractEngine";
 import { EngineStore } from "../Engines/engineStore";
 
-type DumpToolsEngine = {
-    canvas: HTMLCanvasElement | OffscreenCanvas;
-    engine: ThinEngine;
-    renderer: EffectRenderer;
-    wrapper: EffectWrapper;
-};
-
-let DumpToolsEngine: Nullable<DumpToolsEngine>;
-
-let EnginePromise: Promise<DumpToolsEngine> | null = null;
-
-async function _CreateDumpRendererAsync(): Promise<DumpToolsEngine> {
-    if (!EnginePromise) {
-        EnginePromise = new Promise((resolve, reject) => {
-            let canvas: HTMLCanvasElement | OffscreenCanvas;
-            let engine: Nullable<ThinEngine> = null;
-            const options = {
-                preserveDrawingBuffer: true,
-                depth: false,
-                stencil: false,
-                alpha: true,
-                premultipliedAlpha: false,
-                antialias: false,
-                failIfMajorPerformanceCaveat: false,
-            };
-            import("../Engines/thinEngine")
-                // eslint-disable-next-line github/no-then
-                .then(({ ThinEngine: thinEngineClass }) => {
-                    const engineInstanceCount = EngineStore.Instances.length;
-                    try {
-                        canvas = new OffscreenCanvas(100, 100); // will be resized later
-                        engine = new thinEngineClass(canvas, false, options);
-                    } catch (e) {
-                        if (engineInstanceCount < EngineStore.Instances.length) {
-                            // The engine was created by another instance, let's use it
-                            EngineStore.Instances.pop()?.dispose();
-                        }
-                        // The browser either does not support OffscreenCanvas or WebGL context in OffscreenCanvas, fallback on a regular canvas
-                        canvas = document.createElement("canvas");
-                        engine = new thinEngineClass(canvas, false, options);
-                    }
-                    // remove this engine from the list of instances to avoid using it for other purposes
-                    EngineStore.Instances.pop();
-                    // However, make sure to dispose it when no other engines are left
-                    EngineStore.OnEnginesDisposedObservable.add((e) => {
-                        // guaranteed to run when no other instances are left
-                        // only dispose if it's not the current engine
-                        if (engine && e !== engine && !engine.isDisposed && EngineStore.Instances.length === 0) {
-                            // Dump the engine and the associated resources
-                            Dispose();
-                        }
-                    });
-                    engine.getCaps().parallelShaderCompile = undefined;
-                    const renderer = new EffectRenderer(engine);
-                    // eslint-disable-next-line @typescript-eslint/no-floating-promises, github/no-then
-                    import("../Shaders/pass.fragment").then(({ passPixelShader }) => {
-                        if (!engine) {
-                            // eslint-disable-next-line @typescript-eslint/prefer-promise-reject-errors
-                            reject("Engine is not defined");
-                            return;
-                        }
-                        const wrapper = new EffectWrapper({
-                            engine,
-                            name: passPixelShader.name,
-                            fragmentShader: passPixelShader.shader,
-                            samplerNames: ["textureSampler"],
-                        });
-                        DumpToolsEngine = {
-                            canvas,
-                            engine,
-                            renderer,
-                            wrapper,
-                        };
-                        resolve(DumpToolsEngine);
-                    });
-                })
-                // eslint-disable-next-line github/no-then
-                .catch(reject);
-        });
+let _DumpCanvas: Nullable<HTMLCanvasElement | OffscreenCanvas> = null;
+function GetDumpCanvas(): HTMLCanvasElement | OffscreenCanvas {
+    if (_DumpCanvas) {
+        return _DumpCanvas;
     }
-    return await EnginePromise;
+
+    // Use OffscreenCanvas if available, otherwise fallback to a regular canvas
+    try {
+        _DumpCanvas = new OffscreenCanvas(100, 100);
+    } catch (e) {
+        _DumpCanvas = document.createElement("canvas");
+    }
+
+    return _DumpCanvas;
 }
 
 /**
@@ -114,13 +43,14 @@ export async function DumpFramebuffer(
     mimeType = "image/png",
     fileName?: string,
     quality?: number
-) {
+): Promise<void> {
     // Read the contents of the framebuffer
     const bufferView = await engine.readPixels(0, 0, width, height);
 
     const data = new Uint8Array(bufferView.buffer);
 
-    DumpData(width, height, data, successCallback as (data: string | ArrayBuffer) => void, mimeType, fileName, true, undefined, quality);
+    const result = (await DumpDataAsync(width, height, data, mimeType, fileName, true, undefined, quality)) as string;
+    successCallback?.(result);
 }
 
 /**
@@ -145,9 +75,82 @@ export async function DumpDataAsync(
     toArrayBuffer = false,
     quality?: number
 ): Promise<string | ArrayBuffer> {
-    return await new Promise((resolve) => {
-        DumpData(width, height, data, (result) => resolve(result), mimeType, fileName, invertY, toArrayBuffer, quality);
+    // Convert if data are float32
+    if (data instanceof Float32Array) {
+        const data2 = new Uint8Array(data.length);
+        let n = data.length;
+        while (n--) {
+            const v = data[n];
+            data2[n] = Math.round(Clamp(v) * 255);
+        }
+        data = data2;
+    }
+
+    // Get the dump canvas
+    const canvas = GetDumpCanvas();
+    canvas.width = width;
+    canvas.height = height;
+    const context = canvas.getContext("bitmaprenderer");
+    if (!context) {
+        throw new Error("DumpData: Unable to get the 2d context of the dump canvas");
+    }
+
+    // Get the pixels on a canvas by first creating an ImageData object-- the only way to work with raw pixel data in a canvas
+    // then using that to create an ImageBitmap-- the only way to tell the canvas to not premultiply the values (see #11967)
+    // const imageData = new ImageData(data as Uint8ClampedArray, width, height); // safari doesnt recognize this ctr
+    const imageData = new ImageData(width, height);
+    imageData.data.set(data as Uint8ClampedArray);
+    const imageBitmap = await EngineStore.LastCreatedEngine!.createImageBitmap(imageData, {
+        premultiplyAlpha: "none",
     });
+
+    // Draw the bitmap on the canvas
+    // context.drawImage(imageBitmap, 0, 0, width, height); // doesnt work
+    context.transferFromImageBitmap(imageBitmap);
+
+    // Encode the canvas data
+    const result = await new Promise<string | ArrayBuffer>((resolve) => {
+        const needsDownload = typeof fileName === "string";
+
+        // TODO: maybe replace encodeScreenshotCanvasData with the following code?
+        // Except for when a Canvas has no toBlob method, this function should perform equivalently to Tools.EncodeScreenshotCanvasData
+        // (The only time this will not perform equivalently is when the canvas has no toBlob method, in which case it will use toDataUrl, and then try to convert that result to base64.)
+        Tools.ToBlob(
+            canvas,
+            (blob) => {
+                if (!blob) {
+                    throw new Error("Failed to create blob from canvas.");
+                }
+
+                if (needsDownload) {
+                    Tools.DownloadBlob(blob, fileName);
+
+                    // For backcompat: if user specified both a fileName and a successCallback, call it with an empty string.
+                    resolve(toArrayBuffer ? new ArrayBuffer(0) : "");
+
+                    return;
+                }
+
+                const reader = new FileReader();
+                reader.onloadend = () => {
+                    resolve(reader.result!);
+                };
+
+                if (toArrayBuffer) {
+                    reader.readAsArrayBuffer(blob);
+                } else {
+                    reader.readAsDataURL(blob);
+                }
+            },
+            mimeType,
+            quality
+        );
+    });
+
+    // Clean up bitmap
+    imageBitmap.close();
+
+    return result;
 }
 
 /**
@@ -173,72 +176,24 @@ export function DumpData(
     toArrayBuffer = false,
     quality?: number
 ): void {
-    // eslint-disable-next-line @typescript-eslint/no-floating-promises, github/no-then
-    _CreateDumpRendererAsync().then((renderer) => {
-        renderer.engine.setSize(width, height, true);
-
-        // Convert if data are float32
-        if (data instanceof Float32Array) {
-            const data2 = new Uint8Array(data.length);
-            let n = data.length;
-            while (n--) {
-                const v = data[n];
-                data2[n] = Math.round(Clamp(v) * 255);
+    // eslint-disable-next-line @typescript-eslint/no-floating-promises
+    DumpDataAsync(width, height, data, mimeType, fileName, invertY, toArrayBuffer, quality)
+        // eslint-disable-next-line github/no-then
+        .then((result) => {
+            if (successCallback) {
+                successCallback(result);
             }
-            data = data2;
-        }
-
-        // Create the image
-        const texture = renderer.engine.createRawTexture(data, width, height, Constants.TEXTUREFORMAT_RGBA, false, !invertY, Constants.TEXTURE_NEAREST_NEAREST);
-
-        renderer.renderer.setViewport();
-        renderer.renderer.applyEffectWrapper(renderer.wrapper);
-        renderer.wrapper.effect._bindTexture("textureSampler", texture);
-        renderer.renderer.draw();
-
-        if (toArrayBuffer) {
-            Tools.ToBlob(
-                renderer.canvas,
-                (blob) => {
-                    const fileReader = new FileReader();
-                    fileReader.onload = (event: any) => {
-                        const arrayBuffer = event.target!.result as ArrayBuffer;
-                        if (successCallback) {
-                            successCallback(arrayBuffer);
-                        }
-                    };
-                    fileReader.readAsArrayBuffer(blob!);
-                },
-                mimeType,
-                quality
-            );
-        } else {
-            Tools.EncodeScreenshotCanvasData(renderer.canvas, successCallback, mimeType, fileName, quality);
-        }
-
-        texture.dispose();
-    });
+        });
 }
 
 /**
  * Dispose the dump tools associated resources
  */
 export function Dispose() {
-    if (DumpToolsEngine) {
-        DumpToolsEngine.wrapper.dispose();
-        DumpToolsEngine.renderer.dispose();
-        DumpToolsEngine.engine.dispose();
-    } else {
-        // in cases where the engine is not yet created, we need to wait for it to dispose it
-        // eslint-disable-next-line @typescript-eslint/no-floating-promises, github/no-then
-        EnginePromise?.then((dumpToolsEngine) => {
-            dumpToolsEngine.wrapper.dispose();
-            dumpToolsEngine.renderer.dispose();
-            dumpToolsEngine.engine.dispose();
-        });
+    if (_DumpCanvas instanceof HTMLCanvasElement) {
+        _DumpCanvas.remove();
     }
-    EnginePromise = null;
-    DumpToolsEngine = null;
+    _DumpCanvas = null;
 }
 
 /**
