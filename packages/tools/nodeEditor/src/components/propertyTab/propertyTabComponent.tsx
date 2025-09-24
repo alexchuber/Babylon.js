@@ -450,6 +450,14 @@ export class PropertyTabComponent extends React.Component<IPropertyTabComponentP
             <PropertyTabComponentBase>
                 <LineContainerComponent title="GENERAL">
                     <TextInputLineComponent label="Name" lockObject={this.props.globalState.lockObject} target={this.props.globalState.nodeMaterial} propertyName="name" />
+                    {this.props.globalState.mode === NodeMaterialModes.SFE && (
+                        <TextInputLineComponent
+                            label="Namespace"
+                            lockObject={this.props.globalState.lockObject}
+                            target={this.props.globalState.nodeMaterial}
+                            propertyName="namespace"
+                        />
+                    )}
                     <OptionsLine
                         ref={this._modeSelect}
                         label="Mode"

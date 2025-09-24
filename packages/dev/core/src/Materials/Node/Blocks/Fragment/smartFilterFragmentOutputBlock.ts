@@ -100,7 +100,12 @@ export class SmartFilterFragmentOutputBlock extends FragmentOutputBlock {
 
         const outputString = this._getOutputString();
 
-        state._injectAtTop = `// { "smartFilterBlockType": "${state.sharedData.nodeMaterial.name}", "namespace": "Babylon.NME.Exports" }`;
+        const glslHeader = {
+            smartFilterBlockType: state.sharedData.nodeMaterial.name,
+            namespace: state.sharedData.nodeMaterial.namespace || "BABYLON.NME.Exports",
+        };
+
+        state._injectAtTop = "// " + JSON.stringify(glslHeader);
 
         state._customEntryHeader += `#ifdef ${SfeModeDefine}\n`;
         state._customEntryHeader += `vec4 nmeMain(vec2 ${this._getMainUvName(state)}) { // main\n`;

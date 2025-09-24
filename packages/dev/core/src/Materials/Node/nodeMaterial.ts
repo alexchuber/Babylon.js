@@ -414,6 +414,12 @@ export class NodeMaterial extends NodeMaterialBase {
     }
 
     /**
+     * A namespace to categorize this material, like for a shader library
+     */
+    @serialize("namespace")
+    public namespace: Nullable<string> = null;
+
+    /**
      * A free comment about the material
      */
     @serialize("comment")
