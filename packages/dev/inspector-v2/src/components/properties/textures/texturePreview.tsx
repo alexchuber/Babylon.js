@@ -87,9 +87,12 @@ export const TexturePreview: FunctionComponent<TexturePreviewProps> = (props) =>
         }
         const previewCanvas = canvasRef.current!;
         try {
-            const data = await ApplyChannelsToTextureDataAsync(texture, face, channels);
-            // @alex we are never reaching this line, the internal promise never resolves
+            // Wait for texture to be loaded and ready
+            await texture.whenReadyAsync();
+            // Then compute the new canvas size based on the texture
             const { w, h } = updatePreviewCanvasSize(previewCanvas);
+            // Finally, read its image data (resized to fit the canvas)
+            const data = await ApplyChannelsToTextureDataAsync(texture, w, h, face, channels);
 
             const context = previewCanvas.getContext("2d");
             if (context) {
