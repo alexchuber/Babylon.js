@@ -270,28 +270,6 @@ function IsCompressedTextureFormat(format: number): boolean {
     }
 }
 
-async function WhenTextureReadyAsync(texture: BaseTexture): Promise<void> {
-    if (texture.isReady()) {
-        return;
-    }
-
-    if (texture.loadingError) {
-        throw new Error(texture.errorObject?.message || `Texture ${texture.name} errored while loading.`);
-    }
-
-    const onLoadObservable = (texture as any).onLoadObservable as Observable<BaseTexture>;
-    if (onLoadObservable) {
-        return await new Promise((res) => onLoadObservable.addOnce(() => res()));
-    }
-
-    const onLoadedObservable = texture._texture?.onLoadedObservable;
-    if (onLoadedObservable) {
-        return await new Promise((res) => onLoadedObservable.addOnce(() => res()));
-    }
-
-    throw new Error(`Cannot determine readiness of texture ${texture.name}.`);
-}
-
 /**
  * Gets the data of the specified texture by rendering it to an intermediate RGBA texture and retrieving the bytes from it.
  * This is convienent to get 8-bit RGBA values for a texture in a GPU compressed format, which cannot be read using readPixels.
@@ -394,7 +372,7 @@ async function ReadPixelsUsingRTT(texture: BaseTexture, width: number, height: n
  * @returns the 8-bit texture data
  */
 export async function GetTextureDataAsync(texture: BaseTexture, width?: number, height?: number, face: number = 0, lod: number = 0): Promise<Uint8Array> {
-    await WhenTextureReadyAsync(texture);
+    await texture.whenReadyAsync();
 
     const { width: textureWidth, height: textureHeight } = texture.getSize();
     const targetWidth = width ?? textureWidth;

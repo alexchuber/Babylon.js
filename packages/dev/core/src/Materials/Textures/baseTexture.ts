@@ -891,6 +891,35 @@ export class BaseTexture extends ThinTexture implements IAnimatable {
     }
 
     /**
+     * @returns A promise that resolves when the texture is ready to be used (downloaded, converted, mip mapped...)
+     */
+    public async whenReadyAsync(): Promise<void> {
+        if (this.isReady()) {
+            return;
+        }
+
+        if (this.loadingError) {
+            throw new Error(this.errorObject?.message || `Texture ${this.name} errored while loading.`);
+        }
+
+        // TODO: Texture's onLoadObservable doesn't fire on updateUrl(), although its InternalTexture's onLoadedObservable does.
+        // const onLoadObservable = (texture as any).onLoadObservable as Observable<BaseTexture>;
+        // if (onLoadObservable) {
+        //     return await new Promise((res) => onLoadObservable.addOnce(() => res()));
+        // }
+
+        const onLoadedObservable = this._texture?.onLoadedObservable;
+        if (onLoadedObservable) {
+            return await new Promise((res) => onLoadedObservable.addOnce(() => res()));
+        }
+
+        // TODO: Fall back to a manual setTimeout check instead of throwing? Not sure when or how this would happen, though.
+        throw new Error(`Cannot determine readiness of texture ${this.name}.`);
+
+        // TODO: Add a timeout?
+    }
+
+    /**
      * Helper function to be called back once a list of texture contains only ready textures.
      * @param textures Define the list of textures to wait for
      * @param callback Define the callback triggered once the entire list will be ready
