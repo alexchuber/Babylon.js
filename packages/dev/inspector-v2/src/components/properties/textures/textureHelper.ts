@@ -29,14 +29,22 @@ export interface TextureChannelsToDisplay {
  * Gets the data of the specified texture by rendering it to an intermediate RGBA texture and retrieving the bytes from it.
  * This is convienent to get 8-bit RGBA values for a texture in a GPU compressed format.
  * @param texture the source texture
+ * @param width the desired width of the result
+ * @param height the desired height of the result
  * @param face if the texture has multiple faces, the face index to use for the source
  * @param channels a filter for which of the RGBA channels to return in the result
  * @param lod if the texture has multiple LODs, the lod index to use for the source
  * @returns the 8-bit texture data
  */
-export async function ApplyChannelsToTextureDataAsync(texture: BaseTexture, face: number, channels: TextureChannelsToDisplay, lod: number = 0): Promise<Uint8Array> {
-    const data = await TextureTools.GetTextureDataAsync(texture, undefined, undefined, face, lod);
-    const { width, height } = texture.getSize();
+export async function ApplyChannelsToTextureDataAsync(
+    texture: BaseTexture,
+    width: number,
+    height: number,
+    face: number,
+    channels: TextureChannelsToDisplay,
+    lod: number = 0
+): Promise<Uint8Array> {
+    const data = await TextureTools.GetTextureDataAsync(texture, width, height, face, lod);
 
     if (!channels.R || !channels.G || !channels.B || !channels.A) {
         for (let i = 0; i < width * height * 4; i += 4) {
