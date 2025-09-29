@@ -256,7 +256,7 @@ export class GLTFExporter {
 
     public readonly _materialExporter = new GLTFMaterialExporter(this);
 
-    private readonly _extensions: { [name: string]: IGLTFExporterExtensionV2 } = {};
+    private readonly _extensions = new Array<IGLTFExporterExtensionV2>();
 
     public readonly _bufferManager = new BufferManager();
 
@@ -301,11 +301,7 @@ export class GLTFExporter {
 
     // eslint-disable-next-line @typescript-eslint/naming-convention, @typescript-eslint/promise-function-async
     private _ApplyExtensions<T>(node: T, actionAsync: (extension: IGLTFExporterExtensionV2, node: T) => Promise<Nullable<T>> | undefined): Promise<Nullable<T>> {
-        const extensions: IGLTFExporterExtensionV2[] = [];
-        for (const name of GLTFExporter._ExtensionNames) {
-            extensions.push(this._extensions[name]);
-        }
-
+        const extensions = this._extensions.filter((ext) => ext.enabled);
         return this._ApplyExtension(node, extensions, 0, actionAsync);
     }
 
@@ -334,54 +330,51 @@ export class GLTFExporter {
     public async _extensionsPostExportMaterialAdditionalTexturesAsync(context: string, material: IMaterial, babylonMaterial: Material): Promise<BaseTexture[]> {
         const output: BaseTexture[] = [];
 
-        await Promise.all(
-            GLTFExporter._ExtensionNames.map(async (name) => {
-                const extension = this._extensions[name];
-
-                if (extension.postExportMaterialAdditionalTexturesAsync) {
-                    const textures = await extension.postExportMaterialAdditionalTexturesAsync(context, material, babylonMaterial);
-                    output.push(...textures);
-                }
-            })
-        );
+        await this._forEachExtensionsAsync(async (extension) => {
+            if (extension.postExportMaterialAdditionalTexturesAsync) {
+                const textures = await extension.postExportMaterialAdditionalTexturesAsync(context, material, babylonMaterial);
+                output.push(...textures);
+            }
+        });
 
         return output;
     }
 
     public _extensionsPostExportTextures(context: string, textureInfo: ITextureInfo, babylonTexture: BaseTexture): void {
-        for (const name of GLTFExporter._ExtensionNames) {
-            const extension = this._extensions[name];
-
+        this._forEachExtensions((extension) => {
             if (extension.postExportTexture) {
                 extension.postExportTexture(context, textureInfo, babylonTexture);
             }
-        }
+        });
     }
 
     public _extensionsPostExportMeshPrimitive(primitive: IMeshPrimitive): void {
-        for (const name of GLTFExporter._ExtensionNames) {
-            const extension = this._extensions[name];
-
+        this._forEachExtensions((extension) => {
             if (extension.postExportMeshPrimitive) {
                 extension.postExportMeshPrimitive(primitive, this._bufferManager, this._accessors);
             }
-        }
+        });
     }
 
     public async _extensionsPreGenerateBinaryAsync(): Promise<void> {
-        for (const name of GLTFExporter._ExtensionNames) {
-            const extension = this._extensions[name];
-
+        await this._forEachExtensionsAsync(async (extension) => {
             if (extension.preGenerateBinaryAsync) {
-                // eslint-disable-next-line no-await-in-loop
                 await extension.preGenerateBinaryAsync(this._bufferManager);
+            }
+        });
+    }
+
+    private async _forEachExtensionsAsync(actionAsync: (extension: IGLTFExporterExtensionV2) => Promise<void>): Promise<void> {
+        for (const extension of this._extensions) {
+            if (extension.enabled) {
+                // eslint-disable-next-line no-await-in-loop
+                await actionAsync(extension);
             }
         }
     }
 
     private _forEachExtensions(action: (extension: IGLTFExporterExtensionV2) => void): void {
-        for (const name of GLTFExporter._ExtensionNames) {
-            const extension = this._extensions[name];
+        for (const extension of this._extensions) {
             if (extension.enabled) {
                 action(extension);
             }
@@ -414,8 +407,11 @@ export class GLTFExporter {
     private _loadExtensions(): void {
         for (const name of GLTFExporter._ExtensionNames) {
             const extension = GLTFExporter._ExtensionFactories[name](this);
-            this._extensions[name] = extension;
+            this._extensions.push(extension);
         }
+
+        // Sort extensions in ascending order
+        this._extensions.sort((a, b) => (a.order ?? Infinity) - (b.order ?? Infinity));
     }
 
     public constructor(babylonScene: Nullable<Scene> = EngineStore.LastCreatedScene, options?: IExportOptions) {
@@ -442,10 +438,10 @@ export class GLTFExporter {
     }
 
     public dispose() {
-        for (const key in this._extensions) {
-            const extension = this._extensions[key];
+        for (const extension of this._extensions) {
             extension.dispose();
         }
+        this._extensions.length = 0;
     }
 
     public get options() {

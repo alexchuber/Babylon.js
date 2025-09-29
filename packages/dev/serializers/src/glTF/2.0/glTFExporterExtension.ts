@@ -81,6 +81,9 @@ export interface IGLTFExporterExtensionV2 extends IGLTFExporterExtension, IDispo
     /** Gets a boolean indicating that this extension is required for the file to work */
     required: boolean;
 
+    /** The processing order of this extension. Extensions with lower values are handled first. */
+    order?: number;
+
     /**
      * Called after the exporter state changes to EXPORTING
      */
