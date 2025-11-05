@@ -18,6 +18,7 @@ import { backbufferColorTextureHandle } from "../FrameGraph/frameGraphTypes";
 import { FrameGraphFXAATask } from "../FrameGraph/Tasks/PostProcesses/fxaaTask";
 import { FrameGraphPassTask } from "../FrameGraph/Tasks/PostProcesses/passTask";
 import { FrameGraphUtils } from "../FrameGraph/frameGraphUtils";
+import { DownloadBlob } from "./blobTools";
 
 let screenshotCanvas: Nullable<HTMLCanvasElement> = null;
 
@@ -77,8 +78,7 @@ export function CreateScreenshot(
             size,
             (data) => {
                 if (forceDownload) {
-                    const blob = new Blob([data]);
-                    Tools.DownloadBlob(blob);
+                    DownloadBlob(new Blob([data]));
                     if (successCallback) {
                         successCallback("");
                     }

@@ -9,8 +9,9 @@ import { Clamp } from "../Maths/math.scalar.functions";
 import type { AbstractEngine } from "../Engines/abstractEngine";
 import { EngineStore } from "../Engines/engineStore";
 import { Logger } from "./logger";
-import { EncodeArrayBufferToBase64 } from "./stringTools";
+import { EncodeArrayBufferToBase64, EncodeBlobToBase64Async } from "./stringTools";
 import { nativeOverride } from "./decorators";
+import { DownloadBlob } from "./blobTools";
 
 type DumpResources = {
     canvas: HTMLCanvasElement | OffscreenCanvas;
@@ -222,7 +223,7 @@ export async function DumpDataAsync(
     const blob = await EncodingHelper.EncodeImageAsync(data, width, height, mimeType, invertY, quality);
 
     if (fileName !== undefined) {
-        Tools.DownloadBlob(blob, fileName);
+        DownloadBlob(blob, fileName);
     }
 
     if (blob.type !== mimeType) {
@@ -235,7 +236,7 @@ export async function DumpDataAsync(
         return buffer;
     }
 
-    return `data:${mimeType};base64,${EncodeArrayBufferToBase64(buffer)}`;
+    return await EncodeBlobToBase64Async(blob);
 }
 
 /**

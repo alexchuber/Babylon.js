@@ -44,6 +44,24 @@ export const Decode = (buffer: Uint8Array | Uint16Array): string => {
 };
 
 /**
+ * Encode a blob to a base64 string
+ * @param blob defines the blob to encode
+ * @returns the encoded string
+ */
+export const EncodeBlobToBase64Async = async (blob: Blob): Promise<string> => {
+    if (typeof FileReader !== "undefined") {
+        return await new Promise((resolve) => {
+            const reader = new FileReader();
+            reader.readAsDataURL(blob);
+            reader.onload = () => {
+                resolve((reader.result as string) ?? "");
+            };
+        });
+    }
+    return `data:${blob.type};base64,${EncodeArrayBufferToBase64(await blob.arrayBuffer())}`;
+};
+
+/**
  * Encode a buffer to a base64 string
  * @param buffer defines the buffer to encode
  * @returns the encoded string

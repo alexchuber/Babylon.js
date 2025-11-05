@@ -29,6 +29,8 @@ import type { IColor4Like } from "../Maths/math.like";
 import { IsExponentOfTwo, Mix } from "./tools.functions";
 import type { AbstractEngine } from "../Engines/abstractEngine";
 import type { RenderTargetTexture } from "core/Materials/Textures/renderTargetTexture";
+import { CanvasToBlob, CanvasToBlobAsync, DownloadBlob } from "./blobTools";
+import { EncodeBlobToBase64Async } from "./stringTools";
 
 // eslint-disable-next-line @typescript-eslint/naming-convention
 declare function importScripts(...urls: string[]): void;
@@ -860,88 +862,22 @@ export class Tools {
         throw _WarnImport("DumpTools");
     }
 
-    private static _IsOffScreenCanvas(canvas: HTMLCanvasElement | OffscreenCanvas): canvas is OffscreenCanvas {
-        return (canvas as OffscreenCanvas).convertToBlob !== undefined;
-    }
-
     /**
      * Converts the canvas data to blob.
      * This acts as a polyfill for browsers not supporting the to blob function.
      * @param canvas Defines the canvas to extract the data from (can be an offscreen canvas)
      * @param successCallback Defines the callback triggered once the data are available
-     * @param mimeType Defines the mime type of the result
+     * @param mimeType Defines the requested mime type
      * @param quality The quality of the image if lossy mimeType is used (e.g. image/jpeg, image/webp). See {@link https://developer.mozilla.org/en-US/docs/Web/API/HTMLCanvasElement/toBlob | HTMLCanvasElement.toBlob()}'s `quality` parameter.
      */
-    static ToBlob(canvas: HTMLCanvasElement | OffscreenCanvas, successCallback: (blob: Nullable<Blob>) => void, mimeType = "image/png", quality?: number): void {
-        // We need HTMLCanvasElement.toBlob for HD screenshots
-        if (!Tools._IsOffScreenCanvas(canvas) && !canvas.toBlob) {
-            //  low performance polyfill based on toDataURL (https://developer.mozilla.org/en-US/docs/Web/API/HTMLCanvasElement/toBlob)
-            canvas.toBlob = function (callback, type, quality) {
-                setTimeout(() => {
-                    const binStr = atob(this.toDataURL(type, quality).split(",")[1]),
-                        len = binStr.length,
-                        arr = new Uint8Array(len);
-
-                    for (let i = 0; i < len; i++) {
-                        arr[i] = binStr.charCodeAt(i);
-                    }
-                    callback(new Blob([arr]));
-                });
-            };
-        }
-        if (Tools._IsOffScreenCanvas(canvas)) {
-            // eslint-disable-next-line @typescript-eslint/no-floating-promises
-            canvas
-                .convertToBlob({
-                    type: mimeType,
-                    quality,
-                })
-                // eslint-disable-next-line github/no-then
-                .then((blob) => successCallback(blob));
-        } else {
-            canvas.toBlob(
-                function (blob) {
-                    successCallback(blob);
-                },
-                mimeType,
-                quality
-            );
-        }
-    }
+    static ToBlob = CanvasToBlob;
 
     /**
      * Download a Blob object
      * @param blob the Blob object
      * @param fileName the file name to download
      */
-    static DownloadBlob(blob: Blob, fileName?: string) {
-        //Creating a link if the browser have the download attribute on the a tag, to automatically start download generated image.
-        if ("download" in document.createElement("a")) {
-            if (!fileName) {
-                const date = new Date();
-                const stringDate =
-                    (date.getFullYear() + "-" + (date.getMonth() + 1)).slice(2) + "-" + date.getDate() + "_" + date.getHours() + "-" + ("0" + date.getMinutes()).slice(-2);
-                fileName = "screenshot_" + stringDate + ".png";
-            }
-            Tools.Download(blob, fileName);
-        } else {
-            if (blob && typeof URL !== "undefined") {
-                const url = URL.createObjectURL(blob);
-
-                const newWindow = window.open("");
-                if (!newWindow) {
-                    return;
-                }
-                const img = newWindow.document.createElement("img");
-                img.onload = function () {
-                    // no longer need to read the blob so it's revoked
-                    URL.revokeObjectURL(url);
-                };
-                img.src = url;
-                newWindow.document.body.appendChild(img);
-            }
-        }
-    }
+    static DownloadBlob = DownloadBlob;
 
     /**
      * Encodes the canvas data to base 64, or automatically downloads the result if `fileName` is defined.
@@ -958,42 +894,39 @@ export class Tools {
         fileName?: string,
         quality?: number
     ): void {
-        if (typeof fileName === "string" || !successCallback) {
-            this.ToBlob(
-                canvas,
-                function (blob) {
-                    if (blob) {
-                        Tools.DownloadBlob(blob, fileName);
-                    }
-                    if (successCallback) {
-                        successCallback("");
-                    }
-                },
-                mimeType,
-                quality
-            );
-        } else if (successCallback) {
-            if (Tools._IsOffScreenCanvas(canvas)) {
-                // eslint-disable-next-line @typescript-eslint/no-floating-promises
-                canvas
-                    .convertToBlob({
-                        type: mimeType,
-                        quality,
-                    })
-                    // eslint-disable-next-line github/no-then
-                    .then((blob) => {
-                        const reader = new FileReader();
-                        reader.readAsDataURL(blob);
-                        reader.onloadend = () => {
-                            const base64data = reader.result;
-                            successCallback(base64data as string);
-                        };
-                    });
-                return;
+        void (async () => {
+            const blob = await CanvasToBlobAsync(canvas, mimeType, quality);
+            if (blob) {
+                if (typeof fileName === "string" || !successCallback) {
+                    DownloadBlob(blob, fileName);
+                }
+                if (successCallback && typeof fileName !== "string") {
+                    successCallback(await EncodeBlobToBase64Async(blob));
+                    return;
+                }
             }
-            const base64Image = canvas.toDataURL(mimeType, quality);
-            successCallback(base64Image);
-        }
+            // Callback with empty string if we reached this point (downloaded or no blob)
+            successCallback?.("");
+        })();
+
+        CanvasToBlob(
+            canvas,
+            async (blob) => {
+                if (blob) {
+                    if (typeof fileName === "string" || !successCallback) {
+                        DownloadBlob(blob, fileName);
+                    }
+                    if (successCallback && typeof fileName !== "string") {
+                        successCallback(await EncodeBlobToBase64Async(blob));
+                        return;
+                    }
+                }
+                // Callback with empty string if we reached this point (downloaded or no blob)
+                successCallback?.("");
+            },
+            mimeType,
+            quality
+        );
     }
 
     /**
