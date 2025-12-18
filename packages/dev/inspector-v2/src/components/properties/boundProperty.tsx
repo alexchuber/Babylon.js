@@ -47,6 +47,22 @@ export type BoundPropertyProps<TargetT extends object, PropertyKeyT extends keyo
               never
         : {});
 
+// TODO: Add a way to show the variable name in the description/info tooltip
+// Function to find the constructor that owns the property
+function getPropertyOwnerClassName<T extends object>(target: T, propertyKey: string | symbol): string {
+    let proto = Object.getPrototypeOf(target);
+
+    while (proto) {
+        if (Object.prototype.hasOwnProperty.call(proto, propertyKey)) {
+            return proto.constructor.name;
+        }
+        proto = Object.getPrototypeOf(proto);
+    }
+
+    // Fallback to the target's constructor if not found in prototype chain
+    return target.constructor.name;
+}
+
 function BoundPropertyCoreImpl<TargetT extends object, PropertyKeyT extends keyof TargetT, ComponentT extends ComponentType<any>>(
     props: Omit<BoundPropertyProps<TargetT, PropertyKeyT, ComponentT>, "target"> & { target: TargetT },
     ref?: any
@@ -77,6 +93,9 @@ function BoundPropertyCoreImpl<TargetT extends object, PropertyKeyT extends keyo
                 ...rest,
                 ref,
                 value: convertedValue as TargetT[PropertyKeyT],
+                description: rest.description
+                    ? `${getPropertyOwnerClassName(target, propertyKey)}.${String(propertyKey)}: ${rest.description}`
+                    : `${getPropertyOwnerClassName(target, propertyKey)}.${String(propertyKey)}`,
                 onChange: (val: TargetT[PropertyKeyT]) => {
                     const oldValue = target[propertyKey];
                     const newValue = convertFrom ? convertFrom(val) : val;
