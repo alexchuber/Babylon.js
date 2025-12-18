@@ -49,6 +49,12 @@ export const ToolsServiceDefinition: ServiceDefinition<[IToolsService], [IShellS
                 toolsPaneRegistration?.dispose();
                 toolsPaneRegistration = null;
             } else if (!toolsPaneRegistration) {
+                // devdependency in dev
+                // dependency in prod
+                // rollup-config there might be smthn called nodeResolve will respect the peer deps / deps in package.json
+                // peer deps will be considered external so the resulting bundle will include them
+                // tldr public directories, in umd and other one for inspectorv2, both of those package.jsons
+                // add a direct dep on the package gif.js
                 toolsPaneRegistration = shellService.addSidePane({
                     key: "Tools",
                     title: "Tools",
@@ -72,8 +78,6 @@ export const ToolsServiceDefinition: ServiceDefinition<[IToolsService], [IShellS
          * Left TODO: Implement the following sections from toolsTabComponent.tsx
          * - GLTF Validator (see glTFComponent.tsx) (consider putting in Import tools)
          * - Reflector
-         * - GIF (consider putting in Capture Tools)
-         * - Replay (consider putting in Capture Tools)
          */
 
         return {
