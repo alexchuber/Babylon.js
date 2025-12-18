@@ -62,7 +62,6 @@ export const ToolsServiceDefinition: ServiceDefinition<[IToolsService], [IShellS
                     horizontalLocation: "right",
                     verticalLocation: "top",
                     order: 400,
-                    suppressTeachingMoment: true,
                     content: () => {
                         const sections = useOrderedObservableCollection(sectionsCollection);
                         const sectionContent = useObservableCollection(sectionContentCollection);
@@ -78,7 +77,6 @@ export const ToolsServiceDefinition: ServiceDefinition<[IToolsService], [IShellS
          * Left TODO: Implement the following sections from toolsTabComponent.tsx
          * - Reflector
          */
-
         return {
             addSection: (section) => sectionsCollection.add(section),
             addSectionContent: (content) => sectionContentCollection.add(content),
