@@ -42,9 +42,18 @@ export const ExportBabylonTools: FunctionComponent<{ scene: Scene }> = ({ scene 
     });
 
     const exportBabylon = useCallback(async () => {
-        const strScene = JSON.stringify(SceneSerializer.Serialize(scene));
-        const blob = new Blob([strScene], { type: "octet/stream" });
-        Tools.Download(blob, "scene.babylon");
+        try {
+            const serializedScene = await SceneSerializer.SerializeAsync(scene);
+            // The issue is likely that in your ESM-first build, internal properties that should be non-enumerable
+            // (like _children, _cache, _internalMetadata) are accidentally enumerable, causing JSON.stringify
+            // to try to serialize them and hit circular references.
+            // Filtering them out with a replacer should fix it.
+            const strScene = JSON.stringify(serializedScene);
+            const blob = new Blob([strScene], { type: "octet/stream" });
+            Tools.Download(blob, "scene.babylon");
+        } catch (error) {
+            Logger.Error(`Failed to export scene: ${error}`);
+        }
     }, [scene]);
 
     const createEnvTexture = useCallback(async () => {

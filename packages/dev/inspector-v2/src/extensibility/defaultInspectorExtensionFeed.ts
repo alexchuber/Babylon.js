@@ -23,7 +23,7 @@ export const DefaultInspectorExtensionFeed = new BuiltInsExtensionFeed("Inspecto
         description: "Adds new features to enable exporting Babylon assets such as .gltf, .glb, .babylon, and more.",
         keywords: ["export", "gltf", "glb", "babylon", "exporter", "tools"],
         ...BabylonWebResources,
-        author: { name: "Alex Chuber", forumUserName: "alexchuber" },
+        author: { name: "Alex Huber", forumUserName: "alexchuber" },
         getExtensionModuleAsync: async () => await import("../services/panes/tools/exportService"),
     },
     {

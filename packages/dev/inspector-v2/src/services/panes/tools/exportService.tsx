@@ -2,7 +2,7 @@ import type { ServiceDefinition } from "../../../modularity/serviceDefinition";
 import { ToolsServiceIdentity } from "../toolsService";
 import type { IToolsService } from "../toolsService";
 import type { IDisposable } from "core/scene";
-import { ExportBabylonTools, ExportGltfTools } from "../../../components/tools/exportTools";
+import { ExportBabylonTools, ExportGltfTools } from "../../../components/tools/export/exportTools";
 
 export const ExportServiceDefinition: ServiceDefinition<[], [IToolsService]> = {
     friendlyName: "Export Tools",
@@ -10,7 +10,7 @@ export const ExportServiceDefinition: ServiceDefinition<[], [IToolsService]> = {
     factory: (toolsService) => {
         const contentRegistrations: IDisposable[] = [];
 
-        // glTF export content
+        // .gltf
         contentRegistrations.push(
             toolsService.addSectionContent({
                 key: "glTF Export",
@@ -19,7 +19,7 @@ export const ExportServiceDefinition: ServiceDefinition<[], [IToolsService]> = {
             })
         );
 
-        // Babylon export content
+        // .babylon
         contentRegistrations.push(
             toolsService.addSectionContent({
                 key: "Babylon Export",

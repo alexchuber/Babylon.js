@@ -1,3 +1,4 @@
+/* eslint-disable no-console */
 import type { Geometry } from "../Meshes/geometry";
 import { Mesh } from "../Meshes/mesh";
 import { Constants } from "../Engines/constants";
@@ -185,7 +186,7 @@ export class SceneSerializer {
 
         // Metadata
         if (scene.metadata) {
-            serializationObject.metadata = scene.metadata;
+            // serializationObject.metadata = scene.metadata;
         }
 
         // Morph targets
@@ -393,28 +394,48 @@ export class SceneSerializer {
         return serializationObject;
     }
 
-    private static _CollectPromises(obj: any, promises: Array<Promise<any>>): void {
+    private static _CollectPromises(obj: any, promises: Array<Promise<any>>, parentObj?: any): void {
         if (Array.isArray(obj)) {
             for (let i = 0; i < obj.length; ++i) {
                 const o = obj[i];
                 if (o instanceof Promise) {
                     // eslint-disable-next-line @typescript-eslint/no-unsafe-return, github/no-then
                     promises.push(o.then((res: any) => (obj[i] = res)));
-                } else if (o instanceof Object || Array.isArray(o)) {
-                    this._CollectPromises(o, promises);
+                } else if ((o !== null && typeof o === "object" && o.constructor === Object) || Array.isArray(o)) {
+                    // Only recurse into plain objects, not class instances
+                    this._CollectPromises(o, promises, obj);
+                } else if (o instanceof Object) {
+                    console.warn(`Found non-serializable object: ${o.constructor?.name || typeof o}`);
+                    console.warn("Parent object (array):", obj);
+                    if (parentObj) {
+                        console.warn("Grandparent object:", parentObj);
+                    }
                 }
             }
-        } else if (obj instanceof Object) {
+        } else if (obj !== null && typeof obj === "object" && obj.constructor === Object) {
+            // Only recurse into plain objects, not class instances
             for (const name in obj) {
                 if (Object.prototype.hasOwnProperty.call(obj, name)) {
                     const o = obj[name];
                     if (o instanceof Promise) {
                         // eslint-disable-next-line @typescript-eslint/no-unsafe-return, github/no-then
                         promises.push(o.then((res: any) => (obj[name] = res)));
-                    } else if (o instanceof Object || Array.isArray(o)) {
-                        this._CollectPromises(o, promises);
+                    } else if ((o !== null && typeof o === "object" && o.constructor === Object) || Array.isArray(o)) {
+                        // Only recurse into plain objects, not class instances
+                        this._CollectPromises(o, promises, obj);
+                    } else if (o instanceof Object) {
+                        console.warn(`Found non-serializable object ${o.constructor?.name || typeof o} at property: ${name}`);
+                        console.warn(`Parent object:`, obj);
+                        if (parentObj) {
+                            console.warn("Grandparent object:", parentObj);
+                        }
                     }
                 }
+            }
+        } else if (obj instanceof Object) {
+            console.warn(`Found non-serializable object: ${obj.constructor?.name || typeof obj}`);
+            if (parentObj) {
+                console.warn("Parent object:", parentObj);
             }
         }
     }
