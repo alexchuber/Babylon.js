@@ -51,7 +51,6 @@ import {
     IsChildCollapsible,
     FloatsNeed16BitInteger,
     IsStandardVertexAttribute,
-    IndicesArrayToTypedSubarray,
     GetVertexBufferInfo,
     CollapseChildIntoParent,
     Rotate180Y,
@@ -1332,65 +1331,82 @@ export class GLTFExporter {
     private _exportIndices(
         indices: Nullable<IndicesArray>,
         is32Bits: boolean,
-        start: number,
-        count: number,
-        offset: number,
+        start: number, // Either indexStart (indexed mesh) or vertexStart (unindexed mesh)
+        count: number, // Either indexCount (indexed mesh) or vertexCount (unindexed mesh)
         fillMode: number,
         sideOrientation: number,
         state: ExporterState,
         primitive: IMeshPrimitive
     ): void {
-        let indicesToExport = null;
-
         primitive.mode = GetPrimitiveMode(fillMode);
 
         // Flip indices if triangle winding order is not CCW, as glTF is always CCW.
         const flip = sideOrientation !== Material.CounterClockWiseSideOrientation && IsTriangleFillMode(fillMode);
-        if (flip) {
-            if (fillMode === Material.TriangleStripDrawMode || fillMode === Material.TriangleFanDrawMode) {
-                throw new Error("Triangle strip/fan fill mode is not implemented");
-            }
 
-            const newIndices = is32Bits ? new Uint32Array(count) : new Uint16Array(count);
+        if (flip && (fillMode === Material.TriangleStripDrawMode || fillMode === Material.TriangleFanDrawMode)) {
+            throw new Error("Triangle strip/fan fill mode is not implemented");
+        }
+
+        let indicesToExport = null;
+
+        if (flip) {
+            indicesToExport = is32Bits ? new Uint32Array(count) : new Uint16Array(count);
 
             if (indices) {
                 for (let i = 0; i + 2 < count; i += 3) {
-                    newIndices[i] = indices[start + i] + offset;
-                    newIndices[i + 1] = indices[start + i + 2] + offset;
-                    newIndices[i + 2] = indices[start + i + 1] + offset;
+                    indicesToExport[i] = indices[start + i];
+                    indicesToExport[i + 1] = indices[start + i + 2];
+                    indicesToExport[i + 2] = indices[start + i + 1];
                 }
             } else {
+                // Special case: unindexed mesh that needs to be flipped.
+                // Rather than re-order all its vertices, which may be shared anyway,
+                // simply convert to indexed and flip the new indices.
+                // Here, 'start' represents verticesStart, and 'count' represents verticesCount.
                 for (let i = 0; i + 2 < count; i += 3) {
-                    newIndices[i] = i;
-                    newIndices[i + 1] = i + 2;
-                    newIndices[i + 2] = i + 1;
+                    indicesToExport[i] = start + i;
+                    indicesToExport[i + 1] = start + i + 2;
+                    indicesToExport[i + 2] = start + i + 1;
                 }
             }
-
-            indicesToExport = newIndices;
-        } else if (indices && offset !== 0) {
-            const newIndices = is32Bits ? new Uint32Array(count) : new Uint16Array(count);
-            for (let i = 0; i < count; i++) {
-                newIndices[i] = indices[start + i] + offset;
+        } else {
+            // Unindexed mesh with no need to flip indices. No need to export indices.
+            if (!indices) {
+                return;
             }
 
-            indicesToExport = newIndices;
-        } else if (indices) {
-            indicesToExport = IndicesArrayToTypedSubarray(indices, start, count, is32Bits);
+            // Ensure we export just the portion of the indices we need.
+            const indicesView =
+                start === 0 && count === indices.length
+                    ? indices
+                    : Array.isArray(indices)
+                      ? // Slice the required range.
+                        indices.slice(start, start + count)
+                      : indices.subarray(start, start + count);
+
+            // Then, ensure we are in the correct typed array format.
+            indicesToExport =
+                indicesView instanceof Uint16Array || indicesView instanceof Uint32Array
+                    ? indicesView
+                    : indicesView instanceof Int32Array
+                      ? // Cast Int32 (which should all be positive anyhow) to Uint32
+                        new Uint32Array(indicesView.buffer, indicesView.byteOffset, indicesView.length)
+                      : is32Bits
+                        ? // Convert number[] to typed array
+                          new Uint32Array(indicesView)
+                        : new Uint16Array(indicesView);
         }
 
-        if (indicesToExport) {
-            let accessorIndex = state.getIndicesAccessor(indices, start, count, offset, flip);
-            if (accessorIndex === undefined) {
-                const bufferView = this._bufferManager.createBufferView(indicesToExport);
-                const componentType = is32Bits ? AccessorComponentType.UNSIGNED_INT : AccessorComponentType.UNSIGNED_SHORT;
-                this._accessors.push(this._bufferManager.createAccessor(bufferView, AccessorType.SCALAR, componentType, count, 0));
-                accessorIndex = this._accessors.length - 1;
-                state.setIndicesAccessor(indices, start, count, offset, flip, accessorIndex);
-            }
-
-            primitive.indices = accessorIndex;
+        let accessorIndex = state.getIndicesAccessor(indices, start, count, 0, flip);
+        if (accessorIndex === undefined) {
+            const bufferView = this._bufferManager.createBufferView(indicesToExport);
+            const componentType = is32Bits ? AccessorComponentType.UNSIGNED_INT : AccessorComponentType.UNSIGNED_SHORT;
+            this._accessors.push(this._bufferManager.createAccessor(bufferView, AccessorType.SCALAR, componentType, count, 0));
+            accessorIndex = this._accessors.length - 1;
+            state.setIndicesAccessor(indices, start, count, 0, flip, accessorIndex);
         }
+
+        primitive.indices = accessorIndex;
     }
 
     private _exportVertexBuffer(vertexBuffer: VertexBuffer, babylonMaterial: Material, start: number, count: number, state: ExporterState, primitive: IMeshPrimitive): void {
@@ -1541,7 +1557,6 @@ export class GLTFExporter {
                     indices ? AreIndices32Bits(indices, subMesh.indexCount, subMesh.indexStart, subMesh.verticesStart) : subMesh.verticesCount > 65535,
                     indices ? subMesh.indexStart : subMesh.verticesStart,
                     indices ? subMesh.indexCount : subMesh.verticesCount,
-                    -subMesh.verticesStart,
                     fillMode,
                     sideOrientation,
                     state,
