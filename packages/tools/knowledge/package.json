@@ -1,0 +1,30 @@
+{
+    "name": "@tools/knowledge",
+    "version": "1.0.0",
+    "private": true,
+    "type": "module",
+    "main": "dist/src/index.js",
+    "module": "dist/src/index.js",
+    "types": "dist/src/index.d.ts",
+    "files": [
+        "dist"
+    ],
+    "scripts": {
+        "build": "npm run clean && npm run compile",
+        "compile": "tsc -b tsconfig.build.json",
+        "postcompile": "cp test/goldenQueries.json dist/test/goldenQueries.json",
+        "clean": "rimraf dist",
+        "test-harness": "node dist/test/harness.js",
+        "test-suite": "node dist/test/suite.js",
+        "generate-corpus": "node dist/scripts/generateCorpus.js"
+    },
+    "dependencies": {
+        "minisearch": "^7.1.1"
+    },
+    "devDependencies": {
+        "@dev/build-tools": "1.0.0",
+        "@types/node": "^20.0.0",
+        "rimraf": "^6.0.1"
+    },
+    "sideEffects": false
+}

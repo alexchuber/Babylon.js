@@ -1,0 +1,5 @@
+dist/
+.cache/
+assets/
+*.tsbuildinfo
+node_modules/

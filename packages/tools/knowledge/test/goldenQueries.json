@@ -1,0 +1,37 @@
+[
+    {
+        "id": 1,
+        "query": "applyImpulse",
+        "intent": "api_lookup",
+        "verbosity": "concise",
+        "expectedKeywords": ["PhysicsImpostor", "force", "contactPoint"]
+    },
+    {
+        "id": 2,
+        "query": "how to use physics",
+        "intent": "concept_explanation",
+        "verbosity": "concise",
+        "expectedKeywords": ["physics", "engine", "Havok", "enable"]
+    },
+    {
+        "id": 3,
+        "query": "bouncing ball",
+        "intent": "closest_match",
+        "verbosity": "concise",
+        "expectedKeywords": ["restitution", "physics", "material"]
+    },
+    {
+        "id": 4,
+        "query": "camera introduction",
+        "intent": "concept_explanation",
+        "verbosity": "concise",
+        "expectedKeywords": ["ArcRotateCamera", "FreeCamera"]
+    },
+    {
+        "id": 5,
+        "query": "Vector3",
+        "intent": "api_lookup",
+        "verbosity": "verbose",
+        "expectedKeywords": ["x", "y", "z", "constructor"]
+    }
+]
