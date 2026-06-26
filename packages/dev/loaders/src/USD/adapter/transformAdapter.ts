@@ -6,18 +6,24 @@ import { type IResolvedTransform, type IStageMetadata } from "../resolution/reso
 const DegToRad = Math.PI / 180;
 
 /**
- * Creates the root node that converts USD stage space into Babylon space. The whole imported prim
- * tree is parented under this node, so up-axis and unit conversion happen once at the root.
+ * Creates the root node that converts USD stage space into Babylon space. This POC intentionally
+ * enables `scene.useRightHandedSystem` globally because USD is right-handed; keeping Babylon in
+ * right-handed mode preserves USD-authored positions, cameras, normals, and triangle winding
+ * without per-vertex/index conversion. This affects the whole scene, not only the imported USD
+ * subtree, and a future refinement could bake right/left-handed conversion into the imported root
+ * instead.
  *
- * Phase 0 applies up-axis (Z-up → Y-up) and `metersPerUnit` scaling. Rigorous handedness/winding
- * conversion is owned by Phase 1 workstream A (transform/coordinate adapter), which is validated by
- * visual tests.
+ * The whole imported prim tree is parented under this node, so up-axis (Z-up → Y-up) and
+ * `metersPerUnit` scaling happen once at the root. Because handedness is preserved by scene mode,
+ * geometry adapters should keep USD winding as authored and should not flip indices.
  *
  * @param metadata the stage metadata describing axes and units
  * @param scene the scene to create the node in
  * @returns the configured root transform node
  */
 export function CreateStageRoot(metadata: IStageMetadata, scene: Scene): TransformNode {
+    scene.useRightHandedSystem = true;
+
     const root = new TransformNode("__usd_root__", scene);
     root.rotationQuaternion = metadata.upAxis === "Z" ? Quaternion.RotationAxis(new Vector3(1, 0, 0), -90 * DegToRad) : Quaternion.Identity();
     const unit = metadata.metersPerUnit > 0 ? metadata.metersPerUnit : 1;
