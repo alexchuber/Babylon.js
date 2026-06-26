@@ -168,6 +168,14 @@ export interface IResolvedMesh {
     colors?: Float32Array;
     /** Subdivision scheme authored on the mesh. The geometry adapter tessellates when not "none". */
     subdivisionScheme: "none" | "catmullClark" | "loop" | "bilinear";
+    /**
+     * Original pre-triangulation face vertex counts (verts per face), provided when
+     * `subdivisionScheme !== "none"` so the geometry adapter can subdivide the true authored cage
+     * (e.g. quads for Catmull-Clark) instead of the fan-triangulated approximation in `indices`.
+     */
+    faceVertexCounts?: Uint32Array;
+    /** Original pre-triangulation face vertex indices, aligned with `faceVertexCounts`. */
+    faceVertexIndices?: Uint32Array;
     /** Whether the mesh is double-sided (USD `doubleSided`). */
     doubleSided: boolean;
     /** Authored orientation; combined with triangulation winding so the adapter can set side orientation. */
