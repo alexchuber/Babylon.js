@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import * as fflate from "fflate";
 import { NullEngine } from "core/Engines/nullEngine";
 import { Scene } from "core/scene";
 import { PBRMaterial } from "core/Materials/PBR/pbrMaterial.pure";
@@ -65,6 +66,31 @@ def Xform "World"
 }
 `;
 
+// A DistantLight and a Camera in one stage, exercising the UsdLux/UsdGeomCamera schema mappings all
+// the way through to real Babylon Light and Camera objects via the public loader.
+const lightCameraUsda = `#usda 1.0
+(
+    upAxis = "Y"
+    metersPerUnit = 1
+)
+
+def Xform "World"
+{
+    def DistantLight "Sun"
+    {
+        color3f inputs:color = (1, 0.9, 0.8)
+        float inputs:intensity = 2
+    }
+
+    def Camera "Cam"
+    {
+        token projection = "perspective"
+        float focalLength = 50
+        float2 clippingRange = (0.1, 1000)
+    }
+}
+`;
+
 describe("USD loader integration", () => {
     it("composes a referenced child layer into the scene via an injected fetcher", async () => {
         const engine = new NullEngine();
@@ -106,6 +132,50 @@ describe("USD loader integration", () => {
         expect(material.albedoColor.b).toBeCloseTo(0.3);
         expect(material.metallic).toBeCloseTo(0.25);
         expect(material.roughness).toBeCloseTo(0.6);
+
+        scene.dispose();
+        engine.dispose();
+    });
+
+    it("reads a USDZ archive and composes its embedded inner layer offline", async () => {
+        const engine = new NullEngine();
+        const scene = new Scene(engine);
+
+        // Pack the root and child layers into a STORE-compressed USDZ; the inner root references the
+        // sibling child by name, so composing it relies on archive-embedded resolution, not the network.
+        const archive = fflate.zipSync(
+            {
+                "root.usda": new TextEncoder().encode(rootUsda),
+                "child.usda": new TextEncoder().encode(childUsda),
+            },
+            { level: 0 }
+        );
+
+        const stage = await ResolveUsdStageWithFetcherAsync(archive.buffer, "", "model.usdz", { fflate }, (identifier) => {
+            throw new Error(`USDZ composition must not hit the network, but requested: ${identifier}`);
+        });
+
+        const result = AdaptResolvedStageToScene(stage, scene, null, {});
+
+        // "Ref" resolves only if the embedded child.usda was composed straight from the archive.
+        const referenced = result.meshes.find((mesh) => mesh.name === "Ref");
+        expect(referenced).toBeDefined();
+        expect(referenced!.getTotalVertices()).toBe(4);
+
+        scene.dispose();
+        engine.dispose();
+    });
+
+    it("maps a UsdLux light and a UsdGeomCamera to Babylon objects end to end", async () => {
+        const engine = new NullEngine();
+        const scene = new Scene(engine);
+        const loader = new USDFileLoader();
+
+        const result = await loader.importMeshAsync(null, scene, lightCameraUsda, "");
+
+        expect(result.lights.length).toBe(1);
+        expect(result.lights[0].name).toBe("Sun");
+        expect(scene.getCameraByName("Cam")).not.toBeNull();
 
         scene.dispose();
         engine.dispose();

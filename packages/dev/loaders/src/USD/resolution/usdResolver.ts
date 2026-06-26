@@ -8,6 +8,8 @@ import { type ISdfCompositionFields, type ISdfPrimSpec } from "./sdf/sdfSpec";
 import { ParseUsda } from "./parser/usda/usdaParser";
 import { ComposeLayerStack, type ICompositionDiagnostic } from "./composition/composeLayerStack";
 import { MapLayerToResolvedStage } from "./mapping/stageMapper";
+import { ParseCrate } from "./parser/crate/crateReader";
+import { ReadUsdzArchive } from "./parser/usdzArchive";
 
 /** The concrete on-disk USD container format, sniffed from magic bytes rather than the file extension. */
 export type UsdFormat = "usda" | "usdc" | "usdz";
@@ -74,7 +76,7 @@ export async function ResolveUsdStageAsync(
  * @param data the raw USD data
  * @param rootUrl root url external assets are resolved against
  * @param fileName name of the file being loaded
- * @param _options loader options
+ * @param options loader options (used by the USDZ/crate readers)
  * @param fetchAsset callback fetching an external layer's bytes by resolved identifier
  * @returns a promise resolving to the fully-resolved stage
  */
@@ -82,21 +84,65 @@ export async function ResolveUsdStageWithFetcherAsync(
     data: ArrayBuffer | string,
     rootUrl: string,
     fileName: string | undefined,
-    _options: Readonly<USDLoadingOptions>,
+    options: Readonly<USDLoadingOptions>,
     fetchAsset: FetchUsdAsset
 ): Promise<IResolvedStage> {
     const diagnostics: IResolvedDiagnostic[] = [];
     const detected = DetectUsdFormat(data);
     const rootIdentifier = `${rootUrl ?? ""}${fileName ?? "stage.usda"}`;
 
-    if (detected.format === "usdc") {
-        throw new Error(`USD: USDC (crate) decoding is not yet implemented (${fileName ?? rootIdentifier}).`);
-    }
     if (detected.format === "usdz") {
-        throw new Error(`USD: USDZ archive reading is not yet implemented (${fileName ?? rootIdentifier}).`);
+        return await ResolveUsdzStageAsync(data as ArrayBuffer, rootIdentifier, options, fetchAsset, diagnostics);
     }
 
-    const rootLayer = ParseUsda(detected.text ?? "", rootIdentifier);
+    const rootLayer = detected.format === "usdc" ? ParseCrate(data as ArrayBuffer, rootIdentifier) : ParseUsda(detected.text ?? "", rootIdentifier);
+    return await ComposeAndMapStageAsync(rootLayer, fetchAsset, diagnostics);
+}
+
+// Unzips a USDZ archive, parses its inner root layer (USDA or USDC), and composes the stage with a
+// fetcher that resolves sibling layer references from the archive's embedded assets before falling
+// back to the host fetcher. This lets a self-contained USDZ compose its inner layer stack offline.
+async function ResolveUsdzStageAsync(
+    data: ArrayBuffer,
+    rootIdentifier: string,
+    options: Readonly<USDLoadingOptions>,
+    fetchAsset: FetchUsdAsset,
+    diagnostics: IResolvedDiagnostic[]
+): Promise<IResolvedStage> {
+    const archive = await ReadUsdzArchive(data, options.fflate, options.deflateURL);
+    const innerIdentifier = archive.rootLayer.fileName;
+    const innerDetected = DetectUsdFormat(archive.rootLayer.data);
+
+    let rootLayer: ISdfLayer;
+    if (innerDetected.format === "usdc") {
+        rootLayer = ParseCrate(archive.rootLayer.data, innerIdentifier);
+    } else if (innerDetected.format === "usda") {
+        rootLayer = ParseUsda(innerDetected.text ?? "", innerIdentifier);
+    } else {
+        diagnostics.push({
+            severity: "error",
+            message: `USDZ root layer '${innerIdentifier}' has an unsupported nested format and was skipped.`,
+            path: `${rootIdentifier}[${innerIdentifier}]`,
+        });
+        rootLayer = ParseUsda("#usda 1.0\n", innerIdentifier);
+    }
+
+    const fetchArchiveAssetAsync: FetchUsdAsset = async (resolvedIdentifier) => {
+        const embedded = archive.assets.get(resolvedIdentifier);
+        if (embedded) {
+            const copy = new ArrayBuffer(embedded.byteLength);
+            new Uint8Array(copy).set(embedded);
+            return copy;
+        }
+        return await fetchAsset(resolvedIdentifier);
+    };
+
+    return await ComposeAndMapStageAsync(rootLayer, fetchArchiveAssetAsync, diagnostics);
+}
+
+// Pre-fetches the external layer stack, composes it with LIVERPS strength ordering, and maps the
+// flattened result into a resolved stage. Shared by every container format once a root layer exists.
+async function ComposeAndMapStageAsync(rootLayer: ISdfLayer, fetchAsset: FetchUsdAsset, diagnostics: IResolvedDiagnostic[]): Promise<IResolvedStage> {
     const layers = await PrefetchLayerStackAsync(rootLayer, fetchAsset, diagnostics);
 
     const resolveLayer = (assetPath: string, fromIdentifier: string): ISdfLayer | undefined => layers.get(ResolveLayerIdentifier(assetPath, fromIdentifier));

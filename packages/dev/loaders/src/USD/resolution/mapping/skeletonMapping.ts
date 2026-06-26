@@ -334,7 +334,10 @@ function AsQuatArray(value: SdfValue | undefined): Quat[] | undefined {
     if (!Array.isArray(value?.value) || !value.value.every((item) => IsNumericTuple(item, 4))) {
         return undefined;
     }
-    return value.value.map((item): Quat => [item[0], item[1], item[2], item[3]]);
+    return value.value.map((item): Quat => {
+        const tuple = item as number[];
+        return [tuple[0], tuple[1], tuple[2], tuple[3]];
+    });
 }
 
 function IsNumericTuple(value: unknown, length: number): value is number[] {
