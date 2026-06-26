@@ -1,11 +1,28 @@
-import { type IResolvedDiagnostic, type IResolvedMaterial, type IResolvedMesh, type IResolvedPrim, type IResolvedStage, type IStageMetadata } from "../resolvedStage";
+import {
+    type IResolvedDiagnostic,
+    type IResolvedMaterial,
+    type IResolvedMesh,
+    type IResolvedPrim,
+    type IResolvedSkeleton,
+    type IResolvedStage,
+    type IStageMetadata,
+} from "../resolvedStage";
 import { type ISdfLayer, type ISdfPrimSpec } from "../sdf";
 import { ResolvePrimAnimation } from "./animationMapping";
+import { ResolveCamera } from "./cameraMapping";
+import { ResolveLight } from "./lightMapping";
 import { ResolveMaterialBinding, GetDisplayColorFallback } from "./materialMapping";
 import { type IStageMappingContext } from "./mappingContext";
 import { BuildMeshPoolKey, ResolveMesh } from "./meshMapping";
+import { ResolvePointInstancer } from "./pointInstancerMapping";
+import { ResolveSkeletonIndex, ResolveSkinning } from "./skeletonMapping";
 import { IdentityTransform, ResolveTransform } from "./transformMapping";
 import { AsToken, GetAttribute, GetAttributeValue } from "./valueAccess";
+
+type StageMapperContext = IStageMappingContext & {
+    skeletons: IResolvedSkeleton[];
+    skeletonIndexByPath: Map<string, number>;
+};
 
 /**
  * Maps one already-composed flattened Sdf layer into the read-only resolved stage contract.
@@ -16,13 +33,16 @@ export function MapLayerToResolvedStage(layer: ISdfLayer): IResolvedStage {
     const diagnostics: IResolvedDiagnostic[] = [];
     const meshes: IResolvedMesh[] = [];
     const materials: IResolvedMaterial[] = [];
-    const context: IStageMappingContext = {
+    const skeletons: IResolvedSkeleton[] = [];
+    const context: StageMapperContext = {
         layer,
         primByPath: BuildPrimIndex(layer.rootPrims),
         meshes,
         materials,
+        skeletons,
         meshIndexByKey: new Map(),
         materialIndexByPath: new Map(),
+        skeletonIndexByPath: new Map(),
         diagnostics,
     };
     const metadata = ResolveStageMetadata(layer);
@@ -40,7 +60,7 @@ export function MapLayerToResolvedStage(layer: ISdfLayer): IResolvedStage {
         root,
         meshes,
         materials,
-        skeletons: [],
+        skeletons,
         diagnostics,
     };
 }
@@ -56,7 +76,7 @@ function ResolveStageMetadata(layer: ISdfLayer): IStageMetadata {
     };
 }
 
-function MapPrim(primSpec: ISdfPrimSpec, parentVisible: boolean, metadata: IStageMetadata, context: IStageMappingContext): IResolvedPrim {
+function MapPrim(primSpec: ISdfPrimSpec, parentVisible: boolean, metadata: IStageMetadata, context: StageMapperContext): IResolvedPrim {
     const visible = parentVisible && ResolveVisibility(primSpec);
     const prim: IResolvedPrim = {
         path: primSpec.path,
@@ -67,25 +87,44 @@ function MapPrim(primSpec: ISdfPrimSpec, parentVisible: boolean, metadata: IStag
         children: [],
     };
 
-    ApplySchemaPayload(prim, primSpec, context);
+    ApplySchemaPayload(prim, primSpec, metadata, context);
     const animation = ResolvePrimAnimation(primSpec, context.layer, metadata, context.diagnostics);
     if (animation) {
         prim.animation = animation;
     }
-    prim.children = primSpec.children.map((child) => MapPrim(child, visible, metadata, context));
+    prim.children = prim.kind === "pointInstancer" ? [] : primSpec.children.map((child) => MapPrim(child, visible, metadata, context));
     return prim;
 }
 
-function ApplySchemaPayload(prim: IResolvedPrim, primSpec: ISdfPrimSpec, context: IStageMappingContext): void {
-    if (IsDeferredSchema(primSpec.typeName)) {
-        context.diagnostics.push({ severity: "info", path: primSpec.path, message: `Schema ${primSpec.typeName} mapping deferred.` });
+function ApplySchemaPayload(prim: IResolvedPrim, primSpec: ISdfPrimSpec, metadata: IStageMetadata, context: StageMapperContext): void {
+    const light = ResolveLight(primSpec, context);
+    if (light) {
+        prim.kind = "light";
+        prim.light = light;
+        return;
+    }
+
+    const camera = ResolveCamera(primSpec);
+    if (camera) {
+        prim.kind = "camera";
+        prim.camera = camera;
+        return;
+    }
+
+    const instancer = ResolvePointInstancer(primSpec, context);
+    if (instancer) {
+        prim.kind = "pointInstancer";
+        prim.instancer = instancer;
+        return;
+    }
+
+    if (primSpec.typeName === "Skeleton") {
+        ResolveSkeletonIndex(primSpec.path, context, metadata.timeCodesPerSecond);
         return;
     }
 
     if (primSpec.typeName !== "Mesh") {
-        if (primSpec.instanceable) {
-            context.diagnostics.push({ severity: "info", path: primSpec.path, message: "Instanceable non-Mesh prim mapping is deferred." });
-        }
+        ApplyUnsupportedSchemaDiagnostics(primSpec, context);
         return;
     }
 
@@ -102,6 +141,7 @@ function ApplySchemaPayload(prim: IResolvedPrim, primSpec: ISdfPrimSpec, context
         prim.kind = "mesh";
         prim.meshIndex = meshIndex;
     }
+    prim.skinning = ResolveSkinning(primSpec, context, metadata.timeCodesPerSecond, mesh);
 }
 
 function PoolMesh(mesh: NonNullable<ReturnType<typeof ResolveMesh>>, context: IStageMappingContext): number {
@@ -130,13 +170,18 @@ function BuildPrimIndex(rootPrims: ISdfPrimSpec[]): ReadonlyMap<string, ISdfPrim
     return primByPath;
 }
 
-function IsDeferredSchema(typeName: string | undefined): boolean {
+function ApplyUnsupportedSchemaDiagnostics(primSpec: ISdfPrimSpec, context: IStageMappingContext): void {
+    if (IsUnsupportedLightSchema(primSpec.typeName)) {
+        context.diagnostics.push({ severity: "info", path: primSpec.path, message: `Schema ${primSpec.typeName} mapping is not supported.` });
+    }
+    if (primSpec.instanceable) {
+        context.diagnostics.push({ severity: "info", path: primSpec.path, message: "Instanceable non-Mesh prim mapping is deferred." });
+    }
+}
+
+function IsUnsupportedLightSchema(typeName: string | undefined): boolean {
     return (
-        typeName === "Camera" ||
-        typeName === "PointInstancer" ||
-        typeName === "Skeleton" ||
-        typeName === "SkelRoot" ||
-        typeName?.endsWith("Light") === true ||
-        typeName?.startsWith("UsdLux") === true
+        (typeName?.endsWith("Light") === true || typeName?.startsWith("UsdLux") === true) &&
+        !["DistantLight", "SphereLight", "RectLight", "DiskLight", "DomeLight", "CylinderLight"].includes(typeName)
     );
 }
