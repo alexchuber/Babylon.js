@@ -66,6 +66,75 @@ def Xform "World"
 }
 `;
 
+// Root layer whose reference points at a sub-directory asset path. When the stage is loaded from a
+// flat drag-and-drop set (rootUrl "file:"), Babylon stores every dropped file in FilesInputStore by
+// basename, so the loader must address the sibling as `file:child.usda`, not `file:assets/child.usda`.
+const fileSchemeRootUsda = `#usda 1.0
+(
+    upAxis = "Y"
+    metersPerUnit = 1
+)
+
+def Xform "World"
+{
+    def "Ref" (
+        prepend references = @./assets/child.usda@</Shape>
+    )
+    {
+    }
+}
+`;
+
+// Single layer whose UsdPreviewSurface diffuse is driven by a UsdUVTexture pointing at a sub-directory
+// asset path, used to prove texture references resolve to `file:<basename>` under the dropped-file scheme.
+const fileSchemeTextureUsda = `#usda 1.0
+(
+    upAxis = "Y"
+    metersPerUnit = 1
+)
+
+def Xform "World"
+{
+    def Mesh "Quad"
+    {
+        int[] faceVertexCounts = [4]
+        int[] faceVertexIndices = [0, 1, 2, 3]
+        point3f[] points = [(-1, -1, 0), (1, -1, 0), (1, 1, 0), (-1, 1, 0)]
+        texCoord2f[] primvars:st = [(0, 0), (1, 0), (1, 1), (0, 1)] (interpolation = "vertex")
+        rel material:binding = </World/Mat>
+    }
+
+    def Material "Mat"
+    {
+        token outputs:surface.connect = </World/Mat/Preview.outputs:surface>
+
+        def Shader "Preview"
+        {
+            uniform token info:id = "UsdPreviewSurface"
+            color3f inputs:diffuseColor.connect = </World/Mat/Albedo.outputs:rgb>
+            float inputs:metallic = 0
+            float inputs:roughness = 0.5
+            token outputs:surface
+        }
+
+        def Shader "Albedo"
+        {
+            uniform token info:id = "UsdUVTexture"
+            asset inputs:file = @textures/Albedo.png@
+            float2 inputs:st.connect = </World/Mat/Reader.outputs:result>
+            float3 outputs:rgb
+        }
+
+        def Shader "Reader"
+        {
+            uniform token info:id = "UsdPrimvarReader_float2"
+            token inputs:varname = "st"
+            float2 outputs:result
+        }
+    }
+}
+`;
+
 // A DistantLight and a Camera in one stage, exercising the UsdLux/UsdGeomCamera schema mappings all
 // the way through to real Babylon Light and Camera objects via the public loader.
 const lightCameraUsda = `#usda 1.0
@@ -179,5 +248,43 @@ describe("USD loader integration", () => {
 
         scene.dispose();
         engine.dispose();
+    });
+
+    it("resolves sibling layer references by basename under the dropped-file scheme", async () => {
+        const engine = new NullEngine();
+        const scene = new Scene(engine);
+
+        // A flat multi-file drop keys siblings by basename in FilesInputStore, so the authored
+        // sub-directory ("./assets/child.usda") must collapse to a "file:child.usda" request.
+        const requested: string[] = [];
+        const stage = await ResolveUsdStageWithFetcherAsync(fileSchemeRootUsda, "file:", "ChessSet.usda", {}, async (identifier) => {
+            requested.push(identifier);
+            if (identifier === "file:child.usda") {
+                return childUsda;
+            }
+            throw new Error(`Unexpected external layer request: ${identifier}`);
+        });
+
+        const result = AdaptResolvedStageToScene(stage, scene, null, {});
+
+        // "Ref" resolves only if the sibling layer was fetched and composed from the dropped set.
+        const referenced = result.meshes.find((mesh) => mesh.name === "Ref");
+        expect(referenced).toBeDefined();
+        expect(referenced!.getTotalVertices()).toBe(4);
+        expect(requested).toContain("file:child.usda");
+
+        scene.dispose();
+        engine.dispose();
+    });
+
+    it("resolves texture references by basename under the dropped-file scheme", async () => {
+        // No external layers here; the only sibling is the texture, which must resolve against the
+        // dropped set as "file:albedo.png" (scheme preserved, sub-directory dropped, lower-cased).
+        const stage = await ResolveUsdStageWithFetcherAsync(fileSchemeTextureUsda, "file:", "Quad.usda", {}, async (identifier) => {
+            throw new Error(`No external layers expected, but requested: ${identifier}`);
+        });
+
+        expect(stage.materials.length).toBe(1);
+        expect(stage.materials[0].textures.baseColor?.uri).toBe("file:albedo.png");
     });
 });

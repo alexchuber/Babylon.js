@@ -292,6 +292,14 @@ function ResolveLayerIdentifier(assetPath: string, fromIdentifier: string): stri
         return assetPath;
     }
 
+    // Dropped-file scheme: a flat drag-and-drop set is stored in Babylon's FilesInputStore keyed by
+    // lower-cased basename, and Tools.LoadFile serves a "file:<key>" URL from it. Address sibling layers
+    // by basename so a "drop the asset and all its files together" set composes, mirroring how the glTF
+    // loader resolves a .bin dropped alongside its .gltf.
+    if (fromIdentifier.startsWith("file:")) {
+        return `file:${(assetPath.split("/").pop() ?? assetPath).toLowerCase()}`;
+    }
+
     const lastSlash = fromIdentifier.lastIndexOf("/");
     const baseDirectory = lastSlash >= 0 ? fromIdentifier.slice(0, lastSlash + 1) : "";
 

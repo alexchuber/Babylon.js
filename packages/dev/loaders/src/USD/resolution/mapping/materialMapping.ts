@@ -236,6 +236,11 @@ function ResolveAssetUri(path: string, layerIdentifier: string): string {
     if (/^[a-z]+:\/\//i.test(cleanPath) || cleanPath.startsWith("/") || cleanPath.startsWith("data:")) {
         return cleanPath;
     }
+    // Dropped-file scheme: address textures by basename so they resolve from Babylon's FilesInputStore,
+    // exactly like the sibling layers above (see ResolveLayerIdentifier).
+    if (layerIdentifier.startsWith("file:")) {
+        return `file:${(cleanPath.split("/").pop() ?? cleanPath).toLowerCase()}`;
+    }
     const slashIndex = layerIdentifier.lastIndexOf("/");
     return slashIndex >= 0 ? `${layerIdentifier.slice(0, slashIndex + 1)}${cleanPath.replace(/^\.\//, "")}` : cleanPath;
 }
