@@ -695,6 +695,13 @@ class UsdaParser {
                 nextAttribute.default = ParseSdfValue(typeName, this._parseRawValue(), this._diagnostics, this._peek());
             }
         }
+
+        // USD authors attribute metadata after the value, e.g. `int[] indices = [...] ( elementSize = 4 )`.
+        // Parse a trailing metadata block in addition to any block authored before the assignment.
+        if (this._peek().value === "(") {
+            ApplyAttributeMetadata(nextAttribute, this._parseSimpleMetadataBlock());
+        }
+
         target.properties[name] = nextAttribute;
         return true;
     }
