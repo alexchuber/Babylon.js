@@ -484,7 +484,15 @@ class UsdaParser {
                 const variantSet = this._parseVariantSet(ownerPath);
                 if (variantSet) {
                     target.variantSets = target.variantSets ?? [];
-                    target.variantSets.push(variantSet);
+                    // A `variantSets` metadata entry may have already registered this set by name with no
+                    // variants. Merge the parsed variants into that placeholder rather than appending a
+                    // duplicate empty set, which would otherwise shadow the real one during composition.
+                    const existing = target.variantSets.find((candidate) => candidate.name === variantSet.name);
+                    if (existing) {
+                        existing.variants = { ...existing.variants, ...variantSet.variants };
+                    } else {
+                        target.variantSets.push(variantSet);
+                    }
                 }
                 continue;
             }
@@ -577,6 +585,11 @@ class UsdaParser {
         if (!name) {
             this._diagnose("variantSet is missing a name.");
             return undefined;
+        }
+        // USDA authors a variant set as `variantSet "name" = { ... }`; consume the assignment operator
+        // between the name and the variant block before expecting the opening brace.
+        if (this._peek().value === "=") {
+            this._consume();
         }
         if (!this._expectSymbol("{")) {
             return undefined;
