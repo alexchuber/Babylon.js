@@ -35,7 +35,8 @@ describe("USDC crate integer decoders", () => {
 
     it("decodes LZ4-wrapped 32-bit integer blocks", () => {
         const encoded = new Uint8Array([...Int32Bytes(1), 0xc1, 0x11, 123, ...Int32Bytes(100000), 0, 0]);
-        const compressed = new Uint8Array([0xd0, ...encoded]);
+        // USD wraps the integer codec output with TfFastCompression: a 0 chunk-count byte then the raw LZ4 block.
+        const compressed = new Uint8Array([0x00, 0xd0, ...encoded]);
 
         expect(DecodeCrateCompressedIntegerBlock32(compressed, 7)).toEqual([123, 124, 125, 100125, 100125, 100126, 100126]);
     });

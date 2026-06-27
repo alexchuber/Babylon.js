@@ -1,3 +1,67 @@
+// USD compresses every crate section and compressed-integer array with TfFastCompression, which
+// wraps the raw LZ4 data in a tiny framing: a single leading byte holds the chunk count, where 0
+// means "one chunk, raw LZ4 block follows" and N>=1 means N chunks each prefixed by an int32 little
+// endian size. pxr splits input into chunks no larger than this so each decodes independently.
+const Lz4MaxInputSize = 0x7e000000;
+
+/**
+ * Decodes a TfFastCompression buffer (the framing USD uses for crate sections and integer arrays)
+ * to an exact output size. The buffer is one chunk-count byte followed by one or more raw LZ4 blocks.
+ * @param data The TfFastCompression buffer, including the leading chunk-count byte.
+ * @param uncompressedSize The exact number of bytes expected after decompression.
+ * @returns The decoded bytes.
+ */
+export function DecompressFromBuffer(data: Uint8Array, uncompressedSize: number): Uint8Array {
+    const output = DecompressFromBufferToSizeLimit(data, uncompressedSize);
+    if (output.length !== uncompressedSize) {
+        throw new Error(`USD crate: invalid decompressed length ${output.length}; expected ${uncompressedSize}.`);
+    }
+    return output;
+}
+
+/**
+ * Decodes a TfFastCompression buffer with an upper bound on output size.
+ * @param data The TfFastCompression buffer, including the leading chunk-count byte.
+ * @param maxUncompressedSize The maximum number of decoded bytes to allow.
+ * @returns The decoded bytes, trimmed to the actual decoded size.
+ */
+export function DecompressFromBufferToSizeLimit(data: Uint8Array, maxUncompressedSize: number): Uint8Array {
+    if (maxUncompressedSize < 0 || !Number.isSafeInteger(maxUncompressedSize)) {
+        throw new Error("USD crate: invalid decompressed output size.");
+    }
+    if (data.length === 0) {
+        return new Uint8Array(0);
+    }
+
+    const chunkCount = data[0];
+    if (chunkCount === 0) {
+        return DecodeLz4BlockToSizeLimit(data.subarray(1), maxUncompressedSize);
+    }
+
+    const output = new Uint8Array(maxUncompressedSize);
+    const view = new DataView(data.buffer, data.byteOffset, data.byteLength);
+    let inputOffset = 1;
+    let outputOffset = 0;
+    for (let chunk = 0; chunk < chunkCount; chunk++) {
+        if (inputOffset + 4 > data.length) {
+            throw new Error("USD crate: truncated TfFastCompression chunk size.");
+        }
+        const chunkSize = view.getInt32(inputOffset, true);
+        inputOffset += 4;
+        if (chunkSize < 0 || inputOffset + chunkSize > data.length) {
+            throw new Error("USD crate: invalid TfFastCompression chunk size.");
+        }
+
+        const chunkLimit = Math.min(Lz4MaxInputSize, maxUncompressedSize - outputOffset);
+        const decoded = DecodeLz4BlockToSizeLimit(data.subarray(inputOffset, inputOffset + chunkSize), chunkLimit);
+        output.set(decoded, outputOffset);
+        inputOffset += chunkSize;
+        outputOffset += decoded.length;
+    }
+
+    return output.subarray(0, outputOffset);
+}
+
 /**
  * Decodes a single raw LZ4 block to an exact output size.
  * @param data The raw LZ4 block bytes, without an LZ4 frame header.

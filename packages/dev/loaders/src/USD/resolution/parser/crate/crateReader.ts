@@ -1,5 +1,5 @@
 import { DecodeCrateCompressedIntegerBlock32 } from "./crateIntegerDecoder";
-import { DecodeLz4Block } from "./crateLz4";
+import { DecompressFromBuffer } from "./crateLz4";
 import { type ISdfLayer } from "../../sdf/sdfLayer";
 import { type ISdfAttributeSpec, type ISdfPrimSpec, type ISdfRelationshipSpec, type SdfSpecifier } from "../../sdf/sdfSpec";
 import { type SdfValue } from "../../sdf/sdfValue";
@@ -149,7 +149,7 @@ function ReadTokens(reader: BinaryReader, sections: Map<string, ICrateSection>, 
     } else {
         const uncompressedSize = reader.readUint64();
         const compressedSize = reader.readUint64();
-        tokenBytes = DecodeLz4Block(reader.readBytes(compressedSize), uncompressedSize);
+        tokenBytes = DecompressFromBuffer(reader.readBytes(compressedSize), uncompressedSize);
     }
 
     const tokens: string[] = [];
@@ -187,7 +187,7 @@ function ReadFields(reader: BinaryReader, sections: Map<string, ICrateSection>, 
     const fieldCount = reader.readUint64();
     const tokenIndexes = ReadCompressedInt32FromReader(reader, fieldCount);
     const compressedRepSize = reader.readUint64();
-    const repBytes = DecodeLz4Block(reader.readBytes(compressedRepSize), fieldCount * 8);
+    const repBytes = DecompressFromBuffer(reader.readBytes(compressedRepSize), fieldCount * 8);
     const repReader = new BinaryReader(repBytes);
     return tokenIndexes.map((tokenIndex) => ({ tokenIndex, valueRep: repReader.readBigUint64() }));
 }

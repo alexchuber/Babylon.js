@@ -1,4 +1,4 @@
-import { DecodeLz4BlockToSizeLimit } from "./crateLz4";
+import { DecompressFromBufferToSizeLimit } from "./crateLz4";
 
 /**
  * Result returned by crate variable-length integer readers.
@@ -133,7 +133,7 @@ export function DecodeCrateIntegerBlock32(encoded: Uint8Array, count: number): n
  * @returns The decoded integer array.
  */
 export function DecodeCrateCompressedIntegerBlock32(compressed: Uint8Array, count: number): number[] {
-    const encoded = DecodeLz4BlockToSizeLimit(compressed, GetEncodedBufferSize(count, 4));
+    const encoded = DecompressFromBufferToSizeLimit(compressed, GetEncodedBufferSize(count, 4));
     return DecodeCrateIntegerBlock32(encoded, count);
 }
 
@@ -196,7 +196,7 @@ export function DecodeCrateIntegerBlock64(encoded: Uint8Array, count: number): b
  * @returns The decoded bigint array.
  */
 export function DecodeCrateCompressedIntegerBlock64(compressed: Uint8Array, count: number): bigint[] {
-    const encoded = DecodeLz4BlockToSizeLimit(compressed, GetEncodedBufferSize(count, 8));
+    const encoded = DecompressFromBufferToSizeLimit(compressed, GetEncodedBufferSize(count, 8));
     return DecodeCrateIntegerBlock64(encoded, count);
 }
 
