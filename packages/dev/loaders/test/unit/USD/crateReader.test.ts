@@ -3,6 +3,9 @@ import { ParseCrate } from "loaders/USD/resolution/parser/crate/crateReader";
 
 const BootstrapSize = 88;
 const SpecTypePrim = 6;
+const SpecTypeAttribute = 1;
+const ValueTypeInt = 3;
+const ValueTypeToken = 11;
 
 describe("USDC crate reader POC", () => {
     it("rejects buffers without the PXR-USDC magic", () => {
@@ -35,6 +38,19 @@ describe("USDC crate reader POC", () => {
             ],
         });
     });
+
+    it("decodes inlined attribute values into the property's typeName and default", () => {
+        const layer = ParseCrate(CreateAttributeCrate().buffer, "memory:attribute.usdc");
+
+        expect(layer.rootPrims).toHaveLength(1);
+        expect(layer.rootPrims[0].properties.size).toEqual({
+            kind: "attribute",
+            name: "size",
+            path: "/root.size",
+            typeName: "int",
+            default: { type: "int", value: 42 },
+        });
+    });
 });
 
 function CreateMinimalCrate(): Uint8Array {
@@ -54,7 +70,37 @@ function CreateMinimalCrate(): Uint8Array {
         nextSectionOffset += bytes.length;
     }
 
-    const tocOffset = nextSectionOffset;
+    return AssembleCrate(sectionRecords);
+}
+
+// Builds an attribute-bearing crate so the value decoder is covered end to end without binary fixtures.
+function CreateAttributeCrate(): Uint8Array {
+    const tokenBlob = AsciiBytes("root\0size\0typeName\0default\0int\0");
+    const sections = [
+        ["TOKENS", Bytes([...Uint64Bytes(5), ...Uint64Bytes(tokenBlob.length), ...tokenBlob])],
+        ["STRINGS", Bytes(Uint64Bytes(0))],
+        ["FIELDS", Bytes([...Uint64Bytes(2), ...FieldRecordBytes(2, InlinedValueRep(ValueTypeToken, 4)), ...FieldRecordBytes(3, InlinedValueRep(ValueTypeInt, 42))])],
+        ["FIELDSETS", Bytes([...Uint64Bytes(4), ...Uint32Bytes(0xffffffff), ...Uint32Bytes(0), ...Uint32Bytes(1), ...Uint32Bytes(0xffffffff)])],
+        ["PATHS", Bytes([...Uint64Bytes(3), ...PathHeaderBytes(0, 0, 1), ...PathHeaderBytes(1, 0, 1), ...PathHeaderBytes(2, 1, 4)])],
+        [
+            "SPECS",
+            Bytes([...Uint64Bytes(2), ...Uint32Bytes(1), ...Uint32Bytes(0), ...Int32Bytes(SpecTypePrim), ...Uint32Bytes(2), ...Uint32Bytes(1), ...Int32Bytes(SpecTypeAttribute)]),
+        ],
+    ] as const;
+
+    let nextSectionOffset = BootstrapSize;
+    const sectionRecords: Array<{ name: string; start: number; bytes: Uint8Array }> = [];
+    for (const [name, bytes] of sections) {
+        sectionRecords.push({ name, start: nextSectionOffset, bytes });
+        nextSectionOffset += bytes.length;
+    }
+
+    return AssembleCrate(sectionRecords);
+}
+
+// Writes the bootstrap, section payloads, and table of contents around the provided section records.
+function AssembleCrate(sectionRecords: Array<{ name: string; start: number; bytes: Uint8Array }>): Uint8Array {
+    const tocOffset = sectionRecords.reduce((offset, section) => offset + section.bytes.length, BootstrapSize);
     const tocBytes = Bytes([
         ...Uint64Bytes(sectionRecords.length),
         ...sectionRecords.flatMap((section) => [...SectionNameBytes(section.name), ...Int64Bytes(BigInt(section.start)), ...Int64Bytes(BigInt(section.bytes.length))]),
@@ -75,6 +121,16 @@ function CreateMinimalCrate(): Uint8Array {
 
 function PathHeaderBytes(pathIndex: number, tokenIndex: number, bits: number): number[] {
     return [...Uint32Bytes(pathIndex), ...Uint32Bytes(tokenIndex), bits, 0, 0, 0];
+}
+
+// Encodes a legacy field record: a discarded leading uint32, the token index, then the 64-bit value rep.
+function FieldRecordBytes(tokenIndex: number, valueRep: bigint): number[] {
+    return [...Uint32Bytes(0), ...Uint32Bytes(tokenIndex), ...Uint64FromBigInt(valueRep)];
+}
+
+// Packs an inlined value representation: bit 62 marks it inlined, bits 48-55 hold the type, low bits the payload.
+function InlinedValueRep(type: number, payload: number): bigint {
+    return (1n << 62n) | (BigInt(type) << 48n) | (BigInt(payload) & 0xffffffffn);
 }
 
 function SectionNameBytes(name: string): number[] {
@@ -110,5 +166,11 @@ function Uint64Bytes(value: number): number[] {
 function Int64Bytes(value: bigint): number[] {
     const bytes = new Uint8Array(8);
     new DataView(bytes.buffer).setBigInt64(0, value, true);
+    return Array.from(bytes);
+}
+
+function Uint64FromBigInt(value: bigint): number[] {
+    const bytes = new Uint8Array(8);
+    new DataView(bytes.buffer).setBigUint64(0, value, true);
     return Array.from(bytes);
 }

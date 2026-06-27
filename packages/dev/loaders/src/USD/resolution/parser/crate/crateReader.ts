@@ -1,8 +1,9 @@
-import { DecodeCrateCompressedIntegerBlock32 } from "./crateIntegerDecoder";
+import { DecodeCrateCompressedIntegerBlock32, DecodeCrateCompressedIntegerBlock64 } from "./crateIntegerDecoder";
 import { DecompressFromBuffer } from "./crateLz4";
 import { type ISdfLayer } from "../../sdf/sdfLayer";
-import { type ISdfAttributeSpec, type ISdfPrimSpec, type ISdfRelationshipSpec, type SdfSpecifier } from "../../sdf/sdfSpec";
-import { type SdfValue } from "../../sdf/sdfValue";
+import { type ISdfListOp } from "../../sdf/sdfListOp";
+import { type ISdfAttributeSpec, type ISdfPrimSpec, type ISdfRelationshipSpec, type SdfInterpolation, type SdfSpecifier, type SdfVariability } from "../../sdf/sdfSpec";
+import { type ISdfTimeSampleMap, type SdfValue, type SdfValueType } from "../../sdf/sdfValue";
 
 const CrateMagic = "PXR-USDC";
 const BootstrapSize = 88;
@@ -19,16 +20,45 @@ const enum CrateSpecType {
 
 const enum CrateValueType {
     Bool = 1,
+    Uchar = 2,
     Int = 3,
     UInt = 4,
     Int64 = 5,
     UInt64 = 6,
+    Half = 7,
     Float = 8,
     Double = 9,
     String = 10,
     Token = 11,
     AssetPath = 12,
+    Matrix2d = 13,
+    Matrix3d = 14,
+    Matrix4d = 15,
+    Quatd = 16,
+    Quatf = 17,
+    Quath = 18,
+    Vec2d = 19,
+    Vec2f = 20,
+    Vec2h = 21,
+    Vec2i = 22,
+    Vec3d = 23,
+    Vec3f = 24,
+    Vec3h = 25,
+    Vec3i = 26,
+    Vec4d = 27,
+    Vec4f = 28,
+    Vec4h = 29,
+    Vec4i = 30,
+    TokenListOp = 32,
+    StringListOp = 33,
+    PathListOp = 34,
+    PathVector = 40,
+    TokenVector = 41,
     Specifier = 42,
+    Variability = 44,
+    TimeSamples = 46,
+    DoubleVector = 48,
+    StringVector = 50,
 }
 
 interface ICrateVersion {
@@ -58,7 +88,16 @@ interface ICrateValueRep {
     type: number;
     isArray: boolean;
     isInlined: boolean;
+    isCompressed: boolean;
     payload: number;
+}
+
+// Tables and stream needed to decode crate field values, threaded from ParseCrate into BuildLayer.
+interface ICrateContext {
+    reader: BinaryReader;
+    tokens: string[];
+    paths: string[];
+    version: ICrateVersion;
 }
 
 /**
@@ -79,7 +118,7 @@ export function ParseCrate(data: ArrayBuffer, identifier: string): ISdfLayer {
     const paths = ReadPaths(reader, sections, bootstrap.version, tokens);
     const specs = ReadSpecs(reader, sections, bootstrap.version);
 
-    return BuildLayer(identifier, tokens, fields, fieldSets, paths, specs);
+    return BuildLayer(identifier, { reader, tokens, paths, version: bootstrap.version }, fields, fieldSets, specs);
 }
 
 // Reads and validates the fixed-size crate bootstrap.
@@ -259,7 +298,7 @@ function ReadSpecs(reader: BinaryReader, sections: Map<string, ICrateSection>, v
 }
 
 // Converts the decoded structural tables into the Sdf seam used by the USDA parser.
-function BuildLayer(identifier: string, tokens: string[], fields: ICrateField[], fieldSets: number[], paths: string[], specs: ICrateSpec[]): ISdfLayer {
+function BuildLayer(identifier: string, context: ICrateContext, fields: ICrateField[], fieldSets: number[], specs: ICrateSpec[]): ISdfLayer {
     const layer: ISdfLayer = {
         identifier,
         subLayers: [],
@@ -269,19 +308,18 @@ function BuildLayer(identifier: string, tokens: string[], fields: ICrateField[],
     const propertySpecs: Array<{ path: string; spec: ISdfAttributeSpec | ISdfRelationshipSpec }> = [];
 
     for (const spec of specs) {
-        const path = paths[spec.pathIndex];
+        const path = context.paths[spec.pathIndex];
         if (!path) {
             continue;
         }
 
-        const fieldValues = GetFieldsForSpec(spec, tokens, fields, fieldSets);
+        const fieldReps = GetFieldsForSpec(spec, context.tokens, fields, fieldSets);
         if (spec.specType === CrateSpecType.PseudoRoot || path === "/") {
-            ApplyLayerFields(layer, fieldValues);
+            ApplyLayerFields(layer, fieldReps, context);
         } else if (spec.specType === CrateSpecType.Prim) {
-            const prim = CreatePrim(path, fieldValues);
-            primsByPath.set(path, prim);
+            primsByPath.set(path, CreatePrim(path, fieldReps, context));
         } else if (spec.specType === CrateSpecType.Attribute || spec.specType === CrateSpecType.Relationship) {
-            const property = CreateProperty(path, spec.specType, fieldValues);
+            const property = CreateProperty(path, spec.specType, fieldReps, context);
             if (property) {
                 propertySpecs.push({ path, spec: property });
             }
@@ -310,8 +348,8 @@ function BuildLayer(identifier: string, tokens: string[], fields: ICrateField[],
 }
 
 // Creates a prim spec with defaulted fields when the crate fieldset does not author them.
-function CreatePrim(path: string, fields: Map<string, SdfValue>): ISdfPrimSpec {
-    const specifierValue = fields.get("specifier");
+function CreatePrim(path: string, fieldReps: Map<string, bigint>, context: ICrateContext): ISdfPrimSpec {
+    const specifierValue = DecodeField(context, fieldReps, "specifier");
     const specifier = specifierValue?.type === "token" ? SpecifierFromString(specifierValue.value) : "def";
     const prim: ISdfPrimSpec = {
         name: GetPathName(path),
@@ -321,19 +359,19 @@ function CreatePrim(path: string, fields: Map<string, SdfValue>): ISdfPrimSpec {
         children: [],
     };
 
-    const typeName = fields.get("typeName");
+    const typeName = DecodeField(context, fieldReps, "typeName");
     if (typeName?.type === "token" || typeName?.type === "string") {
         prim.typeName = typeName.value;
     }
-    const active = fields.get("active");
+    const active = DecodeField(context, fieldReps, "active");
     if (active?.type === "bool") {
         prim.active = active.value;
     }
-    const instanceable = fields.get("instanceable");
+    const instanceable = DecodeField(context, fieldReps, "instanceable");
     if (instanceable?.type === "bool") {
         prim.instanceable = instanceable.value;
     }
-    const kind = fields.get("kind");
+    const kind = DecodeField(context, fieldReps, "kind");
     if (kind?.type === "token" || kind?.type === "string") {
         prim.kind = kind.value;
     }
@@ -341,58 +379,87 @@ function CreatePrim(path: string, fields: Map<string, SdfValue>): ISdfPrimSpec {
     return prim;
 }
 
-// Creates a property spec for simple attribute/relationship entries.
-function CreateProperty(path: string, specType: CrateSpecType, fields: Map<string, SdfValue>): ISdfAttributeSpec | ISdfRelationshipSpec | undefined {
+// Creates a property spec, attaching the authored default, time samples, connections, or targets.
+function CreateProperty(path: string, specType: CrateSpecType, fieldReps: Map<string, bigint>, context: ICrateContext): ISdfAttributeSpec | ISdfRelationshipSpec | undefined {
     const split = SplitPropertyPath(path);
     if (specType === CrateSpecType.Relationship) {
-        return {
-            kind: "relationship",
-            name: split.propertyName,
-            path,
-            targets: { isExplicit: true, explicit: [] },
-        };
+        const targetRep = fieldReps.get("targetPaths");
+        const targets = (targetRep !== undefined ? DecodePathListOp(context, targetRep) : undefined) ?? { isExplicit: true, explicit: [] };
+        return { kind: "relationship", name: split.propertyName, path, targets };
     }
 
-    const typeName = fields.get("typeName");
-    return {
+    const typeName = DecodeField(context, fieldReps, "typeName");
+    const attribute: ISdfAttributeSpec = {
         kind: "attribute",
         name: split.propertyName,
         path,
         typeName: typeName?.type === "token" || typeName?.type === "string" ? typeName.value : "token",
     };
+
+    const defaultValue = DecodeField(context, fieldReps, "default");
+    if (defaultValue) {
+        attribute.default = defaultValue;
+    }
+    const timeSamplesRep = fieldReps.get("timeSamples");
+    if (timeSamplesRep !== undefined) {
+        const timeSamples = DecodeTimeSamples(context, timeSamplesRep);
+        if (timeSamples) {
+            attribute.timeSamples = timeSamples;
+        }
+    }
+    const connectionRep = fieldReps.get("connectionPaths");
+    if (connectionRep !== undefined) {
+        const connections = DecodePathListOp(context, connectionRep);
+        if (connections) {
+            attribute.connections = connections;
+        }
+    }
+    const interpolation = DecodeField(context, fieldReps, "interpolation");
+    if (interpolation?.type === "token" && IsInterpolation(interpolation.value)) {
+        attribute.interpolation = interpolation.value;
+    }
+    const colorSpace = DecodeField(context, fieldReps, "colorSpace");
+    if (colorSpace?.type === "token" || colorSpace?.type === "string") {
+        attribute.colorSpace = colorSpace.value;
+    }
+    const variability = DecodeField(context, fieldReps, "variability");
+    if (variability?.type === "token" && (variability.value === "uniform" || variability.value === "varying")) {
+        attribute.variability = variability.value as SdfVariability;
+    }
+    return attribute;
 }
 
 // Promotes known pseudo-root fields to first-class layer fields.
-function ApplyLayerFields(layer: ISdfLayer, fields: Map<string, SdfValue>): void {
-    const defaultPrim = fields.get("defaultPrim");
+function ApplyLayerFields(layer: ISdfLayer, fieldReps: Map<string, bigint>, context: ICrateContext): void {
+    const defaultPrim = DecodeField(context, fieldReps, "defaultPrim");
     if (defaultPrim?.type === "token" || defaultPrim?.type === "string") {
         layer.defaultPrim = defaultPrim.value;
     }
-    const upAxis = fields.get("upAxis");
+    const upAxis = DecodeField(context, fieldReps, "upAxis");
     if (upAxis?.type === "token" && (upAxis.value === "Y" || upAxis.value === "Z")) {
         layer.upAxis = upAxis.value;
     }
-    const metersPerUnit = fields.get("metersPerUnit");
+    const metersPerUnit = DecodeField(context, fieldReps, "metersPerUnit");
     if (metersPerUnit?.type === "double" || metersPerUnit?.type === "float") {
         layer.metersPerUnit = metersPerUnit.value;
     }
-    const timeCodesPerSecond = fields.get("timeCodesPerSecond");
+    const timeCodesPerSecond = DecodeField(context, fieldReps, "timeCodesPerSecond");
     if (timeCodesPerSecond?.type === "double" || timeCodesPerSecond?.type === "float") {
         layer.timeCodesPerSecond = timeCodesPerSecond.value;
     }
-    const startTimeCode = fields.get("startTimeCode");
+    const startTimeCode = DecodeField(context, fieldReps, "startTimeCode");
     if (startTimeCode?.type === "double" || startTimeCode?.type === "float") {
         layer.startTimeCode = startTimeCode.value;
     }
-    const endTimeCode = fields.get("endTimeCode");
+    const endTimeCode = DecodeField(context, fieldReps, "endTimeCode");
     if (endTimeCode?.type === "double" || endTimeCode?.type === "float") {
         layer.endTimeCode = endTimeCode.value;
     }
 }
 
-// Resolves a spec's fieldset into a map keyed by token name.
-function GetFieldsForSpec(spec: ICrateSpec, tokens: string[], fields: ICrateField[], fieldSets: number[]): Map<string, SdfValue> {
-    const values = new Map<string, SdfValue>();
+// Resolves a spec's fieldset into a map of field name to its raw 64-bit ValueRep.
+function GetFieldsForSpec(spec: ICrateSpec, tokens: string[], fields: ICrateField[], fieldSets: number[]): Map<string, bigint> {
+    const reps = new Map<string, bigint>();
     let fieldSetIndex = spec.fieldSetIndex;
     while (fieldSetIndex < fieldSets.length) {
         const fieldIndex = fieldSets[fieldSetIndex++];
@@ -404,44 +471,285 @@ function GetFieldsForSpec(spec: ICrateSpec, tokens: string[], fields: ICrateFiel
             continue;
         }
         const token = tokens[field.tokenIndex];
-        const value = DecodeSimpleValue(field.valueRep, tokens);
-        if (token && value) {
-            values.set(token, value);
+        if (token) {
+            reps.set(token, field.valueRep);
         }
     }
-    return values;
+    return reps;
 }
 
-// Decodes only the simple scalar ValueRep forms needed by this POC reader.
-function DecodeSimpleValue(valueRep: bigint, tokens: string[]): SdfValue | undefined {
+// Decodes the named field's ValueRep into a tagged Sdf value, when present.
+function DecodeField(context: ICrateContext, fieldReps: Map<string, bigint>, name: string): SdfValue | undefined {
+    const rep = fieldReps.get(name);
+    return rep === undefined ? undefined : DecodeValue(context, rep);
+}
+
+// Decodes a crate ValueRep into a tagged Sdf value: inlined scalar, file-backed scalar, or array.
+function DecodeValue(context: ICrateContext, valueRep: bigint): SdfValue | undefined {
     const rep = DecodeValueRep(valueRep);
-    const payload32 = rep.payload >>> 0;
+    if (rep.isArray) {
+        return DecodeArrayValue(context, rep);
+    }
+    if (rep.isInlined) {
+        return DecodeInlinedScalar(context, rep);
+    }
+    return DecodeNonInlinedScalar(context, rep);
+}
+
+// Decodes a scalar value whose 32-bit payload directly encodes the value.
+function DecodeInlinedScalar(context: ICrateContext, rep: ICrateValueRep): SdfValue | undefined {
+    const payload = rep.payload >>> 0;
     switch (rep.type) {
         case CrateValueType.Bool:
-            return { type: "bool", value: payload32 !== 0 };
+            return { type: "bool", value: (payload & 0xff) !== 0 };
+        case CrateValueType.Uchar:
+            return { type: "int", value: payload & 0xff };
         case CrateValueType.Int:
-            return { type: "int", value: payload32 | 0 };
+            return { type: "int", value: payload | 0 };
         case CrateValueType.UInt:
-            return { type: "uint", value: payload32 };
+            return { type: "uint", value: payload };
         case CrateValueType.Int64:
-            return { type: "int64", value: BigInt.asIntN(48, BigInt(rep.payload)) };
+            return { type: "int64", value: payload | 0 };
         case CrateValueType.UInt64:
-            return { type: "uint64", value: BigInt(rep.payload) };
+            return { type: "uint64", value: payload };
+        case CrateValueType.Half:
+            return { type: "half", value: HalfToFloat(payload & 0xffff) };
         case CrateValueType.Float:
-            return { type: "float", value: Uint32ToFloat(payload32) };
+            return { type: "float", value: Uint32ToFloat(payload) };
         case CrateValueType.Double:
-            return rep.isInlined ? { type: "double", value: Uint32ToFloat(payload32) } : undefined;
+            return { type: "double", value: Uint32ToFloat(payload) };
         case CrateValueType.String:
-            return { type: "string", value: tokens[payload32] ?? "" };
+            return { type: "string", value: context.tokens[payload] ?? "" };
         case CrateValueType.Token:
-            return { type: "token", value: tokens[payload32] ?? "" };
+            return { type: "token", value: context.tokens[payload] ?? "" };
         case CrateValueType.AssetPath:
-            return { type: "asset", value: { authoredPath: tokens[payload32] ?? "" } };
+            return { type: "asset", value: { authoredPath: context.tokens[payload] ?? "" } };
         case CrateValueType.Specifier:
-            return { type: "token", value: ["def", "over", "class"][payload32] ?? "def" };
+            return { type: "token", value: ["def", "over", "class"][payload] ?? "def" };
+        case CrateValueType.Variability:
+            return { type: "token", value: payload === 0 ? "varying" : "uniform" };
+        case CrateValueType.Vec2f:
+        case CrateValueType.Vec2h:
+        case CrateValueType.Vec2i:
+            return AsSdfValue("vec2f", InlinedComponents(payload, 2));
+        case CrateValueType.Vec2d:
+            return AsSdfValue("vec2d", InlinedComponents(payload, 2));
+        case CrateValueType.Vec3f:
+        case CrateValueType.Vec3h:
+        case CrateValueType.Vec3i:
+            return AsSdfValue("vec3f", InlinedComponents(payload, 3));
+        case CrateValueType.Vec3d:
+            return AsSdfValue("vec3d", InlinedComponents(payload, 3));
+        case CrateValueType.Vec4f:
+        case CrateValueType.Vec4h:
+        case CrateValueType.Vec4i:
+            return AsSdfValue("vec4f", InlinedComponents(payload, 4));
+        case CrateValueType.Vec4d:
+            return AsSdfValue("vec4d", InlinedComponents(payload, 4));
+        case CrateValueType.Quatf:
+        case CrateValueType.Quath:
+            return AsSdfValue("quatf", InlinedComponents(payload, 4));
+        case CrateValueType.Quatd:
+            return AsSdfValue("quatd", InlinedComponents(payload, 4));
+        case CrateValueType.Matrix4d:
+            return AsSdfValue("matrix4d", DiagonalMatrix(InlinedComponents(payload, 4)));
         default:
             return undefined;
     }
+}
+
+// Decodes a scalar value whose payload is a file offset to its raw little-endian bytes.
+function DecodeNonInlinedScalar(context: ICrateContext, rep: ICrateValueRep): SdfValue | undefined {
+    if (rep.payload === 0) {
+        return undefined;
+    }
+    const reader = context.reader.clone();
+    reader.seek(rep.payload);
+    switch (rep.type) {
+        case CrateValueType.Half:
+            return { type: "half", value: HalfToFloat(reader.readUint16()) };
+        case CrateValueType.Float:
+            return { type: "float", value: reader.readFloat32() };
+        case CrateValueType.Double:
+            return { type: "double", value: reader.readFloat64() };
+        case CrateValueType.Int64:
+            return { type: "int64", value: reader.readInt64() };
+        case CrateValueType.UInt64:
+            return { type: "uint64", value: reader.readUint64() };
+        case CrateValueType.Vec2f:
+        case CrateValueType.Vec2h:
+        case CrateValueType.Vec2i:
+            return AsSdfValue("vec2f", ReadVector(reader, rep.type, 2));
+        case CrateValueType.Vec2d:
+            return AsSdfValue("vec2d", ReadDoubles(reader, 2));
+        case CrateValueType.Vec3f:
+        case CrateValueType.Vec3h:
+        case CrateValueType.Vec3i:
+            return AsSdfValue("vec3f", ReadVector(reader, rep.type, 3));
+        case CrateValueType.Vec3d:
+            return AsSdfValue("vec3d", ReadDoubles(reader, 3));
+        case CrateValueType.Vec4f:
+        case CrateValueType.Vec4h:
+        case CrateValueType.Vec4i:
+            return AsSdfValue("vec4f", ReadVector(reader, rep.type, 4));
+        case CrateValueType.Vec4d:
+            return AsSdfValue("vec4d", ReadDoubles(reader, 4));
+        case CrateValueType.Quatf:
+        case CrateValueType.Quath:
+            return AsSdfValue("quatf", ReadVector(reader, rep.type, 4));
+        case CrateValueType.Quatd:
+            return AsSdfValue("quatd", ReadDoubles(reader, 4));
+        case CrateValueType.Matrix4d:
+            return AsSdfValue("matrix4d", ReadDoubles(reader, 16));
+        case CrateValueType.DoubleVector:
+            return AsSdfValue("double[]", ReadDoubles(reader, ReadArrayCount(reader, context.version)));
+        case CrateValueType.TokenVector:
+            return AsSdfValue(
+                "token[]",
+                ReadIndexArray(reader, ReadArrayCount(reader, context.version)).map((index) => context.tokens[index] ?? "")
+            );
+        case CrateValueType.StringVector:
+            return AsSdfValue(
+                "string[]",
+                ReadIndexArray(reader, ReadArrayCount(reader, context.version)).map((index) => context.tokens[index] ?? "")
+            );
+        default:
+            return undefined;
+    }
+}
+
+// Decodes an array ValueRep into a tagged Sdf array value.
+function DecodeArrayValue(context: ICrateContext, rep: ICrateValueRep): SdfValue | undefined {
+    if (rep.payload === 0) {
+        return EmptyArrayValue(rep.type);
+    }
+    const reader = context.reader.clone();
+    reader.seek(rep.payload);
+    const count = ReadArrayCount(reader, context.version);
+
+    switch (rep.type) {
+        case CrateValueType.Bool:
+            return { type: "bool[]", value: Array.from(reader.readBytes(count), (byte) => byte !== 0) };
+        case CrateValueType.Int:
+            return { type: "int[]", value: ReadIntArray(reader, count, rep.isCompressed) };
+        case CrateValueType.UInt:
+            return { type: "uint[]", value: ReadIntArray(reader, count, rep.isCompressed).map((value) => value >>> 0) };
+        case CrateValueType.Int64:
+            return AsSdfValue("int64[]", ReadInt64Array(reader, count, rep.isCompressed));
+        case CrateValueType.UInt64:
+            return AsSdfValue("uint64[]", ReadInt64Array(reader, count, rep.isCompressed));
+        case CrateValueType.Half:
+            return { type: "half[]", value: ReadFloatingArray(reader, count, rep.isCompressed, ReadHalf) };
+        case CrateValueType.Float:
+            return { type: "float[]", value: ReadFloatingArray(reader, count, rep.isCompressed, (source) => source.readFloat32()) };
+        case CrateValueType.Double:
+            return { type: "double[]", value: ReadFloatingArray(reader, count, rep.isCompressed, (source) => source.readFloat64()) };
+        case CrateValueType.Vec2f:
+        case CrateValueType.Vec2h:
+        case CrateValueType.Vec2i:
+            return AsSdfValue("vec2f[]", ReadVectorArray(reader, rep.type, count, 2));
+        case CrateValueType.Vec2d:
+            return AsSdfValue("vec2d[]", ReadDoubleVectorArray(reader, count, 2));
+        case CrateValueType.Vec3f:
+        case CrateValueType.Vec3h:
+        case CrateValueType.Vec3i:
+            return AsSdfValue("vec3f[]", ReadVectorArray(reader, rep.type, count, 3));
+        case CrateValueType.Vec3d:
+            return AsSdfValue("vec3d[]", ReadDoubleVectorArray(reader, count, 3));
+        case CrateValueType.Vec4f:
+        case CrateValueType.Vec4h:
+        case CrateValueType.Vec4i:
+            return AsSdfValue("vec4f[]", ReadVectorArray(reader, rep.type, count, 4));
+        case CrateValueType.Vec4d:
+            return AsSdfValue("vec4d[]", ReadDoubleVectorArray(reader, count, 4));
+        case CrateValueType.Quatf:
+        case CrateValueType.Quath:
+            return AsSdfValue("quatf[]", ReadVectorArray(reader, rep.type, count, 4));
+        case CrateValueType.Quatd:
+            return AsSdfValue("quatd[]", ReadDoubleVectorArray(reader, count, 4));
+        case CrateValueType.Matrix4d:
+            return AsSdfValue("matrix4d[]", ReadDoubleVectorArray(reader, count, 16));
+        case CrateValueType.Token:
+        case CrateValueType.TokenVector:
+            return { type: "token[]", value: ReadIndexArray(reader, count).map((index) => context.tokens[index] ?? "") };
+        case CrateValueType.String:
+            return { type: "string[]", value: ReadIndexArray(reader, count).map((index) => context.tokens[index] ?? "") };
+        case CrateValueType.AssetPath:
+            return { type: "asset[]", value: ReadIndexArray(reader, count).map((index) => ({ authoredPath: context.tokens[index] ?? "" })) };
+        default:
+            return undefined;
+    }
+}
+
+// Decodes a PathListOp ValueRep into ordered relationship targets or attribute connections.
+function DecodePathListOp(context: ICrateContext, valueRep: bigint): ISdfListOp<string> | undefined {
+    const rep = DecodeValueRep(valueRep);
+    if (rep.type !== CrateValueType.PathListOp || rep.payload === 0) {
+        return undefined;
+    }
+    const reader = context.reader.clone();
+    reader.seek(rep.payload);
+    const header = reader.readUint8();
+    const listOp: ISdfListOp<string> = { isExplicit: (header & ListOpExplicitBit) !== 0 };
+    const readPaths = (): string[] => {
+        const count = reader.readUint64();
+        const items: string[] = [];
+        for (let i = 0; i < count; i++) {
+            items.push(context.paths[reader.readUint32()] ?? "");
+        }
+        return items;
+    };
+    if (header & ListOpHasExplicitBit) {
+        listOp.explicit = readPaths();
+    }
+    if (header & ListOpHasAddedBit) {
+        listOp.added = readPaths();
+    }
+    if (header & ListOpHasPrependedBit) {
+        listOp.prepended = readPaths();
+    }
+    if (header & ListOpHasAppendedBit) {
+        listOp.appended = readPaths();
+    }
+    if (header & ListOpHasDeletedBit) {
+        listOp.deleted = readPaths();
+    }
+    if (header & ListOpHasOrderedBit) {
+        listOp.ordered = readPaths();
+    }
+    return listOp;
+}
+
+// Decodes a TimeSamples ValueRep into aligned time and value arrays.
+function DecodeTimeSamples(context: ICrateContext, valueRep: bigint): ISdfTimeSampleMap | undefined {
+    const rep = DecodeValueRep(valueRep);
+    if (rep.type !== CrateValueType.TimeSamples || rep.payload === 0) {
+        return undefined;
+    }
+    const reader = context.reader.clone();
+    reader.seek(rep.payload);
+    const timesEnd = rep.payload + reader.readInt64();
+    reader.seek(timesEnd);
+    const timesRep = reader.readBigUint64();
+    const valuesStart = timesEnd + 8 + reader.readInt64();
+    reader.seek(valuesStart);
+    const sampleCount = reader.readUint64();
+    const valueReps: bigint[] = [];
+    for (let i = 0; i < sampleCount; i++) {
+        valueReps.push(reader.readBigUint64());
+    }
+
+    const timesValue = DecodeValue(context, timesRep);
+    const times = timesValue && Array.isArray(timesValue.value) ? (timesValue.value as unknown[]).map((time) => Number(time)) : [];
+    const values: SdfValue[] = [];
+    for (const valueSampleRep of valueReps) {
+        const sample = DecodeValue(context, valueSampleRep);
+        if (sample) {
+            values.push(sample);
+        }
+    }
+    const length = Math.min(times.length, values.length);
+    return { times: times.slice(0, length), values: values.slice(0, length) };
 }
 
 // Extracts the crate ValueRep bit fields.
@@ -449,9 +757,265 @@ function DecodeValueRep(valueRep: bigint): ICrateValueRep {
     return {
         isArray: (valueRep & (1n << 63n)) !== 0n,
         isInlined: (valueRep & (1n << 62n)) !== 0n,
+        isCompressed: (valueRep & (1n << 61n)) !== 0n,
         type: Number((valueRep >> 48n) & 0xffn),
         payload: Number(valueRep & ((1n << 48n) - 1n)),
     };
+}
+
+// Wraps a decoded payload in a tagged Sdf value. The decoder guarantees the payload's runtime
+// shape matches the tag, which the shape-based value access layer relies on.
+function AsSdfValue(type: SdfValueType, value: unknown): SdfValue {
+    return { type, value } as SdfValue;
+}
+
+const ListOpExplicitBit = 1 << 0;
+const ListOpHasExplicitBit = 1 << 1;
+const ListOpHasAddedBit = 1 << 2;
+const ListOpHasDeletedBit = 1 << 3;
+const ListOpHasOrderedBit = 1 << 4;
+const ListOpHasPrependedBit = 1 << 5;
+const ListOpHasAppendedBit = 1 << 6;
+
+const FloatArrayIntegerCode = 0x69;
+const FloatArrayLookupCode = 0x74;
+const MinCompressedArraySize = 16;
+
+// Narrows a decoded token to the Sdf interpolation union.
+function IsInterpolation(value: string): value is SdfInterpolation {
+    return value === "constant" || value === "uniform" || value === "varying" || value === "vertex" || value === "faceVarying";
+}
+
+// Unpacks up to four signed-byte components from the low bytes of an inlined payload.
+function InlinedComponents(payload: number, count: number): number[] {
+    const components: number[] = [];
+    for (let i = 0; i < count; i++) {
+        const byte = (payload >> (i * 8)) & 0xff;
+        components.push((byte << 24) >> 24);
+    }
+    return components;
+}
+
+// Builds a 4x4 identity matrix with the given inlined diagonal entries.
+function DiagonalMatrix(diagonal: number[]): number[] {
+    const matrix = [1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1];
+    matrix[0] = diagonal[0] ?? 1;
+    matrix[5] = diagonal[1] ?? 1;
+    matrix[10] = diagonal[2] ?? 1;
+    matrix[15] = diagonal[3] ?? 1;
+    return matrix;
+}
+
+// Converts IEEE 754 half-precision bits to a JavaScript number.
+function HalfToFloat(bits: number): number {
+    const sign = (bits & 0x8000) >> 15;
+    const exponent = (bits & 0x7c00) >> 10;
+    const fraction = bits & 0x03ff;
+    const signMultiplier = sign === 0 ? 1 : -1;
+    if (exponent === 0) {
+        return signMultiplier * Math.pow(2, -14) * (fraction / 1024);
+    }
+    if (exponent === 0x1f) {
+        return fraction === 0 ? signMultiplier * Infinity : NaN;
+    }
+    return signMultiplier * Math.pow(2, exponent - 15) * (1 + fraction / 1024);
+}
+
+// Returns a per-component reader for the float/half/int element kind of a vector type.
+function ComponentReaderFor(type: CrateValueType): (reader: BinaryReader) => number {
+    switch (type) {
+        case CrateValueType.Vec2h:
+        case CrateValueType.Vec3h:
+        case CrateValueType.Vec4h:
+        case CrateValueType.Quath:
+            return ReadHalf;
+        case CrateValueType.Vec2i:
+        case CrateValueType.Vec3i:
+        case CrateValueType.Vec4i:
+            return (reader) => reader.readInt32();
+        default:
+            return (reader) => reader.readFloat32();
+    }
+}
+
+// Reads one half-precision element.
+function ReadHalf(reader: BinaryReader): number {
+    return HalfToFloat(reader.readUint16());
+}
+
+// Reads a fixed number of components for a single non-double vector or quaternion.
+function ReadVector(reader: BinaryReader, type: CrateValueType, dimension: number): number[] {
+    const readComponent = ComponentReaderFor(type);
+    const components: number[] = [];
+    for (let i = 0; i < dimension; i++) {
+        components.push(readComponent(reader));
+    }
+    return components;
+}
+
+// Reads a fixed number of double-precision components.
+function ReadDoubles(reader: BinaryReader, count: number): number[] {
+    const values: number[] = [];
+    for (let i = 0; i < count; i++) {
+        values.push(reader.readFloat64());
+    }
+    return values;
+}
+
+// Reads an array of non-double vectors or quaternions as nested component tuples.
+function ReadVectorArray(reader: BinaryReader, type: CrateValueType, count: number, dimension: number): number[][] {
+    const readComponent = ComponentReaderFor(type);
+    const elements: number[][] = [];
+    for (let i = 0; i < count; i++) {
+        const components: number[] = [];
+        for (let j = 0; j < dimension; j++) {
+            components.push(readComponent(reader));
+        }
+        elements.push(components);
+    }
+    return elements;
+}
+
+// Reads an array of double-precision vectors or matrices as nested component tuples.
+function ReadDoubleVectorArray(reader: BinaryReader, count: number, dimension: number): number[][] {
+    const elements: number[][] = [];
+    for (let i = 0; i < count; i++) {
+        elements.push(ReadDoubles(reader, dimension));
+    }
+    return elements;
+}
+
+// Reads the version-gated element count that precedes non-inlined array data.
+function ReadArrayCount(reader: BinaryReader, version: ICrateVersion): number {
+    if (version.major === 0 && version.minor < 5) {
+        reader.readUint32();
+        return reader.readUint32();
+    }
+    if (version.major === 0 && version.minor < 7) {
+        return reader.readUint32();
+    }
+    return reader.readUint64();
+}
+
+// Reads a 32-bit integer array, decompressing when the rep marks it compressed.
+function ReadIntArray(reader: BinaryReader, count: number, isCompressed: boolean): number[] {
+    if (isCompressed && count >= MinCompressedArraySize) {
+        return ReadCompressedInt32FromReader(reader, count);
+    }
+    const values: number[] = [];
+    for (let i = 0; i < count; i++) {
+        values.push(reader.readInt32());
+    }
+    return values;
+}
+
+// Reads a 64-bit integer array, decompressing when the rep marks it compressed.
+function ReadInt64Array(reader: BinaryReader, count: number, isCompressed: boolean): bigint[] {
+    if (isCompressed && count >= MinCompressedArraySize) {
+        const compressedSize = reader.readUint64();
+        return DecodeCrateCompressedIntegerBlock64(reader.readBytes(compressedSize), count);
+    }
+    const values: bigint[] = [];
+    for (let i = 0; i < count; i++) {
+        values.push(reader.readBigInt64());
+    }
+    return values;
+}
+
+// Reads a float/double/half array, handling integer-coded and lookup-table compression.
+function ReadFloatingArray(reader: BinaryReader, count: number, isCompressed: boolean, readElement: (reader: BinaryReader) => number): number[] {
+    if (!isCompressed || count < MinCompressedArraySize) {
+        const values: number[] = [];
+        for (let i = 0; i < count; i++) {
+            values.push(readElement(reader));
+        }
+        return values;
+    }
+    const code = reader.readUint8();
+    if (code === FloatArrayIntegerCode) {
+        return ReadCompressedInt32FromReader(reader, count);
+    }
+    if (code === FloatArrayLookupCode) {
+        const lookupSize = reader.readUint32();
+        const lookup: number[] = [];
+        for (let i = 0; i < lookupSize; i++) {
+            lookup.push(readElement(reader));
+        }
+        const indexes = ReadCompressedInt32FromReader(reader, count);
+        return indexes.map((index) => lookup[index] ?? 0);
+    }
+    throw new Error(`USD crate: unsupported floating array compression code ${code}.`);
+}
+
+// Reads a contiguous run of uint32 table indexes.
+function ReadIndexArray(reader: BinaryReader, count: number): number[] {
+    const indexes: number[] = [];
+    for (let i = 0; i < count; i++) {
+        indexes.push(reader.readUint32());
+    }
+    return indexes;
+}
+
+// Produces an empty tagged array value matching the rep's element type.
+function EmptyArrayValue(type: CrateValueType): SdfValue | undefined {
+    const tag = EmptyArrayTag(type);
+    return tag ? AsSdfValue(tag, []) : undefined;
+}
+
+// Maps a crate array type enum to the matching empty Sdf array tag.
+function EmptyArrayTag(type: CrateValueType): SdfValueType | undefined {
+    switch (type) {
+        case CrateValueType.Bool:
+            return "bool[]";
+        case CrateValueType.Int:
+            return "int[]";
+        case CrateValueType.UInt:
+            return "uint[]";
+        case CrateValueType.Int64:
+            return "int64[]";
+        case CrateValueType.UInt64:
+            return "uint64[]";
+        case CrateValueType.Half:
+            return "half[]";
+        case CrateValueType.Float:
+            return "float[]";
+        case CrateValueType.Double:
+            return "double[]";
+        case CrateValueType.Vec2f:
+        case CrateValueType.Vec2h:
+        case CrateValueType.Vec2i:
+            return "vec2f[]";
+        case CrateValueType.Vec2d:
+            return "vec2d[]";
+        case CrateValueType.Vec3f:
+        case CrateValueType.Vec3h:
+        case CrateValueType.Vec3i:
+            return "vec3f[]";
+        case CrateValueType.Vec3d:
+            return "vec3d[]";
+        case CrateValueType.Vec4f:
+        case CrateValueType.Vec4h:
+        case CrateValueType.Vec4i:
+            return "vec4f[]";
+        case CrateValueType.Vec4d:
+            return "vec4d[]";
+        case CrateValueType.Quatf:
+        case CrateValueType.Quath:
+            return "quatf[]";
+        case CrateValueType.Quatd:
+            return "quatd[]";
+        case CrateValueType.Matrix4d:
+            return "matrix4d[]";
+        case CrateValueType.Token:
+        case CrateValueType.TokenVector:
+            return "token[]";
+        case CrateValueType.String:
+            return "string[]";
+        case CrateValueType.AssetPath:
+            return "asset[]";
+        default:
+            return undefined;
+    }
 }
 
 // Reads a crate compressed integer vector from the current stream position.
@@ -658,6 +1222,27 @@ class BinaryReader {
         this._ensure(this.offset, 4);
         const value = this._view.getInt32(this.offset, true);
         this.offset += 4;
+        return value;
+    }
+
+    public readUint16(): number {
+        this._ensure(this.offset, 2);
+        const value = this._view.getUint16(this.offset, true);
+        this.offset += 2;
+        return value;
+    }
+
+    public readFloat32(): number {
+        this._ensure(this.offset, 4);
+        const value = this._view.getFloat32(this.offset, true);
+        this.offset += 4;
+        return value;
+    }
+
+    public readFloat64(): number {
+        this._ensure(this.offset, 8);
+        const value = this._view.getFloat64(this.offset, true);
+        this.offset += 8;
         return value;
     }
 
