@@ -135,6 +135,48 @@ def Xform "World"
 }
 `;
 
+// A textured material whose UsdUVTexture addresses an archive-relative asset with a leading "./".
+// Used to prove a USDZ-embedded image both resolves to its archive key (the "./" is normalized away)
+// and has its bytes inlined onto the resolved texture, since Babylon cannot fetch an archive-internal
+// path by URL.
+const usdzTextureUsda = `#usda 1.0
+(
+    upAxis = "Y"
+    metersPerUnit = 1
+)
+
+def Xform "World"
+{
+    def Mesh "Quad"
+    {
+        int[] faceVertexCounts = [4]
+        int[] faceVertexIndices = [0, 1, 2, 3]
+        point3f[] points = [(-1, -1, 0), (1, -1, 0), (1, 1, 0), (-1, 1, 0)]
+        texCoord2f[] primvars:st = [(0, 0), (1, 0), (1, 1), (0, 1)] (interpolation = "vertex")
+        rel material:binding = </World/Mat>
+    }
+
+    def Material "Mat"
+    {
+        token outputs:surface.connect = </World/Mat/Preview.outputs:surface>
+
+        def Shader "Preview"
+        {
+            uniform token info:id = "UsdPreviewSurface"
+            color3f inputs:diffuseColor.connect = </World/Mat/Albedo.outputs:rgb>
+            token outputs:surface
+        }
+
+        def Shader "Albedo"
+        {
+            uniform token info:id = "UsdUVTexture"
+            asset inputs:file = @./textures/tiny.png@
+            float3 outputs:rgb
+        }
+    }
+}
+`;
+
 // A DistantLight and a Camera in one stage, exercising the UsdLux/UsdGeomCamera schema mappings all
 // the way through to real Babylon Light and Camera objects via the public loader.
 const lightCameraUsda = `#usda 1.0
@@ -286,5 +328,29 @@ describe("USD loader integration", () => {
 
         expect(stage.materials.length).toBe(1);
         expect(stage.materials[0].textures.baseColor?.uri).toBe("file:albedo.png");
+    });
+
+    it("inlines USDZ-embedded texture bytes onto the resolved material", async () => {
+        // A USDZ carries its textures inside the archive, so the resolved texture URI ("./textures/tiny.png")
+        // addresses an archive-internal asset that Babylon's Texture loader cannot fetch by URL. The
+        // resolver must normalize the path to the archive key and inline the image bytes onto the texture.
+        const pngBytes = new Uint8Array([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 1, 2, 3, 4]);
+        const usdz = fflate.zipSync(
+            {
+                "scene.usda": new TextEncoder().encode(usdzTextureUsda),
+                "textures/tiny.png": pngBytes,
+            },
+            { level: 0 }
+        );
+
+        const stage = await ResolveUsdStageWithFetcherAsync(usdz.buffer, "", "scene.usdz", { fflate }, (identifier) => {
+            throw new Error(`USDZ texture loading must not hit the network, but requested: ${identifier}`);
+        });
+
+        const baseColor = stage.materials[0]?.textures.baseColor;
+        expect(baseColor?.uri).toBe("textures/tiny.png");
+        expect(baseColor?.data).toBeDefined();
+        expect(new Uint8Array(baseColor!.data!)).toEqual(pngBytes);
+        expect(baseColor?.mimeType).toBe("image/png");
     });
 });

@@ -1,5 +1,6 @@
 import { type IResolvedMaterial, type IResolvedMaterialBinding, type IResolvedTexture, type ResolvedTextureSlot, type Vec3, type Vec4 } from "../resolvedStage";
 import { type ISdfAttributeSpec, type ISdfPrimSpec } from "../sdf";
+import { ResolveAssetIdentifier } from "../assetPath";
 import { type IStageMappingContext } from "./mappingContext";
 import {
     AsAssetPath,
@@ -246,16 +247,12 @@ function ResolveTextureChannel(outputName: string | undefined, defaultChannel: I
 
 function ResolveAssetUri(path: string, layerIdentifier: string): string {
     const cleanPath = StripAssetDelimiters(path);
-    if (/^[a-z]+:\/\//i.test(cleanPath) || cleanPath.startsWith("/") || cleanPath.startsWith("data:")) {
+    if (cleanPath.startsWith("data:")) {
         return cleanPath;
     }
-    // Dropped-file scheme: address textures by basename so they resolve from Babylon's FilesInputStore,
-    // exactly like the sibling layers above (see ResolveLayerIdentifier).
-    if (layerIdentifier.startsWith("file:")) {
-        return `file:${(cleanPath.split("/").pop() ?? cleanPath).toLowerCase()}`;
-    }
-    const slashIndex = layerIdentifier.lastIndexOf("/");
-    return slashIndex >= 0 ? `${layerIdentifier.slice(0, slashIndex + 1)}${cleanPath.replace(/^\.\//, "")}` : cleanPath;
+    // Resolve textures through the same normalizer as external layers so a sibling .png and a sibling
+    // .usd authored with the same relative path resolve identically (including the dropped-file scheme).
+    return ResolveAssetIdentifier(cleanPath, layerIdentifier);
 }
 
 function StripAssetDelimiters(path: string): string {

@@ -1,7 +1,7 @@
 import { Tools } from "core/Misc/tools.pure";
 
 import { type USDLoadingOptions } from "../usdLoadingOptions";
-import { type IResolvedStage, type IResolvedDiagnostic, type ResolvedDiagnosticSeverity } from "./resolvedStage";
+import { type IResolvedStage, type IResolvedDiagnostic, type ResolvedDiagnosticSeverity, type IResolvedTexture } from "./resolvedStage";
 import { type ISdfLayer } from "./sdf";
 import { type ISdfListOp } from "./sdf/sdfListOp";
 import { type ISdfCompositionFields, type ISdfPrimSpec } from "./sdf/sdfSpec";
@@ -10,6 +10,7 @@ import { ComposeLayerStack, type ICompositionDiagnostic } from "./composition/co
 import { MapLayerToResolvedStage } from "./mapping/stageMapper";
 import { ParseCrate } from "./parser/crate/crateReader";
 import { ReadUsdzArchive } from "./parser/usdzArchive";
+import { ResolveAssetIdentifier } from "./assetPath";
 
 /** The concrete on-disk USD container format, sniffed from magic bytes rather than the file extension. */
 export type UsdFormat = "usda" | "usdc" | "usdz";
@@ -137,7 +138,87 @@ async function ResolveUsdzStageAsync(
         return await fetchAsset(resolvedIdentifier);
     };
 
-    return await ComposeAndMapStageAsync(rootLayer, fetchArchiveAssetAsync, diagnostics);
+    const stage = await ComposeAndMapStageAsync(rootLayer, fetchArchiveAssetAsync, diagnostics);
+    await LoadEmbeddedTextureDataAsync(stage, fetchArchiveAssetAsync, diagnostics);
+    return stage;
+}
+
+// USDZ packs its textures inside the archive, so a resolved texture URI such as "textures/base.png"
+// addresses an archive-internal asset that Babylon's Texture loader cannot fetch by URL. Pull those image
+// bytes here and inline them onto the resolved texture so the adapter can build each texture from a data
+// URI. Bytes are fetched once per unique URI and shared across every slot that references it; assets that
+// already carry a URL scheme (file:/http(s):/data:) or absolute path are left for the adapter to load.
+async function LoadEmbeddedTextureDataAsync(stage: IResolvedStage, fetchAsset: FetchUsdAsset, diagnostics: IResolvedDiagnostic[]): Promise<void> {
+    const texturesByUri = new Map<string, IResolvedTexture[]>();
+    for (const material of stage.materials) {
+        for (const texture of Object.values(material.textures)) {
+            if (!texture || texture.data || HasUriScheme(texture.uri)) {
+                continue;
+            }
+            const group = texturesByUri.get(texture.uri);
+            if (group) {
+                group.push(texture);
+            } else {
+                texturesByUri.set(texture.uri, [texture]);
+            }
+        }
+    }
+
+    await Promise.all(
+        Array.from(texturesByUri.entries()).map(async ([uri, textures]) => {
+            const bytes = await FetchTextureBytesAsync(fetchAsset, uri, diagnostics);
+            if (!bytes || bytes.byteLength === 0) {
+                return;
+            }
+            const mimeType = GuessImageMimeType(uri);
+            for (const texture of textures) {
+                texture.data = bytes;
+                if (mimeType) {
+                    texture.mimeType = mimeType;
+                }
+            }
+        })
+    );
+}
+
+// Returns true when a texture URI already names something the adapter can load directly: a URL scheme
+// (file:/http(s):/data:) or an absolute path. Archive-relative paths return false so their bytes are
+// pulled from the USDZ archive instead.
+function HasUriScheme(uri: string): boolean {
+    return /^[a-z][a-z0-9+.-]*:/i.test(uri) || uri.startsWith("/");
+}
+
+// Fetches one texture's bytes, downgrading any failure (or a text payload, which an image never is) to a
+// non-fatal diagnostic so a single missing texture cannot abort the whole load.
+async function FetchTextureBytesAsync(fetchAsset: FetchUsdAsset, uri: string, diagnostics: IResolvedDiagnostic[]): Promise<Uint8Array | undefined> {
+    try {
+        const asset = await fetchAsset(uri);
+        return typeof asset === "string" ? undefined : new Uint8Array(asset);
+    } catch (error) {
+        diagnostics.push({ severity: "warning", message: `Failed to load embedded texture '${uri}': ${error}`, path: uri });
+        return undefined;
+    }
+}
+
+// Maps a texture file extension to its image MIME type so the adapter can build a correct data URI.
+// Unknown extensions return undefined, letting the adapter fall back to its own default.
+function GuessImageMimeType(uri: string): string | undefined {
+    const extension = uri.split(".").pop()?.toLowerCase();
+    switch (extension) {
+        case "png":
+            return "image/png";
+        case "jpg":
+        case "jpeg":
+            return "image/jpeg";
+        case "webp":
+            return "image/webp";
+        case "bmp":
+            return "image/bmp";
+        case "gif":
+            return "image/gif";
+        default:
+            return undefined;
+    }
 }
 
 // Pre-fetches the external layer stack, composes it with LIVERPS strength ordering, and maps the
@@ -145,7 +226,7 @@ async function ResolveUsdzStageAsync(
 async function ComposeAndMapStageAsync(rootLayer: ISdfLayer, fetchAsset: FetchUsdAsset, diagnostics: IResolvedDiagnostic[]): Promise<IResolvedStage> {
     const layers = await PrefetchLayerStackAsync(rootLayer, fetchAsset, diagnostics);
 
-    const resolveLayer = (assetPath: string, fromIdentifier: string): ISdfLayer | undefined => layers.get(ResolveLayerIdentifier(assetPath, fromIdentifier));
+    const resolveLayer = (assetPath: string, fromIdentifier: string): ISdfLayer | undefined => layers.get(ResolveAssetIdentifier(assetPath, fromIdentifier));
     const composed = ComposeLayerStack(rootLayer, resolveLayer);
     for (const compositionDiagnostic of composed.diagnostics) {
         diagnostics.push(ToResolvedDiagnostic(compositionDiagnostic));
@@ -180,7 +261,7 @@ async function FetchLayerWaveAsync(
     const requests: { assetPath: string; identifier: string }[] = [];
     for (const layer of frontier) {
         for (const assetPath of CollectExternalAssetPaths(layer)) {
-            const identifier = ResolveLayerIdentifier(assetPath, layer.identifier);
+            const identifier = ResolveAssetIdentifier(assetPath, layer.identifier);
             if (!visited.has(identifier)) {
                 visited.add(identifier);
                 requests.push({ assetPath, identifier });
@@ -282,41 +363,6 @@ function ListOpItems<T>(listOp: ISdfListOp<T> | undefined): readonly T[] {
         return [];
     }
     return [...(listOp.explicit ?? []), ...(listOp.prepended ?? []), ...(listOp.appended ?? []), ...(listOp.added ?? [])];
-}
-
-// Resolves an authored asset path against the identifier of the layer that referenced it. Absolute URLs
-// and absolute paths pass through unchanged; relative paths are joined onto the referrer's directory and
-// normalized. Must match the keys PrefetchLayerStackAsync stores layers under.
-function ResolveLayerIdentifier(assetPath: string, fromIdentifier: string): string {
-    if (/^[a-z][a-z0-9+.-]*:\/\//i.test(assetPath) || assetPath.startsWith("/")) {
-        return assetPath;
-    }
-
-    // Dropped-file scheme: a flat drag-and-drop set is stored in Babylon's FilesInputStore keyed by
-    // lower-cased basename, and Tools.LoadFile serves a "file:<key>" URL from it. Address sibling layers
-    // by basename so a "drop the asset and all its files together" set composes, mirroring how the glTF
-    // loader resolves a .bin dropped alongside its .gltf.
-    if (fromIdentifier.startsWith("file:")) {
-        return `file:${(assetPath.split("/").pop() ?? assetPath).toLowerCase()}`;
-    }
-
-    const lastSlash = fromIdentifier.lastIndexOf("/");
-    const baseDirectory = lastSlash >= 0 ? fromIdentifier.slice(0, lastSlash + 1) : "";
-
-    const segments: string[] = [];
-    for (const segment of `${baseDirectory}${assetPath}`.split("/")) {
-        if (segment === "" || segment === ".") {
-            continue;
-        }
-        if (segment === ".." && segments.length > 0 && segments[segments.length - 1] !== "..") {
-            segments.pop();
-            continue;
-        }
-        segments.push(segment);
-    }
-
-    const prefix = baseDirectory.startsWith("/") ? "/" : "";
-    return `${prefix}${segments.join("/")}`;
 }
 
 // Maps a composition diagnostic onto the resolved-stage diagnostic shape consumed by the loader.
