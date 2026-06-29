@@ -45,11 +45,24 @@ const PreviewInputMappings: IPreviewInputMapping[] = [
  * @returns resolved material binding, if one was authored
  */
 export function ResolveMaterialBinding(prim: ISdfPrimSpec, context: IStageMappingContext, fallbackBaseColor?: Vec3): IResolvedMaterialBinding | undefined {
-    const materialPath = GetRelationshipTargets(GetRelationship(prim, "material:binding"))[0];
+    const materialPath = GetMaterialBindingPath(prim);
     if (!materialPath) {
         return undefined;
     }
     return { materialIndex: ResolveMaterialIndex(materialPath, context, fallbackBaseColor) };
+}
+
+/**
+ * Returns the direct `material:binding` target authored on a prim, if any.
+ *
+ * In USD a direct material binding applies to the prim and is inherited by every descendant in
+ * namespace, so callers can walk this up an ancestor chain to bind meshes whose binding is authored
+ * on a parent (a common pattern for exporters that reference geometry under a bound Xform).
+ * @param prim prim that may author a `material:binding` relationship
+ * @returns absolute material path, or undefined when none is authored
+ */
+export function GetMaterialBindingPath(prim: ISdfPrimSpec): string | undefined {
+    return GetRelationshipTargets(GetRelationship(prim, "material:binding"))[0];
 }
 
 /**

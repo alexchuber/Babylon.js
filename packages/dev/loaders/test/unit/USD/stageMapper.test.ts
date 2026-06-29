@@ -256,4 +256,86 @@ describe("USD stage mapper", () => {
 
         expect(world.transform.matrix).toEqual(rotateZTranslate);
     });
+
+    it("inherits a material binding authored on an ancestor prim", () => {
+        // Exporters such as three.js author material:binding on an Xform that references geometry,
+        // leaving the referenced Mesh itself unbound. USD direct bindings inherit down namespace, so
+        // the Mesh must resolve to the ancestor's material.
+        const layer: ISdfLayer = {
+            identifier: "/inherited.usda",
+            subLayers: [],
+            rootPrims: [
+                {
+                    name: "Bound",
+                    path: "/Bound",
+                    specifier: "def",
+                    typeName: "Xform",
+                    properties: {
+                        "material:binding": {
+                            kind: "relationship",
+                            targets: { isExplicit: true, explicit: ["/Bound/Mat"] },
+                        },
+                    },
+                    children: [
+                        {
+                            name: "Geom",
+                            path: "/Bound/Geom",
+                            specifier: "def",
+                            typeName: "Mesh",
+                            properties: {
+                                points: {
+                                    kind: "attribute",
+                                    typeName: "point3f[]",
+                                    default: {
+                                        type: "point3f[]",
+                                        value: [
+                                            [0, 0, 0],
+                                            [1, 0, 0],
+                                            [0, 1, 0],
+                                        ],
+                                    },
+                                },
+                                faceVertexCounts: { kind: "attribute", typeName: "int[]", default: { type: "int[]", value: [3] } },
+                                faceVertexIndices: { kind: "attribute", typeName: "int[]", default: { type: "int[]", value: [0, 1, 2] } },
+                            },
+                            children: [],
+                        },
+                        {
+                            name: "Mat",
+                            path: "/Bound/Mat",
+                            specifier: "def",
+                            typeName: "Material",
+                            properties: {
+                                "outputs:surface": {
+                                    kind: "attribute",
+                                    typeName: "token",
+                                    connections: { isExplicit: true, explicit: ["/Bound/Mat/Preview.outputs:surface"] },
+                                },
+                            },
+                            children: [
+                                {
+                                    name: "Preview",
+                                    path: "/Bound/Mat/Preview",
+                                    specifier: "def",
+                                    typeName: "Shader",
+                                    properties: {
+                                        "info:id": { kind: "attribute", typeName: "token", default: { type: "token", value: "UsdPreviewSurface" } },
+                                        "inputs:diffuseColor": { kind: "attribute", typeName: "color3f", default: { type: "color3f", value: [0.1, 0.2, 0.3] } },
+                                    },
+                                    children: [],
+                                },
+                            ],
+                        },
+                    ],
+                },
+            ],
+        };
+
+        const stage = MapLayerToResolvedStage(layer);
+        const geom = stage.root.children[0].children.find((child) => child.name === "Geom");
+
+        expect(geom?.kind).toBe("mesh");
+        expect(geom?.materialBinding).toBeDefined();
+        expect(stage.materials[geom!.materialBinding!.materialIndex].baseColor).toEqual([0.1, 0.2, 0.3]);
+    });
 });

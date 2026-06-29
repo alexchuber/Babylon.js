@@ -11,7 +11,7 @@ import { type ISdfLayer, type ISdfPrimSpec } from "../sdf";
 import { ResolvePrimAnimation } from "./animationMapping";
 import { ResolveCamera } from "./cameraMapping";
 import { ResolveLight } from "./lightMapping";
-import { ResolveMaterialBinding, GetDisplayColorFallback } from "./materialMapping";
+import { ResolveMaterialIndex, GetMaterialBindingPath, GetDisplayColorFallback } from "./materialMapping";
 import { type IStageMappingContext } from "./mappingContext";
 import { BuildMeshPoolKey, ResolveMesh } from "./meshMapping";
 import { ResolvePointInstancer } from "./pointInstancerMapping";
@@ -52,7 +52,7 @@ export function MapLayerToResolvedStage(layer: ISdfLayer): IResolvedStage {
         kind: "transform",
         transform: IdentityTransform(),
         visible: true,
-        children: layer.rootPrims.map((prim) => MapPrim(prim, true, metadata, context)),
+        children: layer.rootPrims.map((prim) => MapPrim(prim, true, metadata, context, undefined)),
     };
 
     return {
@@ -76,7 +76,7 @@ function ResolveStageMetadata(layer: ISdfLayer): IStageMetadata {
     };
 }
 
-function MapPrim(primSpec: ISdfPrimSpec, parentVisible: boolean, metadata: IStageMetadata, context: StageMapperContext): IResolvedPrim {
+function MapPrim(primSpec: ISdfPrimSpec, parentVisible: boolean, metadata: IStageMetadata, context: StageMapperContext, inheritedMaterialPath: string | undefined): IResolvedPrim {
     const visible = parentVisible && ResolveVisibility(primSpec);
     const prim: IResolvedPrim = {
         path: primSpec.path,
@@ -87,16 +87,20 @@ function MapPrim(primSpec: ISdfPrimSpec, parentVisible: boolean, metadata: IStag
         children: [],
     };
 
-    ApplySchemaPayload(prim, primSpec, metadata, context);
+    // USD direct material bindings inherit down namespace, so a prim's own binding (when authored)
+    // overrides the inherited one and becomes the binding seen by its whole subtree.
+    const effectiveMaterialPath = GetMaterialBindingPath(primSpec) ?? inheritedMaterialPath;
+
+    ApplySchemaPayload(prim, primSpec, metadata, context, effectiveMaterialPath);
     const animation = ResolvePrimAnimation(primSpec, context.layer, metadata, context.diagnostics);
     if (animation) {
         prim.animation = animation;
     }
-    prim.children = prim.kind === "pointInstancer" ? [] : primSpec.children.map((child) => MapPrim(child, visible, metadata, context));
+    prim.children = prim.kind === "pointInstancer" ? [] : primSpec.children.map((child) => MapPrim(child, visible, metadata, context, effectiveMaterialPath));
     return prim;
 }
 
-function ApplySchemaPayload(prim: IResolvedPrim, primSpec: ISdfPrimSpec, metadata: IStageMetadata, context: StageMapperContext): void {
+function ApplySchemaPayload(prim: IResolvedPrim, primSpec: ISdfPrimSpec, metadata: IStageMetadata, context: StageMapperContext, materialPath: string | undefined): void {
     const light = ResolveLight(primSpec, context);
     if (light) {
         prim.kind = "light";
@@ -133,7 +137,9 @@ function ApplySchemaPayload(prim: IResolvedPrim, primSpec: ISdfPrimSpec, metadat
         return;
     }
     const meshIndex = PoolMesh(mesh, context);
-    prim.materialBinding = ResolveMaterialBinding(primSpec, context, GetDisplayColorFallback(primSpec));
+    if (materialPath) {
+        prim.materialBinding = { materialIndex: ResolveMaterialIndex(materialPath, context, GetDisplayColorFallback(primSpec)) };
+    }
     if (primSpec.instanceable) {
         prim.kind = "instance";
         prim.instanceSourceMeshIndex = meshIndex;
