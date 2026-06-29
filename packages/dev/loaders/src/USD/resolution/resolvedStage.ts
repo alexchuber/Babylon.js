@@ -25,7 +25,7 @@ export type Vec3 = [number, number, number];
 export type Vec4 = [number, number, number, number];
 /** A quaternion expressed as `[x, y, z, w]`. */
 export type Quat = [number, number, number, number];
-/** A 4x4 matrix in column-major order (16 numbers), matching USD's `GfMatrix4d` row-vector layout flattened column-major for Babylon. */
+/** A 4x4 matrix as 16 numbers in USD `GfMatrix4d` flat layout (row-major, row-vector, translation in the last row), identical to Babylon's `Matrix.m`. */
 export type Mat4 = number[];
 
 /**
@@ -150,7 +150,7 @@ export interface IResolvedTransform {
     rotation: Quat;
     /** Local scale. */
     scale: Vec3;
-    /** Optional full local matrix (column-major). Present when TRS is lossy; adapter prefers this when set. */
+    /** Optional full local matrix in the same flat layout as {@link Mat4}. Present when TRS is lossy; adapter prefers this when set. */
     matrix?: Mat4;
 }
 

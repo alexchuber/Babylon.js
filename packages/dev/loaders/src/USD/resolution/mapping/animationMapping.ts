@@ -10,7 +10,7 @@ import {
 } from "../resolvedStage";
 import { type ISdfAttributeSpec, type ISdfLayer, type ISdfPrimSpec, type SdfValue } from "../sdf";
 import { AsMat4, AsQuat, AsToken, AsVec3, GetMetadataToken } from "./valueAccess";
-import { DecomposeMatrix, UsdMatrixToColumnMajor } from "./transformMapping";
+import { DecomposeMatrix, UsdMatrixToResolvedLayout } from "./transformMapping";
 
 /**
  * Bakes supported prim time samples into resolved animation tracks.
@@ -111,7 +111,7 @@ function BuildMatrixTracks(attribute: ISdfAttributeSpec, timeCodesPerSecond: num
     for (const sample of attribute.timeSamples?.values ?? []) {
         const matrix = AsMat4(sample);
         const transform = matrix
-            ? DecomposeMatrix(UsdMatrixToColumnMajor(matrix as Mat4))
+            ? DecomposeMatrix(UsdMatrixToResolvedLayout(matrix as Mat4))
             : { translation: [0, 0, 0] as Vec3, rotation: [0, 0, 0, 1] as Quat, scale: [1, 1, 1] as Vec3 };
         translations.push(transform.translation[0], transform.translation[1], transform.translation[2]);
         rotations.push(transform.rotation[0], transform.rotation[1], transform.rotation[2], transform.rotation[3]);

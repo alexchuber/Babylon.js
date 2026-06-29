@@ -41,29 +41,18 @@ export function ResolveTransform(prim: ISdfPrimSpec, diagnostics: IResolvedDiagn
 }
 
 /**
- * Converts a USD row-major matrix value to the resolved column-major matrix layout.
- * @param matrix USD-authored row-major matrix
- * @returns column-major matrix for the resolved contract
+ * Returns a copy of a USD-authored `matrix4d` value in the resolved matrix layout.
+ *
+ * USD `GfMatrix4d` is stored row-major with row-vector semantics (v' = v * M) and the translation
+ * in the last row (flat indices 12-14). That flat layout is byte-identical to Babylon's `Matrix.m`,
+ * so no transpose or reordering is required: the resolved contract carries the authored values
+ * directly and the adapter feeds them straight into `Matrix.FromArray`. This is a defensive copy
+ * so callers never alias the authored array.
+ * @param matrix USD-authored `matrix4d` (16 numbers, row-major)
+ * @returns a copy of the matrix in the resolved layout
  */
-export function UsdMatrixToColumnMajor(matrix: Mat4): Mat4 {
-    return [
-        matrix[0],
-        matrix[4],
-        matrix[8],
-        matrix[12],
-        matrix[1],
-        matrix[5],
-        matrix[9],
-        matrix[13],
-        matrix[2],
-        matrix[6],
-        matrix[10],
-        matrix[14],
-        matrix[3],
-        matrix[7],
-        matrix[11],
-        matrix[15],
-    ];
+export function UsdMatrixToResolvedLayout(matrix: Mat4): Mat4 {
+    return [...matrix];
 }
 
 /**
@@ -166,7 +155,7 @@ function ResolveXformOpMatrix(prim: ISdfPrimSpec, orderedOp: string, diagnostics
         matrix = RotationMatrix(ResolveRotationQuaternion(prim, opName));
     } else if (opName === "xformOp:transform") {
         const authoredMatrix = AsMat4(GetAttributeValue(GetAttribute(prim, opName)));
-        matrix = authoredMatrix ? UsdMatrixToColumnMajor(authoredMatrix) : IdentityMatrix();
+        matrix = authoredMatrix ? UsdMatrixToResolvedLayout(authoredMatrix) : IdentityMatrix();
     } else {
         diagnostics.push({ severity: "warning", path: prim.path, message: `Unsupported xformOp '${orderedOp}' was ignored.` });
         return undefined;

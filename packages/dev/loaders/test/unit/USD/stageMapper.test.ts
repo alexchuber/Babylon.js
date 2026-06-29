@@ -210,4 +210,50 @@ describe("USD stage mapper", () => {
         expect(Array.from(world.animation!.tracks[0].times)).toEqual([0, 1]);
         expect(Array.from(world.animation!.tracks[0].values)).toEqual([1, 2, 3, 4, 5, 6]);
     });
+
+    it("preserves the USD row-major layout of an xformOp:transform matrix", () => {
+        // USD GfMatrix4d is row-major with row-vector semantics (v' = v * M) and translation
+        // in the last row, which is byte-identical to Babylon's Matrix storage. The resolved
+        // matrix must therefore be a direct copy of the authored matrix, never its transpose.
+        // This matrix is a +90 deg rotation about Z that maps the row vector (1,0,0) to (0,1,0)
+        // plus a translation of (10, 20, 30). A transpose would invert the rotation and move
+        // the translation out of indices [12,13,14], so it is a sharp signal for the layout bug.
+        // prettier-ignore
+        const rotateZTranslate = [
+            0, 1, 0, 0,
+            -1, 0, 0, 0,
+            0, 0, 1, 0,
+            10, 20, 30, 1,
+        ];
+        const layer: ISdfLayer = {
+            identifier: "/transform.usda",
+            subLayers: [],
+            rootPrims: [
+                {
+                    name: "World",
+                    path: "/World",
+                    specifier: "def",
+                    typeName: "Xform",
+                    properties: {
+                        "xformOp:transform": {
+                            kind: "attribute",
+                            typeName: "matrix4d",
+                            default: { type: "matrix4d", value: rotateZTranslate },
+                        },
+                        xformOpOrder: {
+                            kind: "attribute",
+                            typeName: "token[]",
+                            default: { type: "token[]", value: ["xformOp:transform"] },
+                        },
+                    },
+                    children: [],
+                },
+            ],
+        };
+
+        const stage = MapLayerToResolvedStage(layer);
+        const world = stage.root.children[0];
+
+        expect(world.transform.matrix).toEqual(rotateZTranslate);
+    });
 });

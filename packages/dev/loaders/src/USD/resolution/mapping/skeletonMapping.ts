@@ -23,7 +23,7 @@ import {
     GetRelationshipTargets,
     GetTokenArrayAttribute,
 } from "./valueAccess";
-import { UsdMatrixToColumnMajor } from "./transformMapping";
+import { UsdMatrixToResolvedLayout } from "./transformMapping";
 
 /** Mapping context extensions needed while resolving UsdSkel skeletons and bindings. */
 export interface ISkeletonMappingContext extends IStageMappingContext {
@@ -117,7 +117,7 @@ export function ResolveSkinning(meshPrim: ISdfPrimSpec, context: ISkeletonMappin
 
     const geomBindTransform = AsMat4(GetAttributeValue(GetAttribute(meshPrim, "primvars:skel:geomBindTransform")));
     if (geomBindTransform) {
-        skinning.geomBindTransform = UsdMatrixToColumnMajor(geomBindTransform);
+        skinning.geomBindTransform = UsdMatrixToResolvedLayout(geomBindTransform);
     }
 
     return skinning;
@@ -144,7 +144,7 @@ function ResolveMatrixArray(prim: ISdfPrimSpec, attributeName: string, jointCoun
     const authored = AsMat4Array(GetAttributeValue(GetAttribute(prim, attributeName))) ?? [];
     const matrices: Mat4[] = [];
     for (let index = 0; index < jointCount; index++) {
-        matrices.push(authored[index] ? UsdMatrixToColumnMajor(authored[index]) : IdentityMatrix());
+        matrices.push(authored[index] ? UsdMatrixToResolvedLayout(authored[index]) : IdentityMatrix());
     }
     return matrices;
 }
