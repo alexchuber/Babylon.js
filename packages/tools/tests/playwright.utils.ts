@@ -80,6 +80,11 @@ export function getBabylonServerTestsList() {
             use: getUseDefinition("Flow Graph Editor"),
         },
         {
+            name: "nodeAssetsEditor",
+            testMatch: "**/nodeAssetsEditor.test.ts",
+            use: getUseDefinition("Node Assets Editor"),
+        },
+        {
             name: "viewer",
             testMatch: "packages/tools/viewer/test/viewer.test.ts",
             use: getUseDefinition("Viewer"),

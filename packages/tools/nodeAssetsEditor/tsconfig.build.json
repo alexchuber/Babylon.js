@@ -1,0 +1,23 @@
+{
+    "extends": ["../../../tsconfig.build.json", "./tsconfig.json"],
+
+    "compilerOptions": {
+        "rootDir": "./src",
+        "moduleResolution": "bundler",
+        "paths": {
+            "core/*": ["../../dev/core/dist/*"],
+            "shared-ui-components/*": ["../../dev/sharedUiComponents/dist/*"]
+        }
+    },
+
+    "references": [
+        {
+            "path": "../../dev/core/tsconfig.build.json"
+        },
+        {
+            "path": "../../dev/sharedUiComponents/tsconfig.build.json"
+        }
+    ],
+
+    "include": ["./src/**/*"]
+}
