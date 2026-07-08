@@ -14,6 +14,8 @@
     },
     "dependencies": {
         "@dev/core": "1.0.0",
+        "@dev/loaders": "1.0.0",
+        "@dev/node-assets": "1.0.0",
         "@dev/shared-ui-components": "1.0.0"
     },
     "devDependencies": {

@@ -6,6 +6,8 @@
         "moduleResolution": "bundler",
         "paths": {
             "core/*": ["../../dev/core/dist/*"],
+            "loaders/*": ["../../dev/loaders/dist/*"],
+            "node-assets/*": ["../../dev/node-assets/dist/*"],
             "shared-ui-components/*": ["../../dev/sharedUiComponents/dist/*"]
         }
     },
@@ -13,6 +15,12 @@
     "references": [
         {
             "path": "../../dev/core/tsconfig.build.json"
+        },
+        {
+            "path": "../../dev/loaders/tsconfig.build.json"
+        },
+        {
+            "path": "../../dev/node-assets/tsconfig.build.json"
         },
         {
             "path": "../../dev/sharedUiComponents/tsconfig.build.json"

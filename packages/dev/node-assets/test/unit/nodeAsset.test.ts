@@ -3,7 +3,6 @@ import { describe, expect, it } from "vitest";
 import { ExportGLTFBlock } from "../../src/Blocks/exportGLTFBlock";
 import { ImportGLTFBlock } from "../../src/Blocks/importGLTFBlock";
 import { NodeAsset } from "../../src/nodeAsset";
-
 /**
  * Builds a tiny uncompressed glb (one node, one mesh) in code so the roundtrip test does not
  * depend on a bundled binary fixture.
@@ -70,5 +69,66 @@ describe("NodeAsset", () => {
 
         expect(exporter.result).toBeNull();
         await expect(asset.buildAsync()).rejects.toThrow();
+    });
+
+    it("disconnects a connected point pair symmetrically", () => {
+        const asset = new NodeAsset("disconnect");
+        const importer = new ImportGLTFBlock("import", asset);
+        const exporter = new ExportGLTFBlock("export", asset);
+        importer.output.connectTo(exporter.input);
+
+        expect(importer.output.isConnected).toBe(true);
+        expect(exporter.input.isConnected).toBe(true);
+
+        importer.output.disconnect();
+
+        expect(importer.output.isConnected).toBe(false);
+        expect(exporter.input.isConnected).toBe(false);
+        expect(importer.output.connectedPoint).toBeNull();
+        expect(exporter.input.connectedPoint).toBeNull();
+    });
+
+    it("removes a block and disconnects it from the graph", () => {
+        const asset = new NodeAsset("remove");
+        const importer = new ImportGLTFBlock("import", asset);
+        const exporter = new ExportGLTFBlock("export", asset);
+        importer.output.connectTo(exporter.input);
+
+        asset.removeBlock(importer);
+
+        expect(asset.attachedBlocks).not.toContain(importer);
+        expect(asset.attachedBlocks).toHaveLength(1);
+        expect(exporter.input.isConnected).toBe(false);
+    });
+
+    it("roundtrips through serialize/Parse, restoring blocks, connections, and import data", async () => {
+        const glb = await CreateFixtureGlbAsync();
+
+        const asset = new NodeAsset("serialize-me");
+        const importer = new ImportGLTFBlock("import", asset);
+        importer.data = glb;
+        const exporter = new ExportGLTFBlock("export", asset);
+        importer.output.connectTo(exporter.input);
+
+        const serialized = JSON.parse(JSON.stringify(asset.serialize()));
+        const parsed = NodeAsset.Parse(serialized);
+
+        // Block identity and count are preserved (in order).
+        expect(parsed.name).toBe("serialize-me");
+        expect(parsed.attachedBlocks).toHaveLength(2);
+        const parsedImporter = parsed.attachedBlocks[0] as ImportGLTFBlock;
+        const parsedExporter = parsed.attachedBlocks[1] as ExportGLTFBlock;
+        expect(parsedImporter).toBeInstanceOf(ImportGLTFBlock);
+        expect(parsedExporter).toBeInstanceOf(ExportGLTFBlock);
+        expect(parsedImporter.uniqueId).toBe(importer.uniqueId);
+
+        // Import data survived the base64 roundtrip.
+        expect(parsedImporter.data).toEqual(glb);
+
+        // The connection was restored, so the parsed graph builds without re-wiring.
+        expect(parsedImporter.output.connectedPoint).toBe(parsedExporter.input);
+        const result = await parsed.buildAsync();
+        expect(result).toBeInstanceOf(Uint8Array);
+        expect(result.length).toBeGreaterThan(0);
     });
 });

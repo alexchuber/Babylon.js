@@ -20,14 +20,16 @@ import { useObservableState } from "shared-ui-components/modularTool/hooks/obser
 
 import { Logger } from "core/Misc/logger";
 
-import { GraphEditorState } from "../nodeGraph/editorState";
+import { type GraphEditorState } from "../nodeGraph/editorState";
 import { CanvasViewController, type EditorContextValue } from "../nodeGraph/editorContext";
 import { GraphCanvas } from "../nodeGraph/components/GraphCanvas";
 import { PaletteView } from "../nodeGraph/components/PaletteView";
-import { PreviewView } from "../nodeGraph/components/PreviewView";
 import { PropertiesView } from "../nodeGraph/components/PropertiesView";
-import { CreateBuildPropertySections } from "../demo/dummyProperties";
-import { CreateDummyGraph, CreateNodeFromPaletteItem, DummyPaletteCategories } from "../demo/dummyData";
+
+import { NodeAssetGraphController } from "../nodeAssets/nodeAssetGraphController";
+import { PreviewController } from "../nodeAssets/previewController";
+import { PreviewPane } from "../nodeAssets/components/PreviewPane";
+import { DownloadBlob, PromptForFileAsync } from "../nodeAssets/browserFiles";
 
 // Toolbar button that reflects the store's undo availability.
 const UndoButton: FunctionComponent<{ state: GraphEditorState }> = (props) => {
@@ -44,22 +46,67 @@ const RedoButton: FunctionComponent<{ state: GraphEditorState }> = (props) => {
 };
 
 /**
- * The demo application's root service. It seeds the store with dummy data, assembles the editor
- * context, and registers the canvas, palette, preview, properties pane, and toolbar with the shell.
+ * The editor's root service. It creates the NodeAssets graph controller and preview, assembles the
+ * editor context from them, and registers the canvas, palette, preview, properties pane, and toolbar
+ * (including the export/save/load actions) with the shell.
  */
 export const NodeAssetsEditorServiceDefinition: ServiceDefinition<[], [IShellService]> = {
     friendlyName: "Node Assets Editor Service",
     consumes: [ShellServiceIdentity],
     factory: (shellService) => {
-        const state = new GraphEditorState(CreateDummyGraph());
+        const controller = new NodeAssetGraphController();
+        const preview = new PreviewController();
+        const state = controller.state;
         const view = new CanvasViewController();
+
         const context: EditorContextValue = {
             state,
-            paletteCategories: DummyPaletteCategories,
-            buildPropertySections: CreateBuildPropertySections(state),
+            paletteCategories: controller.paletteCategories,
+            buildPropertySections: (node) => controller.buildPropertySections(node),
             view,
-            createNodeFromPaletteItem: (paletteItemId, position) => CreateNodeFromPaletteItem(paletteItemId, position, (prefix) => state.generateId(prefix)),
+            createNodeFromPaletteItem: (paletteItemId, position) => controller.createNodeFromPaletteItem(paletteItemId, position),
         };
+
+        // Builds the graph and shows the result in the preview pane.
+        const buildAndPreviewAsync = async (): Promise<void> => {
+            try {
+                const bytes = await controller.buildAsync();
+                await preview.loadAssetAsync(bytes);
+            } catch (error) {
+                Logger.Error(`[NodeAssetsEditor] Build failed: ${(error as Error).message}`);
+            }
+        };
+
+        // Builds the graph, downloads the exported glb, and shows it in the preview pane.
+        const exportAndPreviewAsync = async (): Promise<void> => {
+            try {
+                const bytes = await controller.buildAsync();
+                DownloadBlob(bytes, "asset.glb", "model/gltf-binary");
+                await preview.loadAssetAsync(bytes);
+            } catch (error) {
+                Logger.Error(`[NodeAssetsEditor] Export failed: ${(error as Error).message}`);
+            }
+        };
+
+        // Serializes the graph and downloads it as JSON.
+        const save = (): void => {
+            DownloadBlob(controller.serialize(), "nodeAsset.json", "application/json");
+        };
+
+        // Prompts for a saved JSON file and loads it into the editor.
+        const loadAsync = async (): Promise<void> => {
+            const file = await PromptForFileAsync("application/json,.json");
+            if (!file) {
+                return;
+            }
+            try {
+                controller.load(await file.text());
+            } catch (error) {
+                Logger.Error(`[NodeAssetsEditor] Load failed: ${(error as Error).message}`);
+            }
+        };
+
+        const exportObserver = controller.onExportRequested.add(() => void exportAndPreviewAsync());
 
         const registrations = [
             shellService.addCentralContent({
@@ -82,7 +129,7 @@ export const NodeAssetsEditorServiceDefinition: ServiceDefinition<[], [IShellSer
                 horizontalLocation: "left",
                 verticalLocation: "bottom",
                 teachingMoment: false,
-                content: () => <PreviewView />,
+                content: () => <PreviewPane controller={preview} />,
             }),
             shellService.addSidePane({
                 key: "Properties",
@@ -132,7 +179,9 @@ export const NodeAssetsEditorServiceDefinition: ServiceDefinition<[], [IShellSer
                 verticalLocation: "top",
                 order: 0,
                 teachingMoment: false,
-                component: () => <Button appearance="transparent" icon={PlayRegular} title="Run" ariaLabel="Run" onClick={() => Logger.Log("[NodeAssetsEditor] Run")} />,
+                component: () => (
+                    <Button appearance="transparent" icon={PlayRegular} title="Build and preview" ariaLabel="Build and preview" onClick={() => void buildAndPreviewAsync()} />
+                ),
             }),
             shellService.addToolbarItem({
                 key: "Save",
@@ -140,15 +189,7 @@ export const NodeAssetsEditorServiceDefinition: ServiceDefinition<[], [IShellSer
                 verticalLocation: "top",
                 order: 1,
                 teachingMoment: false,
-                component: () => (
-                    <Button
-                        appearance="transparent"
-                        icon={SaveRegular}
-                        title="Save"
-                        ariaLabel="Save"
-                        onClick={() => Logger.Log(`[NodeAssetsEditor] Save ${JSON.stringify(state.snapshot())}`)}
-                    />
-                ),
+                component: () => <Button appearance="transparent" icon={SaveRegular} title="Save" ariaLabel="Save" onClick={() => save()} />,
             }),
             shellService.addToolbarItem({
                 key: "Load",
@@ -156,15 +197,18 @@ export const NodeAssetsEditorServiceDefinition: ServiceDefinition<[], [IShellSer
                 verticalLocation: "top",
                 order: 2,
                 teachingMoment: false,
-                component: () => <Button appearance="transparent" icon={FolderOpenRegular} title="Load" ariaLabel="Load" onClick={() => Logger.Log("[NodeAssetsEditor] Load")} />,
+                component: () => <Button appearance="transparent" icon={FolderOpenRegular} title="Load" ariaLabel="Load" onClick={() => void loadAsync()} />,
             }),
         ];
 
         return {
             dispose: () => {
+                controller.onExportRequested.remove(exportObserver);
                 for (const registration of registrations) {
                     registration.dispose();
                 }
+                controller.dispose();
+                preview.detach();
             },
         };
     },

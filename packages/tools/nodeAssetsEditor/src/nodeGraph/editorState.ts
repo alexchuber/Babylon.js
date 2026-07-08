@@ -584,6 +584,22 @@ export class GraphEditorState {
         return `${prefix}-${++this._idCounter}`;
     }
 
+    /**
+     * Replaces the entire graph with a new snapshot, clearing undo/redo history and selection. Used
+     * by hosts to load a different graph. Generic: it carries no host/domain semantics.
+     * @param snapshot The graph contents to load.
+     */
+    public reset(snapshot: IGraphSnapshot): void {
+        this._undoStack.length = 0;
+        this._redoStack.length = 0;
+        this._interactionSnapshot = null;
+        this._selectedNodeIds.clear();
+        this._selectedWireId = null;
+        this._primaryNodeId = null;
+        this._applySnapshot(snapshot);
+        this._notifySelectionChanged();
+    }
+
     private _applySnapshot(snapshot: IGraphSnapshot): void {
         const cloned = CloneSnapshot(snapshot);
         this._nodes = [...cloned.nodes];

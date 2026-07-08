@@ -72,4 +72,17 @@ export class NodeAssetConnectionPoint {
         this.connectedPoint = other;
         other.connectedPoint = this;
     }
+
+    /**
+     * Breaks the link between this connection point and its connected point, if any. Clears both
+     * sides symmetrically. Safe to call on an unconnected point.
+     */
+    public disconnect(): void {
+        const other = this.connectedPoint;
+        if (!other) {
+            return;
+        }
+        this.connectedPoint = null;
+        other.connectedPoint = null;
+    }
 }

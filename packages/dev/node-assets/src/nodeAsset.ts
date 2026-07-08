@@ -1,5 +1,26 @@
 import { ExportGLTFBlock } from "./Blocks/exportGLTFBlock";
+import { ImportGLTFBlock } from "./Blocks/importGLTFBlock";
 import { type NodeAssetBlock } from "./blockFoundation/nodeAssetBlock";
+import { UniqueIdGenerator } from "./utils/uniqueIdGenerator";
+
+/**
+ * Constructs a block from its serialized class name. Kept as a small switch (rather than a
+ * registry) while there are only the two boundary blocks in the MVP.
+ * @param customType - The block's serialized class name.
+ * @param name - The display name to give the block.
+ * @param nodeAsset - The node asset that will own the block.
+ * @returns The constructed block.
+ */
+function CreateBlockByClassName(customType: string, name: string, nodeAsset: NodeAsset): NodeAssetBlock {
+    switch (customType) {
+        case ImportGLTFBlock.ClassName:
+            return new ImportGLTFBlock(name, nodeAsset);
+        case ExportGLTFBlock.ClassName:
+            return new ExportGLTFBlock(name, nodeAsset);
+        default:
+            throw new Error(`Cannot deserialize unknown block type "${customType}".`);
+    }
+}
 
 /**
  * A node graph of {@link NodeAssetBlock}s. Blocks register themselves with the asset on
@@ -31,6 +52,88 @@ export class NodeAsset {
      */
     public _registerBlock(block: NodeAssetBlock): void {
         this._attachedBlocks.push(block);
+    }
+
+    /**
+     * Removes a block from this node asset, disconnecting all of its connection points first.
+     * @param block - The block to remove.
+     */
+    public removeBlock(block: NodeAssetBlock): void {
+        const index = this._attachedBlocks.indexOf(block);
+        if (index === -1) {
+            return;
+        }
+        for (const input of block.inputs) {
+            input.disconnect();
+        }
+        for (const output of block.outputs) {
+            output.disconnect();
+        }
+        this._attachedBlocks.splice(index, 1);
+    }
+
+    /**
+     * Serializes the graph (blocks and connections) to a plain, JSON-friendly object.
+     * @returns The serialization object.
+     */
+    public serialize(): any {
+        const blocks = this._attachedBlocks.map((block) => block.serialize());
+
+        const connections: any[] = [];
+        for (const block of this._attachedBlocks) {
+            for (const output of block.outputs) {
+                const input = output.connectedPoint;
+                if (input) {
+                    connections.push({
+                        fromBlock: block.uniqueId,
+                        fromPoint: output.name,
+                        toBlock: input.ownerBlock.uniqueId,
+                        toPoint: input.name,
+                    });
+                }
+            }
+        }
+
+        return { name: this.name, blocks, connections };
+    }
+
+    /**
+     * Reconstructs a {@link NodeAsset} from an object produced by {@link serialize}. Blocks are
+     * created in serialized order (so `attachedBlocks[i]` corresponds to `blocks[i]`) with their
+     * original ids restored, then connections are re-established by block id and point name.
+     * @param serializationObject - The serialization object.
+     * @returns The reconstructed node asset.
+     */
+    public static Parse(serializationObject: any): NodeAsset {
+        const asset = new NodeAsset(serializationObject.name ?? "nodeAsset");
+
+        const blocksById = new Map<number, NodeAssetBlock>();
+        let maxId = 0;
+        for (const blockData of serializationObject.blocks ?? []) {
+            const block = CreateBlockByClassName(blockData.customType, blockData.name, asset);
+            block.uniqueId = blockData.id;
+            block._deserialize(blockData);
+            blocksById.set(blockData.id, block);
+            maxId = Math.max(maxId, blockData.id);
+        }
+        // Restored ids can exceed the freshly-generated ones assigned in the block constructors above;
+        // advance the generator so later blocks cannot collide with them.
+        UniqueIdGenerator.EnsureIdsGreaterThan(maxId);
+
+        for (const connection of serializationObject.connections ?? []) {
+            const fromBlock = blocksById.get(connection.fromBlock);
+            const toBlock = blocksById.get(connection.toBlock);
+            if (!fromBlock || !toBlock) {
+                continue;
+            }
+            const fromPoint = fromBlock.outputs.find((point) => point.name === connection.fromPoint);
+            const toPoint = toBlock.inputs.find((point) => point.name === connection.toPoint);
+            if (fromPoint && toPoint) {
+                fromPoint.connectTo(toPoint);
+            }
+        }
+
+        return asset;
     }
 
     /**

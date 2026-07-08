@@ -12,4 +12,15 @@ export class UniqueIdGenerator {
         this._NextUniqueId++;
         return result;
     }
+
+    /**
+     * Ensures subsequently generated ids are strictly greater than the given id. Called after
+     * deserializing blocks so restored ids cannot collide with freshly generated ones.
+     * @param id - The id that future ids must exceed.
+     */
+    public static EnsureIdsGreaterThan(id: number): void {
+        if (this._NextUniqueId <= id) {
+            this._NextUniqueId = id + 1;
+        }
+    }
 }

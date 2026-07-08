@@ -15,8 +15,8 @@ export abstract class NodeAssetBlock {
     /** The display name of the block. */
     public readonly name: string;
 
-    /** A session-unique id for this block. */
-    public readonly uniqueId: number;
+    /** A session-unique id for this block. Preserved across {@link serialize}/parse. */
+    public uniqueId: number;
 
     private readonly _inputs: NodeAssetConnectionPoint[] = [];
     private readonly _outputs: NodeAssetConnectionPoint[] = [];
@@ -79,4 +79,26 @@ export abstract class NodeAssetBlock {
      * already resolved; read them and set this block's outputs' values.
      */
     public abstract _buildBlockAsync(): Promise<void>;
+
+    /**
+     * Serializes this block to a plain object. Subclasses override to add their own state,
+     * calling `super.serialize()` first.
+     * @returns The serialization object.
+     */
+    public serialize(): any {
+        return {
+            customType: this.getClassName(),
+            id: this.uniqueId,
+            name: this.name,
+        };
+    }
+
+    /**
+     * Restores block-specific state from a serialization object produced by {@link serialize}.
+     * The base implementation does nothing; subclasses override to read their own state. Identity
+     * (id/name) and connections are restored by {@link NodeAsset.Parse}.
+     * @param serializationObject - The serialization object.
+     */
+    // eslint-disable-next-line @typescript-eslint/no-unused-vars
+    public _deserialize(serializationObject: any): void {}
 }
