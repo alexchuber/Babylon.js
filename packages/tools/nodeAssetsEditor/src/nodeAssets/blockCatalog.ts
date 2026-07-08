@@ -6,6 +6,7 @@
 
 import { ExportGLTFBlock } from "node-assets/Blocks/exportGLTFBlock";
 import { ImportGLTFBlock } from "node-assets/Blocks/importGLTFBlock";
+import { DracoCompressionBlock } from "node-assets/Blocks/dracoCompressionBlock";
 import { type NodeAsset } from "node-assets/nodeAsset";
 import { type NodeAssetBlock } from "node-assets/blockFoundation/nodeAssetBlock";
 
@@ -15,6 +16,9 @@ export const GltfPortColor = "#d97b3f";
 // Data-driven node header colors for the two boundary blocks.
 const ImportHeaderColor = "#3f7d4e";
 const ExportHeaderColor = "#3a6ea5";
+
+// Data-driven node header color for the Draco compression block.
+const DracoHeaderColor = "#6f5b9e";
 
 /**
  * Describes one palette entry: its id and label, its node header color, the backend class it maps to,
@@ -41,6 +45,13 @@ export const BlockDescriptors: readonly IBlockDescriptor[] = [
         headerColor: ImportHeaderColor,
         className: ImportGLTFBlock.ClassName,
         create: (nodeAsset) => new ImportGLTFBlock("Import glTF", nodeAsset),
+    },
+    {
+        paletteItemId: "draco-compression",
+        label: "Draco Compression",
+        headerColor: DracoHeaderColor,
+        className: DracoCompressionBlock.ClassName,
+        create: (nodeAsset) => new DracoCompressionBlock("Draco Compression", nodeAsset),
     },
     {
         paletteItemId: "export-gltf",

@@ -1,5 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 
+import { DracoCompressionBlock } from "../../src/Blocks/dracoCompressionBlock";
 import { ExportGLTFBlock } from "../../src/Blocks/exportGLTFBlock";
 import { ImportGLTFBlock } from "../../src/Blocks/importGLTFBlock";
 import { NodeAsset } from "../../src/nodeAsset";
@@ -135,5 +136,31 @@ describe("NodeAsset", () => {
         const result = await parsed.buildAsync();
         expect(result).toBeInstanceOf(Uint8Array);
         expect(result.length).toBeGreaterThan(0);
+    });
+
+    it("reconstructs a DracoCompressionBlock through serialize/Parse and restores its wiring", async () => {
+        const glb = await CreateFixtureGlbAsync();
+
+        const asset = new NodeAsset("draco-serialize");
+        const importer = new ImportGLTFBlock("import", asset);
+        importer.data = glb;
+        const draco = new DracoCompressionBlock("draco", asset);
+        const exporter = new ExportGLTFBlock("export", asset);
+        importer.output.connectTo(draco.input);
+        draco.output.connectTo(exporter.input);
+
+        const serialized = JSON.parse(JSON.stringify(asset.serialize()));
+        const parsed = NodeAsset.Parse(serialized);
+
+        // The middle block is reconstructed as a DracoCompressionBlock, in order.
+        expect(parsed.attachedBlocks).toHaveLength(3);
+        const parsedDraco = parsed.attachedBlocks[1];
+        expect(parsedDraco).toBeInstanceOf(DracoCompressionBlock);
+
+        // Its wiring is restored on both sides (import -> draco -> export).
+        const parsedImporter = parsed.attachedBlocks[0] as ImportGLTFBlock;
+        const parsedExporter = parsed.attachedBlocks[2] as ExportGLTFBlock;
+        expect(parsedImporter.output.connectedPoint).toBe((parsedDraco as DracoCompressionBlock).input);
+        expect((parsedDraco as DracoCompressionBlock).output.connectedPoint).toBe(parsedExporter.input);
     });
 });

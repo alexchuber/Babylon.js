@@ -1,11 +1,12 @@
 import { ExportGLTFBlock } from "./Blocks/exportGLTFBlock";
 import { ImportGLTFBlock } from "./Blocks/importGLTFBlock";
+import { DracoCompressionBlock } from "./Blocks/dracoCompressionBlock";
 import { type NodeAssetBlock } from "./blockFoundation/nodeAssetBlock";
 import { UniqueIdGenerator } from "./utils/uniqueIdGenerator";
 
 /**
  * Constructs a block from its serialized class name. Kept as a small switch (rather than a
- * registry) while there are only the two boundary blocks in the MVP.
+ * registry) while the block set is small.
  * @param customType - The block's serialized class name.
  * @param name - The display name to give the block.
  * @param nodeAsset - The node asset that will own the block.
@@ -15,6 +16,8 @@ function CreateBlockByClassName(customType: string, name: string, nodeAsset: Nod
     switch (customType) {
         case ImportGLTFBlock.ClassName:
             return new ImportGLTFBlock(name, nodeAsset);
+        case DracoCompressionBlock.ClassName:
+            return new DracoCompressionBlock(name, nodeAsset);
         case ExportGLTFBlock.ClassName:
             return new ExportGLTFBlock(name, nodeAsset);
         default:
