@@ -50,6 +50,20 @@ export class KTX2CompressionBlock extends NodeAssetBlock {
     public imageDecoder: KTX2Options["imageDecoder"] = undefined;
 
     /**
+     * URL of the Basis encoder wasm binary. Left undefined, the encoder falls back to its own default
+     * (an external CDN in the browser). Hosts that bundle the encoder should point this at a served
+     * copy so the encode has no external dependency.
+     */
+    public wasmUrl: KTX2Options["wasmUrl"] = undefined;
+
+    /**
+     * URL of the Basis encoder JS glue module. Left undefined, the encoder falls back to its own
+     * default, which does not resolve under a bundler; hosts that bundle the encoder should point this
+     * at a served copy of the matching glue module.
+     */
+    public jsUrl: KTX2Options["jsUrl"] = undefined;
+
+    /**
      * Creates a new KTX2 compression block.
      * @param name - The display name of the block.
      * @param nodeAsset - The node asset that owns this block.
@@ -78,6 +92,8 @@ export class KTX2CompressionBlock extends NodeAssetBlock {
             isKTX2File: true,
             generateMipmap: this.generateMipmaps,
             imageDecoder: this.imageDecoder,
+            wasmUrl: this.wasmUrl,
+            jsUrl: this.jsUrl,
         };
 
         // ETC1S for color (sRGB) textures.
