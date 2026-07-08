@@ -87,9 +87,11 @@ roundtrip tests.
 Kept reachable but **not built now**. When we build these, revisit the API *then* — don't pre-abstract
 for them today.
 
-- **Compression blocks.** Draco (encodes at write-time in the browser via WASM — a Draco block just
-  tags the document; the encode happens on write). KTX2 (gltf-transform **can't** encode KTX2 in the
-  browser; reuse the existing Babylon browser Basis→KTX2 encoder prototype — ETC1S for color, UASTC
+- **Compression blocks** (now ticketed as follow-ons — issues 03/04, not part of the MVP roundtrip).
+  Draco (encodes at write-time in the browser via WASM — a Draco block configures the document; the
+  encode happens on write, so the export/import IO must register the `draco3d` encoder/decoder). KTX2
+  (gltf-transform **can't** encode KTX2 in the browser; reuse the existing Babylon browser Basis→KTX2
+  encoder prototype at `packages/tools/babylonServer/public/basis_encoder.*` — ETC1S for color, UASTC
   for non-color; texture dims multiple of 4; SDR only; no cube maps).
 - **More transforms / operations** (dedup, weld, prune, LODs, material edits, metadata) — thin
   wrappers over gltf-transform functions, one block each.
@@ -115,6 +117,11 @@ roundtrip). Headless vitest, modeled on `packages/dev/lottiePlayer/test/unit`. E
 
 - **00 — Fluent node editor skeleton** (dummy data, runtime-independent). In progress.
 - **01 — NodeAssets backend: glTF roundtrip** (the node system + Import/Export blocks + `buildAsync`).
-  Not blocked; overnight-safe.
+  Landed.
 - **02 — Wire editor to backend** (real blocks, import / export / preview, save / load). Blocked by
   00 + 01.
+- **03 — Draco compression block** (`Import → Draco → Export`; Draco-capable IO). Backend + headless
+  test; independent of 02, overnight-safe. Editor palette exposure gated on 02.
+- **04 — KTX2 compression block** (Basis Universal texture compression via the vendored encoder).
+  Backend + Playwright roundtrip; independent of 02 but a browser spike, not a clean headless task.
+  Editor palette exposure gated on 02.
