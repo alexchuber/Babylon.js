@@ -1,0 +1,81 @@
+import { ExportGLTFBlock } from "./Blocks/exportGLTFBlock";
+import { type NodeAssetBlock } from "./blockFoundation/nodeAssetBlock";
+
+/**
+ * A node graph of {@link NodeAssetBlock}s. Blocks register themselves with the asset on
+ * construction. The graph is run by pulling from the terminal export block.
+ */
+export class NodeAsset {
+    /** The display name of the node asset. */
+    public name: string;
+
+    private readonly _attachedBlocks: NodeAssetBlock[] = [];
+
+    /**
+     * Creates a new node asset.
+     * @param name - The display name of the node asset.
+     */
+    public constructor(name: string) {
+        this.name = name;
+    }
+
+    /** The blocks registered with this node asset. */
+    public get attachedBlocks(): ReadonlyArray<NodeAssetBlock> {
+        return this._attachedBlocks;
+    }
+
+    /**
+     * Registers a block with this node asset. Called by the block constructor.
+     * @param block - The block to register.
+     * @internal
+     */
+    public _registerBlock(block: NodeAssetBlock): void {
+        this._attachedBlocks.push(block);
+    }
+
+    /**
+     * Runs the graph by pulling from the terminal {@link ExportGLTFBlock} and returns the
+     * exported glb bytes. Pull-based, no caching; a required input left unconnected is an error.
+     * @returns The exported glb bytes.
+     */
+    public async buildAsync(): Promise<Uint8Array> {
+        const exportBlock = this._attachedBlocks.find((block): block is ExportGLTFBlock => block instanceof ExportGLTFBlock);
+        if (!exportBlock) {
+            throw new Error(`The "${this.name}" node asset has no ExportGLTFBlock to build.`);
+        }
+
+        await this._evaluateBlockAsync(exportBlock);
+
+        if (!exportBlock.result) {
+            throw new Error(`The "${this.name}" node asset produced no result.`);
+        }
+        return exportBlock.result;
+    }
+
+    /**
+     * Recursively evaluates a block: builds every connected input's upstream block first, then
+     * propagates the resolved values and builds this block.
+     * @param block - The block to evaluate.
+     */
+    private async _evaluateBlockAsync(block: NodeAssetBlock): Promise<void> {
+        const connections = block.inputs.map((input) => {
+            const upstream = input.connectedPoint;
+            if (!upstream) {
+                throw new Error(`The "${input.name}" input of the "${block.name}" block is not connected.`);
+            }
+            return { input, upstream };
+        });
+
+        // Build all upstream blocks first, then propagate their resolved values.
+        await Promise.all(
+            connections.map(async (connection) => {
+                await this._evaluateBlockAsync(connection.upstream.ownerBlock);
+            })
+        );
+        for (const connection of connections) {
+            connection.input.value = connection.upstream.value;
+        }
+
+        await block._buildBlockAsync();
+    }
+}
