@@ -122,6 +122,7 @@ roundtrip). Headless vitest, modeled on `packages/dev/lottiePlayer/test/unit`. E
   00 + 01.
 - **03 — Draco compression block** (`Import → Draco → Export`; Draco-capable IO). Backend + headless
   test; independent of 02, overnight-safe. Editor palette exposure gated on 02.
-- **04 — KTX2 compression block** (Basis Universal texture compression via the vendored encoder).
-  Backend + Playwright roundtrip; independent of 02 but a browser spike, not a clean headless task.
-  Editor palette exposure gated on 02.
+- **04 — KTX2 compression block** (Basis Universal texture compression). Landed: `Import → KTX2 →
+  Export` via the `ktx2-encoder` library (ETC1S for color slots, UASTC for data slots), with a
+  headless vitest roundtrip instead of the originally-planned browser spike. Editor palette exposure
+  gated on 02.
