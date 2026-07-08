@@ -8,15 +8,13 @@ Status: ready-for-agent
 
 ## Why this is its own slice
 
-This is the **pure-visual, pure-frontend** slice carved out of `04-fluent-node-editor` so it can be
-built and iterated on **immediately** — independently of the NodeAssets runtime spine, whose
-contracts are still being redesigned. It has **no dependency on the operation registry, the runtime,
-the graph definition, or gltf-transform.** Everything it renders is hardcoded dummy data.
+This is the **pure-visual, pure-frontend** slice so it can be built and iterated on **immediately** —
+independently of the NodeAssets backend. It has **no dependency on the NodeAssets runtime or
+gltf-transform.** Everything it renders is hardcoded dummy data.
 
 It is highly visual and Playwright-driven, which makes it a good candidate to build and refine on its
-own. Later, `04-fluent-node-editor` consumes this skeleton and wires it to the real registry +
-runtime (palette becomes registry-driven, dummy nodes become real operation instances, run / save /
-load / preview become real).
+own. Later, `02-wire-editor-to-backend` consumes this skeleton and wires it to the real backend
+(dummy nodes become real `NodeAsset` blocks; import / export / preview become real).
 
 ## What to build
 
@@ -180,9 +178,9 @@ mock. All criteria carry equal weight; the editor is not done until each one wor
 
 ## Relationship to other slices
 
-- **Unblocks / precedes** `04-fluent-node-editor`, which later replaces the dummy data with the real
-  registry-driven palette and runtime-wired nodes, and makes run / save / load / preview real.
-- Independent of `01-runtime-spine` — can run in parallel.
+- **Unblocks / precedes** `02-wire-editor-to-backend`, which later replaces the dummy data with real
+  `NodeAsset` blocks and makes import / export / preview real.
+- Independent of `01-gltf-roundtrip-backend` — can run in parallel.
 
 ## Blocked by
 
