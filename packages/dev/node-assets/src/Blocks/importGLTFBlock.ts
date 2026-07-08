@@ -41,8 +41,13 @@ export class ImportGLTFBlock extends NodeAssetBlock {
 
         const { WebIO } = await import("@gltf-transform/core");
         const { ALL_EXTENSIONS } = await import("@gltf-transform/extensions");
+        const draco3dModule = await import("draco3dgltf");
+        // Some bundlers wrap the CommonJS exports under `default`; normalize both shapes.
+        const draco3d = (draco3dModule as typeof draco3dModule & { default?: typeof draco3dModule }).default ?? draco3dModule;
 
-        const io = new WebIO().registerExtensions(ALL_EXTENSIONS);
+        // Register the Draco decoder so Draco-compressed glbs (e.g. from DracoCompressionBlock) read back.
+        // eslint-disable-next-line @typescript-eslint/naming-convention -- gltf-transform dependency key
+        const io = new WebIO().registerExtensions(ALL_EXTENSIONS).registerDependencies({ "draco3d.decoder": await draco3d.createDecoderModule() });
         const document: Document = await io.readBinary(this.data);
         this.output.value = document;
     }

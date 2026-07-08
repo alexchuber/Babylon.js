@@ -1,8 +1,13 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 
 import { ExportGLTFBlock } from "../../src/Blocks/exportGLTFBlock";
 import { ImportGLTFBlock } from "../../src/Blocks/importGLTFBlock";
 import { NodeAsset } from "../../src/nodeAsset";
+
+// The import/export blocks register the Draco encoder/decoder, so the roundtrip needs the real
+// draco3dgltf module rather than the stub the global vitest setup installs for @dev/core.
+vi.mock("draco3dgltf", async () => await vi.importActual("draco3dgltf"));
+
 /**
  * Builds a tiny uncompressed glb (one node, one mesh) in code so the roundtrip test does not
  * depend on a bundled binary fixture.

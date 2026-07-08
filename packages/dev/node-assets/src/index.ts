@@ -5,3 +5,4 @@ export { NodeAssetConnectionPointDirection } from "./connection/nodeAssetConnect
 export { NodeAssetConnectionPointType } from "./connection/nodeAssetConnectionPointType";
 export { ImportGLTFBlock } from "./Blocks/importGLTFBlock";
 export { ExportGLTFBlock } from "./Blocks/exportGLTFBlock";
+export { DracoCompressionBlock, DracoEncoderMethod } from "./Blocks/dracoCompressionBlock";

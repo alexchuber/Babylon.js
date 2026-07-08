@@ -23,10 +23,12 @@
     "sideEffects": true,
     "dependencies": {
         "@gltf-transform/core": "^4.4.1",
-        "@gltf-transform/extensions": "^4.4.1"
+        "@gltf-transform/extensions": "^4.4.1",
+        "draco3dgltf": "^1.5.7"
     },
     "devDependencies": {
         "@dev/core": "^1.0.0",
-        "@dev/build-tools": "^1.0.0"
+        "@dev/build-tools": "^1.0.0",
+        "@types/draco3dgltf": "^1.4.0"
     }
 }
