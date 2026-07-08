@@ -1,0 +1,28 @@
+{
+    "name": "@tools/node-assets-editor",
+    "private": true,
+    "version": "1.0.0",
+    "scripts": {
+        "build": "npm run clean && vite build",
+        "build:deployment": "npm run clean && vite build",
+        "serve": "vite",
+        "serve:prod": "vite build && vite preview",
+        "serve:dev": "vite",
+        "test:e2e": "playwright test -c ../../../playwright.config.ts --project=nodeAssetsEditor",
+        "test:e2e:ui": "playwright test -c ../../../playwright.config.ts --project=nodeAssetsEditor --ui",
+        "clean": "rimraf dist"
+    },
+    "dependencies": {
+        "@dev/core": "1.0.0",
+        "@dev/shared-ui-components": "1.0.0"
+    },
+    "devDependencies": {
+        "@fluentui/react-components": "^9.70.0",
+        "@fluentui/react-icons": "^2.0.310",
+        "@types/react": "^18.0.0",
+        "@types/react-dom": "^18.0.0",
+        "react": "^18.2.0",
+        "react-dom": "^18.2.0"
+    },
+    "sideEffects": false
+}
