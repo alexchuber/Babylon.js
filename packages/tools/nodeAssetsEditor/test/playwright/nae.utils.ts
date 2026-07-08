@@ -1,6 +1,8 @@
 import { type Page, type Locator, expect } from "@playwright/test";
 import { getGlobalConfig } from "@tools/test-tools";
 
+import { PaletteDragFormat } from "../../src/nodeGraph/paletteModel";
+
 /**
  * Build the base URL for the Node Assets Editor dev server.
  * Defaults to the CDN base URL with the port swapped to the editor's dev port (1348),
@@ -74,12 +76,44 @@ export class NodeAssetsEditorPage {
     }
 
     /**
-     * Locate the single connection port of a boundary node (Import has one output, Export one input).
+     * Locate a connection port of a node, optionally disambiguated by direction. Boundary nodes have a
+     * single port (Import: one output, Export: one input), so the direction is optional; blocks with both
+     * an input and an output (e.g. KTX2 Compress) need it to pick the right side.
      * @param title - The node's visible title.
+     * @param direction - Optional port direction to filter to ("in" or "out").
      * @returns The port locator.
      */
-    portOfNode(title: string): Locator {
-        return this.nodeByTitle(title).locator("[data-port-id]");
+    portOfNode(title: string, direction?: "in" | "out"): Locator {
+        const selector = direction ? `[data-port-id*="-${direction}-"]` : "[data-port-id]";
+        return this.nodeByTitle(title).locator(selector);
+    }
+
+    /**
+     * Drag a palette item onto the canvas to create a node. The palette uses native HTML5 drag-and-drop
+     * (a `draggable` row that sets the drag data on `dragstart`, and a canvas that reads it on `drop`),
+     * which a synthetic mouse drag does not trigger. This dispatches the drag/drop events with a single
+     * shared DataTransfer so React's handlers see the same payload, mirroring a real palette drop.
+     * @param label - The palette item's label, e.g. "KTX2 Compress".
+     */
+    async dropPaletteItem(label: string): Promise<void> {
+        const source = await this.page.getByTitle(label, { exact: true }).first().elementHandle();
+        const target = await this.canvas.elementHandle();
+        if (!source || !target) {
+            throw new Error(`Could not resolve palette item "${label}" or the canvas for the drop gesture.`);
+        }
+        await this.page.evaluate(
+            ({ source, target, format }) => {
+                const dataTransfer = new DataTransfer();
+                source.dispatchEvent(new DragEvent("dragstart", { bubbles: true, cancelable: true, dataTransfer }));
+                const rect = target.getBoundingClientRect();
+                const clientX = rect.left + rect.width / 2;
+                const clientY = rect.top + rect.height / 2;
+                target.dispatchEvent(new DragEvent("dragover", { bubbles: true, cancelable: true, dataTransfer, clientX, clientY }));
+                target.dispatchEvent(new DragEvent("drop", { bubbles: true, cancelable: true, dataTransfer, clientX, clientY }));
+                source.dispatchEvent(new DragEvent("dragend", { bubbles: true, cancelable: true, dataTransfer }));
+            },
+            { source, target, format: PaletteDragFormat }
+        );
     }
 
     /**

@@ -14,6 +14,7 @@ import { Observable } from "core/Misc/observable";
 
 import { ExportGLTFBlock } from "node-assets/Blocks/exportGLTFBlock";
 import { ImportGLTFBlock } from "node-assets/Blocks/importGLTFBlock";
+import { KTX2CompressionBlock } from "node-assets/Blocks/ktx2CompressionBlock";
 import { NodeAsset } from "node-assets/nodeAsset";
 import { NodeAssetConnectionPointDirection } from "node-assets/connection/nodeAssetConnectionPointDirection";
 import { type NodeAssetBlock } from "node-assets/blockFoundation/nodeAssetBlock";
@@ -156,6 +157,8 @@ export class NodeAssetGraphController {
             sections.push(this._buildImportSection(block));
         } else if (block instanceof ExportGLTFBlock) {
             sections.push(this._buildExportSection());
+        } else if (block instanceof KTX2CompressionBlock) {
+            sections.push(this._buildKtx2Section(block));
         }
 
         return sections;
@@ -267,6 +270,23 @@ export class NodeAssetGraphController {
                     kind: "button",
                     label: "Export .glb",
                     onClick: () => this.onExportRequested.notifyObservers(),
+                },
+            ],
+        };
+    }
+
+    private _buildKtx2Section(block: KTX2CompressionBlock): IPropertySection {
+        return {
+            title: "KTX2",
+            properties: [
+                {
+                    kind: "switch",
+                    label: "Generate mipmaps",
+                    value: block.generateMipmaps,
+                    onChange: (value) => {
+                        block.generateMipmaps = value;
+                        this.state.notifyChanged();
+                    },
                 },
             ],
         };

@@ -7,15 +7,23 @@
 import { ExportGLTFBlock } from "node-assets/Blocks/exportGLTFBlock";
 import { ImportGLTFBlock } from "node-assets/Blocks/importGLTFBlock";
 import { DracoCompressionBlock } from "node-assets/Blocks/dracoCompressionBlock";
+import { KTX2CompressionBlock } from "node-assets/Blocks/ktx2CompressionBlock";
 import { type NodeAsset } from "node-assets/nodeAsset";
 import { type NodeAssetBlock } from "node-assets/blockFoundation/nodeAssetBlock";
+
+// The KTX2 encoder's matched wasm + JS glue, served same-origin by the dev server via relative `?url`
+// imports into the root node_modules (bypasses the package's restrictive "exports" map). Passing them to
+// the block lets the browser encode run without any external CDN dependency.
+import BasisEncoderJsUrl from "../../../../../node_modules/ktx2-encoder/dist/basis/basis_encoder.js?url";
+import BasisEncoderWasmUrl from "../../../../../node_modules/ktx2-encoder/dist/basis/basis_encoder.wasm?url";
 
 /** Data-driven dot color for glTF-typed ports (applied inline as visual data, not theme chrome). */
 export const GltfPortColor = "#d97b3f";
 
-// Data-driven node header colors for the two boundary blocks.
+// Data-driven node header colors: green/blue for the boundary blocks, purple for compression.
 const ImportHeaderColor = "#3f7d4e";
 const ExportHeaderColor = "#3a6ea5";
+const CompressionHeaderColor = "#7d5aa8";
 
 // Data-driven node header color for the Draco compression block.
 const DracoHeaderColor = "#6f5b9e";
@@ -59,6 +67,19 @@ export const BlockDescriptors: readonly IBlockDescriptor[] = [
         headerColor: ExportHeaderColor,
         className: ExportGLTFBlock.ClassName,
         create: (nodeAsset) => new ExportGLTFBlock("Export glTF", nodeAsset),
+    },
+    {
+        paletteItemId: "ktx2-compression",
+        label: "KTX2 Compress",
+        headerColor: CompressionHeaderColor,
+        className: KTX2CompressionBlock.ClassName,
+        create: (nodeAsset) => {
+            const block = new KTX2CompressionBlock("KTX2 Compress", nodeAsset);
+            // Point the browser encoder at the same-origin assets so it needs no external CDN.
+            block.jsUrl = BasisEncoderJsUrl;
+            block.wasmUrl = BasisEncoderWasmUrl;
+            return block;
+        },
     },
 ];
 

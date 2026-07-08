@@ -62,5 +62,14 @@ const base = commonDevViteConfiguration({
 
 export default defineConfig({
     ...base,
+    server: {
+        ...base.server,
+        fs: {
+            ...base.server?.fs,
+            // The KTX2 encoder's matched wasm + JS glue live in the root node_modules; allow the dev
+            // server to serve them for the `?url` imports in blockCatalog (repo root is three levels up).
+            allow: [...(base.server?.fs?.allow ?? []), path.resolve("../../..")],
+        },
+    },
     plugins: [...(base.plugins ?? []), lowerStandardDecoratorsPlugin()],
 });
