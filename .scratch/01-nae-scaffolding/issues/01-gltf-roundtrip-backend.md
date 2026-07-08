@@ -1,6 +1,6 @@
 # 01 — NodeAssets backend: glTF import → export roundtrip
 
-Status: ready-for-agent
+Status: resolved
 
 ## Parent
 

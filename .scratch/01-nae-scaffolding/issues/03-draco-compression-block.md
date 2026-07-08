@@ -1,6 +1,6 @@
 # 03 — Draco compression block
 
-Status: ready-for-agent
+Status: resolved
 
 ## Parent
 

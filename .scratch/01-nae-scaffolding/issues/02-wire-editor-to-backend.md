@@ -1,6 +1,6 @@
 # 02 — Wire the Fluent editor to the NodeAssets backend (real glTF roundtrip + preview)
 
-Status: ready-for-human
+Status: resolved
 
 ## Parent
 

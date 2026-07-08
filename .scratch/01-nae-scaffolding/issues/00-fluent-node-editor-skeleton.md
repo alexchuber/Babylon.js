@@ -1,6 +1,6 @@
 # Fluent node-editor UI skeleton — standalone package + dummy app
 
-Status: ready-for-agent
+Status: resolved
 
 ## Parent
 

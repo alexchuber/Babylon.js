@@ -15,3 +15,14 @@ For the local-markdown tracker, the "label" is the value on the `Status:` line a
 When a skill mentions a role (e.g. "apply the AFK-ready triage label"), use the corresponding string from this table.
 
 Edit the right-hand column to match whatever vocabulary you actually use.
+
+## Done state: `resolved`
+
+The five roles above are all **pre-work** states — none of them means "finished." For a completed
+implementation issue, set `Status: resolved`. This reuses the word the tracker's wayfinding flow already
+uses for a closed child ticket (see `issue-tracker.md`), so the tracker has one consistent done-state.
+
+- Use `resolved` when an issue's acceptance criteria are demonstrably met and the change has landed.
+- `resolved` (not `landed`, `done`, `shipped`, or `closed`) is the canonical string — normalize any
+  ad-hoc done-words to it.
+- `wontfix` remains the terminal state for work that will not be actioned.

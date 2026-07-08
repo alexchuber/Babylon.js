@@ -1,6 +1,6 @@
 # Milestone-1 cleanup: rename feature, rewrite PRD as-built, split CONTEXT.md per package
 
-Status: landed
+Status: resolved
 
 ## Parent
 

@@ -1,11 +1,17 @@
-# 05 — Draco decoder WASM fails to load in the editor (breaks in-browser Import→Export)
+# 05 — Fix in-editor Draco WASM (serve encoder + decoder same-origin)
 
-Status: needs-triage
+Status: ready-for-agent
 
 ## Parent
 
-`.scratch/01-nae-scaffolding/PRD.md` · Glossaries: `CONTEXT-MAP.md` (runtime + editor contexts) · Defect in issue 03
-(`.scratch/01-nae-scaffolding/issues/03-draco-compression-block.md`)'s in-browser integration.
+`.scratch/01-nae-scaffolding/PRD.md` → "PRD Addendum: Milestone 1 Completion" (this is **Slice 1** of
+that effort) · Glossaries: `CONTEXT-MAP.md` (runtime + editor contexts) · Originally the in-browser
+defect inherited from issue 03 (`.scratch/01-nae-scaffolding/issues/03-draco-compression-block.md`).
+
+## User stories covered
+
+Addendum stories 18 (in-browser Draco import/export works), 20 (blocks accept injected WASM), 23
+(backend unit tests remain green). Unblocks the default Draco pipeline in Slice 4 (issue 09).
 
 ## What to build
 
@@ -24,18 +30,19 @@ Because the decoder loads on every import (not just Draco inputs), this breaks t
 `Import → Export` graph and every downstream graph (e.g. `Import → KTX2 → Export`) in the editor.
 Headless/unit paths are unaffected (they resolve the wasm from `node_modules`).
 
-After the fix, an in-browser `Import → Export` of an ordinary (non-Draco) glb must succeed and download
-a valid glb; a Draco-compressed glb must either import correctly in the editor or degrade with a clear,
-actionable error — never a raw wasm compile crash.
+**This effort's default graph contains a Draco node** (Import → KTX2 → Draco → Export), so it is not
+enough to *skip* or *swallow* the Draco load — both the **decoder** (used on import / preview re-import)
+and the **encoder** (used on export) must actually **work** in-browser. A try/catch-only fix (candidate
+approach 1) would stop the crash but leave the default pipeline unable to produce its Draco output.
 
-Two candidate approaches (implementer's choice; first is smaller):
-
-1. **Make the decoder load resilient** — register/instantiate the Draco decoder only when the input is
-   actually Draco-compressed, and/or wrap it in try/catch so non-Draco imports don't fail when the
-   decoder wasm can't load.
-2. **Serve the Draco wasm from the editor** — configure the editor Vite server to serve `draco3dgltf`'s
-   wasm sidecar (mirroring how the KTX2 block's Basis encoder wasm is served via `?url`
-   root-`node_modules` imports).
+**Approach (locked): serve the Draco WASM same-origin.** Import both the Draco **encoder** and
+**decoder** wasm as URLs from the root `node_modules` (a `?url` import, exactly mirroring how the block
+catalog already serves the KTX2 / Basis encoder wasm) and inject those URLs into the runtime
+`ImportGLTFBlock` and `ExportGLTFBlock`, which pass them to the `draco3dgltf` module loader
+(`locateFile` / `wasmBinary`). Give those blocks an **injectable WASM-location input** so headless (from
+`node_modules`) and browser (served) contexts both work. The load stays **unconditional** — once the
+wasm is served with the right MIME type it is harmless. (Conditional "load only when Draco is present"
+is deferred as polish; see the addendum's Out of Scope.)
 
 ## Current state (editor Playwright suite is RED on branch `dev-04-ktx2-compression-block`)
 
@@ -62,14 +69,22 @@ this inherited dev/issue-03 defect, not the KTX2 block.
 
 ## Acceptance criteria
 
+- [ ] The Draco **encoder** and **decoder** wasm are served same-origin via `?url` root-`node_modules`
+      imports (mirroring the KTX2 / Basis pattern in the editor's block catalog).
+- [ ] The runtime `ImportGLTFBlock` and `ExportGLTFBlock` accept an **injectable Draco WASM location**
+      and pass it through to `draco3dgltf` (`locateFile` / `wasmBinary`); headless resolution from
+      `node_modules` still works with no injection.
 - [ ] In the editor (browser), `Import → Export` of a non-Draco glb succeeds and yields a valid
       downloadable glb (no wasm compile error in console).
-- [ ] The existing editor Playwright `Import → Export` test passes.
-- [ ] `Import → KTX2 → Export` in the editor passes (was blocked only by this bug).
-- [ ] A Draco-compressed glb either imports correctly in the editor or fails with a clear error — never
-      a raw `WebAssembly.instantiate` magic-word crash.
+- [ ] In the editor (browser), a graph **containing a Draco node** (e.g. `Import → Draco → Export`)
+      builds, exports a Draco-compressed glb, and previews it — no `WebAssembly.instantiate` crash and
+      no degraded/error path.
+- [ ] A unit test verifies the blocks accept an injected Draco WASM location (block-contract level, no
+      browser).
+- [ ] The existing editor Playwright `Import → Export` and `Import → KTX2 → Export` tests pass.
 - [ ] Headless unit tests remain green; `lint:check` + `format:check` pass.
 
 ## Blocked by
 
-None — can start immediately.
+None — can start immediately. (Runs in parallel with issues 07 and 08; it is a hard blocker for
+issue 09.)
