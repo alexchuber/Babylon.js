@@ -4,8 +4,8 @@ Status: needs-triage
 
 ## Parent
 
-`.scratch/node-assets/PRD.md` · Glossary: `.scratch/node-assets/CONTEXT.md` · Defect in issue 03
-(`.scratch/node-assets/issues/03-draco-compression-block.md`)'s in-browser integration.
+`.scratch/01-nae-scaffolding/PRD.md` · Glossaries: `CONTEXT-MAP.md` (runtime + editor contexts) · Defect in issue 03
+(`.scratch/01-nae-scaffolding/issues/03-draco-compression-block.md`)'s in-browser integration.
 
 ## What to build
 

@@ -4,7 +4,7 @@ Status: ready-for-agent
 
 ## Parent
 
-`.scratch/node-assets/PRD.md`
+`.scratch/01-nae-scaffolding/PRD.md` · Glossary: `packages/tools/nodeAssetsEditor/CONTEXT.md`
 
 ## Why this is its own slice
 

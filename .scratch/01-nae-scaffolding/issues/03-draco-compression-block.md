@@ -4,8 +4,8 @@ Status: ready-for-agent
 
 ## Parent
 
-`.scratch/node-assets/PRD.md` · Glossary: `.scratch/node-assets/CONTEXT.md` · Builds on the backend from
-`.scratch/node-assets/issues/01-gltf-roundtrip-backend.md` (landed).
+`.scratch/01-nae-scaffolding/PRD.md` · Glossary: `packages/dev/node-assets/CONTEXT.md` · Builds on the backend from
+`.scratch/01-nae-scaffolding/issues/01-gltf-roundtrip-backend.md` (landed).
 
 ## Goal
 

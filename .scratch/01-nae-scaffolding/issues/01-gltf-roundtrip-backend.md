@@ -4,7 +4,7 @@ Status: ready-for-agent
 
 ## Parent
 
-`.scratch/node-assets/PRD.md` · Glossary: `.scratch/node-assets/CONTEXT.md` (use these terms in code)
+`.scratch/01-nae-scaffolding/PRD.md` · Glossary: `packages/dev/node-assets/CONTEXT.md` (use these terms in code)
 
 ## Goal
 

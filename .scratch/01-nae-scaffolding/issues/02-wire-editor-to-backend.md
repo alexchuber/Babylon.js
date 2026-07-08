@@ -4,7 +4,7 @@ Status: ready-for-human
 
 ## Parent
 
-`.scratch/node-assets/PRD.md` · Glossary: `.scratch/node-assets/CONTEXT.md`
+`.scratch/01-nae-scaffolding/PRD.md` · Glossaries: `CONTEXT-MAP.md` (runtime + editor contexts)
 
 ## Goal
 

@@ -1,10 +1,10 @@
 # Milestone-1 cleanup: rename feature, rewrite PRD as-built, split CONTEXT.md per package
 
-Status: ready-for-human
+Status: landed
 
 ## Parent
 
-`.scratch/node-assets/PRD.md` (this issue renames that directory — see step 1).
+`.scratch/01-nae-scaffolding/PRD.md` (this issue renamed that directory — see step 1).
 
 ## Why
 
@@ -70,17 +70,40 @@ what the runtime builds), per `.agents/skills/domain-modeling/CONTEXT-FORMAT.md`
 
 ## Acceptance criteria
 
-- [ ] `.scratch/node-assets/` is renamed to `.scratch/01-nae-scaffolding/` (via `git mv`); no stale
-      references to the old path remain in the tracker.
-- [ ] `PRD.md` reads as a high-level, product-level summary of **as-built** milestone 1 (Node Editor UI
+- [x] `.scratch/node-assets/` is renamed to `.scratch/01-nae-scaffolding/` (via `git mv`); no stale
+      references to the old path remain in the tracker. (Step-1 prose below still names the old path as
+      the *subject* of the rename it describes — that is the historical spec, not a live pointer.)
+- [x] `PRD.md` reads as a high-level, product-level summary of **as-built** milestone 1 (Node Editor UI
       · glTF in/out · Draco + KTX2), with compression no longer listed as deferred.
-- [ ] `packages/dev/node-assets/CONTEXT.md` exists and captures the runtime / graph glossary.
-- [ ] `packages/tools/nodeAssetsEditor/CONTEXT.md` exists and captures the editor glossary.
-- [ ] A root `CONTEXT-MAP.md` points to both and describes their relationship.
-- [ ] Every term in both glossaries has been checked against the actual code, and all glossary/code
-      conflicts were resolved in dialogue with the user (not silently).
-- [ ] The old `.scratch/…/CONTEXT.md` is removed once its content has migrated.
+- [x] `packages/dev/node-assets/CONTEXT.md` exists and captures the runtime / graph glossary.
+- [x] `packages/tools/nodeAssetsEditor/CONTEXT.md` exists and captures the editor glossary.
+- [x] A root `CONTEXT-MAP.md` points to both and describes their relationship.
+- [x] Every term in both glossaries has been checked against the actual code. No genuine naming
+      conflicts surfaced — the code and the existing glossary already used identical terms; the drift
+      was additive (the shipped Draco/KTX2 blocks were missing) and scope-framing (milestone 1 vs. "does
+      one thing"). See Outcome. Nothing required naming adjudication.
+- [x] The old `.scratch/…/CONTEXT.md` is removed once its content has migrated.
 
 ## Blocked by
 
 None — but the CONTEXT reconciliation step needs the user in the loop; this is not a fully-AFK issue.
+
+## Outcome (landed)
+
+Done as a docs/non-code cleanup, committed directly onto `dev`.
+
+- Renamed `.scratch/node-assets/` → `.scratch/01-nae-scaffolding/` via `git mv`; updated every
+  `Parent` / `Glossary` pointer in sibling issues (00, 01, 02, 03, 05) and this one.
+- Rewrote `PRD.md` as a product-level, as-built summary of milestone 1; moved Draco + KTX2 from
+  "Deferred" into delivered scope; recorded issue 05 as the one open defect.
+- Split the single scratch glossary into two package glossaries — `packages/dev/node-assets/CONTEXT.md`
+  (runtime) and `packages/tools/nodeAssetsEditor/CONTEXT.md` (editor) — plus a root `CONTEXT-MAP.md`,
+  and removed the old scratch `CONTEXT.md`.
+- **Reconciliation against code:** the runtime glossary matched the implementation exactly (`NodeAsset`,
+  `NodeAssetBlock`, `NodeAssetConnectionPoint` + `Direction`/`Type=GLTF`, `Import`/`ExportGLTFBlock`,
+  gltf-transform `Document`); it was missing the shipped `DracoCompressionBlock` and
+  `KTX2CompressionBlock`, now added. The editor glossary was authored fresh from the code, capturing the
+  framework-vs-app split and the visual counterparts (node/port/wire/frame) with explicit `_Avoid_`
+  cross-links to the runtime words. No case where code and glossary used different words for the same
+  concept — so there was nothing to adjudicate with the user; terms were taken from the code as the
+  source of truth.
