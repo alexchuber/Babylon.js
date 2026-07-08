@@ -68,10 +68,10 @@ the exact same objects.
 
 A fresh Fluent editor (same component library / style as Inspector V2), built in two slices:
 
-- **Issue 00** — the visual skeleton: three-panel node editor (palette · canvas · properties +
+- The visual skeleton: three-panel node editor (palette · canvas · properties +
   preview) on the new Fluent shared components, driven by dummy data. Fully interactive,
   runtime-independent. (Already in progress.)
-- **Issue 02** — wire that skeleton to the real backend: real Import/Export blocks, file picker in,
+- Wire that skeleton to the real backend: real Import/Export blocks, file picker in,
   `buildAsync()` + download out, and a live Babylon glTF-loader preview of the exported asset.
 
 ## Scope
@@ -111,18 +111,4 @@ for them today.
 Assert external behavior, not internals. The load-bearing test: a `NodeAsset` of ImportGLTFBlock →
 ExportGLTFBlock produces glb bytes that re-parse into a valid glTF (a genuine gltf-transform read/write
 roundtrip). Headless vitest, modeled on `packages/dev/lottiePlayer/test/unit`. Editor behavior
-(import → export → preview) is covered by a Playwright test in issue 02.
-
-## Issues
-
-- **00 — Fluent node editor skeleton** (dummy data, runtime-independent). In progress.
-- **01 — NodeAssets backend: glTF roundtrip** (the node system + Import/Export blocks + `buildAsync`).
-  Landed.
-- **02 — Wire editor to backend** (real blocks, import / export / preview, save / load). Blocked by
-  00 + 01.
-- **03 — Draco compression block** (`Import → Draco → Export`; Draco-capable IO). Backend + headless
-  test; independent of 02, overnight-safe. Editor palette exposure gated on 02.
-- **04 — KTX2 compression block** (Basis Universal texture compression). Landed: `Import → KTX2 →
-  Export` via the `ktx2-encoder` library (ETC1S for color slots, UASTC for data slots), with a
-  headless vitest roundtrip instead of the originally-planned browser spike. Editor palette exposure
-  gated on 02.
+(import → export → preview) should be covered by a Playwright test.
