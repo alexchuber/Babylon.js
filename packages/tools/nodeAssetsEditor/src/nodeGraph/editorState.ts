@@ -321,6 +321,16 @@ export class GraphEditorState {
     }
 
     /**
+     * Determines whether a directed connection from one port to another would be accepted by {@link addWire}.
+     * @param fromPortId The candidate originating (output) port id.
+     * @param toPortId The candidate destination (input) port id.
+     * @returns True if the connection is valid and would create a wire.
+     */
+    public canConnect(fromPortId: string, toPortId: string): boolean {
+        return this._canConnect(fromPortId, toPortId);
+    }
+
+    /**
      * Adds a frame to the graph.
      * @param frame The frame to add.
      */

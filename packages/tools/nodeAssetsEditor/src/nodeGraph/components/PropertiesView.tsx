@@ -1,6 +1,6 @@
 import { useCallback, type FunctionComponent, type ReactElement } from "react";
 
-import { makeStyles, tokens, Caption1 } from "@fluentui/react-components";
+import { makeStyles, tokens, Body1Strong } from "@fluentui/react-components";
 
 import { type EditorContextValue } from "../editorContext";
 import { type IPropertySection, type PropertyDescriptor } from "../propertyModel";
@@ -13,34 +13,8 @@ import { SwitchPropertyLine } from "shared-ui-components/fluent/hoc/propertyLine
 import { ButtonLine } from "shared-ui-components/fluent/hoc/buttonLine";
 
 const useStyles = makeStyles({
-    root: {
-        display: "flex",
-        flexDirection: "column",
-        padding: tokens.spacingVerticalM,
-        gap: tokens.spacingVerticalS,
-        height: "100%",
-        boxSizing: "border-box",
-        overflow: "hidden",
-    },
-    preview: {
-        alignItems: "center",
-        backgroundColor: tokens.colorNeutralBackground3,
-        border: `${tokens.strokeWidthThin} solid ${tokens.colorNeutralStroke2}`,
-        borderRadius: tokens.borderRadiusMedium,
-        boxSizing: "border-box",
-        display: "flex",
-        height: "160px",
-        justifyContent: "center",
-        flexShrink: 0,
-    },
-    content: {
-        display: "flex",
-        flexDirection: "column",
-        minHeight: 0,
-        flexGrow: 1,
-    },
-    emptySelection: {
-        paddingTop: tokens.spacingVerticalS,
+    placeholder: {
+        padding: `${tokens.spacingVerticalM} ${tokens.spacingHorizontalM}`,
     },
 });
 
@@ -94,7 +68,7 @@ function RenderPropertyLine(descriptor: PropertyDescriptor, key: string): ReactE
 }
 
 /**
- * Renders the selected node preview placeholder and editable property sections.
+ * Renders the editable property sections for the selected node, matching the Inspector properties pane layout.
  * @param props - Component props.
  * @returns The rendered properties pane.
  */
@@ -105,24 +79,17 @@ export const PropertiesView: FunctionComponent<{ context: EditorContextValue }> 
     const selectedNode = useObservableState(getSelectedNode, context.state.onSelectionChanged, context.state.onChanged).node;
     const sections: readonly IPropertySection[] = selectedNode ? context.buildPropertySections(selectedNode) : [];
 
-    return (
-        <div className={classes.root}>
-            <div className={classes.preview}>
-                <Caption1>Preview</Caption1>
-            </div>
-            <div className={classes.content}>
-                {selectedNode ? (
-                    <Accordion uniqueId="node-assets-properties">
-                        {sections.map((section) => (
-                            <AccordionSection key={section.title} title={section.title} collapseByDefault={section.collapseByDefault}>
-                                {section.properties.map((property, index) => RenderPropertyLine(property, `${section.title}-${index}`))}
-                            </AccordionSection>
-                        ))}
-                    </Accordion>
-                ) : (
-                    <Caption1 className={classes.emptySelection}>No selection</Caption1>
-                )}
-            </div>
+    return selectedNode ? (
+        <Accordion uniqueId="node-assets-properties">
+            {sections.map((section) => (
+                <AccordionSection key={section.title} title={section.title} collapseByDefault={section.collapseByDefault}>
+                    {section.properties.map((property, index) => RenderPropertyLine(property, `${section.title}-${index}`))}
+                </AccordionSection>
+            ))}
+        </Accordion>
+    ) : (
+        <div className={classes.placeholder}>
+            <Body1Strong italic>No selection</Body1Strong>
         </div>
     );
 };

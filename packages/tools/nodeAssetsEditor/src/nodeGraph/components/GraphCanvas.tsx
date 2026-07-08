@@ -30,6 +30,8 @@ const MinZoom = 0.2;
 const MaxZoom = 3;
 const GridSpacing = 24;
 const PasteOffset = 24;
+// Screen-space radius (px) within which a released wire snaps to the nearest compatible port.
+const ConnectSnapRadius = 28;
 
 const Clamp = (value: number, min: number, max: number) => Math.max(min, Math.min(max, value));
 
@@ -179,6 +181,46 @@ export const GraphCanvas: FunctionComponent<{ context: EditorContextValue }> = (
         [state]
     );
 
+    // Finds the closest port (in screen space) that could legally connect to the dragged port, so a wire
+    // released near a port still connects instead of requiring a pixel-perfect drop on the port dot.
+    const findNearestConnectablePort = useCallback(
+        (fromPortId: string, clientX: number, clientY: number): string | undefined => {
+            const rect = containerRef.current?.getBoundingClientRect();
+            const left = rect?.left ?? 0;
+            const top = rect?.top ?? 0;
+            const cam = cameraRef.current;
+            let bestPortId: string | undefined;
+            let bestDistance = ConnectSnapRadius;
+            for (const node of state.nodes) {
+                // Collapsed nodes do not render individual ports, so they are not valid snap targets.
+                if (node.collapsed) {
+                    continue;
+                }
+                for (const port of node.ports) {
+                    if (port.id === fromPortId) {
+                        continue;
+                    }
+                    if (!state.canConnect(fromPortId, port.id) && !state.canConnect(port.id, fromPortId)) {
+                        continue;
+                    }
+                    const anchor = GetPortAnchor(node, port.id);
+                    if (!anchor) {
+                        continue;
+                    }
+                    const screenX = left + cam.x + anchor.x * cam.zoom;
+                    const screenY = top + cam.y + anchor.y * cam.zoom;
+                    const distance = Math.hypot(clientX - screenX, clientY - screenY);
+                    if (distance < bestDistance) {
+                        bestDistance = distance;
+                        bestPortId = port.id;
+                    }
+                }
+            }
+            return bestPortId;
+        },
+        [state]
+    );
+
     // Persistent window listeners drive the active gesture so dragging continues outside the canvas.
     useEffect(() => {
         const onPointerMove = (event: PointerEvent) => {
@@ -255,7 +297,8 @@ export const GraphCanvas: FunctionComponent<{ context: EditorContextValue }> = (
                 }
                 case "wire": {
                     const element = document.elementFromPoint(event.clientX, event.clientY);
-                    const targetPortId = element?.closest("[data-port-id]")?.getAttribute("data-port-id");
+                    const directPortId = element?.closest("[data-port-id]")?.getAttribute("data-port-id") ?? undefined;
+                    const targetPortId = directPortId ?? findNearestConnectablePort(gesture.fromPortId, event.clientX, event.clientY);
                     if (targetPortId && targetPortId !== gesture.fromPortId) {
                         attemptConnect(gesture.fromPortId, targetPortId);
                     }
@@ -274,7 +317,7 @@ export const GraphCanvas: FunctionComponent<{ context: EditorContextValue }> = (
             window.removeEventListener("pointermove", onPointerMove);
             window.removeEventListener("pointerup", onPointerUp);
         };
-    }, [state, screenToWorld, setCamera, attemptConnect]);
+    }, [state, screenToWorld, setCamera, attemptConnect, findNearestConnectablePort]);
 
     // Keyboard shortcuts (ignored while typing in a form control so the panes keep working).
     useEffect(() => {
@@ -485,9 +528,11 @@ export const GraphCanvas: FunctionComponent<{ context: EditorContextValue }> = (
     }, [contextTarget, state]);
 
     const worldStyle: CSSProperties = { transform: `translate(${camera.x}px, ${camera.y}px) scale(${camera.zoom})` };
+    // The grid is rendered in screen space: the dot radius and the spacing between dots stay a constant
+    // pixel size at every zoom level. Only the pattern origin tracks the camera so the grid still pans.
     const gridStyle: CSSProperties = {
         backgroundImage: `radial-gradient(circle, ${tokens.colorNeutralStroke2} 1px, transparent 1.5px)`,
-        backgroundSize: `${GridSpacing * camera.zoom}px ${GridSpacing * camera.zoom}px`,
+        backgroundSize: `${GridSpacing}px ${GridSpacing}px`,
         backgroundPosition: `${camera.x}px ${camera.y}px`,
     };
 

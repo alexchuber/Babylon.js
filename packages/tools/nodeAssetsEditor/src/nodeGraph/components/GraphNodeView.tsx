@@ -9,6 +9,9 @@ import { useCanvasContext } from "./canvasContext";
 import { useObservableState } from "shared-ui-components/modularTool/hooks/observableHooks";
 
 const PortDotSize = 12;
+// Transparent hit target around each port dot. Larger than the visual dot so wires are easy to grab;
+// sized to the row height so vertically adjacent ports tile without overlapping.
+const PortHitSize = 24;
 
 const useStyles = makeStyles({
     node: {
@@ -72,22 +75,31 @@ const useStyles = makeStyles({
         justifyContent: "flex-end",
         paddingRight: tokens.spacingHorizontalM,
     },
-    portDot: {
+    portHit: {
         position: "absolute",
-        width: `${PortDotSize}px`,
-        height: `${PortDotSize}px`,
-        ...shorthands.borderRadius("50%"),
-        ...shorthands.border(tokens.strokeWidthThin, "solid", tokens.colorNeutralStroke1),
+        width: `${PortHitSize}px`,
+        height: `${PortHitSize}px`,
         top: "50%",
+        display: "flex",
+        alignItems: "center",
+        justifyContent: "center",
         cursor: "crosshair",
     },
-    portDotInput: {
+    portHitInput: {
         left: "0",
         transform: "translate(-50%, -50%)",
     },
-    portDotOutput: {
+    portHitOutput: {
         right: "0",
         transform: "translate(50%, -50%)",
+    },
+    portDot: {
+        width: `${PortDotSize}px`,
+        height: `${PortDotSize}px`,
+        boxSizing: "border-box",
+        ...shorthands.borderRadius("50%"),
+        ...shorthands.border(tokens.strokeWidthThin, "solid", tokens.colorNeutralStroke1),
+        pointerEvents: "none",
     },
     portLabel: {
         color: tokens.colorNeutralForeground2,
@@ -168,12 +180,9 @@ export const GraphNodeView: FunctionComponent<{ node: IGraphNode }> = (props) =>
             {!node.collapsed &&
                 inputs.map((port, index) => (
                     <div key={port.id} className={mergeClasses(classes.portRow, classes.portRowInput)} style={{ top: rowTop(index), width: "50%" }}>
-                        <span
-                            className={mergeClasses(classes.portDot, classes.portDotInput)}
-                            style={{ backgroundColor: port.color }}
-                            data-port-id={port.id}
-                            onPointerDown={onPortPointerDown(port.id)}
-                        />
+                        <span className={mergeClasses(classes.portHit, classes.portHitInput)} data-port-id={port.id} onPointerDown={onPortPointerDown(port.id)}>
+                            <span className={classes.portDot} style={{ backgroundColor: port.color }} />
+                        </span>
                         <Caption1 className={classes.portLabel}>{port.name}</Caption1>
                     </div>
                 ))}
@@ -182,12 +191,9 @@ export const GraphNodeView: FunctionComponent<{ node: IGraphNode }> = (props) =>
                 outputs.map((port, index) => (
                     <div key={port.id} className={mergeClasses(classes.portRow, classes.portRowOutput)} style={{ top: rowTop(index), width: "50%" }}>
                         <Caption1 className={classes.portLabel}>{port.name}</Caption1>
-                        <span
-                            className={mergeClasses(classes.portDot, classes.portDotOutput)}
-                            style={{ backgroundColor: port.color }}
-                            data-port-id={port.id}
-                            onPointerDown={onPortPointerDown(port.id)}
-                        />
+                        <span className={mergeClasses(classes.portHit, classes.portHitOutput)} data-port-id={port.id} onPointerDown={onPortPointerDown(port.id)}>
+                            <span className={classes.portDot} style={{ backgroundColor: port.color }} />
+                        </span>
                     </div>
                 ))}
         </div>

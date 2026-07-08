@@ -5,6 +5,7 @@ import {
     ArrowRedoRegular,
     ArrowUndoRegular,
     FolderOpenRegular,
+    ImageRegular,
     OptionsRegular,
     PlayRegular,
     SaveRegular,
@@ -23,6 +24,7 @@ import { GraphEditorState } from "../nodeGraph/editorState";
 import { CanvasViewController, type EditorContextValue } from "../nodeGraph/editorContext";
 import { GraphCanvas } from "../nodeGraph/components/GraphCanvas";
 import { PaletteView } from "../nodeGraph/components/PaletteView";
+import { PreviewView } from "../nodeGraph/components/PreviewView";
 import { PropertiesView } from "../nodeGraph/components/PropertiesView";
 import { CreateBuildPropertySections } from "../demo/dummyProperties";
 import { CreateDummyGraph, CreateNodeFromPaletteItem, DummyPaletteCategories } from "../demo/dummyData";
@@ -43,7 +45,7 @@ const RedoButton: FunctionComponent<{ state: GraphEditorState }> = (props) => {
 
 /**
  * The demo application's root service. It seeds the store with dummy data, assembles the editor
- * context, and registers the canvas, palette, properties pane, and toolbar with the shell.
+ * context, and registers the canvas, palette, preview, properties pane, and toolbar with the shell.
  */
 export const NodeAssetsEditorServiceDefinition: ServiceDefinition<[], [IShellService]> = {
     friendlyName: "Node Assets Editor Service",
@@ -72,6 +74,15 @@ export const NodeAssetsEditorServiceDefinition: ServiceDefinition<[], [IShellSer
                 verticalLocation: "top",
                 teachingMoment: false,
                 content: () => <PaletteView context={context} />,
+            }),
+            shellService.addSidePane({
+                key: "Preview",
+                title: "Preview",
+                icon: ImageRegular,
+                horizontalLocation: "left",
+                verticalLocation: "bottom",
+                teachingMoment: false,
+                content: () => <PreviewView />,
             }),
             shellService.addSidePane({
                 key: "Properties",
