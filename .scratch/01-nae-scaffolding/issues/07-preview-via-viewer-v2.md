@@ -1,6 +1,6 @@
 # 07 — Preview via Babylon Viewer V2, docked bottom-right
 
-Status: ready-for-agent
+Status: resolved
 
 ## Parent
 

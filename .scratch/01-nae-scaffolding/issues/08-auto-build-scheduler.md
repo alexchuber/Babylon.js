@@ -1,6 +1,6 @@
 # 08 — Auto-build: scheduler + spinner/error, replace manual build
 
-Status: ready-for-agent
+Status: resolved
 
 ## Parent
 

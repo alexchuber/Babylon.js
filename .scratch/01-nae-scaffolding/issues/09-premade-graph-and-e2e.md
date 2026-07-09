@@ -1,6 +1,6 @@
 # 09 — Premade wired graph + BoomBox + Draco properties + e2e
 
-Status: ready-for-agent
+Status: resolved
 
 ## Parent
 

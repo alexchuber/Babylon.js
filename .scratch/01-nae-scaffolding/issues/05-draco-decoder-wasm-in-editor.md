@@ -1,6 +1,6 @@
 # 05 — Fix in-editor Draco WASM (serve encoder + decoder same-origin)
 
-Status: ready-for-agent
+Status: resolved
 
 ## Parent
 

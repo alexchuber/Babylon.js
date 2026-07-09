@@ -1,6 +1,6 @@
 # PRD: NodeAssets — Milestone 1 (NAE scaffolding)
 
-Status: scaffolding shipped · Milestone 1 completion in progress (see "PRD Addendum: Milestone 1 Completion" at the bottom) · issue 05 fixed by the completion effort
+Status: Milestone 1 complete — scaffolding shipped and the completion effort landed (see "PRD Addendum: Milestone 1 Completion" at the bottom). All completion slices (05, 07, 08, 09) resolved.
 
 ## What this is
 
@@ -72,7 +72,7 @@ headless roundtrip + compression unit tests; editor Playwright coverage.
 
 ## Status / known gaps
 
-- **Issue 05 (in progress):** the Draco decoder WASM fails to load under the editor's Vite dev server,
+- **Issue 05 (resolved):** the Draco decoder WASM failed to load under the editor's Vite dev server,
   which breaks in-browser import for every graph. Headless/unit paths are unaffected. This is now
   **Slice 1 of the Milestone 1 completion effort** (see the addendum) — fixed by serving the Draco
   WASM same-origin.
@@ -114,7 +114,7 @@ roundtrips. Headless vitest, modeled on `packages/dev/lottiePlayer/test/unit`. E
 - `issues/03-draco-compression-block.md` — the Draco compression block. `resolved`.
 - Issue 04 (KTX2 compression block) — `resolved`; ticket file removed after completion.
 - `issues/05-draco-decoder-wasm-in-editor.md` — **repurposed as Slice 1** of the completion effort:
-  fix in-editor Draco WASM by serving it same-origin (`ready-for-agent`).
+  fix in-editor Draco WASM by serving it same-origin (`resolved`).
 - `issues/06-milestone-1-cleanup.md` — this cleanup (rename slug, rewrite PRD as-built, split
   glossaries per package + root map). `resolved`.
 
@@ -134,7 +134,7 @@ Slices 1–3 run in parallel; Slice 4 fans them in.
 
 # PRD Addendum: Milestone 1 Completion ("M1 done")
 
-Status: ready-for-agent
+Status: resolved
 
 This addendum defines the work to take Milestone 1 from "scaffolding shipped" to **done**. It stays in
 this tracker (`01-nae-scaffolding`); its issues are numbered **07+**. Milestone 2 is a separate future
