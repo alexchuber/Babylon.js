@@ -19,3 +19,4 @@ export { CenterBlock, type CenterPivot } from "./Blocks/centerBlock";
 export { NumberLiteral } from "./Blocks/numberLiteral";
 export { StringLiteral } from "./Blocks/stringLiteral";
 export { JsonLiteral } from "./Blocks/jsonLiteral";
+export { ImportUSDBlock } from "./Blocks/importUSDBlock";

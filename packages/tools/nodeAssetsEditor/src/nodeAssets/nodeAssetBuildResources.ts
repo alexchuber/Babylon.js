@@ -1,4 +1,5 @@
 import { ImportGLTFBlock } from "node-assets/Blocks/importGLTFBlock";
+import { ImportUSDBlock } from "node-assets/Blocks/importUSDBlock";
 import { ExportGLTFBlock } from "node-assets/Blocks/exportGLTFBlock";
 import { KTX2CompressionBlock } from "node-assets/Blocks/ktx2CompressionBlock";
 import { type NodeAsset } from "node-assets/nodeAsset";
@@ -13,6 +14,8 @@ export interface INodeAssetBuildResourceUrls {
     readonly dracoDecoderWasmUrl: string;
     /** URL of the Draco encoder wasm binary. */
     readonly dracoEncoderWasmUrl: string;
+    /** URL of the tinyusdz USD parser wasm binary. */
+    readonly usdWasmUrl: string;
 }
 
 /**
@@ -24,6 +27,8 @@ export function ConfigureNodeAssetBuildResources(nodeAsset: NodeAsset, resourceU
     for (const block of nodeAsset.attachedBlocks) {
         if (block instanceof ImportGLTFBlock) {
             block.dracoDecoderWasmUrl = resourceUrls.dracoDecoderWasmUrl;
+        } else if (block instanceof ImportUSDBlock) {
+            block.usdWasmUrl = resourceUrls.usdWasmUrl;
         } else if (block instanceof ExportGLTFBlock) {
             block.dracoEncoderWasmUrl = resourceUrls.dracoEncoderWasmUrl;
         } else if (block instanceof KTX2CompressionBlock) {

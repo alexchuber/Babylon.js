@@ -8,6 +8,7 @@ const ImportHeaderColor = "#3f7d4e";
 RegisterBlockDescriptor({
     paletteItemId: "import-gltf",
     label: "Import glTF",
+    category: "Sources",
     headerColor: ImportHeaderColor,
     className: ImportGLTFBlock.ClassName,
     create: (nodeAsset) => ConfigureBlockForEditor(new ImportGLTFBlock("Import glTF", nodeAsset)),

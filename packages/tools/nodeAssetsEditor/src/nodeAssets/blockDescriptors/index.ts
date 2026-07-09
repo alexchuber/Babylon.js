@@ -5,6 +5,7 @@
  */
 
 import "./importGLTFBlockDescriptor";
+import "./importUSDBlockDescriptor";
 import "./dracoCompressionBlockDescriptor";
 import "./exportGLTFBlockDescriptor";
 import "./ktx2CompressionBlockDescriptor";
