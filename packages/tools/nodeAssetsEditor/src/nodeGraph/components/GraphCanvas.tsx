@@ -528,11 +528,15 @@ export const GraphCanvas: FunctionComponent<{ context: EditorContextValue }> = (
     }, [contextTarget, state]);
 
     const worldStyle: CSSProperties = { transform: `translate(${camera.x}px, ${camera.y}px) scale(${camera.zoom})` };
-    // The grid is rendered in screen space: the dot radius and the spacing between dots stay a constant
-    // pixel size at every zoom level. Only the pattern origin tracks the camera so the grid still pans.
+    // The grid is locked to world space: both the dot spacing and the dot radius scale with zoom, so the
+    // dots grow and spread apart as you zoom in and shrink as you zoom out (keeping the canvas from being
+    // littered with dots at low zoom). The pattern origin tracks the camera so the grid pans and zooms
+    // together with the content.
+    const gridSpacing = GridSpacing * camera.zoom;
+    const dotRadius = camera.zoom;
     const gridStyle: CSSProperties = {
-        backgroundImage: `radial-gradient(circle, ${tokens.colorNeutralStroke2} 1px, transparent 1.5px)`,
-        backgroundSize: `${GridSpacing}px ${GridSpacing}px`,
+        backgroundImage: `radial-gradient(circle, ${tokens.colorNeutralStroke2} ${dotRadius}px, transparent ${dotRadius * 1.5}px)`,
+        backgroundSize: `${gridSpacing}px ${gridSpacing}px`,
         backgroundPosition: `${camera.x}px ${camera.y}px`,
     };
 
