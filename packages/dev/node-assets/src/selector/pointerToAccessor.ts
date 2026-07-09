@@ -1,11 +1,14 @@
 import { type Camera, type Document, type Material, type Mesh, type Node, type Property, type Root, type Texture } from "@gltf-transform/core";
 
+import { type ImagePayload } from "../Blocks/imagePayload";
+
 /**
  * The value kind a resolved property carries. Mirrors the concept of the glTF loader's
  * `IObjectAccessor.type`, but the vocabulary is gltf-transform's (flat arrays for vectors/matrices,
- * a `texture` handle for texture slots, and `json` for the free-form `extras` bag).
+ * a `texture` handle for texture slots, an `image` payload for a texture slot's decoded-free image
+ * bytes, and `json` for the free-form `extras` bag).
  */
-export type PropertyAccessorType = "number" | "number[]" | "vec3" | "vec4" | "mat4" | "string" | "texture" | "json";
+export type PropertyAccessorType = "number" | "number[]" | "vec3" | "vec4" | "mat4" | "string" | "texture" | "image" | "json";
 
 /**
  * A get/set handle over a single property of a gltf-transform `Document`, resolved from a glTF Object
@@ -183,6 +186,69 @@ const ExtrasSegment = "extras";
  * non-negative integer in range.
  */
 export function ResolvePointerToAccessor(document: Document, pointer: string): IPropertyAccessor {
+    const { collection, collectionName, target, propertyPath } = ResolvePointerTarget(document, pointer);
+
+    if (propertyPath[0] === ExtrasSegment) {
+        return CreateExtrasAccessor(pointer, target, propertyPath);
+    }
+
+    const propertyKey = propertyPath.join("/");
+    const binding = collection.properties.get(propertyKey) ?? CommonProperties.get(propertyKey);
+    if (!binding) {
+        throw new Error(`Pointer "${pointer}" references unknown property "${propertyKey}" on collection "${collectionName}".`);
+    }
+
+    return {
+        type: binding.type,
+        get: () => binding.get(target),
+        set: (value) => binding.set(target, value),
+        getTarget: () => target,
+    };
+}
+
+/**
+ * Resolves a material **texture-slot** pointer against a gltf-transform `Document` and returns an
+ * {@link IPropertyAccessor} that speaks in IMAGE payloads: its `get` returns the slot texture's encoded
+ * image bytes and mime type as an {@link ImagePayload}, and its `set` replaces them, creating the
+ * `Texture` and wiring it into the slot when the slot is empty.
+ *
+ * This is the IMAGE-typed member of the selector family, parallel to the JSON-typed
+ * {@link ResolvePointerToAccessor} (which resolves the same slot to its `Texture` reference). It reuses
+ * the one converter mapping table: a pointer only resolves here when it names a `texture`-typed slot
+ * (baseColor, metallicRoughness, normal, occlusion, emissive); any other property throws. The image
+ * bytes stay encoded end to end (no pixel decode / canvas); only gltf-transform `Texture` image APIs
+ * are used.
+ * @param document - The gltf-transform `Document` (the SCENE spine) to resolve against.
+ * @param pointer - The glTF Object Model JSON Pointer string naming a material texture slot.
+ * @returns An IMAGE-typed accessor over the slot texture's image payload.
+ * @throws If the pointer is malformed or out of range (the same errors as {@link ResolvePointerToAccessor}),
+ * or does not name a texture slot.
+ */
+export function ResolvePointerToImageAccessor(document: Document, pointer: string): IPropertyAccessor {
+    const { collection, collectionName, target, propertyPath } = ResolvePointerTarget(document, pointer);
+
+    const propertyKey = propertyPath.join("/");
+    const binding = collection.properties.get(propertyKey);
+    if (!binding || binding.type !== "texture") {
+        throw new Error(`Pointer "${pointer}" does not name a texture slot on collection "${collectionName}"; the image accessor only resolves texture slots.`);
+    }
+
+    return CreateTextureImageAccessor(document, pointer, target, binding);
+}
+
+/**
+ * Parses and resolves the `/${collection}/${index}` prefix shared by every pointer, returning the
+ * addressed target property along with its collection mapping and the remaining property path. This is
+ * the common front half of the converter that both the value accessor ({@link ResolvePointerToAccessor})
+ * and the texture-image accessor ({@link ResolvePointerToImageAccessor}) build on, so both speak the
+ * same pointer grammar and throw the same malformed/out-of-range errors.
+ * @param document - The gltf-transform `Document` to resolve against.
+ * @param pointer - The glTF Object Model JSON Pointer string.
+ * @returns The resolved collection, its name, the addressed target, and the trailing property path.
+ * @throws If the pointer is malformed, incomplete, names an unknown collection, or its index is not a
+ * non-negative integer in range.
+ */
+function ResolvePointerTarget(document: Document, pointer: string): { collection: ICollectionMapping; collectionName: string; target: Property; propertyPath: string[] } {
     if (!pointer.startsWith("/")) {
         throw new Error(`Pointer "${pointer}" is malformed: it must start with "/".`);
     }
@@ -210,20 +276,42 @@ export function ResolvePointerToAccessor(document: Document, pointer: string): I
         throw new Error(`Pointer "${pointer}" index ${index} is out of range for collection "${collectionName}" (length ${members.length}).`);
     }
 
-    if (propertyPath[0] === ExtrasSegment) {
-        return CreateExtrasAccessor(pointer, target, propertyPath);
-    }
+    return { collection, collectionName, target, propertyPath };
+}
 
-    const propertyKey = propertyPath.join("/");
-    const binding = collection.properties.get(propertyKey) ?? CommonProperties.get(propertyKey);
-    if (!binding) {
-        throw new Error(`Pointer "${pointer}" references unknown property "${propertyKey}" on collection "${collectionName}".`);
-    }
-
+/**
+ * Builds an IMAGE-typed accessor over a material texture slot. Reads surface the slot `Texture`'s
+ * encoded image as an {@link ImagePayload}; writes replace that image (bytes + mime type), creating the
+ * `Texture` and wiring it into the slot via the same slot binding when none exists yet — leaving the
+ * rest of the material untouched.
+ * @param document - The document, used to create a `Texture` when replacing into an empty slot.
+ * @param pointer - The original pointer, for error messages.
+ * @param target - The resolved `Material` that owns the texture slot.
+ * @param binding - The slot's texture binding from the converter mapping table; its `get`/`set` read
+ * and assign the slot `Texture`.
+ * @returns An accessor whose `get`/`set` read and replace the slot texture's image payload.
+ */
+function CreateTextureImageAccessor(document: Document, pointer: string, target: Property, binding: IPropertyBinding): IPropertyAccessor {
     return {
-        type: binding.type,
-        get: () => binding.get(target),
-        set: (value) => binding.set(target, value),
+        type: "image",
+        get: () => {
+            const texture = binding.get(target) as Texture | null;
+            const data = texture?.getImage();
+            if (!texture || !data) {
+                throw new Error(`Pointer "${pointer}" has no texture image to read: the slot is empty or its texture has no image.`);
+            }
+            return { data, mimeType: texture.getMimeType() } satisfies ImagePayload;
+        },
+        set: (value) => {
+            const payload = value as ImagePayload;
+            let texture = binding.get(target) as Texture | null;
+            if (!texture) {
+                texture = document.createTexture();
+                binding.set(target, texture);
+            }
+            texture.setImage(payload.data);
+            texture.setMimeType(payload.mimeType);
+        },
         getTarget: () => target,
     };
 }
