@@ -24,6 +24,7 @@ const convertPathsToAliases = () => {
 };
 
 const aliases = convertPathsToAliases();
+aliases["node-assets"] = path.resolve(__dirname, "packages/dev/node-assets/src");
 
 // babylonjs-gltf2interface is a types-only package (const enums inlined by
 // TypeScript at compile time). It has no JS entry point, so Vite's resolver

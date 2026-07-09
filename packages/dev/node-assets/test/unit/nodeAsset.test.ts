@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 
-import { DracoCompressionBlock } from "../../src/Blocks/dracoCompressionBlock";
+import { DracoCompressionBlock, DracoEncoderMethod } from "../../src/Blocks/dracoCompressionBlock";
 import { ExportGLTFBlock } from "../../src/Blocks/exportGLTFBlock";
 import { ImportGLTFBlock } from "../../src/Blocks/importGLTFBlock";
 import { KTX2CompressionBlock } from "../../src/Blocks/ktx2CompressionBlock";
@@ -189,5 +189,34 @@ describe("NodeAsset", () => {
         expect(parsedImporter.output.connectedPoint).toBe(parsedKtx2.input);
         expect(parsedKtx2.output.connectedPoint).toBe(parsedDraco.input);
         expect(parsedDraco.output.connectedPoint).toBe(parsedExporter.input);
+    });
+
+    it("roundtrips compression options through serialize/Parse", () => {
+        const asset = new NodeAsset("compression-options");
+        const ktx2 = new KTX2CompressionBlock("ktx2", asset);
+        ktx2.generateMipmaps = true;
+        const draco = new DracoCompressionBlock("draco", asset);
+        draco.method = DracoEncoderMethod.Sequential;
+        draco.encodeSpeed = 2;
+        draco.decodeSpeed = 8;
+        draco.quantizationBits = { POSITION: 12, NORMAL: 8 };
+
+        const serialized = JSON.parse(JSON.stringify(asset.serialize()));
+        expect(serialized.blocks[0]).toMatchObject({ generateMipmaps: true });
+        expect(serialized.blocks[1]).toMatchObject({
+            method: DracoEncoderMethod.Sequential,
+            encodeSpeed: 2,
+            decodeSpeed: 8,
+            quantizationBits: { POSITION: 12, NORMAL: 8 },
+        });
+
+        const parsed = NodeAsset.Parse(serialized);
+        const parsedKtx2 = parsed.attachedBlocks[0] as KTX2CompressionBlock;
+        const parsedDraco = parsed.attachedBlocks[1] as DracoCompressionBlock;
+        expect(parsedKtx2.generateMipmaps).toBe(true);
+        expect(parsedDraco.method).toBe(DracoEncoderMethod.Sequential);
+        expect(parsedDraco.encodeSpeed).toBe(2);
+        expect(parsedDraco.decodeSpeed).toBe(8);
+        expect(parsedDraco.quantizationBits).toEqual({ POSITION: 12, NORMAL: 8 });
     });
 });

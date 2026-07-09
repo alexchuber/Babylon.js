@@ -79,4 +79,29 @@ export class DracoCompressionBlock extends NodeAssetBlock {
 
         this.output.value = document;
     }
+
+    /**
+     * Serializes this block's build-affecting compression options.
+     * @returns The serialization object.
+     */
+    public override serialize(): any {
+        const serializationObject = super.serialize();
+        serializationObject.method = this.method;
+        serializationObject.encodeSpeed = this.encodeSpeed;
+        serializationObject.decodeSpeed = this.decodeSpeed;
+        serializationObject.quantizationBits = this.quantizationBits;
+        return serializationObject;
+    }
+
+    /**
+     * Restores this block's build-affecting compression options.
+     * @param serializationObject - The serialization object.
+     */
+    public override _deserialize(serializationObject: any): void {
+        super._deserialize(serializationObject);
+        this.method = serializationObject.method ?? DracoEncoderMethod.Edgebreaker;
+        this.encodeSpeed = serializationObject.encodeSpeed ?? 5;
+        this.decodeSpeed = serializationObject.decodeSpeed ?? 5;
+        this.quantizationBits = serializationObject.quantizationBits ?? null;
+    }
 }
