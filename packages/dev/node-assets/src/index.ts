@@ -28,3 +28,4 @@ export { type IExportBlock, IsExportBlock } from "./blockFoundation/exportBlock"
 export { Selector } from "./Blocks/selector";
 export { GetProperty } from "./Blocks/getProperty";
 export { SetProperty } from "./Blocks/setProperty";
+export { ExtractTexture } from "./Blocks/extractTexture";

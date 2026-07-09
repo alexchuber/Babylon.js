@@ -9,6 +9,7 @@ import {
     DracoCompressionBlock,
     ExportGLTFBlock,
     ExportImageBlock,
+    ExtractTexture,
     FlattenBlock,
     GetProperty,
     ImportGLTFBlock,
@@ -158,9 +159,10 @@ describe("block self-registration", () => {
                     Selector.ClassName,
                     GetProperty.ClassName,
                     SetProperty.ClassName,
+                    ExtractTexture.ClassName,
                 ])
             );
-            expect(registeredClassNames).toHaveLength(23);
+            expect(registeredClassNames).toHaveLength(24);
         });
 
         it.each(registeredClassNames)("round-trips %s through serialize/Parse", (className) => {
