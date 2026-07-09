@@ -6,6 +6,7 @@
 
 import { AbortError } from "core/Misc/error";
 import { Logger } from "core/Misc/logger";
+import { type IReadonlyObservable, Observable } from "core/Misc/observable";
 import { type Viewer } from "viewer/viewer";
 import { CreateViewerForCanvas } from "viewer/viewerFactory";
 
@@ -18,6 +19,24 @@ export class PreviewController {
     private _canvas: HTMLCanvasElement | null = null;
     private _pendingData: Uint8Array | null = null;
     private _attachGeneration = 0;
+    private _isBuilding = false;
+    private _errorMessage: string | null = null;
+    private readonly _onStatusChanged = new Observable<void>();
+
+    /** Fires whenever the build/loading/error status displayed by the preview pane changes. */
+    public get onStatusChanged(): IReadonlyObservable<void> {
+        return this._onStatusChanged;
+    }
+
+    /** Whether the editor is currently building and loading a preview result. */
+    public get isBuilding(): boolean {
+        return this._isBuilding;
+    }
+
+    /** The current non-fatal preview error, if any. */
+    public get errorMessage(): string | null {
+        return this._errorMessage;
+    }
 
     /**
      * Binds the controller to a canvas, creating the Viewer V2 instance. A no-op if
@@ -68,6 +87,29 @@ export class PreviewController {
         if (viewer) {
             viewer.dispose();
         }
+    }
+
+    /**
+     * Discards any deferred (not-yet-loaded) preview bytes before a newer build starts, so a stale build's
+     * result can't replace a newer one once the viewer becomes ready. In-flight loads are superseded by the
+     * viewer itself when the next load begins.
+     */
+    public cancelPendingLoad(): void {
+        this._pendingData = null;
+    }
+
+    /**
+     * Updates the preview pane status shown above the canvas.
+     * @param isBuilding - Whether a build/load is currently in progress.
+     * @param errorMessage - The error to show in the preview pane, or null to clear it.
+     */
+    public setStatus(isBuilding: boolean, errorMessage: string | null): void {
+        if (this._isBuilding === isBuilding && this._errorMessage === errorMessage) {
+            return;
+        }
+        this._isBuilding = isBuilding;
+        this._errorMessage = errorMessage;
+        this._onStatusChanged.notifyObservers();
     }
 
     private async _attachViewerAsync(canvas: HTMLCanvasElement, attachGeneration: number): Promise<void> {
