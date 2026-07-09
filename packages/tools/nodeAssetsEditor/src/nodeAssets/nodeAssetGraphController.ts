@@ -556,7 +556,12 @@ export class NodeAssetGraphController {
                 }
             }
 
-            // 2) Rebuild all connections from the visual wires. Clearing outputs clears both sides.
+            // 2) Sync each surviving node's visual ports to its block's connection points. This is a
+            //    no-op for fixed-arity blocks and is what lets a variadic block (MergeScenes) grow: when
+            //    its backing block gains an input, the node gains the matching port and it becomes wirable.
+            this._syncNodePortsToBlocks();
+
+            // 3) Rebuild all connections from the visual wires. Clearing outputs clears both sides.
             for (const block of this._nodeAsset.attachedBlocks) {
                 for (const output of block.outputs) {
                     output.disconnect();
@@ -571,6 +576,45 @@ export class NodeAssetGraphController {
             }
         } finally {
             this._reconciling = false;
+        }
+    }
+
+    /**
+     * Rebuilds any node whose visual ports no longer match its block's connection points, keeping the
+     * port-to-point map in step. Only variadic blocks whose input set changed do any work here; every
+     * fixed-arity node short-circuits on the id comparison. Ports are typed read-only for framework
+     * consumers, but this controller owns the visual-to-domain bridge, so it replaces the port list in
+     * place (mirroring how it mutates other node fields before `notifyChanged`).
+     */
+    private _syncNodePortsToBlocks(): void {
+        for (const node of this.state.nodes) {
+            const block = this._blockByNodeId.get(node.id);
+            if (!block) {
+                continue;
+            }
+
+            const desiredPorts: IGraphPort[] = [];
+            for (const input of block.inputs) {
+                desiredPorts.push(PointToPort(block, input));
+            }
+            for (const output of block.outputs) {
+                desiredPorts.push(PointToPort(block, output));
+            }
+
+            if (node.ports.length === desiredPorts.length && node.ports.every((port, index) => port.id === desiredPorts[index].id)) {
+                continue;
+            }
+
+            for (const port of node.ports) {
+                this._pointByPortId.delete(port.id);
+            }
+            (node as { ports: readonly IGraphPort[] }).ports = desiredPorts;
+            for (const input of block.inputs) {
+                this._pointByPortId.set(PortIdForPoint(block, input), input);
+            }
+            for (const output of block.outputs) {
+                this._pointByPortId.set(PortIdForPoint(block, output), output);
+            }
         }
     }
 

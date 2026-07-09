@@ -125,4 +125,58 @@ describe("NodeAssetGraphController", () => {
             controller.dispose();
         }
     });
+
+    it("groups MergeScenes under a Composition palette category", () => {
+        const controller = new NodeAssetGraphController();
+        try {
+            const composition = controller.paletteCategories.find((category) => category.label === "Composition");
+            expect(composition).toBeDefined();
+            expect(composition!.items.map((item) => item.id)).toContain("merge-scenes");
+        } finally {
+            controller.dispose();
+        }
+    });
+
+    it("adds a MergeScenes node with two SCENE inputs that grows via its Add input affordance", () => {
+        const controller = new NodeAssetGraphController();
+        const changes = CountBuildRelevantChanges(controller);
+        try {
+            const mergeNode = controller.createNodeFromPaletteItem("merge-scenes", { x: 100, y: 400 });
+            controller.state.addNode(mergeNode);
+            expect(changes.count()).toBe(1);
+
+            expect(mergeNode.ports.filter((port) => port.direction === "input")).toHaveLength(2);
+            expect(mergeNode.ports.filter((port) => port.direction === "output")).toHaveLength(1);
+            expect(FindProperty(controller, mergeNode, "Inputs", "text").value).toBe("2");
+
+            FindProperty(controller, mergeNode, "Add input", "button").onClick();
+
+            expect(mergeNode.ports.filter((port) => port.direction === "input")).toHaveLength(3);
+            expect(mergeNode.ports.filter((port) => port.direction === "output")).toHaveLength(1);
+            expect(FindProperty(controller, mergeNode, "Inputs", "text").value).toBe("3");
+            // Growing the input set changes the serialized graph, so it is a build-relevant edit.
+            expect(changes.count()).toBe(2);
+        } finally {
+            changes.dispose();
+            controller.dispose();
+        }
+    });
+
+    it("preserves a grown MergeScenes input count through save and load", () => {
+        const controller = new NodeAssetGraphController();
+        try {
+            const mergeNode = controller.createNodeFromPaletteItem("merge-scenes", { x: 100, y: 400 });
+            controller.state.addNode(mergeNode);
+            FindProperty(controller, mergeNode, "Add input", "button").onClick();
+            expect(mergeNode.ports.filter((port) => port.direction === "input")).toHaveLength(3);
+
+            controller.load(controller.serialize());
+
+            const reloaded = FindNode(controller, "Merge Scenes");
+            expect(reloaded.ports.filter((port) => port.direction === "input")).toHaveLength(3);
+            expect(reloaded.ports.filter((port) => port.direction === "output")).toHaveLength(1);
+        } finally {
+            controller.dispose();
+        }
+    });
 });
