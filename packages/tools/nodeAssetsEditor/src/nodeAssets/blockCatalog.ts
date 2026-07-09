@@ -14,9 +14,18 @@ import { type IPropertySection } from "../nodeGraph/propertyModel";
 /** Data-driven dot color for scene-typed ports (applied inline as visual data, not theme chrome). */
 export const ScenePortColor = "#d97b3f";
 
+/** Data-driven dot colors for the scalar port kinds, so each renders distinctly from SCENE. */
+export const NumberPortColor = "#3f79d9";
+export const StringPortColor = "#3fa86b";
+export const JsonPortColor = "#b163c9";
+
 /** Palette category and shared node header color for the SCENE-to-SCENE operator block family. */
 export const OperatorCategory = "Operators";
 export const OperatorHeaderColor = "#2f8f83";
+
+/** Palette category and shared node header color for the value-literal source block family. */
+export const ValuesCategory = "Values";
+export const ValuesHeaderColor = "#5a5fb0";
 
 /**
  * Describes one palette entry: its id and label, its node header color, the backend class it maps to,
