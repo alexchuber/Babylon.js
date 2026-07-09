@@ -4,6 +4,7 @@ import { describe, expect, it, vi } from "vitest";
 // every block, so this test observes the exact set the published package registers. The coverage below
 // therefore fails if any block is dropped from the barrel or stops self-registering.
 import {
+    BuildPBRMaterial,
     CenterBlock,
     DedupBlock,
     DracoCompressionBlock,
@@ -158,9 +159,10 @@ describe("block self-registration", () => {
                     Selector.ClassName,
                     GetProperty.ClassName,
                     SetProperty.ClassName,
+                    BuildPBRMaterial.ClassName,
                 ])
             );
-            expect(registeredClassNames).toHaveLength(23);
+            expect(registeredClassNames).toHaveLength(24);
         });
 
         it.each(registeredClassNames)("round-trips %s through serialize/Parse", (className) => {
