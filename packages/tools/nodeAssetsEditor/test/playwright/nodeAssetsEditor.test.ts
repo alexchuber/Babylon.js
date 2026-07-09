@@ -7,24 +7,14 @@ type GltfJson = {
     readonly extensionsUsed?: readonly string[];
     readonly extensionsRequired?: readonly string[];
     readonly images?: readonly { readonly mimeType?: string }[];
+    readonly materials?: readonly unknown[];
 };
 
-type HeartbeatStats = {
-    readonly count: number;
-    readonly maxGapMs: number;
-};
-
-declare global {
-    interface Window {
-        __naeBuildHeartbeat?: HeartbeatStats;
-        __naeResetBuildHeartbeat?: () => void;
-    }
-}
-
-const DefaultPipeline: readonly (readonly [string, string])[] = [
-    ["Import glTF", "KTX2 Compress"],
-    ["KTX2 Compress", "Draco Compression"],
-    ["Draco Compression", "Export glTF"],
+// The compose-up showcase fans two sources into the material builder, then exports the recomposed asset.
+const ComposeUpPipeline: readonly (readonly [string, string])[] = [
+    ["Import glTF", "Build PBR Material"],
+    ["Import Image", "Build PBR Material"],
+    ["Build PBR Material", "Export glTF"],
 ];
 
 /**
@@ -60,97 +50,40 @@ async function readDownloadedGlb(download: Download): Promise<Buffer> {
     return exported;
 }
 
-async function installBuildHeartbeatAsync(page: Page): Promise<void> {
-    await page.addInitScript(() => {
-        const heartbeat = { count: 0, maxGapMs: 0, lastTickMs: performance.now() };
-        window.__naeBuildHeartbeat = heartbeat;
-        window.__naeResetBuildHeartbeat = () => {
-            heartbeat.count = 0;
-            heartbeat.maxGapMs = 0;
-            heartbeat.lastTickMs = performance.now();
-        };
-        window.setInterval(() => {
-            const now = performance.now();
-            heartbeat.count++;
-            heartbeat.maxGapMs = Math.max(heartbeat.maxGapMs, now - heartbeat.lastTickMs);
-            heartbeat.lastTickMs = now;
-        }, 50);
-    });
-}
-
-test.describe("Node Assets Editor — Milestone 1", () => {
+test.describe("Node Assets Editor — Compose-up showcase", () => {
     test.describe.configure({ timeout: 180_000 });
 
-    test("opens to the premade graph and auto-previews BoomBox without console errors", async ({ page, browserName }) => {
+    test("opens to the compose-up graph and auto-previews the recomposed textured asset without console errors", async ({ page }) => {
         const pageErrors = collectPageErrors(page);
-        const shouldAssertWorkerResponsiveness = browserName === "chromium";
-        const encoderRequests: string[] = [];
-        if (shouldAssertWorkerResponsiveness) {
-            page.on("request", (request) => {
-                const url = request.url();
-                if (url.includes("basis_encoder") || url.includes("draco_encoder")) {
-                    encoderRequests.push(url);
-                }
-            });
-            await installBuildHeartbeatAsync(page);
-        }
-        const boomBoxResponse = page.waitForResponse((response) => response.url().endsWith("/scenes/BoomBox.glb") && response.ok());
+        // Both bundled sources must be fetched from the CDN before the first build can recompose them.
+        const bareGlbResponse = page.waitForResponse((response) => response.url().endsWith("/scenes/nodeAssets/bareCube.glb") && response.ok());
+        const baseColorResponse = page.waitForResponse((response) => response.url().endsWith("/scenes/nodeAssets/baseColor.png") && response.ok());
         const editor = new NodeAssetsEditorPage(page);
 
         await editor.goto();
-        await boomBoxResponse;
+        await bareGlbResponse;
+        await baseColorResponse;
 
         await expect(editor.nodes).toHaveCount(4);
         await expect(editor.nodeByTitle("Import glTF")).toBeVisible();
-        await expect(editor.nodeByTitle("KTX2 Compress")).toBeVisible();
-        await expect(editor.nodeByTitle("Draco Compression")).toBeVisible();
+        await expect(editor.nodeByTitle("Import Image")).toBeVisible();
+        await expect(editor.nodeByTitle("Build PBR Material")).toBeVisible();
         await expect(editor.nodeByTitle("Export glTF")).toBeVisible();
-        await editor.expectWiredPipeline(DefaultPipeline);
+        await editor.expectWiredPipeline(ComposeUpPipeline);
 
-        if (shouldAssertWorkerResponsiveness) {
-            await page.evaluate(() => window.__naeResetBuildHeartbeat?.());
-        }
         await editor.waitForNextSuccessfulPreviewBuild();
         await expect(editor.previewCanvas).toBeVisible();
-        if (shouldAssertWorkerResponsiveness) {
-            const heartbeat = await page.evaluate(() => window.__naeBuildHeartbeat);
-            expect(heartbeat?.count ?? 0).toBeGreaterThan(10);
-            expect(heartbeat?.maxGapMs ?? Number.POSITIVE_INFINITY).toBeLessThan(2_000);
-            expect(encoderRequests.some((url) => url.includes("basis_encoder.wasm"))).toBe(true);
-            expect(encoderRequests.some((url) => url.includes("draco_encoder.wasm"))).toBe(true);
-            expect(encoderRequests.every((url) => new URL(url).origin === new URL(editor.baseUrl).origin)).toBe(true);
-        }
 
+        // Both bundled sources are seeded on open, so the graph builds a textured asset without any manual import.
         await editor.selectNode("Import glTF");
         await expect(page.getByRole("textbox").nth(1)).toHaveValue(/Loaded \(\d+ bytes\)/);
-
-        await editor.selectNode("Draco Compression");
-        await expect(page.getByText("DRACO", { exact: true })).toBeVisible();
-        await expect(page.getByText("Method", { exact: true })).toBeVisible();
-        await expect(page.getByText("Encode speed", { exact: true })).toBeVisible();
-        await expect(page.getByText("Decode speed", { exact: true })).toBeVisible();
-        await expect(page.getByText("Quantization bits", { exact: true })).toBeVisible();
-
-        await page.getByRole("combobox").click();
-        await page.getByRole("option", { name: "Sequential" }).click();
-        await page.getByRole("textbox").nth(1).fill("7");
-        await page.getByRole("textbox").nth(1).press("Enter");
-        await page.getByRole("textbox").nth(2).fill("4");
-        await page.getByRole("textbox").nth(2).press("Enter");
-        await page.getByRole("textbox").nth(3).fill('{"POSITION":12}');
-        await page.getByRole("textbox").nth(3).press("Enter");
-
-        await editor.selectNode("Export glTF");
-        await editor.selectNode("Draco Compression");
-        await expect(page.getByRole("combobox")).toContainText("Sequential");
-        await expect(page.getByRole("textbox").nth(1)).toHaveValue("7");
-        await expect(page.getByRole("textbox").nth(2)).toHaveValue("4");
-        await expect(page.getByRole("textbox").nth(3)).toHaveValue('{"POSITION":12}');
+        await editor.selectNode("Import Image");
+        await expect(page.getByRole("textbox").nth(1)).toHaveValue(/Loaded \(\d+ bytes, image\/png\)/);
 
         expect(pageErrors).toEqual([]);
     });
 
-    test("exports the same cached build that the preview rendered", async ({ page }) => {
+    test("exports the recomposed textured asset the preview rendered", async ({ page }) => {
         const editor = new NodeAssetsEditorPage(page);
         await editor.goto();
         await editor.waitForNextSuccessfulPreviewBuild();
@@ -163,46 +96,38 @@ test.describe("Node Assets Editor — Milestone 1", () => {
         await exportButton.click();
         const exported = await readDownloadedGlb(await downloadPromise);
         const gltf = parseGlbJson(exported);
-        expect(gltf.extensionsUsed ?? []).toContain("KHR_texture_basisu");
-        expect(gltf.extensionsUsed ?? []).toContain("KHR_draco_mesh_compression");
-        expect(gltf.extensionsRequired ?? []).toContain("KHR_draco_mesh_compression");
-        expect((gltf.images ?? []).map((image) => image.mimeType)).toContain("image/ktx2");
+        // The recomposed asset carries the built PBR material and its base-color image, and never touches
+        // the compression path (KTX2/Draco), so the base color stays a plain PNG.
+        expect((gltf.materials ?? []).length).toBeGreaterThan(0);
+        expect((gltf.images ?? []).map((image) => image.mimeType)).toContain("image/png");
+        expect(gltf.extensionsUsed ?? []).not.toContain("KHR_texture_basisu");
+        expect(gltf.extensionsUsed ?? []).not.toContain("KHR_draco_mesh_compression");
     });
 
-    test("remove, add, and reorder compression nodes rebuilds a previewable graph", async ({ page }) => {
+    test("removing the base-color image rebuilds a previewable untextured graph", async ({ page }) => {
         const editor = new NodeAssetsEditorPage(page);
         await editor.goto();
         await editor.waitForNextSuccessfulPreviewBuild();
 
-        await editor.selectNode("KTX2 Compress");
+        // Deleting the optional base-color source leaves ImportGLTF -> BuildPBRMaterial -> ExportGLTF intact.
+        await editor.selectNode("Import Image");
         await page.keyboard.press("Delete");
-        await expect(editor.nodeByTitle("KTX2 Compress")).toBeHidden();
-        await editor.connectPorts(editor.portOfNode("Import glTF"), editor.portOfNode("Draco Compression", "in"));
+        await expect(editor.nodeByTitle("Import Image")).toBeHidden();
         await editor.expectWiredPipeline([
-            ["Import glTF", "Draco Compression"],
-            ["Draco Compression", "Export glTF"],
+            ["Import glTF", "Build PBR Material"],
+            ["Build PBR Material", "Export glTF"],
         ]);
         await editor.waitForSuccessfulPreviewBuild();
         await expect(editor.previewCanvas).toBeVisible();
-        await editor.selectNode("Export glTF");
-        const removeDownloadPromise = page.waitForEvent("download");
-        await page.getByRole("button", { name: "Export .glb" }).click();
-        const removedKtx2Export = parseGlbJson(await readDownloadedGlb(await removeDownloadPromise));
-        expect(removedKtx2Export.extensionsUsed ?? []).not.toContain("KHR_texture_basisu");
-        expect(removedKtx2Export.extensionsUsed ?? []).toContain("KHR_draco_mesh_compression");
 
-        const reorderRebuildPromise = editor.waitForNextSuccessfulPreviewBuild();
-        await editor.dropPaletteItem("KTX2 Compress");
-        await expect(editor.nodeByTitle("KTX2 Compress")).toBeVisible();
-        await editor.deleteWire("Draco Compression", "Export glTF");
-        await editor.connectPorts(editor.portOfNode("Draco Compression", "out"), editor.portOfNode("KTX2 Compress", "in"));
-        await editor.connectPorts(editor.portOfNode("KTX2 Compress", "out"), editor.portOfNode("Export glTF"));
-        await editor.expectWiredPipeline([
-            ["Import glTF", "Draco Compression"],
-            ["Draco Compression", "KTX2 Compress"],
-            ["KTX2 Compress", "Export glTF"],
-        ]);
-        await reorderRebuildPromise;
-        await expect(editor.previewCanvas).toBeVisible();
+        await editor.selectNode("Export glTF");
+        const downloadPromise = page.waitForEvent("download");
+        await page.getByRole("button", { name: "Export .glb" }).click();
+        const untexturedExport = parseGlbJson(await readDownloadedGlb(await downloadPromise));
+        // The builder still produces (and assigns) a material, now with no base-color image and no compression.
+        expect((untexturedExport.materials ?? []).length).toBeGreaterThan(0);
+        expect((untexturedExport.images ?? []).map((image) => image.mimeType)).not.toContain("image/png");
+        expect(untexturedExport.extensionsUsed ?? []).not.toContain("KHR_texture_basisu");
+        expect(untexturedExport.extensionsUsed ?? []).not.toContain("KHR_draco_mesh_compression");
     });
 });

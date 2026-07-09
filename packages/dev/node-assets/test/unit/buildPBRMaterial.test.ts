@@ -1,4 +1,4 @@
-import { type Document } from "@gltf-transform/core";
+import { type Document, type Primitive } from "@gltf-transform/core";
 import { describe, expect, it, vi } from "vitest";
 
 import { BuildPBRMaterial } from "../../src/Blocks/buildPBRMaterial";
@@ -68,6 +68,28 @@ function ConnectImage(asset: NodeAsset, build: BuildPBRMaterial, input: BuildPBR
     importImage.data = bytes;
     importImage.mimeType = "image/png";
     importImage.output.connectTo(input);
+}
+
+/**
+ * Builds an in-memory document with one bare (material-less) primitive in an explicit default scene,
+ * so assignment behaviour can be asserted directly on the returned primitive.
+ * @returns The document and its bare primitive.
+ */
+async function CreateBareDocumentWithPrimitiveAsync(): Promise<{ document: Document; primitive: Primitive }> {
+    const { Document } = await import("@gltf-transform/core");
+    const document = new Document();
+    const buffer = document.createBuffer();
+    const position = document
+        .createAccessor()
+        .setType("VEC3")
+        .setArray(new Float32Array([0, 0, 0, 1, 0, 0, 0, 1, 0]))
+        .setBuffer(buffer);
+    const primitive = document.createPrimitive().setAttribute("POSITION", position);
+    const mesh = document.createMesh("mesh0").addPrimitive(primitive);
+    const node = document.createNode("node0").setMesh(mesh);
+    const scene = document.createScene("scene0").addChild(node);
+    document.getRoot().setDefaultScene(scene);
+    return { document, primitive };
 }
 
 describe("BuildPBRMaterial", () => {
@@ -241,6 +263,44 @@ describe("BuildPBRMaterial", () => {
         const build = new BuildPBRMaterial("build", new NodeAsset("missing"));
         expect(build.scene.value).toBeNull();
         await expect(build._buildBlockAsync()).rejects.toThrow(/no input scene/);
+    });
+
+    it("assigns the built material to a bare primitive in the default scene", async () => {
+        const { document, primitive } = await CreateBareDocumentWithPrimitiveAsync();
+        const build = new BuildPBRMaterial("build", new NodeAsset("assign"));
+        build.scene.value = document;
+        await build._buildBlockAsync();
+
+        const material = document.getRoot().listMaterials()[0];
+        expect(material).toBeDefined();
+        // The bare primitive now references the built material, so a viewer renders it textured.
+        expect(primitive.getMaterial()).toBe(material);
+    });
+
+    it("leaves a primitive that already references a material untouched", async () => {
+        const { document, primitive } = await CreateBareDocumentWithPrimitiveAsync();
+        const existing = document.createMaterial("existing");
+        primitive.setMaterial(existing);
+
+        const build = new BuildPBRMaterial("build", new NodeAsset("non-destructive"));
+        build.scene.value = document;
+        await build._buildBlockAsync();
+
+        // The pre-materialed primitive keeps its original material; the built one is still created.
+        expect(primitive.getMaterial()).toBe(existing);
+        expect(document.getRoot().listMaterials()).toHaveLength(2);
+    });
+
+    it("builds without throwing when the default scene has no mesh primitives", async () => {
+        const { Document } = await import("@gltf-transform/core");
+        const document = new Document();
+        const scene = document.createScene("scene0").addChild(document.createNode("empty"));
+        document.getRoot().setDefaultScene(scene);
+
+        const build = new BuildPBRMaterial("build", new NodeAsset("mesh-less"));
+        build.scene.value = document;
+        await expect(build._buildBlockAsync()).resolves.toBeUndefined();
+        expect(document.getRoot().listMaterials()).toHaveLength(1);
     });
 
     it("round-trips its factors and identity through save/load (proving self-registration)", () => {

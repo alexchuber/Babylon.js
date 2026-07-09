@@ -1,4 +1,4 @@
-import { type Document, type Texture } from "@gltf-transform/core";
+import { type Document, type Material, type Texture } from "@gltf-transform/core";
 
 import { type Nullable } from "core/types";
 
@@ -19,6 +19,10 @@ import { type ImagePayload } from "./imagePayload";
  * unconnected optional slot is simply left unset, so a factor-only material is valid. The scope is core
  * PBR-MR — base colour, metallic-roughness, normal, occlusion, and emissive slots plus their factors;
  * it is deliberately not a general material graph.
+ *
+ * The built material is then assigned to every mesh primitive in the document's default scene that has
+ * no material yet, so a bare (untextured) mesh renders with it while primitives that already reference a
+ * material are left untouched. This is what lets the compose-up showcase light up a bare glb.
  *
  * In-place mutation is retained: the incoming `Document` is mutated and the same reference is emitted
  * (copy-on-fan-out, when the SCENE fans out, is handled by the evaluator, not here).
@@ -78,7 +82,8 @@ export class BuildPBRMaterial extends NodeAssetBlock {
 
     /**
      * Creates a PBR metallic-roughness material on the input `Document`, sets its factors, wires a
-     * texture for every supplied IMAGE input, and emits the same document.
+     * texture for every supplied IMAGE input, assigns it to any material-less primitive in the default
+     * scene, and emits the same document.
      * @throws If no input scene is connected.
      */
     public override async _buildBlockAsync(): Promise<void> {
@@ -101,6 +106,10 @@ export class BuildPBRMaterial extends NodeAssetBlock {
         this._assignTexture(document, this.occlusion, "occlusion", (texture) => material.setOcclusionTexture(texture));
         this._assignTexture(document, this.emissive, "emissive", (texture) => material.setEmissiveTexture(texture));
 
+        // Land the material on the geometry: a glTF viewer only renders a material a primitive references,
+        // so without this a bare mesh would stay untextured and the material could even be pruned.
+        this._assignToBarePrimitives(document, material);
+
         // In-place mutation: emit the same reference (copy-on-fan-out is the evaluator's job upstream).
         this.output.value = document;
     }
@@ -120,6 +129,33 @@ export class BuildPBRMaterial extends NodeAssetBlock {
         }
         const texture = document.createTexture(`${this.name} ${slot}`).setImage(image.data).setMimeType(image.mimeType);
         assign(texture);
+    }
+
+    /**
+     * Assigns the built material to every mesh primitive in the document's default scene that has no
+     * material yet, so a bare mesh renders with it. Non-destructive: primitives that already reference a
+     * material are left untouched, and it is a no-op when the document has no default scene, meshes, or
+     * primitives.
+     * @param document - The document whose default-scene primitives are (conditionally) assigned.
+     * @param material - The material to assign to material-less primitives.
+     */
+    private _assignToBarePrimitives(document: Document, material: Material): void {
+        const root = document.getRoot();
+        const scene = root.getDefaultScene() ?? root.listScenes()[0];
+        if (!scene) {
+            return;
+        }
+        scene.traverse((node) => {
+            const mesh = node.getMesh();
+            if (!mesh) {
+                return;
+            }
+            for (const primitive of mesh.listPrimitives()) {
+                if (primitive.getMaterial() == null) {
+                    primitive.setMaterial(material);
+                }
+            }
+        });
     }
 
     /**
