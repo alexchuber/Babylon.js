@@ -330,6 +330,8 @@ test.describe("Node Assets Editor — Backend Wiring", () => {
         await editor.connectPorts(editor.portOfNode("Draco Compression", "out"), editor.portOfNode("Export glTF"));
         await expect(editor.wires).toHaveCount(2);
 
+        // Auto-build runs the in-browser Draco encoder; export downloads the cached glb.
+        await editor.waitForSuccessfulPreviewBuild();
         await editor.selectNode("Export glTF");
         const exportButton = page.getByRole("button", { name: "Export .glb" });
         await expect(exportButton).toBeVisible();
