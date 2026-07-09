@@ -15,6 +15,7 @@ import { Observable } from "core/Misc/observable";
 import { DracoCompressionBlock, DracoEncoderMethod } from "node-assets/Blocks/dracoCompressionBlock";
 import { ExportGLTFBlock } from "node-assets/Blocks/exportGLTFBlock";
 import { ImportGLTFBlock } from "node-assets/Blocks/importGLTFBlock";
+import { ImportImageBlock } from "node-assets/Blocks/importImageBlock";
 import { KTX2CompressionBlock } from "node-assets/Blocks/ktx2CompressionBlock";
 import { NodeAsset } from "node-assets/nodeAsset";
 import { NodeAssetConnectionPointDirection } from "node-assets/connection/nodeAssetConnectionPointDirection";
@@ -60,7 +61,9 @@ interface INodeAssetEditorFile {
 }
 
 const LocalCdnPort = "1337";
-const DefaultBoomBoxPath = "scenes/BoomBox.glb";
+// The compose-up showcase assets, served alongside the editor's other samples (see BoomBox) by the CDN.
+const DefaultBareGlbPath = "scenes/nodeAssets/bareCube.glb";
+const DefaultBaseColorImagePath = "scenes/nodeAssets/baseColor.png";
 
 /** Palette category label for blocks whose descriptor does not specify one. */
 const DefaultPaletteCategory = "Blocks";
@@ -68,16 +71,23 @@ const DefaultPaletteCategory = "Blocks";
 const DracoMethodLabels = ["Edgebreaker", "Sequential"] as const;
 type DracoMethodLabel = (typeof DracoMethodLabels)[number];
 
-function GetDefaultBoomBoxUrl(): string {
+/**
+ * Resolves a bundled sample asset path (e.g. `scenes/nodeAssets/bareCube.glb`) to an absolute URL on
+ * the local CDN, mirroring how the editor served the default BoomBox: from a `localhost` dev origin the
+ * assets live on the CDN port, otherwise they resolve against the current origin.
+ * @param assetPath - The CDN-relative asset path.
+ * @returns The absolute asset URL.
+ */
+function ResolveCdnAssetUrl(assetPath: string): string {
     const currentUrl = new URL(window.location.href);
     if ((currentUrl.hostname === "localhost" || currentUrl.hostname === "127.0.0.1") && currentUrl.port !== LocalCdnPort) {
         currentUrl.port = LocalCdnPort;
         currentUrl.pathname = "/";
         currentUrl.search = "";
         currentUrl.hash = "";
-        return new URL(DefaultBoomBoxPath, currentUrl).href;
+        return new URL(assetPath, currentUrl).href;
     }
-    return new URL(DefaultBoomBoxPath, `${currentUrl.origin}/`).href;
+    return new URL(assetPath, `${currentUrl.origin}/`).href;
 }
 
 function DracoMethodToLabel(method: DracoEncoderMethod): DracoMethodLabel {
@@ -181,25 +191,30 @@ export class NodeAssetGraphController {
     private readonly _onChangedObserver;
 
     /**
-     * Creates a controller seeded with a starter graph: Import -> KTX2 -> Draco -> Export.
+     * Creates a controller seeded with the compose-up showcase graph: ImportGLTF (bare mesh) and
+     * ImportImage feed a BuildPBRMaterial (the image is its base colour), which flows to ExportGLTF.
      * @param buildClient - Worker-backed build client.
      */
     public constructor(buildClient: INodeAssetBuildClient = new NodeAssetBuildWorkerClient()) {
         this._nodeAsset = new NodeAsset("nodeAsset");
         this._buildClient = buildClient;
 
-        const importDescriptor = GetBlockDescriptorByPaletteItemId("import-gltf")!;
-        const ktx2Descriptor = GetBlockDescriptorByPaletteItemId("ktx2-compression")!;
-        const dracoDescriptor = GetBlockDescriptorByPaletteItemId("draco-compression")!;
+        const importGltfDescriptor = GetBlockDescriptorByPaletteItemId("import-gltf")!;
+        const importImageDescriptor = GetBlockDescriptorByPaletteItemId("import-image")!;
+        const buildDescriptor = GetBlockDescriptorByPaletteItemId("build-pbr-material")!;
         const exportDescriptor = GetBlockDescriptorByPaletteItemId("export-gltf")!;
-        const importNode = this._instantiateBlock(importDescriptor, { x: 120, y: 200 });
-        const ktx2Node = this._instantiateBlock(ktx2Descriptor, { x: 400, y: 200 });
-        const dracoNode = this._instantiateBlock(dracoDescriptor, { x: 680, y: 200 });
-        const exportNode = this._instantiateBlock(exportDescriptor, { x: 960, y: 200 });
+        const importGltfNode = this._instantiateBlock(importGltfDescriptor, { x: 120, y: 120 });
+        const importImageNode = this._instantiateBlock(importImageDescriptor, { x: 120, y: 340 });
+        const buildNode = this._instantiateBlock(buildDescriptor, { x: 480, y: 230 });
+        const exportNode = this._instantiateBlock(exportDescriptor, { x: 840, y: 230 });
 
         const snapshot: IGraphSnapshot = {
-            nodes: [importNode, ktx2Node, dracoNode, exportNode],
-            wires: [this._createWire(importNode, ktx2Node), this._createWire(ktx2Node, dracoNode), this._createWire(dracoNode, exportNode)],
+            nodes: [importGltfNode, importImageNode, buildNode, exportNode],
+            wires: [
+                this._createWireToInput(importGltfNode, buildNode, "scene"),
+                this._createWireToInput(importImageNode, buildNode, "baseColor"),
+                this._createWire(buildNode, exportNode),
+            ],
             frames: [],
         };
         this.state = new GraphEditorState(snapshot);
@@ -213,17 +228,19 @@ export class NodeAssetGraphController {
     }
 
     /**
-     * Loads the default BoomBox sample into the starter import block.
-     * @returns A promise that resolves after the bytes are loaded.
+     * Loads the bundled compose-up sample assets into the seeded import blocks: the bare `.glb` into the
+     * ImportGLTF block and the base-colour image into the ImportImage block, so the graph builds a
+     * textured asset on open.
+     * @returns A promise that resolves after both assets are loaded.
      */
     public async loadDefaultImportAsync(): Promise<void> {
-        const importBlock = this._getImportBlock();
-        const url = GetDefaultBoomBoxUrl();
-        const response = await fetch(url);
-        if (!response.ok) {
-            throw new Error(`Could not load the default BoomBox asset from "${url}" (${response.status} ${response.statusText}).`);
-        }
-        importBlock.data = new Uint8Array(await response.arrayBuffer());
+        const gltfBlock = this._getImportBlock();
+        gltfBlock.data = await this._fetchAssetBytesAsync(ResolveCdnAssetUrl(DefaultBareGlbPath));
+
+        const imageBlock = this._getImportImageBlock();
+        imageBlock.data = await this._fetchAssetBytesAsync(ResolveCdnAssetUrl(DefaultBaseColorImagePath));
+        imageBlock.mimeType = "image/png";
+
         this.state.notifyChanged();
     }
 
@@ -517,6 +534,29 @@ export class NodeAssetGraphController {
         };
     }
 
+    /**
+     * Wires a node's output to a specific named input on the target node, so a multi-input block (e.g.
+     * BuildPBRMaterial's `scene` and `baseColor`) can be seeded unambiguously rather than relying on the
+     * first input {@link _createWire} picks.
+     * @param fromNode - The source node (its single output is used).
+     * @param toNode - The target node.
+     * @param toInputName - The connection-point name of the target input to wire to.
+     * @returns The wire connecting them.
+     */
+    private _createWireToInput(fromNode: IGraphNode, toNode: IGraphNode, toInputName: string): IGraphWire {
+        const fromPort = fromNode.ports.find((port) => port.direction === "output");
+        const toBlock = this._blockByNodeId.get(toNode.id);
+        const toPoint = toBlock?.inputs.find((input) => input.name === toInputName);
+        if (!fromPort || !toBlock || !toPoint) {
+            throw new Error(`Cannot wire "${fromNode.title}" to "${toNode.title}"'s "${toInputName}" input because a compatible port is missing.`);
+        }
+        return {
+            id: `wire-${fromNode.id}-${toNode.id}-${toInputName}`,
+            fromPortId: fromPort.id,
+            toPortId: PortIdForPoint(toBlock, toPoint),
+        };
+    }
+
     private _registerBlockNode(block: NodeAssetBlock, descriptor: IBlockDescriptor, position: Vec2, title: string, collapsed: boolean): IGraphNode {
         const node = BlockToNode(block, descriptor, position, title, collapsed);
         this._blockByNodeId.set(node.id, block);
@@ -535,6 +575,22 @@ export class NodeAssetGraphController {
             throw new Error(`The "${this._nodeAsset.name}" node asset has no ImportGLTFBlock for the default asset.`);
         }
         return importBlock;
+    }
+
+    private _getImportImageBlock(): ImportImageBlock {
+        const importImageBlock = this._nodeAsset.attachedBlocks.find((block): block is ImportImageBlock => block instanceof ImportImageBlock);
+        if (!importImageBlock) {
+            throw new Error(`The "${this._nodeAsset.name}" node asset has no ImportImageBlock for the default base-colour image.`);
+        }
+        return importImageBlock;
+    }
+
+    private async _fetchAssetBytesAsync(url: string): Promise<Uint8Array> {
+        const response = await fetch(url);
+        if (!response.ok) {
+            throw new Error(`Could not load the default sample asset from "${url}" (${response.status} ${response.statusText}).`);
+        }
+        return new Uint8Array(await response.arrayBuffer());
     }
 
     private _reconcile(): void {

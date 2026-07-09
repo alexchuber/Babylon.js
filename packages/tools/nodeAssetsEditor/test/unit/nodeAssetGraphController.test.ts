@@ -79,25 +79,24 @@ describe("NodeAssetGraphController", () => {
             controller.state.addWire(firstWire.fromPortId, firstWire.toPortId);
             expect(changes.count()).toBe(2);
 
-            const extraDraco = controller.createNodeFromPaletteItem("draco-compression", { x: 1200, y: 200 });
-            controller.state.addNode(extraDraco);
+            const extraNode = controller.createNodeFromPaletteItem("draco-compression", { x: 1200, y: 200 });
+            controller.state.addNode(extraNode);
             expect(changes.count()).toBe(3);
 
-            controller.state.removeNodes([extraDraco.id]);
+            controller.state.removeNodes([extraNode.id]);
             expect(changes.count()).toBe(4);
 
-            const ktx2Node = FindNode(controller, "KTX2 Compress");
-            FindProperty(controller, ktx2Node, "Generate mipmaps", "switch").onChange(true);
+            const buildNode = FindNode(controller, "Build PBR Material");
+            FindProperty(controller, buildNode, "Base color", "color").onChange("#804020");
             expect(changes.count()).toBe(5);
 
-            const dracoNode = FindNode(controller, "Draco Compression");
-            FindProperty(controller, dracoNode, "Method", "dropdown").onChange("Sequential");
+            FindProperty(controller, buildNode, "Base alpha", "slider").onChange(0.5);
             expect(changes.count()).toBe(6);
-            FindProperty(controller, dracoNode, "Encode speed", "slider").onChange(2);
+            FindProperty(controller, buildNode, "Metallic", "slider").onChange(0.25);
             expect(changes.count()).toBe(7);
-            FindProperty(controller, dracoNode, "Decode speed", "slider").onChange(8);
+            FindProperty(controller, buildNode, "Roughness", "slider").onChange(0.75);
             expect(changes.count()).toBe(8);
-            FindProperty(controller, dracoNode, "Quantization bits", "text").onChange('{"POSITION":12}');
+            FindProperty(controller, buildNode, "Emissive", "color").onChange("#202020");
             expect(changes.count()).toBe(9);
         } finally {
             changes.dispose();
