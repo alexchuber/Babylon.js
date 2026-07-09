@@ -140,10 +140,14 @@ export class NodeAssetGraphController {
     /** Fires when a build (export) is requested from the graph, e.g. the export node's action button. */
     public readonly onExportRequested = new Observable<void>();
 
+    /** Fires only when the runtime graph's serialized build identity changes. */
+    public readonly onBuildRelevantChanged = new Observable<void>();
+
     private _nodeAsset: NodeAsset;
     private readonly _blockByNodeId = new Map<string, NodeAssetBlock>();
     private readonly _pointByPortId = new Map<string, NodeAssetConnectionPoint>();
     private _reconciling = false;
+    private _buildRelevantSignature: string;
     private readonly _onChangedObserver;
 
     /**
@@ -171,7 +175,9 @@ export class NodeAssetGraphController {
         this.paletteCategories = [{ label: "Blocks", items: BlockDescriptors.map((descriptor) => ({ id: descriptor.paletteItemId, label: descriptor.label })) }];
 
         // Subscribe only after seeding so the reconcile sees consistent maps and state.
-        this._onChangedObserver = this.state.onChanged.add(() => this._reconcile());
+        this._reconcile();
+        this._buildRelevantSignature = this._createBuildRelevantSignature();
+        this._onChangedObserver = this.state.onChanged.add(() => this._reconcileAndNotifyBuildRelevantChange());
     }
 
     /**
@@ -249,7 +255,7 @@ export class NodeAssetGraphController {
      * @returns The exported glb bytes.
      */
     public async buildAsync(): Promise<Uint8Array> {
-        this._reconcile();
+        this._reconcileAndNotifyBuildRelevantChange();
         return await this._nodeAsset.buildAsync();
     }
 
@@ -258,7 +264,7 @@ export class NodeAssetGraphController {
      * @returns The JSON save file.
      */
     public serialize(): string {
-        this._reconcile();
+        this._reconcileAndNotifyBuildRelevantChange();
         const blocks: IEditorBlockMetadata[] = [];
         for (const node of this.state.nodes) {
             const block = this._blockByNodeId.get(node.id);
@@ -322,6 +328,7 @@ export class NodeAssetGraphController {
     public dispose(): void {
         this._onChangedObserver.remove();
         this.onExportRequested.clear();
+        this.onBuildRelevantChanged.clear();
     }
 
     private _buildImportSection(block: ImportGLTFBlock): IPropertySection {
@@ -509,5 +516,18 @@ export class NodeAssetGraphController {
         } finally {
             this._reconciling = false;
         }
+    }
+
+    private _reconcileAndNotifyBuildRelevantChange(): void {
+        this._reconcile();
+        const signature = this._createBuildRelevantSignature();
+        if (signature !== this._buildRelevantSignature) {
+            this._buildRelevantSignature = signature;
+            this.onBuildRelevantChanged.notifyObservers();
+        }
+    }
+
+    private _createBuildRelevantSignature(): string {
+        return JSON.stringify(this._nodeAsset.serialize());
     }
 }

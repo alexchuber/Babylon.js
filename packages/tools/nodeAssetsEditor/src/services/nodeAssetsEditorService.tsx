@@ -98,7 +98,7 @@ export const NodeAssetsEditorServiceDefinition: ServiceDefinition<[], [IShellSer
 
         const startBuildScheduler = (): void => {
             buildScheduler = new BuildScheduler({
-                triggerSource: state.onChanged,
+                triggerSource: controller.onBuildRelevantChanged,
                 debounceMs: AutoBuildDebounceMs,
                 buildAsync: async () => await controller.buildAsync(),
                 applyResultAsync: async (bytes) => await preview.loadAssetAsync(bytes),
