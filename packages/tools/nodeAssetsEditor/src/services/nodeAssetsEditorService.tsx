@@ -7,7 +7,6 @@ import {
     FolderOpenRegular,
     ImageRegular,
     OptionsRegular,
-    PlayRegular,
     SaveRegular,
     ScaleFitRegular,
     TextExpandRegular,
@@ -26,10 +25,17 @@ import { GraphCanvas } from "../nodeGraph/components/GraphCanvas";
 import { PaletteView } from "../nodeGraph/components/PaletteView";
 import { PropertiesView } from "../nodeGraph/components/PropertiesView";
 
+import { BuildScheduler } from "../buildScheduler";
 import { NodeAssetGraphController } from "../nodeAssets/nodeAssetGraphController";
 import { PreviewController } from "../nodeAssets/previewController";
 import { PreviewPane } from "../nodeAssets/components/PreviewPane";
 import { DownloadBlob, PromptForFileAsync } from "../nodeAssets/browserFiles";
+
+const AutoBuildDebounceMs = 400;
+
+function GetErrorMessage(error: unknown): string {
+    return error instanceof Error ? error.message : String(error);
+}
 
 // Toolbar button that reflects the store's undo availability.
 const UndoButton: FunctionComponent<{ state: GraphEditorState }> = (props) => {
@@ -58,6 +64,7 @@ export const NodeAssetsEditorServiceDefinition: ServiceDefinition<[], [IShellSer
         const preview = new PreviewController();
         const state = controller.state;
         const view = new CanvasViewController();
+        let lastSuccessfulBuildBytes: Uint8Array | null = null;
 
         const context: EditorContextValue = {
             state,
@@ -67,25 +74,37 @@ export const NodeAssetsEditorServiceDefinition: ServiceDefinition<[], [IShellSer
             createNodeFromPaletteItem: (paletteItemId, position) => controller.createNodeFromPaletteItem(paletteItemId, position),
         };
 
-        // Builds the graph and shows the result in the preview pane.
-        const buildAndPreviewAsync = async (): Promise<void> => {
-            try {
-                const bytes = await controller.buildAsync();
-                await preview.loadAssetAsync(bytes);
-            } catch (error) {
-                Logger.Error(`[NodeAssetsEditor] Build failed: ${(error as Error).message}`);
-            }
-        };
+        const buildScheduler = new BuildScheduler({
+            triggerSource: state.onChanged,
+            debounceMs: AutoBuildDebounceMs,
+            buildAsync: async () => await controller.buildAsync(),
+            applyResultAsync: async (bytes) => await preview.loadAssetAsync(bytes),
+            onBuildStarted: () => {
+                preview.cancelPendingLoad();
+                preview.setStatus(true, null);
+            },
+            onBuildSucceeded: (bytes) => {
+                lastSuccessfulBuildBytes = bytes;
+                preview.setStatus(false, null);
+            },
+            onBuildFailed: (error) => {
+                const message = GetErrorMessage(error);
+                Logger.Error(`[NodeAssetsEditor] Build failed: ${message}`);
+                preview.setStatus(false, message);
+            },
+        });
 
-        // Builds the graph, downloads the exported glb, and shows it in the preview pane.
-        const exportAndPreviewAsync = async (): Promise<void> => {
-            try {
-                const bytes = await controller.buildAsync();
-                DownloadBlob(bytes, "asset.glb", "model/gltf-binary");
-                await preview.loadAssetAsync(bytes);
-            } catch (error) {
-                Logger.Error(`[NodeAssetsEditor] Export failed: ${(error as Error).message}`);
+        // Downloads exactly the last successful preview bytes; export no longer triggers a fresh build.
+        const exportLastSuccessfulBuild = (): void => {
+            if (!lastSuccessfulBuildBytes) {
+                const message = "Build the graph successfully before exporting.";
+                Logger.Warn(`[NodeAssetsEditor] Export skipped: ${message}`);
+                if (!preview.isBuilding) {
+                    preview.setStatus(false, message);
+                }
+                return;
             }
+            DownloadBlob(lastSuccessfulBuildBytes, "asset.glb", "model/gltf-binary");
         };
 
         // Serializes the graph and downloads it as JSON.
@@ -106,7 +125,7 @@ export const NodeAssetsEditorServiceDefinition: ServiceDefinition<[], [IShellSer
             }
         };
 
-        const exportObserver = controller.onExportRequested.add(() => void exportAndPreviewAsync());
+        const exportObserver = controller.onExportRequested.add(() => exportLastSuccessfulBuild());
 
         const registrations = [
             shellService.addCentralContent({
@@ -126,7 +145,7 @@ export const NodeAssetsEditorServiceDefinition: ServiceDefinition<[], [IShellSer
                 key: "Preview",
                 title: "Preview",
                 icon: ImageRegular,
-                horizontalLocation: "left",
+                horizontalLocation: "right",
                 verticalLocation: "bottom",
                 teachingMoment: false,
                 content: () => <PreviewPane controller={preview} />,
@@ -174,16 +193,6 @@ export const NodeAssetsEditorServiceDefinition: ServiceDefinition<[], [IShellSer
                 component: () => <Button appearance="transparent" icon={TextExpandRegular} title="Reorganize (not implemented)" ariaLabel="Reorganize" onClick={() => undefined} />,
             }),
             shellService.addToolbarItem({
-                key: "Run",
-                horizontalLocation: "right",
-                verticalLocation: "top",
-                order: 0,
-                teachingMoment: false,
-                component: () => (
-                    <Button appearance="transparent" icon={PlayRegular} title="Build and preview" ariaLabel="Build and preview" onClick={() => void buildAndPreviewAsync()} />
-                ),
-            }),
-            shellService.addToolbarItem({
                 key: "Save",
                 horizontalLocation: "right",
                 verticalLocation: "top",
@@ -203,6 +212,7 @@ export const NodeAssetsEditorServiceDefinition: ServiceDefinition<[], [IShellSer
 
         return {
             dispose: () => {
+                buildScheduler.dispose();
                 controller.onExportRequested.remove(exportObserver);
                 for (const registration of registrations) {
                     registration.dispose();

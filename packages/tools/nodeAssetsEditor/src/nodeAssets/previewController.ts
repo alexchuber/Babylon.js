@@ -7,6 +7,7 @@
 import "loaders/glTF";
 
 import { RegisterSceneHelpers } from "core/Helpers/sceneHelpers.pure";
+import { type IReadonlyObservable, Observable } from "core/Misc/observable";
 
 import { Engine } from "core/Engines/engine";
 import { Scene } from "core/scene";
@@ -27,8 +28,26 @@ export class PreviewController {
     private _canvas: HTMLCanvasElement | null = null;
     private _resizeObserver: ResizeObserver | null = null;
     private _pendingData: Uint8Array | null = null;
+    private _isBuilding = false;
+    private _errorMessage: string | null = null;
+    private readonly _onStatusChanged = new Observable<void>();
     // Guards against an earlier, slower load overwriting a later one.
     private _loadGeneration = 0;
+
+    /** Fires whenever the build/loading/error status displayed by the preview pane changes. */
+    public get onStatusChanged(): IReadonlyObservable<void> {
+        return this._onStatusChanged;
+    }
+
+    /** Whether the editor is currently building and loading a preview result. */
+    public get isBuilding(): boolean {
+        return this._isBuilding;
+    }
+
+    /** The current non-fatal preview error, if any. */
+    public get errorMessage(): string | null {
+        return this._errorMessage;
+    }
 
     /**
      * Binds the controller to a canvas, creating the engine and starting the render loop. A no-op if
@@ -115,6 +134,26 @@ export class PreviewController {
         this._engine?.dispose();
         this._engine = null;
         this._canvas = null;
+    }
+
+    /** Discards any in-flight preview load before a newer build starts producing its result. */
+    public cancelPendingLoad(): void {
+        this._loadGeneration++;
+        this._pendingData = null;
+    }
+
+    /**
+     * Updates the preview pane status shown above the canvas.
+     * @param isBuilding - Whether a build/load is currently in progress.
+     * @param errorMessage - The error to show in the preview pane, or null to clear it.
+     */
+    public setStatus(isBuilding: boolean, errorMessage: string | null): void {
+        if (this._isBuilding === isBuilding && this._errorMessage === errorMessage) {
+            return;
+        }
+        this._isBuilding = isBuilding;
+        this._errorMessage = errorMessage;
+        this._onStatusChanged.notifyObservers();
     }
 
     private _createScene(engine: Engine): Scene {

@@ -153,8 +153,8 @@ test.describe("Node Assets Editor — Backend Wiring", () => {
         await expect(editor.nodeByTitle("Export glTF")).toBeVisible();
         await expect(editor.wires).toHaveCount(0);
 
-        // Toolbar: representative controls are present.
-        await expect(page.getByRole("button", { name: "Build and preview" })).toBeVisible();
+        // Toolbar: auto-build replaces the old manual run button.
+        await expect(page.getByRole("button", { name: "Build and preview" })).toBeHidden();
         await expect(page.getByRole("button", { name: "Save" })).toBeVisible();
         await expect(page.getByRole("button", { name: "Load" })).toBeVisible();
     });
@@ -181,7 +181,8 @@ test.describe("Node Assets Editor — Backend Wiring", () => {
         await editor.connectPorts(editor.portOfNode("Import glTF"), editor.portOfNode("Export glTF"));
         await expect(editor.wires).toHaveCount(1);
 
-        // 3) Export from the Export node; the graph builds and downloads a glb.
+        // 3) Auto-build previews the current graph, then export downloads those cached bytes.
+        await editor.waitForSuccessfulPreviewBuild();
         await editor.selectNode("Export glTF");
         const exportButton = page.getByRole("button", { name: "Export .glb" });
         await expect(exportButton).toBeVisible();
@@ -197,7 +198,7 @@ test.describe("Node Assets Editor — Backend Wiring", () => {
         expect(exported.length).toBeGreaterThan(0);
         expect(exported.subarray(0, 4).toString("ascii")).toBe("glTF");
 
-        // 4) The preview pane hosts the Babylon canvas that renders the exported asset.
+        // 4) The preview pane hosts the Babylon canvas that rendered the exported asset.
         await expect(editor.previewCanvas).toBeVisible();
 
         // Give the preview a moment to load and render the exported asset, then capture the result.
@@ -231,7 +232,8 @@ test.describe("Node Assets Editor — Backend Wiring", () => {
         await editor.connectPorts(editor.portOfNode("KTX2 Compress", "out"), editor.portOfNode("Export glTF"));
         await expect(editor.wires).toHaveCount(2);
 
-        // 4) Export; the graph builds, running the in-browser Basis encoder, and downloads the glb.
+        // 4) Auto-build runs the in-browser Basis encoder; export downloads the cached glb.
+        await editor.waitForSuccessfulPreviewBuild();
         await editor.selectNode("Export glTF");
         const exportButton = page.getByRole("button", { name: "Export .glb" });
         await expect(exportButton).toBeVisible();

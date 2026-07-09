@@ -34,6 +34,10 @@ export class NodeAssetsEditorPage {
     readonly wires: Locator;
     /** The preview pane's Babylon canvas. */
     readonly previewCanvas: Locator;
+    /** The preview pane's build spinner overlay. */
+    readonly previewBuildingOverlay: Locator;
+    /** The preview pane's non-fatal build error overlay. */
+    readonly previewErrorOverlay: Locator;
 
     constructor(page: Page, baseUrl?: string) {
         this.page = page;
@@ -44,6 +48,8 @@ export class NodeAssetsEditorPage {
         this.nodes = page.locator('[data-testid="graph-node"]');
         this.wires = page.locator('[data-testid="graph-wire"]');
         this.previewCanvas = page.locator('[data-testid="preview-canvas"]');
+        this.previewBuildingOverlay = page.locator('[data-testid="preview-building-overlay"]');
+        this.previewErrorOverlay = page.locator('[data-testid="preview-error-overlay"]');
     }
 
     /**
@@ -140,5 +146,19 @@ export class NodeAssetsEditorPage {
         await this.page.mouse.move((fromX + toX) / 2, (fromY + toY) / 2, { steps: 5 });
         await this.page.mouse.move(toX, toY, { steps: 5 });
         await this.page.mouse.up();
+    }
+
+    /** Wait for any observable auto-build spinner to clear and leave no in-pane build error. */
+    async waitForSuccessfulPreviewBuild(): Promise<void> {
+        await this.page.waitForTimeout(500);
+        const sawBuildOverlay = await this.previewBuildingOverlay
+            .waitFor({ state: "visible", timeout: 1_000 })
+            .then(() => true)
+            .catch(() => false);
+        if (sawBuildOverlay) {
+            await expect(this.previewBuildingOverlay).toBeHidden({ timeout: 60_000 });
+        }
+        await expect(this.previewErrorOverlay).toBeHidden({ timeout: 60_000 });
+        await this.page.waitForTimeout(1_000);
     }
 }
