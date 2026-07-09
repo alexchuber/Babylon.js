@@ -3,8 +3,23 @@ import { describe, expect, it, vi } from "vitest";
 // Import from the package barrel (not the individual block modules) on purpose: the barrel re-exports
 // every block, so this test observes the exact set the published package registers. The coverage below
 // therefore fails if any block is dropped from the barrel or stops self-registering.
-// eslint-disable-next-line import/no-internal-modules
-import { DracoCompressionBlock, ExportGLTFBlock, ImportGLTFBlock, KTX2CompressionBlock, NodeAsset } from "../../src/index";
+import {
+    CenterBlock,
+    DedupBlock,
+    DracoCompressionBlock,
+    ExportGLTFBlock,
+    FlattenBlock,
+    ImportGLTFBlock,
+    JoinBlock,
+    KTX2CompressionBlock,
+    NodeAsset,
+    NormalsBlock,
+    PruneBlock,
+    QuantizeBlock,
+    SimplifyBlock,
+    WeldBlock,
+    // eslint-disable-next-line import/no-internal-modules
+} from "../../src/index";
 import { CreateBlockByClassName, GetRegisteredBlockClassNames } from "../../src/blockFoundation/blockRegistry";
 
 // The import/export blocks register the Draco encoder/decoder, so the buildAsync roundtrip needs the
@@ -109,9 +124,23 @@ describe("block self-registration", () => {
 
         it("registers every built-in block", () => {
             expect(registeredClassNames).toEqual(
-                expect.arrayContaining([ImportGLTFBlock.ClassName, DracoCompressionBlock.ClassName, ExportGLTFBlock.ClassName, KTX2CompressionBlock.ClassName])
+                expect.arrayContaining([
+                    ImportGLTFBlock.ClassName,
+                    DracoCompressionBlock.ClassName,
+                    ExportGLTFBlock.ClassName,
+                    KTX2CompressionBlock.ClassName,
+                    WeldBlock.ClassName,
+                    DedupBlock.ClassName,
+                    PruneBlock.ClassName,
+                    QuantizeBlock.ClassName,
+                    SimplifyBlock.ClassName,
+                    FlattenBlock.ClassName,
+                    JoinBlock.ClassName,
+                    NormalsBlock.ClassName,
+                    CenterBlock.ClassName,
+                ])
             );
-            expect(registeredClassNames).toHaveLength(4);
+            expect(registeredClassNames).toHaveLength(13);
         });
 
         it.each(registeredClassNames)("round-trips %s through serialize/Parse", (className) => {
