@@ -30,6 +30,56 @@ async function createFixtureGlb(): Promise<Buffer> {
 }
 
 /**
+ * Builds an indexed grid glb large enough that the Draco encoder writes KHR_draco_mesh_compression.
+ * @returns The fixture glb bytes.
+ */
+async function createIndexedGridGlb(): Promise<Buffer> {
+    const { Document, WebIO } = await import("@gltf-transform/core");
+    const { ALL_EXTENSIONS } = await import("@gltf-transform/extensions");
+
+    const segments = 40;
+    const side = segments + 1;
+    const positions = new Float32Array(side * side * 3);
+    for (let i = 0; i < side; i++) {
+        for (let j = 0; j < side; j++) {
+            const index = (i * side + j) * 3;
+            positions[index] = i / segments - 0.5;
+            positions[index + 1] = j / segments - 0.5;
+            positions[index + 2] = 0.1 * Math.sin(i * 0.5) * Math.cos(j * 0.5);
+        }
+    }
+
+    const indices = new Uint32Array(segments * segments * 6);
+    let cursor = 0;
+    for (let i = 0; i < segments; i++) {
+        for (let j = 0; j < segments; j++) {
+            const a = i * side + j;
+            const b = a + 1;
+            const c = a + side + 1;
+            const d = a + side;
+            indices[cursor++] = a;
+            indices[cursor++] = b;
+            indices[cursor++] = c;
+            indices[cursor++] = a;
+            indices[cursor++] = c;
+            indices[cursor++] = d;
+        }
+    }
+
+    const document = new Document();
+    const buffer = document.createBuffer();
+    const position = document.createAccessor().setType("VEC3").setArray(positions).setBuffer(buffer);
+    const index = document.createAccessor().setType("SCALAR").setArray(indices).setBuffer(buffer);
+    const primitive = document.createPrimitive().setAttribute("POSITION", position).setIndices(index);
+    const mesh = document.createMesh("grid").addPrimitive(primitive);
+    const node = document.createNode("gridNode").setMesh(mesh);
+    document.createScene("scene0").addChild(node);
+
+    const io = new WebIO().registerExtensions(ALL_EXTENSIONS);
+    return Buffer.from(await io.writeBinary(document));
+}
+
+/**
  * Encodes a solid-color RGBA image as a minimal (uncompressed) PNG, avoiding any image-library
  * dependency in the test. The KTX2 encoder decodes these bytes via canvas in the browser.
  * @param width - Image width in pixels (a multiple of 4 so the KTX2 block compresses it).
@@ -131,7 +181,7 @@ async function createTexturedFixtureGlb(): Promise<Buffer> {
  * @param glb - The glb file bytes.
  * @returns The parsed glTF JSON.
  */
-function parseGlbJson(glb: Buffer): { extensionsUsed?: string[]; images?: { mimeType?: string }[] } {
+function parseGlbJson(glb: Buffer): { extensionsUsed?: string[]; extensionsRequired?: string[]; images?: { mimeType?: string }[] } {
     // glb layout: 12-byte header, then chunks of [length(4), type(4), data]. The first chunk is JSON.
     const jsonLength = glb.readUInt32LE(12);
     const jsonBytes = glb.subarray(20, 20 + jsonLength);
@@ -254,5 +304,47 @@ test.describe("Node Assets Editor — Backend Wiring", () => {
         await expect(editor.previewCanvas).toBeVisible();
         await page.waitForTimeout(1500);
         await testInfo.attach("ktx2-export-preview", { body: await page.screenshot(), contentType: "image/png" });
+    });
+
+    test("compresses geometry to Draco and exports a KHR_draco_mesh_compression glb", async ({ page }, testInfo) => {
+        const editor = new NodeAssetsEditorPage(page);
+        await editor.goto();
+
+        await editor.selectNode("Import glTF");
+        const importButton = page.getByRole("button", { name: /Import glTF file/ });
+        await expect(importButton).toBeVisible();
+
+        const fileChooserPromise = page.waitForEvent("filechooser");
+        await importButton.click();
+        const fileChooser = await fileChooserPromise;
+        await fileChooser.setFiles({ name: "grid.glb", mimeType: "model/gltf-binary", buffer: await createIndexedGridGlb() });
+        await expect(page.getByRole("textbox").nth(1)).toHaveValue(/Loaded \(\d+ bytes\)/);
+
+        await editor.dropPaletteItem("Draco Compression");
+        await expect(editor.nodeByTitle("Draco Compression")).toBeVisible();
+        await expect(editor.nodes).toHaveCount(3);
+
+        await editor.connectPorts(editor.portOfNode("Import glTF"), editor.portOfNode("Draco Compression", "in"));
+        await editor.connectPorts(editor.portOfNode("Draco Compression", "out"), editor.portOfNode("Export glTF"));
+        await expect(editor.wires).toHaveCount(2);
+
+        await editor.selectNode("Export glTF");
+        const exportButton = page.getByRole("button", { name: "Export .glb" });
+        await expect(exportButton).toBeVisible();
+
+        const downloadPromise = page.waitForEvent("download");
+        await exportButton.click();
+        const download = await downloadPromise;
+        expect(download.suggestedFilename()).toBe("asset.glb");
+
+        const exported = readFileSync(await download.path());
+        expect(exported.subarray(0, 4).toString("ascii")).toBe("glTF");
+        const gltf = parseGlbJson(exported);
+        expect(gltf.extensionsUsed ?? []).toContain("KHR_draco_mesh_compression");
+        expect(gltf.extensionsRequired ?? []).toContain("KHR_draco_mesh_compression");
+
+        await expect(editor.previewCanvas).toBeVisible();
+        await page.waitForTimeout(1500);
+        await testInfo.attach("draco-export-preview", { body: await page.screenshot(), contentType: "image/png" });
     });
 });

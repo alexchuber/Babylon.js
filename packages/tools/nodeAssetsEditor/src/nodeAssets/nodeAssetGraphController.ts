@@ -25,7 +25,7 @@ import { type IGraphNode, type IGraphPort, type IGraphSnapshot, type IGraphWire,
 import { type IPaletteCategory } from "../nodeGraph/paletteModel";
 import { type IPropertySection } from "../nodeGraph/propertyModel";
 
-import { BlockDescriptors, GetBlockDescriptorByPaletteItemId, GetBlockDescriptorForBlock, GltfPortColor, type IBlockDescriptor } from "./blockCatalog";
+import { BlockDescriptors, ConfigureBlockForEditor, GetBlockDescriptorByPaletteItemId, GetBlockDescriptorForBlock, GltfPortColor, type IBlockDescriptor } from "./blockCatalog";
 import { PromptForFileAsync } from "./browserFiles";
 
 /** The editor metadata layered on top of a serialized graph: per-block visual state keyed by block id. */
@@ -212,6 +212,7 @@ export class NodeAssetGraphController {
 
         const nodes: IGraphNode[] = [];
         for (const block of asset.attachedBlocks) {
+            ConfigureBlockForEditor(block);
             const descriptor = GetBlockDescriptorForBlock(block);
             if (!descriptor) {
                 continue;

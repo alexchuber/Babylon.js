@@ -16,6 +16,9 @@ import { type NodeAssetBlock } from "node-assets/blockFoundation/nodeAssetBlock"
 // the block lets the browser encode run without any external CDN dependency.
 import BasisEncoderJsUrl from "../../../../../node_modules/ktx2-encoder/dist/basis/basis_encoder.js?url";
 import BasisEncoderWasmUrl from "../../../../../node_modules/ktx2-encoder/dist/basis/basis_encoder.wasm?url";
+// The Draco encoder/decoder wasm sidecars, served same-origin so draco3dgltf does not fetch index.html.
+import DracoDecoderWasmUrl from "../../../../../node_modules/draco3dgltf/draco_decoder_gltf.wasm?url";
+import DracoEncoderWasmUrl from "../../../../../node_modules/draco3dgltf/draco_encoder.wasm?url";
 
 /** Data-driven dot color for glTF-typed ports (applied inline as visual data, not theme chrome). */
 export const GltfPortColor = "#d97b3f";
@@ -52,7 +55,7 @@ export const BlockDescriptors: readonly IBlockDescriptor[] = [
         label: "Import glTF",
         headerColor: ImportHeaderColor,
         className: ImportGLTFBlock.ClassName,
-        create: (nodeAsset) => new ImportGLTFBlock("Import glTF", nodeAsset),
+        create: (nodeAsset) => ConfigureBlockForEditor(new ImportGLTFBlock("Import glTF", nodeAsset)),
     },
     {
         paletteItemId: "draco-compression",
@@ -66,22 +69,33 @@ export const BlockDescriptors: readonly IBlockDescriptor[] = [
         label: "Export glTF",
         headerColor: ExportHeaderColor,
         className: ExportGLTFBlock.ClassName,
-        create: (nodeAsset) => new ExportGLTFBlock("Export glTF", nodeAsset),
+        create: (nodeAsset) => ConfigureBlockForEditor(new ExportGLTFBlock("Export glTF", nodeAsset)),
     },
     {
         paletteItemId: "ktx2-compression",
         label: "KTX2 Compress",
         headerColor: CompressionHeaderColor,
         className: KTX2CompressionBlock.ClassName,
-        create: (nodeAsset) => {
-            const block = new KTX2CompressionBlock("KTX2 Compress", nodeAsset);
-            // Point the browser encoder at the same-origin assets so it needs no external CDN.
-            block.jsUrl = BasisEncoderJsUrl;
-            block.wasmUrl = BasisEncoderWasmUrl;
-            return block;
-        },
+        create: (nodeAsset) => ConfigureBlockForEditor(new KTX2CompressionBlock("KTX2 Compress", nodeAsset)),
     },
 ];
+
+/**
+ * Injects browser-served runtime resources into blocks that need wasm sidecars.
+ * @param block - The block to configure.
+ * @returns The same block for construction pipelines.
+ */
+export function ConfigureBlockForEditor<T extends NodeAssetBlock>(block: T): T {
+    if (block instanceof ImportGLTFBlock) {
+        block.dracoDecoderWasmUrl = DracoDecoderWasmUrl;
+    } else if (block instanceof ExportGLTFBlock) {
+        block.dracoEncoderWasmUrl = DracoEncoderWasmUrl;
+    } else if (block instanceof KTX2CompressionBlock) {
+        block.jsUrl = BasisEncoderJsUrl;
+        block.wasmUrl = BasisEncoderWasmUrl;
+    }
+    return block;
+}
 
 /**
  * Looks up a descriptor by palette item id.
