@@ -69,8 +69,8 @@ export class NodeAsset {
         const connections: any[] = [];
         for (const block of this._attachedBlocks) {
             for (const output of block.outputs) {
-                const input = output.connectedPoint;
-                if (input) {
+                // An output can fan out to several inputs; emit one connection per fanned-out edge.
+                for (const input of output.connectedPoints) {
                     connections.push({
                         fromBlock: block.uniqueId,
                         fromPoint: output.name,
@@ -134,7 +134,10 @@ export class NodeAsset {
             throw new Error(`The "${this.name}" node asset has no ExportGLTFBlock to build.`);
         }
 
-        await this._evaluateBlockAsync(exportBlock);
+        // A per-build memo so each block is evaluated exactly once even when its output fans out to
+        // several consumers. Scoped to this call: a fresh build starts with a fresh memo.
+        const evaluated = new Map<NodeAssetBlock, Promise<void>>();
+        await this._evaluateBlockAsync(exportBlock, evaluated);
 
         if (!exportBlock.result) {
             throw new Error(`The "${this.name}" node asset produced no result.`);
@@ -143,11 +146,34 @@ export class NodeAsset {
     }
 
     /**
-     * Recursively evaluates a block: builds every connected input's upstream block first, then
-     * propagates the resolved values and builds this block.
+     * Evaluates a block at most once per build. If the block is already being (or has been)
+     * evaluated in this pass, the existing in-flight promise is returned instead of re-running it.
+     * The memo is populated before awaiting so two branches reaching a shared block concurrently
+     * dedupe onto the same evaluation.
      * @param block - The block to evaluate.
+     * @param evaluated - The per-build memo of block evaluations.
+     * @returns The block's single evaluation promise, shared across all of its consumers.
      */
-    private async _evaluateBlockAsync(block: NodeAssetBlock): Promise<void> {
+    private async _evaluateBlockAsync(block: NodeAssetBlock, evaluated: Map<NodeAssetBlock, Promise<void>>): Promise<void> {
+        const existing = evaluated.get(block);
+        if (existing) {
+            return await existing;
+        }
+        // Populate the memo synchronously (before the await below) so a sibling branch reaching this
+        // same block dedupes onto this promise instead of starting a second evaluation.
+        const promise = this._doEvaluateBlockAsync(block, evaluated);
+        evaluated.set(block, promise);
+        return await promise;
+    }
+
+    /**
+     * Recursively evaluates a block: builds every connected input's upstream block first (reusing
+     * the shared memo so shared upstreams build once), then propagates the resolved values and
+     * builds this block.
+     * @param block - The block to evaluate.
+     * @param evaluated - The per-build memo of block evaluations.
+     */
+    private async _doEvaluateBlockAsync(block: NodeAssetBlock, evaluated: Map<NodeAssetBlock, Promise<void>>): Promise<void> {
         const connections = block.inputs.map((input) => {
             const upstream = input.connectedPoint;
             if (!upstream) {
@@ -159,7 +185,7 @@ export class NodeAsset {
         // Build all upstream blocks first, then propagate their resolved values.
         await Promise.all(
             connections.map(async (connection) => {
-                await this._evaluateBlockAsync(connection.upstream.ownerBlock);
+                await this._evaluateBlockAsync(connection.upstream.ownerBlock, evaluated);
             })
         );
         for (const connection of connections) {

@@ -91,7 +91,7 @@ describe("NodeAsset", () => {
 
         expect(importer.output.isConnected).toBe(false);
         expect(exporter.input.isConnected).toBe(false);
-        expect(importer.output.connectedPoint).toBeNull();
+        expect(importer.output.connectedPoints).toHaveLength(0);
         expect(exporter.input.connectedPoint).toBeNull();
     });
 
@@ -133,7 +133,7 @@ describe("NodeAsset", () => {
         expect(parsedImporter.data).toEqual(glb);
 
         // The connection was restored, so the parsed graph builds without re-wiring.
-        expect(parsedImporter.output.connectedPoint).toBe(parsedExporter.input);
+        expect(parsedImporter.output.connectedPoints[0]).toBe(parsedExporter.input);
         const result = await parsed.buildAsync();
         expect(result).toBeInstanceOf(Uint8Array);
         expect(result.length).toBeGreaterThan(0);
@@ -161,8 +161,8 @@ describe("NodeAsset", () => {
         // Its wiring is restored on both sides (import -> draco -> export).
         const parsedImporter = parsed.attachedBlocks[0] as ImportGLTFBlock;
         const parsedExporter = parsed.attachedBlocks[2] as ExportGLTFBlock;
-        expect(parsedImporter.output.connectedPoint).toBe((parsedDraco as DracoCompressionBlock).input);
-        expect((parsedDraco as DracoCompressionBlock).output.connectedPoint).toBe(parsedExporter.input);
+        expect(parsedImporter.output.connectedPoints[0]).toBe((parsedDraco as DracoCompressionBlock).input);
+        expect((parsedDraco as DracoCompressionBlock).output.connectedPoints[0]).toBe(parsedExporter.input);
     });
 
     it("reconstructs KTX2 and Draco compression blocks through serialize/Parse and restores their wiring", () => {
@@ -186,9 +186,9 @@ describe("NodeAsset", () => {
         expect(parsedKtx2).toBeInstanceOf(KTX2CompressionBlock);
         expect(parsedDraco).toBeInstanceOf(DracoCompressionBlock);
 
-        expect(parsedImporter.output.connectedPoint).toBe(parsedKtx2.input);
-        expect(parsedKtx2.output.connectedPoint).toBe(parsedDraco.input);
-        expect(parsedDraco.output.connectedPoint).toBe(parsedExporter.input);
+        expect(parsedImporter.output.connectedPoints[0]).toBe(parsedKtx2.input);
+        expect(parsedKtx2.output.connectedPoints[0]).toBe(parsedDraco.input);
+        expect(parsedDraco.output.connectedPoints[0]).toBe(parsedExporter.input);
     });
 
     it("roundtrips compression options through serialize/Parse", () => {

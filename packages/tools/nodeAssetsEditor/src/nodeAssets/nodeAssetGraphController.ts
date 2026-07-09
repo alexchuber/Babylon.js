@@ -364,8 +364,8 @@ export class NodeAssetGraphController {
         const wires: IGraphWire[] = [];
         for (const block of asset.attachedBlocks) {
             for (const output of block.outputs) {
-                const input = output.connectedPoint;
-                if (input) {
+                // An output can fan out to several inputs; emit one wire per fanned-out edge.
+                for (const input of output.connectedPoints) {
                     wires.push({
                         id: `wire-${block.uniqueId}-${input.ownerBlock.uniqueId}-${input.name}`,
                         fromPortId: PortIdForPoint(block, output),

@@ -6,7 +6,8 @@ import { type NodeAssetConnectionPointType } from "./nodeAssetConnectionPointTyp
 
 /**
  * A single connection point on a {@link NodeAssetBlock}. Inputs consume a value; outputs
- * produce one. A connected input/output pair references each other symmetrically.
+ * produce one. An input references its single source output; an output references every input
+ * it feeds, so a single output can fan out to multiple inputs.
  */
 export class NodeAssetConnectionPoint {
     /** The display name of the connection point. */
@@ -21,8 +22,13 @@ export class NodeAssetConnectionPoint {
     /** The block that owns this connection point. */
     public readonly ownerBlock: NodeAssetBlock;
 
-    /** The connection point on the other side of the link, or null when unconnected. */
+    /**
+     * For an input, the single output feeding it (or null when unconnected). Outputs track the
+     * inputs they feed via {@link connectedPoints} instead and leave this null.
+     */
     public connectedPoint: Nullable<NodeAssetConnectionPoint> = null;
+
+    private readonly _connectedPoints: NodeAssetConnectionPoint[] = [];
 
     /** The runtime payload, resolved during {@link NodeAsset.buildAsync}. */
     public value: unknown = null;
@@ -41,14 +47,21 @@ export class NodeAssetConnectionPoint {
         this.direction = direction;
     }
 
+    /** For an output, the inputs it feeds (fan-out); empty for an input, which uses {@link connectedPoint}. */
+    public get connectedPoints(): ReadonlyArray<NodeAssetConnectionPoint> {
+        return this._connectedPoints;
+    }
+
     /** Whether this connection point is linked to another. */
     public get isConnected(): boolean {
-        return this.connectedPoint !== null;
+        return this.direction === NodeAssetConnectionPointDirection.Input ? this.connectedPoint !== null : this._connectedPoints.length > 0;
     }
 
     /**
      * Connects this point to another. May be called on either side; the connection is always
-     * normalized so the output feeds the input. Rejects same-direction pairs and incompatible types.
+     * normalized so the output feeds the input. An output may feed several inputs (fan-out); an
+     * input keeps a single source, so reconnecting one replaces its previous source. Rejects
+     * same-direction pairs and incompatible types.
      * @param other - The connection point to connect to.
      */
     public connectTo(other: NodeAssetConnectionPoint): void {
@@ -69,20 +82,45 @@ export class NodeAssetConnectionPoint {
             throw new Error(`Cannot connect "${this.name}" to "${other.name}"; incompatible connection point types.`);
         }
 
-        this.connectedPoint = other;
+        // Already the input's source: nothing to do (and avoid a duplicate fan-out edge).
+        if (other.connectedPoint === this) {
+            return;
+        }
+        // An input has a single source; drop its previous one before rewiring.
+        if (other.connectedPoint) {
+            other.connectedPoint._removeConnectedPoint(other);
+        }
+        this._connectedPoints.push(other);
         other.connectedPoint = this;
     }
 
     /**
-     * Breaks the link between this connection point and its connected point, if any. Clears both
-     * sides symmetrically. Safe to call on an unconnected point.
+     * Breaks this connection point's links. An input clears its single source and removes itself
+     * from that output's fan-out list; an output clears every input it feeds. Both sides are always
+     * left consistent. Safe to call on an unconnected point.
      */
     public disconnect(): void {
-        const other = this.connectedPoint;
-        if (!other) {
+        if (this.direction === NodeAssetConnectionPointDirection.Input) {
+            const source = this.connectedPoint;
+            if (!source) {
+                return;
+            }
+            this.connectedPoint = null;
+            source._removeConnectedPoint(this);
             return;
         }
-        this.connectedPoint = null;
-        other.connectedPoint = null;
+
+        // Output: clear every input it feeds, then forget them all.
+        for (const input of this._connectedPoints) {
+            input.connectedPoint = null;
+        }
+        this._connectedPoints.length = 0;
+    }
+
+    private _removeConnectedPoint(input: NodeAssetConnectionPoint): void {
+        const index = this._connectedPoints.indexOf(input);
+        if (index !== -1) {
+            this._connectedPoints.splice(index, 1);
+        }
     }
 }

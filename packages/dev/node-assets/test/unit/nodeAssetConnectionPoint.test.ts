@@ -43,6 +43,50 @@ describe("NodeAssetConnectionPoint", () => {
         expect(a.output.isConnected).toBe(true);
     });
 
+    it("fans one output out to multiple inputs; each input keeps its single source", () => {
+        const asset = new NodeAsset("test");
+        const source = new TestBlock("source", asset);
+        const first = new TestBlock("first", asset);
+        const second = new TestBlock("second", asset);
+
+        source.output.connectTo(first.input);
+        source.output.connectTo(second.input);
+
+        expect(source.output.isConnected).toBe(true);
+        expect(source.output.connectedPoints).toEqual([first.input, second.input]);
+        expect(first.input.connectedPoint).toBe(source.output);
+        expect(second.input.connectedPoint).toBe(source.output);
+    });
+
+    it("disconnecting a fanned-out output clears every input it fed", () => {
+        const asset = new NodeAsset("test");
+        const source = new TestBlock("source", asset);
+        const first = new TestBlock("first", asset);
+        const second = new TestBlock("second", asset);
+        source.output.connectTo(first.input);
+        source.output.connectTo(second.input);
+
+        source.output.disconnect();
+
+        expect(source.output.connectedPoints).toHaveLength(0);
+        expect(first.input.isConnected).toBe(false);
+        expect(second.input.isConnected).toBe(false);
+    });
+
+    it("reconnecting an input to a new output replaces its single source", () => {
+        const asset = new NodeAsset("test");
+        const first = new TestBlock("first", asset);
+        const second = new TestBlock("second", asset);
+        const consumer = new TestBlock("consumer", asset);
+
+        first.output.connectTo(consumer.input);
+        second.output.connectTo(consumer.input);
+
+        expect(consumer.input.connectedPoint).toBe(second.output);
+        expect(second.output.connectedPoints).toEqual([consumer.input]);
+        expect(first.output.connectedPoints).toHaveLength(0);
+    });
+
     it("rejects connecting two outputs (same direction)", () => {
         const asset = new NodeAsset("test");
         const a = new TestBlock("a", asset);

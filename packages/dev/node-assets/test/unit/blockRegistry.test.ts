@@ -98,8 +98,8 @@ describe("block self-registration", () => {
         const parsedKtx2 = parsed.attachedBlocks[1] as KTX2CompressionBlock;
         const parsedExporter = parsed.attachedBlocks[2] as ExportGLTFBlock;
         expect(parsedKtx2).toBeInstanceOf(KTX2CompressionBlock);
-        expect(parsedImporter.output.connectedPoint).toBe(parsedKtx2.input);
-        expect(parsedKtx2.output.connectedPoint).toBe(parsedExporter.input);
+        expect(parsedImporter.output.connectedPoints[0]).toBe(parsedKtx2.input);
+        expect(parsedKtx2.output.connectedPoints[0]).toBe(parsedExporter.input);
 
         // The reparsed graph still builds; inject the headless decoder the function-valued field
         // cannot carry through serialization, then confirm the rebuilt glb actually carries KTX2.
