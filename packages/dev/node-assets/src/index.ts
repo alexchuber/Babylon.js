@@ -33,3 +33,4 @@ export { ResizeImageBlock } from "./Blocks/resizeImageBlock";
 export { ConvertImageFormatBlock, type ImageFormat } from "./Blocks/convertImageFormatBlock";
 export { FlipImageBlock, type FlipAxis } from "./Blocks/flipImageBlock";
 export { ProcessImageAsync, type ImageCanvasOperation } from "./Blocks/imageCanvas";
+export { CompositeImageBlock } from "./Blocks/compositeImageBlock";
