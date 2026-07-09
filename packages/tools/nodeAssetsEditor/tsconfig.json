@@ -9,7 +9,9 @@
             "core/*": ["../../dev/core/src/*"],
             "loaders/*": ["../../dev/loaders/src/*"],
             "node-assets/*": ["../../dev/node-assets/src/*"],
-            "shared-ui-components/*": ["../../dev/sharedUiComponents/src/*"]
+            "shared-ui-components/*": ["../../dev/sharedUiComponents/src/*"],
+            "viewer/*": ["../../tools/viewer/src/*"],
+            "viewer": ["../../tools/viewer/src/index"]
         },
         "strict": true
     }

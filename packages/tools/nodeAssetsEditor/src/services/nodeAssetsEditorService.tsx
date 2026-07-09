@@ -126,7 +126,7 @@ export const NodeAssetsEditorServiceDefinition: ServiceDefinition<[], [IShellSer
                 key: "Preview",
                 title: "Preview",
                 icon: ImageRegular,
-                horizontalLocation: "left",
+                horizontalLocation: "right",
                 verticalLocation: "bottom",
                 teachingMoment: false,
                 content: () => <PreviewPane controller={preview} />,

@@ -8,7 +8,9 @@
             "core/*": ["../../dev/core/dist/*"],
             "loaders/*": ["../../dev/loaders/dist/*"],
             "node-assets/*": ["../../dev/node-assets/dist/*"],
-            "shared-ui-components/*": ["../../dev/sharedUiComponents/dist/*"]
+            "shared-ui-components/*": ["../../dev/sharedUiComponents/dist/*"],
+            "viewer/*": ["../../tools/viewer/dist/*"],
+            "viewer": ["../../tools/viewer/dist/tsbuild/index"]
         }
     },
 
@@ -24,6 +26,9 @@
         },
         {
             "path": "../../dev/sharedUiComponents/tsconfig.build.json"
+        },
+        {
+            "path": "../../tools/viewer/tsconfig.build.json"
         }
     ],
 

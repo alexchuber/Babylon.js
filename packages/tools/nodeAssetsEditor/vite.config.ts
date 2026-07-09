@@ -6,6 +6,7 @@ import { commonDevViteConfiguration } from "../../public/viteToolsHelper.mjs";
 
 const coreSrc = path.resolve("../../dev/core/src");
 const loadersSrc = path.resolve("../../dev/loaders/src");
+const viewerDist = path.resolve("../viewer/dist/tsbuild");
 
 /**
  * Lower Babylon's standard (TC39) decorators for the browser.
@@ -53,6 +54,7 @@ const base = commonDevViteConfiguration({
         loaders: loadersSrc,
         "node-assets": path.resolve("../../dev/node-assets/src"),
         "shared-ui-components": path.resolve("../../dev/sharedUiComponents/src"),
+        viewer: viewerDist,
         // The glTF loader source imports this types-only package for its const enums; alias it to the
         // canonical runtime stub (as devHost/playground do) so Vite can resolve it from source.
         "babylonjs-gltf2interface": path.resolve("../../public/glTF2Interface/babylonjs-gltf2interface.stub.ts"),
