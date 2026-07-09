@@ -12,8 +12,10 @@
 
 import { Observable } from "core/Misc/observable";
 
-import { ImportGLTFBlock } from "node-assets/Blocks/importGLTFBlock";
-import { ImportImageBlock } from "node-assets/Blocks/importImageBlock";
+import { type BuildPBRMaterial } from "node-assets/Blocks/buildPBRMaterial";
+import { type ImportGLTFBlock } from "node-assets/Blocks/importGLTFBlock";
+import { type ImportImageBlock } from "node-assets/Blocks/importImageBlock";
+import { type KTX2CompressionBlock } from "node-assets/Blocks/ktx2CompressionBlock";
 import { NodeAsset } from "node-assets/nodeAsset";
 import { type NodeAssetBlock } from "node-assets/blockFoundation/nodeAssetBlock";
 
@@ -46,12 +48,13 @@ interface INodeAssetEditorFile {
 }
 
 const LocalCdnPort = "1337";
-// The compose-up showcase assets, served alongside the editor's other samples (see BoomBox) by the CDN.
-const DefaultBareGlbPath = "scenes/nodeAssets/bareCube.glb";
-const DefaultBaseColorImagePath = "scenes/nodeAssets/baseColor.png";
+// The "energy orb" showcase assets, served alongside the editor's other samples (see BoomBox) by the CDN.
+const DefaultOrbGlbPath = "scenes/nodeAssets/orb.glb";
+const DefaultOrbMetalImagePath = "scenes/nodeAssets/orbMetal.png";
+const DefaultOrbPatternImagePath = "scenes/nodeAssets/orbPattern.png";
 
 /**
- * Resolves a bundled sample asset path (e.g. `scenes/nodeAssets/bareCube.glb`) to an absolute URL on
+ * Resolves a bundled sample asset path (e.g. `scenes/nodeAssets/orb.glb`) to an absolute URL on
  * the local CDN, mirroring how the editor served the default BoomBox: from a `localhost` dev origin the
  * assets live on the CDN port, otherwise they resolve against the current origin.
  * @param assetPath - The CDN-relative asset path.
@@ -92,10 +95,17 @@ export class NodeAssetGraphController {
     private readonly _buildClient: INodeAssetBuildClient;
     private _buildRelevantSignature: string;
     private readonly _onChangedObserver;
+    private readonly _orbMetalImageBlock: ImportImageBlock;
+    private readonly _orbPatternImageBlock: ImportImageBlock;
+    private readonly _orbGltfBlock: ImportGLTFBlock;
 
     /**
-     * Creates a controller seeded with the compose-up showcase graph: ImportGLTF (bare mesh) and
-     * ImportImage feed a BuildPBRMaterial (the image is its base colour), which flows to ExportGLTF.
+     * Creates a controller seeded with the "energy orb" showcase graph. Two ImportImage blocks (a dark
+     * metal base and a cyan circuit pattern) feed a CompositeImage whose result becomes the base colour,
+     * while the same pattern fans out to the emissive input so one asset drives both the surface markings
+     * and their glow. An ImportGLTF (a UV sphere) supplies the geometry to BuildPBRMaterial, which
+     * produces a metallic, self-lit orb that flows through KTX2 and Draco compression (grouped in a
+     * "Compression" frame) to ExportGLTF.
      * @param buildClient - Worker-backed build client.
      */
     public constructor(buildClient: INodeAssetBuildClient = new NodeAssetBuildWorkerClient()) {
@@ -103,23 +113,58 @@ export class NodeAssetGraphController {
         this._buildClient = buildClient;
         this._reconciler = new NodeAssetReconciler(this._nodeAsset);
 
-        const importGltfDescriptor = GetBlockDescriptorByPaletteItemId("import-gltf")!;
         const importImageDescriptor = GetBlockDescriptorByPaletteItemId("import-image")!;
+        const importGltfDescriptor = GetBlockDescriptorByPaletteItemId("import-gltf")!;
+        const compositeDescriptor = GetBlockDescriptorByPaletteItemId("composite-image")!;
         const buildDescriptor = GetBlockDescriptorByPaletteItemId("build-pbr-material")!;
+        const ktx2Descriptor = GetBlockDescriptorByPaletteItemId("ktx2-compression")!;
+        const dracoDescriptor = GetBlockDescriptorByPaletteItemId("draco-compression")!;
         const exportDescriptor = GetBlockDescriptorByPaletteItemId("export-gltf")!;
-        const importGltfNode = this._instantiateBlock(importGltfDescriptor, { x: 120, y: 120 });
-        const importImageNode = this._instantiateBlock(importImageDescriptor, { x: 120, y: 340 });
-        const buildNode = this._instantiateBlock(buildDescriptor, { x: 480, y: 230 });
-        const exportNode = this._instantiateBlock(exportDescriptor, { x: 840, y: 230 });
+
+        const metalNode = this._instantiateBlock(importImageDescriptor, { x: 80, y: 80 });
+        const patternNode = this._instantiateBlock(importImageDescriptor, { x: 80, y: 300 });
+        const gltfNode = this._instantiateBlock(importGltfDescriptor, { x: 80, y: 520 });
+        const compositeNode = this._instantiateBlock(compositeDescriptor, { x: 380, y: 140 });
+        const buildNode = this._instantiateBlock(buildDescriptor, { x: 680, y: 320 });
+        const ktx2Node = this._instantiateBlock(ktx2Descriptor, { x: 980, y: 320 });
+        const dracoNode = this._instantiateBlock(dracoDescriptor, { x: 1220, y: 320 });
+        const exportNode = this._instantiateBlock(exportDescriptor, { x: 1460, y: 320 });
+
+        this._orbMetalImageBlock = this._reconciler.getBlock(metalNode.id)! as ImportImageBlock;
+        this._orbPatternImageBlock = this._reconciler.getBlock(patternNode.id)! as ImportImageBlock;
+        this._orbGltfBlock = this._reconciler.getBlock(gltfNode.id)! as ImportGLTFBlock;
+
+        // A glossy, self-lit metal orb: near-metallic with a cyan emissive tint so the pattern glows.
+        const buildBlock = this._reconciler.getBlock(buildNode.id)! as BuildPBRMaterial;
+        buildBlock.metallicFactor = 0.9;
+        buildBlock.roughnessFactor = 0.35;
+        buildBlock.emissiveFactor = [0.05, 0.85, 1];
+        // Mipmaps keep the fine circuit lines crisp as the orb recedes.
+        (this._reconciler.getBlock(ktx2Node.id)! as KTX2CompressionBlock).generateMipmaps = true;
 
         const snapshot: IGraphSnapshot = {
-            nodes: [importGltfNode, importImageNode, buildNode, exportNode],
+            nodes: [metalNode, patternNode, gltfNode, compositeNode, buildNode, ktx2Node, dracoNode, exportNode],
             wires: [
-                this._createWireToInput(importGltfNode, buildNode, "scene"),
-                this._createWireToInput(importImageNode, buildNode, "baseColor"),
-                this._createWire(buildNode, exportNode),
+                this._createWireToInput(metalNode, compositeNode, "base"),
+                this._createWireToInput(patternNode, compositeNode, "overlay"),
+                this._createWireToInput(compositeNode, buildNode, "baseColor"),
+                this._createWireToInput(patternNode, buildNode, "emissive"),
+                this._createWireToInput(gltfNode, buildNode, "scene"),
+                this._createWire(buildNode, ktx2Node),
+                this._createWire(ktx2Node, dracoNode),
+                this._createWire(dracoNode, exportNode),
             ],
-            frames: [],
+            frames: [
+                {
+                    id: "frame-compression",
+                    label: "Compression",
+                    color: "#8a5cf6",
+                    position: { x: 940, y: 220 },
+                    size: { width: 500, height: 260 },
+                    nodeIds: [ktx2Node.id, dracoNode.id],
+                    collapsed: false,
+                },
+            ],
         };
         this.state = new GraphEditorState(snapshot);
 
@@ -132,18 +177,25 @@ export class NodeAssetGraphController {
     }
 
     /**
-     * Loads the bundled compose-up sample assets into the seeded import blocks: the bare `.glb` into the
-     * ImportGLTF block and the base-colour image into the ImportImage block, so the graph builds a
-     * textured asset on open.
-     * @returns A promise that resolves after both assets are loaded.
+     * Loads the bundled "energy orb" sample assets into the seeded import blocks: the UV-sphere `.glb`
+     * into the ImportGLTF block and the metal and cyan-pattern images into their ImportImage blocks, so
+     * the graph builds the textured, self-lit orb on open.
+     * @returns A promise that resolves after all assets are loaded.
      */
     public async loadDefaultImportAsync(): Promise<void> {
-        const gltfBlock = this._getImportBlock();
-        gltfBlock.data = await this._fetchAssetBytesAsync(ResolveCdnAssetUrl(DefaultBareGlbPath));
+        const [orbGlb, orbMetal, orbPattern] = await Promise.all([
+            this._fetchAssetBytesAsync(ResolveCdnAssetUrl(DefaultOrbGlbPath)),
+            this._fetchAssetBytesAsync(ResolveCdnAssetUrl(DefaultOrbMetalImagePath)),
+            this._fetchAssetBytesAsync(ResolveCdnAssetUrl(DefaultOrbPatternImagePath)),
+        ]);
 
-        const imageBlock = this._getImportImageBlock();
-        imageBlock.data = await this._fetchAssetBytesAsync(ResolveCdnAssetUrl(DefaultBaseColorImagePath));
-        imageBlock.mimeType = "image/png";
+        this._orbGltfBlock.data = orbGlb;
+
+        this._orbMetalImageBlock.data = orbMetal;
+        this._orbMetalImageBlock.mimeType = "image/png";
+
+        this._orbPatternImageBlock.data = orbPattern;
+        this._orbPatternImageBlock.mimeType = "image/png";
 
         this.state.notifyChanged();
     }
@@ -329,22 +381,6 @@ export class NodeAssetGraphController {
         const node = BlockToNode(block, descriptor, position, title, collapsed);
         this._reconciler.registerNode(block, node);
         return node;
-    }
-
-    private _getImportBlock(): ImportGLTFBlock {
-        const importBlock = this._nodeAsset.attachedBlocks.find((block): block is ImportGLTFBlock => block instanceof ImportGLTFBlock);
-        if (!importBlock) {
-            throw new Error(`The "${this._nodeAsset.name}" node asset has no ImportGLTFBlock for the default asset.`);
-        }
-        return importBlock;
-    }
-
-    private _getImportImageBlock(): ImportImageBlock {
-        const importImageBlock = this._nodeAsset.attachedBlocks.find((block): block is ImportImageBlock => block instanceof ImportImageBlock);
-        if (!importImageBlock) {
-            throw new Error(`The "${this._nodeAsset.name}" node asset has no ImportImageBlock for the default base-colour image.`);
-        }
-        return importImageBlock;
     }
 
     private async _fetchAssetBytesAsync(url: string): Promise<Uint8Array> {

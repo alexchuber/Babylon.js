@@ -67,6 +67,7 @@ export const GraphFrameView: FunctionComponent<{ frame: IGraphFrame }> = (props)
             className={classes.frame}
             style={{ left: frame.position.x, top: frame.position.y, width: frame.size.width, height: frame.size.height, borderColor: frame.color }}
             onPointerDown={onPointerDown}
+            data-testid="graph-frame"
         >
             <div className={classes.fill} style={{ backgroundColor: frame.color }} />
             <div className={classes.header} style={{ backgroundColor: frame.color }}>

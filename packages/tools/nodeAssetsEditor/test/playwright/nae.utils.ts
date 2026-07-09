@@ -70,8 +70,8 @@ export class NodeAssetsEditorPage {
 
     /**
      * Locate a node by its title text, e.g. "Import glTF". When the graph holds several nodes of the
-     * same title (e.g. the compose-up seed already has an "Import Image" and the test drops another),
-     * pass `occurrence` to narrow to a single one: an index, or "last" for the most recently added node.
+     * same title (e.g. the energy-orb seed already has two "Import Image" nodes), pass `occurrence` to
+     * narrow to a single one: an index, or "last" for the most recently added node.
      * @param title - The node's visible title.
      * @param occurrence - Optional disambiguator when several nodes share the title.
      * @returns The node locator.
