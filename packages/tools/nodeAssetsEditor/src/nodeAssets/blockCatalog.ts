@@ -38,6 +38,10 @@ export const ImagePortColor = "#38b2c4";
 export const ImageCategory = "Image";
 export const ImageHeaderColor = "#a0568f";
 
+/** Palette category and shared node header color for the selector/property-access block family. */
+export const SelectorsCategory = "Selectors";
+export const SelectorsHeaderColor = "#b0506a";
+
 /**
  * Describes one palette entry: its id and label, its node header color, the backend class it maps to,
  * and how to construct that block.

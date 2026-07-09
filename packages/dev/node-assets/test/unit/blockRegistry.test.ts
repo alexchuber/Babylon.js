@@ -10,6 +10,7 @@ import {
     ExportGLTFBlock,
     ExportImageBlock,
     FlattenBlock,
+    GetProperty,
     ImportGLTFBlock,
     ImportUSDBlock,
     ImportImageBlock,
@@ -22,6 +23,8 @@ import {
     NumberLiteral,
     PruneBlock,
     QuantizeBlock,
+    Selector,
+    SetProperty,
     SimplifyBlock,
     StringLiteral,
     WeldBlock,
@@ -152,9 +155,12 @@ describe("block self-registration", () => {
                     MergeScenes.ClassName,
                     ImportImageBlock.ClassName,
                     ExportImageBlock.ClassName,
+                    Selector.ClassName,
+                    GetProperty.ClassName,
+                    SetProperty.ClassName,
                 ])
             );
-            expect(registeredClassNames).toHaveLength(20);
+            expect(registeredClassNames).toHaveLength(23);
         });
 
         it.each(registeredClassNames)("round-trips %s through serialize/Parse", (className) => {

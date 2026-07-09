@@ -1,6 +1,7 @@
 import { CreateBlockByClassName } from "./blockFoundation/blockRegistry";
 import { IsExportBlock } from "./blockFoundation/exportBlock";
 import { type NodeAssetBlock } from "./blockFoundation/nodeAssetBlock";
+import { type NodeAssetConnectionPoint } from "./connection/nodeAssetConnectionPoint";
 import { CloneForFanOutAsync } from "./evaluation/fanOutCopy";
 import { UniqueIdGenerator } from "./utils/uniqueIdGenerator";
 
@@ -176,13 +177,19 @@ export class NodeAsset {
      * @param evaluated - The per-build memo of block evaluations.
      */
     private async _doEvaluateBlockAsync(block: NodeAssetBlock, evaluated: Map<NodeAssetBlock, Promise<void>>): Promise<void> {
-        const connections = block.inputs.map((input) => {
+        const connections: Array<{ input: NodeAssetConnectionPoint; upstream: NodeAssetConnectionPoint }> = [];
+        for (const input of block.inputs) {
             const upstream = input.connectedPoint;
-            if (!upstream) {
+            if (upstream) {
+                connections.push({ input, upstream });
+                continue;
+            }
+            // An unconnected optional input is a valid "no value" (the block falls back to a default);
+            // an unconnected required input is a wiring error.
+            if (!input.isOptional) {
                 throw new Error(`The "${input.name}" input of the "${block.name}" block is not connected.`);
             }
-            return { input, upstream };
-        });
+        }
 
         // Build all upstream blocks first, then propagate their resolved values.
         await Promise.all(

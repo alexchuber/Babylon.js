@@ -25,3 +25,6 @@ export { ImportImageBlock } from "./Blocks/importImageBlock";
 export { ExportImageBlock } from "./Blocks/exportImageBlock";
 export { type ImagePayload } from "./Blocks/imagePayload";
 export { type IExportBlock, IsExportBlock } from "./blockFoundation/exportBlock";
+export { Selector } from "./Blocks/selector";
+export { GetProperty } from "./Blocks/getProperty";
+export { SetProperty } from "./Blocks/setProperty";

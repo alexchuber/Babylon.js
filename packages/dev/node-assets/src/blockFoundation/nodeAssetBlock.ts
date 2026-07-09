@@ -54,10 +54,11 @@ export abstract class NodeAssetBlock {
      * Registers a new input connection point on this block.
      * @param name - The display name of the input.
      * @param type - The value type carried by the input.
+     * @param isOptional - Whether the input may be left unconnected at build time. Defaults to false.
      * @returns The created connection point.
      */
-    protected _registerInput(name: string, type: NodeAssetConnectionPointType): NodeAssetConnectionPoint {
-        const point = new NodeAssetConnectionPoint(name, this, type, NodeAssetConnectionPointDirection.Input);
+    protected _registerInput(name: string, type: NodeAssetConnectionPointType, isOptional = false): NodeAssetConnectionPoint {
+        const point = new NodeAssetConnectionPoint(name, this, type, NodeAssetConnectionPointDirection.Input, isOptional);
         this._inputs.push(point);
         return point;
     }

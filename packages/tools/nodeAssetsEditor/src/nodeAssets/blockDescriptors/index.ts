@@ -24,3 +24,6 @@ import "./jsonLiteralDescriptor";
 import "./mergeScenesDescriptor";
 import "./importImageBlockDescriptor";
 import "./exportImageBlockDescriptor";
+import "./selectorDescriptor";
+import "./getPropertyDescriptor";
+import "./setPropertyDescriptor";
