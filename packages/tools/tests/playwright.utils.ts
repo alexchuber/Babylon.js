@@ -81,7 +81,7 @@ export function getBabylonServerTestsList() {
         },
         {
             name: "nodeAssetsEditor",
-            testMatch: "**/nodeAssetsEditor.test.ts",
+            testMatch: "**/{nodeAssetsEditor,imagePreview}.test.ts",
             // Pinned to Chromium (instead of the CI-default Firefox) because the KTX2/Basis texture
             // encode is single-threaded WASM that Firefox runs ~10x slower (~400s vs ~31s), overrunning
             // this suite's build budget. Firefox is a documented known limitation for the KTX2 build

@@ -3,6 +3,9 @@ import { getGlobalConfig } from "@tools/test-tools";
 
 import { PaletteDragFormat } from "../../src/nodeGraph/paletteModel";
 
+/** Narrows a title lookup to a single node when several share the title: an index, or "last" for the most recently added. */
+type NodeOccurrence = number | "last";
+
 /**
  * Build the base URL for the Node Assets Editor dev server.
  * Defaults to the CDN base URL with the port swapped to the editor's dev port (1348),
@@ -65,20 +68,28 @@ export class NodeAssetsEditorPage {
     }
 
     /**
-     * Locate a node by its (unique) title text, e.g. "Import glTF".
+     * Locate a node by its title text, e.g. "Import glTF". When the graph holds several nodes of the
+     * same title (e.g. the compose-up seed already has an "Import Image" and the test drops another),
+     * pass `occurrence` to narrow to a single one: an index, or "last" for the most recently added node.
      * @param title - The node's visible title.
+     * @param occurrence - Optional disambiguator when several nodes share the title.
      * @returns The node locator.
      */
-    nodeByTitle(title: string): Locator {
-        return this.nodes.filter({ hasText: title });
+    nodeByTitle(title: string, occurrence?: NodeOccurrence): Locator {
+        const matches = this.nodes.filter({ hasText: title });
+        if (occurrence === undefined) {
+            return matches;
+        }
+        return occurrence === "last" ? matches.last() : matches.nth(occurrence);
     }
 
     /**
      * Select a node by clicking its header title, which reveals its properties in the right pane.
      * @param title - The node's visible title.
+     * @param occurrence - Optional disambiguator when several nodes share the title (see {@link nodeByTitle}).
      */
-    async selectNode(title: string): Promise<void> {
-        await this.nodeByTitle(title).getByText(title, { exact: true }).click();
+    async selectNode(title: string, occurrence?: NodeOccurrence): Promise<void> {
+        await this.nodeByTitle(title, occurrence).getByText(title, { exact: true }).click();
     }
 
     /**
@@ -87,11 +98,12 @@ export class NodeAssetsEditorPage {
      * an input and an output (e.g. KTX2 Compress) need it to pick the right side.
      * @param title - The node's visible title.
      * @param direction - Optional port direction to filter to ("in" or "out").
+     * @param occurrence - Optional disambiguator when several nodes share the title (see {@link nodeByTitle}).
      * @returns The port locator.
      */
-    portOfNode(title: string, direction?: "in" | "out"): Locator {
+    portOfNode(title: string, direction?: "in" | "out", occurrence?: NodeOccurrence): Locator {
         const selector = direction ? `[data-port-id*="-${direction}-"]` : "[data-port-id]";
-        return this.nodeByTitle(title).locator(selector);
+        return this.nodeByTitle(title, occurrence).locator(selector);
     }
 
     /**

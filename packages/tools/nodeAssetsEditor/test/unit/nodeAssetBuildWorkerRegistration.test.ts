@@ -1,0 +1,98 @@
+import { describe, expect, it } from "vitest";
+
+// Importing the worker core evaluates its block-registration side effect in THIS test realm. Nothing
+// else here registers blocks: we deliberately read the registry through the node-assets submodules and
+// never import the node-assets package barrel or the editor's blockDescriptors (either would register
+// every block via another path and mask a worker that under-registers). Vitest isolates the module
+// registry per test file, so the registry below reflects exactly what the preview build worker can
+// deserialize.
+import "../../src/nodeAssets/nodeAssetBuildWorkerCore";
+import { CreateBlockByClassName, GetRegisteredBlockClassNames } from "node-assets/blockFoundation/blockRegistry";
+import { NodeAsset } from "node-assets/nodeAsset";
+
+// The 30 built-in block ClassNames, hardcoded (not derived from the package barrel) so this test fails
+// if the worker realm ever registers a different set than the package publishes. Keep in sync with
+// packages/dev/node-assets/test/unit/blockRegistry.test.ts.
+const ExpectedBlockClassNames = [
+    "ImportGLTFBlock",
+    "ImportUSDBlock",
+    "DracoCompressionBlock",
+    "ExportGLTFBlock",
+    "KTX2CompressionBlock",
+    "WeldBlock",
+    "DedupBlock",
+    "PruneBlock",
+    "QuantizeBlock",
+    "SimplifyBlock",
+    "FlattenBlock",
+    "JoinBlock",
+    "NormalsBlock",
+    "CenterBlock",
+    "NumberLiteral",
+    "StringLiteral",
+    "JsonLiteral",
+    "MergeScenes",
+    "ImportImageBlock",
+    "ExportImageBlock",
+    "Selector",
+    "GetProperty",
+    "SetProperty",
+    "SetTexture",
+    "BuildPBRMaterial",
+    "ResizeImageBlock",
+    "ConvertImageFormatBlock",
+    "FlipImageBlock",
+    "ExtractTexture",
+    "CompositeImageBlock",
+] as const;
+
+// The compose-up showcase graph the editor seeds on open: an imported mesh and an imported image fan
+// into a PBR material builder, which exports a recomposed glTF. This is a hand-authored copy of what
+// `NodeAsset.serialize()` produces, so `NodeAsset.Parse` is the only consumer of the block registry and
+// the assertion pins the exact graph that regressed in the browser.
+const ComposeUpSeedClassNames = ["ImportGLTFBlock", "ImportImageBlock", "BuildPBRMaterial", "ExportGLTFBlock"] as const;
+const ComposeUpSerializedGraph = {
+    name: "compose-up",
+    blocks: [
+        { customType: "ImportGLTFBlock", id: 1, name: "Import glTF" },
+        { customType: "ImportImageBlock", id: 2, name: "Import Image" },
+        { customType: "BuildPBRMaterial", id: 3, name: "Build PBR Material" },
+        { customType: "ExportGLTFBlock", id: 4, name: "Export glTF" },
+    ],
+    connections: [
+        { fromBlock: 1, fromPoint: "output", toBlock: 3, toPoint: "scene" },
+        { fromBlock: 2, fromPoint: "output", toBlock: 3, toPoint: "baseColor" },
+        { fromBlock: 3, fromPoint: "output", toBlock: 4, toPoint: "input" },
+    ],
+};
+
+describe("preview build worker block registration", () => {
+    // Regression for the worker block-registration drift: the worker core used to side-effect import only
+    // a hand-picked subset of block modules, so blocks that were registered on the main thread (via the
+    // UI descriptors) stayed unregistered in the worker realm. Deserializing the seed graph then threw
+    // `Cannot deserialize unknown block type "ImportImageBlock"` in the worker and surfaced as a preview
+    // build error. Importing the package barrel registers every block, so the worker can never drift
+    // behind the blocks a saved graph might contain.
+    it("deserializes the compose-up seed graph the preview worker builds", () => {
+        const parsed = NodeAsset.Parse(ComposeUpSerializedGraph);
+        expect(parsed.attachedBlocks.map((block) => block.getClassName())).toEqual([...ComposeUpSeedClassNames]);
+    });
+
+    it("registers every built-in block in the worker realm", () => {
+        const registered = GetRegisteredBlockClassNames();
+        expect(registered).toEqual(expect.arrayContaining([...ExpectedBlockClassNames]));
+        expect(registered).toHaveLength(ExpectedBlockClassNames.length);
+    });
+
+    it.each(ExpectedBlockClassNames)("round-trips %s through NodeAsset.Parse in the worker realm", (className) => {
+        const asset = new NodeAsset("worker-realm-coverage");
+        const created = CreateBlockByClassName(className, className, asset);
+        expect(created.getClassName()).toBe(className);
+
+        const serialized = JSON.parse(JSON.stringify(asset.serialize()));
+        const parsed = NodeAsset.Parse(serialized);
+
+        expect(parsed.attachedBlocks).toHaveLength(1);
+        expect(parsed.attachedBlocks[0].getClassName()).toBe(className);
+    });
+});

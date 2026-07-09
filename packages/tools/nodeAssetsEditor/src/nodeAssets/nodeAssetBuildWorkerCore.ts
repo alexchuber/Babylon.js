@@ -1,11 +1,11 @@
 import { NodeAsset } from "node-assets/nodeAsset";
-// Evaluate each block module so it self-registers its factory with NodeAsset.Parse (see
+// Evaluate every block module so each self-registers its factory with NodeAsset.Parse (see
 // node-assets/nodeAsset). The worker runs off the main thread and does not import the app UI's block
-// descriptor modules, so without these imports blocks like Draco stay unregistered and Parse throws.
-import "node-assets/Blocks/importGLTFBlock";
-import "node-assets/Blocks/dracoCompressionBlock";
-import "node-assets/Blocks/exportGLTFBlock";
-import "node-assets/Blocks/ktx2CompressionBlock";
+// descriptor modules, so it relies on this single package-barrel side-effect import to register ALL
+// blocks. Importing the barrel (instead of a hand-maintained subset) keeps the worker from silently
+// drifting behind newly-added blocks: any block reachable from a saved graph would otherwise make
+// NodeAsset.Parse throw `Cannot deserialize unknown block type "..."`.
+import "node-assets";
 
 import { ConfigureNodeAssetBuildResources, type INodeAssetBuildResourceUrls } from "./nodeAssetBuildResources";
 

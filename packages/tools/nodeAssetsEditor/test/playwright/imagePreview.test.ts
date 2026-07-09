@@ -35,14 +35,16 @@ test.describe("Node Assets Editor — image preview", () => {
         await page.keyboard.press("Delete");
         await expect(editor.nodeByTitle("Export glTF")).toBeHidden();
 
-        // Build a minimal IMAGE pipeline: Import Image -> Export Image.
+        // Build a minimal IMAGE pipeline: Import Image -> Export Image. The compose-up seed already
+        // contains one "Import Image" node, so target the one just dropped ("last") for the wiring and
+        // file load below.
         await editor.dropPaletteItem("Import Image");
         await editor.dropPaletteItem("Export Image");
-        await editor.connectPorts(editor.portOfNode("Import Image", "out"), editor.portOfNode("Export Image", "in"));
+        await editor.connectPorts(editor.portOfNode("Import Image", "out", "last"), editor.portOfNode("Export Image", "in"));
 
         // Load the source image through the block's file picker; this is the change that yields the
         // first successful IMAGE build.
-        await editor.selectNode("Import Image");
+        await editor.selectNode("Import Image", "last");
         const fileChooserPromise = page.waitForEvent("filechooser");
         await page.getByRole("button", { name: /Import image file/ }).click();
         const fileChooser = await fileChooserPromise;
