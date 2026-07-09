@@ -11,7 +11,7 @@ RegisterBlockDescriptor({
     category: ImageCategory,
     className: ConvertImageFormatBlock.ClassName,
     create: (nodeAsset) => new ConvertImageFormatBlock("Convert Image Format", nodeAsset),
-    getPropertySection: (block, refresh) => {
+    getPropertySection: (block, { refresh }) => {
         const convert = block as ConvertImageFormatBlock;
         return {
             title: "CONVERT IMAGE FORMAT",

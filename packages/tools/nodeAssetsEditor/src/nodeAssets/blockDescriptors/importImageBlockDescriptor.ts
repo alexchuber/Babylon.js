@@ -27,7 +27,7 @@ RegisterBlockDescriptor({
     category: ImageCategory,
     className: ImportImageBlock.ClassName,
     create: (nodeAsset) => ConfigureBlockForEditor(new ImportImageBlock("Import Image", nodeAsset)),
-    getPropertySection: (block, refresh) => {
+    getPropertySection: (block, { refresh }) => {
         const importBlock = block as ImportImageBlock;
         const status = importBlock.data ? `Loaded (${importBlock.data.length} bytes, ${importBlock.mimeType})` : "No image loaded";
         return {

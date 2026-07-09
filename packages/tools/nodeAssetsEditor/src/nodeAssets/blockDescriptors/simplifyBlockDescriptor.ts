@@ -9,7 +9,7 @@ RegisterBlockDescriptor({
     category: OperatorCategory,
     className: SimplifyBlock.ClassName,
     create: (nodeAsset) => new SimplifyBlock("Simplify", nodeAsset),
-    getPropertySection: (block, refresh) => {
+    getPropertySection: (block, { refresh }) => {
         const simplify = block as SimplifyBlock;
         return {
             title: "SIMPLIFY",

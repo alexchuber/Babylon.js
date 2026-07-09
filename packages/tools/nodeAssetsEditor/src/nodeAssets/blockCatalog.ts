@@ -11,6 +11,18 @@ import { type NodeAssetBlock } from "node-assets/blockFoundation/nodeAssetBlock"
 
 import { type IPropertySection } from "../nodeGraph/propertyModel";
 
+/**
+ * The editor capabilities a block's property section can use. Passed to {@link IBlockDescriptor.getPropertySection}
+ * so every block — including the import/export/compression blocks that once had bespoke handling —
+ * builds its section through one seam.
+ */
+export interface IPropertySectionContext {
+    /** Re-renders the property pane after an edit (and marks the graph changed). */
+    readonly refresh: () => void;
+    /** Requests that the editor export the current graph (used by the export block's action). */
+    readonly requestExport: () => void;
+}
+
 /** Data-driven dot color for scene-typed ports (applied inline as visual data, not theme chrome). */
 export const ScenePortColor = "#d97b3f";
 
@@ -60,10 +72,11 @@ export interface IBlockDescriptor {
     /** Constructs the backing block, registering it with the given node asset. */
     readonly create: (nodeAsset: NodeAsset) => NodeAssetBlock;
     /**
-     * Optional builder for this block's property pane section. When provided, the controller renders
-     * it for any block whose type it does not handle explicitly. `refresh` re-renders after an edit.
+     * Optional builder for this block's property pane section. The controller renders it for every
+     * block that provides one, passing an {@link IPropertySectionContext} to refresh the pane or
+     * request an export after an edit.
      */
-    readonly getPropertySection?: (block: NodeAssetBlock, refresh: () => void) => IPropertySection;
+    readonly getPropertySection?: (block: NodeAssetBlock, context: IPropertySectionContext) => IPropertySection;
 }
 
 // Registry of block descriptors keyed by palette item id, populated by the per-block modules under

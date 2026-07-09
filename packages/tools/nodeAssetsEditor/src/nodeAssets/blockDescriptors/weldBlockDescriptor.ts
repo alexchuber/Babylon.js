@@ -9,7 +9,7 @@ RegisterBlockDescriptor({
     category: OperatorCategory,
     className: WeldBlock.ClassName,
     create: (nodeAsset) => new WeldBlock("Weld", nodeAsset),
-    getPropertySection: (block, refresh) => {
+    getPropertySection: (block, { refresh }) => {
         const weld = block as WeldBlock;
         return {
             title: "WELD",

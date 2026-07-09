@@ -9,7 +9,7 @@ RegisterBlockDescriptor({
     category: OperatorCategory,
     className: PruneBlock.ClassName,
     create: (nodeAsset) => new PruneBlock("Prune", nodeAsset),
-    getPropertySection: (block, refresh) => {
+    getPropertySection: (block, { refresh }) => {
         const prune = block as PruneBlock;
         return {
             title: "PRUNE",

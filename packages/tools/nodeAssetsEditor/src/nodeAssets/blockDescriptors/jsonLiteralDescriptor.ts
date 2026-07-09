@@ -23,7 +23,7 @@ RegisterBlockDescriptor({
     category: ValuesCategory,
     className: JsonLiteral.ClassName,
     create: (nodeAsset) => new JsonLiteral("JSON", nodeAsset),
-    getPropertySection: (block, refresh) => {
+    getPropertySection: (block, { refresh }) => {
         const literal = block as JsonLiteral;
         return {
             title: "JSON",

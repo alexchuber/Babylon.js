@@ -9,7 +9,7 @@ RegisterBlockDescriptor({
     category: OperatorCategory,
     className: DedupBlock.ClassName,
     create: (nodeAsset) => new DedupBlock("Dedup", nodeAsset),
-    getPropertySection: (block, refresh) => {
+    getPropertySection: (block, { refresh }) => {
         const dedup = block as DedupBlock;
         return {
             title: "DEDUP",

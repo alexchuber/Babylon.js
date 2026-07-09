@@ -9,7 +9,7 @@ RegisterBlockDescriptor({
     category: OperatorCategory,
     className: FlattenBlock.ClassName,
     create: (nodeAsset) => new FlattenBlock("Flatten", nodeAsset),
-    getPropertySection: (block, refresh) => {
+    getPropertySection: (block, { refresh }) => {
         const flatten = block as FlattenBlock;
         return {
             title: "FLATTEN",

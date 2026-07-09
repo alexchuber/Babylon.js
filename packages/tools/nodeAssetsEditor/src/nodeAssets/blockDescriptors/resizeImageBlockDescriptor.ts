@@ -13,7 +13,7 @@ RegisterBlockDescriptor({
     category: ImageCategory,
     className: ResizeImageBlock.ClassName,
     create: (nodeAsset) => new ResizeImageBlock("Resize Image", nodeAsset),
-    getPropertySection: (block, refresh) => {
+    getPropertySection: (block, { refresh }) => {
         const resize = block as ResizeImageBlock;
         return {
             title: "RESIZE IMAGE",

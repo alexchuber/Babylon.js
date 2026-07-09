@@ -9,7 +9,7 @@ RegisterBlockDescriptor({
     category: SelectorsCategory,
     className: Selector.ClassName,
     create: (nodeAsset) => new Selector("Selector", nodeAsset),
-    getPropertySection: (block, refresh) => {
+    getPropertySection: (block, { refresh }) => {
         const selector = block as Selector;
         return {
             title: "SELECTOR",
