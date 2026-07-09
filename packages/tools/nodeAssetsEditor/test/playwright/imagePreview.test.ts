@@ -37,9 +37,10 @@ test.describe("Node Assets Editor — image preview", () => {
 
         // Build a minimal IMAGE pipeline: Import Image -> Export Image. The compose-up seed already
         // contains one "Import Image" node, so target the one just dropped ("last") for the wiring and
-        // file load below.
-        await editor.dropPaletteItem("Import Image");
-        await editor.dropPaletteItem("Export Image");
+        // file load below. Drop the two nodes at distinct canvas points so they don't overlap (the app
+        // places nodes exactly at the cursor), keeping each node's ports individually hittable for the wire.
+        await editor.dropPaletteItem("Import Image", { x: 0.3, y: 0.25 });
+        await editor.dropPaletteItem("Export Image", { x: 0.62, y: 0.66 });
         await editor.connectPorts(editor.portOfNode("Import Image", "out", "last"), editor.portOfNode("Export Image", "in"));
 
         // Load the source image through the block's file picker; this is the change that yields the
@@ -50,7 +51,11 @@ test.describe("Node Assets Editor — image preview", () => {
         const fileChooser = await fileChooserPromise;
         await fileChooser.setFiles({ name: "pixel.png", mimeType: "image/png", buffer: OnePixelPng });
 
-        await editor.waitForNextSuccessfulPreviewBuild();
+        // The 1x1-PNG image pipeline rebuilds near-instantly, so the transient build spinner may never be
+        // observable (unlike the slow glTF/KTX2 seed build). Use the lenient wait that tolerates a missed
+        // spinner but still fails on a build-error overlay; the produced-image assertions below are the
+        // real proof the build succeeded.
+        await editor.waitForSuccessfulPreviewBuild();
 
         // The preview shows the produced image (an <img> over an object URL) and reports its mime type.
         await expect(previewImage).toBeVisible();

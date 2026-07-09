@@ -1,10 +1,11 @@
 import { type Page, type Locator, expect } from "@playwright/test";
 import { getGlobalConfig } from "@tools/test-tools";
 
-import { PaletteDragFormat } from "../../src/nodeGraph/paletteModel";
-
 /** Narrows a title lookup to a single node when several share the title: an index, or "last" for the most recently added. */
 type NodeOccurrence = number | "last";
+
+/** A point on the canvas as fractions (0..1) of its bounding rect; `{ x: 0.5, y: 0.5 }` is the center (the default drop point). */
+type CanvasPoint = { x: number; y: number };
 
 /**
  * Build the base URL for the Node Assets Editor dev server.
@@ -111,26 +112,31 @@ export class NodeAssetsEditorPage {
      * (a `draggable` row that sets the drag data on `dragstart`, and a canvas that reads it on `drop`),
      * which a synthetic mouse drag does not trigger. This dispatches the drag/drop events with a single
      * shared DataTransfer so React's handlers see the same payload, mirroring a real palette drop.
+     *
+     * The app drops each node at exactly the cursor with no collision offset, so dropping several nodes at
+     * the same point stacks them and makes their ports unhittable. Pass distinct `at` points to lay out
+     * nodes that must be wired together.
      * @param label - The palette item's label, e.g. "KTX2 Compress".
+     * @param at - Drop point as canvas-rect fractions (0..1); defaults to the center.
      */
-    async dropPaletteItem(label: string): Promise<void> {
+    async dropPaletteItem(label: string, at: CanvasPoint = { x: 0.5, y: 0.5 }): Promise<void> {
         const source = await this.page.getByTitle(label, { exact: true }).first().elementHandle();
         const target = await this.canvas.elementHandle();
         if (!source || !target) {
             throw new Error(`Could not resolve palette item "${label}" or the canvas for the drop gesture.`);
         }
         await this.page.evaluate(
-            ({ source, target, format }) => {
+            ({ source, target, at }) => {
                 const dataTransfer = new DataTransfer();
                 source.dispatchEvent(new DragEvent("dragstart", { bubbles: true, cancelable: true, dataTransfer }));
                 const rect = target.getBoundingClientRect();
-                const clientX = rect.left + rect.width / 2;
-                const clientY = rect.top + rect.height / 2;
+                const clientX = rect.left + rect.width * at.x;
+                const clientY = rect.top + rect.height * at.y;
                 target.dispatchEvent(new DragEvent("dragover", { bubbles: true, cancelable: true, dataTransfer, clientX, clientY }));
                 target.dispatchEvent(new DragEvent("drop", { bubbles: true, cancelable: true, dataTransfer, clientX, clientY }));
                 source.dispatchEvent(new DragEvent("dragend", { bubbles: true, cancelable: true, dataTransfer }));
             },
-            { source, target, format: PaletteDragFormat }
+            { source, target, at }
         );
     }
 
