@@ -46,8 +46,7 @@ sees only a SCENE. _Avoid_: IR, neutral format, scene graph (the runtime's, at l
 
 **transcoder**:
 The logic inside a source (import) block that turns a foreign format (USD, and later FBX/OBJ/…) into a
-SCENE `Document`. Inherently a lossy funnel — what glTF can't express is approximated, dropped, or
-stashed under `extras`. _Avoid_: converter (too generic), loader (that is the glTF boundary block).
+SCENE `Document`. Inherently a lossy funnel — what glTF can't express is approximated or dropped. _Avoid_: converter (too generic), loader (that is the glTF boundary block).
 
 **selector / pointer**:
 A **glTF Object Model JSON Pointer** (the Khronos standard used by `KHR_animation_pointer` /

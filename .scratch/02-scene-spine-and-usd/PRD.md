@@ -31,8 +31,7 @@ relying on a hand-maintained switch that someone will always forget to update.
    as a general asset pipeline and not a glTF-only tool.
 2. As a pipeline author, I want to import a `.usd` / `.usdz` / `.usda` file as a source block, so that
    I can start a pipeline from USD content.
-3. As a pipeline author, I want my imported USD to appear on the SCENE spine as meshes, materials,
-   and node hierarchy, so that every existing middle and export block works on it unchanged.
+3. As a pipeline author, I want my imported USD to appear on the SCENE spine-- as losslessly as possible-- so that every existing middle and export block works on it unchanged.
 4. As a pipeline author, I want the USD import to tell me (in docs and/or a node note) what it keeps
    and what it drops, so that I'm not surprised when variants/layers don't survive.
 5. As a pipeline author, I want a "deduplicate" operator block, so that repeated meshes/materials/
@@ -69,8 +68,7 @@ relying on a hand-maintained switch that someone will always forget to update.
 - **Transcoder scope.** The USD→SCENE transcoder maps geometry (meshes/primitives), materials
   (UsdPreviewSurface → glTF PBR where it maps cleanly), and the node/transform hierarchy. USD
   concepts glTF can't express (layers/composition arcs, variants, relationships, non-preview shaders)
-  are flattened or dropped at this boundary; anything worth preserving verbatim can be stashed under
-  `extras`. This is the lossy-funnel behaviour called out in ADR 0001.
+  are flattened, approximated, or dropped at this boundary. Express as much as possible, as faithfully as possible, by researching glTF format and its extensions. If the Babylon glTF 2.0 loader can load it, then make it happen. This is the lossy-funnel behaviour called out in ADR 0001.
 - **Operator block library.** Wrap `@gltf-transform/functions` operations as individual SCENE→SCENE
   blocks (one block per operation, e.g. dedup, prune, weld, quantize, simplify, flatten, join,
   normals, center). Each block applies the corresponding transform to the incoming `Document` and
