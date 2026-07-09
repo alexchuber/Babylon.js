@@ -82,7 +82,12 @@ export function getBabylonServerTestsList() {
         {
             name: "nodeAssetsEditor",
             testMatch: "**/nodeAssetsEditor.test.ts",
-            use: getUseDefinition("Node Assets Editor"),
+            // Pinned to Chromium (instead of the CI-default Firefox) because the KTX2/Basis texture
+            // encode is single-threaded WASM that Firefox runs ~10x slower (~400s vs ~31s), overrunning
+            // this suite's build budget. Firefox is a documented known limitation for the KTX2 build
+            // path (see .scratch/01-nae-scaffolding/issues/12-nae-firefox-worker-ktx2-hang.md); real
+            // Firefox users get a graceful timeout error rather than an apparent hang.
+            use: getUseDefinition("Node Assets Editor", "Chrome"),
         },
         {
             name: "viewer",

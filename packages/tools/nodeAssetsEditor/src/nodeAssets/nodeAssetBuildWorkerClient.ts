@@ -3,6 +3,18 @@ import { type INodeAssetBuildRequest, type ISerializedNodeAssetBuildError, type 
 type BuildWorkerMessageListener = (event: MessageEvent<NodeAssetBuildResponse>) => void;
 type BuildWorkerErrorListener = (event: ErrorEvent) => void;
 
+/**
+ * Default time budget for a single worker build before it is treated as stalled and stopped.
+ *
+ * Firefox compresses KTX2 / Basis textures roughly an order of magnitude slower than Chromium-based
+ * browsers (~400 s vs ~31 s for the default BoomBox graph), because the Basis encoder is a
+ * single-threaded synchronous WASM compute and Firefox's WASM engine runs it far slower. The worker
+ * keeps the UI responsive, so without a watchdog such a build simply appears to hang forever. This
+ * budget is generous enough not to trip realistic Chromium builds while still failing loudly on the
+ * Firefox pathology instead of spinning indefinitely.
+ */
+export const DefaultNodeAssetBuildTimeoutMs = 240_000;
+
 /** Minimal worker surface used by the Node Assets build client. */
 export interface INodeAssetBuildWorker {
     /** Adds a build response listener. */
@@ -37,6 +49,7 @@ interface IPendingBuild {
     readonly worker: INodeAssetBuildWorker;
     readonly messageListener: BuildWorkerMessageListener;
     readonly errorListener: BuildWorkerErrorListener;
+    readonly timeoutHandle: ReturnType<typeof setTimeout>;
     readonly resolve: (bytes: Uint8Array) => void;
     readonly reject: (error: unknown) => void;
 }
@@ -47,6 +60,28 @@ export class NodeAssetBuildSupersededError extends Error {
     public constructor() {
         super("The node asset build was superseded by a newer build.");
         this.name = "NodeAssetBuildSupersededError";
+    }
+}
+
+/**
+ * Error used when a worker build exceeds its time budget and is stopped so the tool fails loudly
+ * instead of appearing to hang (see {@link DefaultNodeAssetBuildTimeoutMs}).
+ */
+export class NodeAssetBuildTimeoutError extends Error {
+    /** The time budget, in milliseconds, that was exceeded. */
+    public readonly timeoutMs: number;
+
+    /**
+     * Creates a build-timeout error.
+     * @param timeoutMs - The exceeded time budget in milliseconds.
+     */
+    public constructor(timeoutMs: number) {
+        super(
+            `The build did not finish within ${Math.round(timeoutMs / 1000)}s and was stopped. Firefox compresses ` +
+                `KTX2 / Basis textures far slower than Chromium-based browsers; use Chrome or Edge, or remove the KTX2 Compress node.`
+        );
+        this.name = "NodeAssetBuildTimeoutError";
+        this.timeoutMs = timeoutMs;
     }
 }
 
@@ -68,6 +103,7 @@ function CreateErrorFromSerializedError(serializedError: ISerializedNodeAssetBui
  */
 export class NodeAssetBuildWorkerClient implements INodeAssetBuildClient {
     private readonly _createWorker: () => INodeAssetBuildWorker;
+    private readonly _buildTimeoutMs: number;
     private _worker: INodeAssetBuildWorker | null = null;
     private _pendingBuild: IPendingBuild | null = null;
     private _generation = 0;
@@ -76,9 +112,12 @@ export class NodeAssetBuildWorkerClient implements INodeAssetBuildClient {
     /**
      * Creates a worker-backed NodeAsset build client.
      * @param createWorker - Optional worker factory for tests.
+     * @param buildTimeoutMs - Time budget for a single build before the worker is stopped and the build
+     * rejected with a {@link NodeAssetBuildTimeoutError}. Defaults to {@link DefaultNodeAssetBuildTimeoutMs}.
      */
-    public constructor(createWorker: () => INodeAssetBuildWorker = CreateDefaultBuildWorker) {
+    public constructor(createWorker: () => INodeAssetBuildWorker = CreateDefaultBuildWorker, buildTimeoutMs: number = DefaultNodeAssetBuildTimeoutMs) {
         this._createWorker = createWorker;
+        this._buildTimeoutMs = buildTimeoutMs;
     }
 
     /** @inheritdoc */
@@ -96,7 +135,8 @@ export class NodeAssetBuildWorkerClient implements INodeAssetBuildClient {
         return await new Promise<Uint8Array>((resolve, reject) => {
             const messageListener: BuildWorkerMessageListener = (event) => this._handleWorkerMessage(generation, event);
             const errorListener: BuildWorkerErrorListener = (event) => this._handleWorkerError(generation, event);
-            this._pendingBuild = { generation, worker, messageListener, errorListener, resolve, reject };
+            const timeoutHandle = setTimeout(() => this._handleWorkerTimeout(generation), this._buildTimeoutMs);
+            this._pendingBuild = { generation, worker, messageListener, errorListener, timeoutHandle, resolve, reject };
             worker.addEventListener("message", messageListener);
             worker.addEventListener("error", errorListener);
             worker.postMessage({ type: "build", generation, graph });
@@ -144,6 +184,23 @@ export class NodeAssetBuildWorkerClient implements INodeAssetBuildClient {
         pendingBuild.reject(new Error(event.message || "The node asset build worker failed."));
     }
 
+    private _handleWorkerTimeout(generation: number): void {
+        const pendingBuild = this._pendingBuild;
+        if (!pendingBuild || pendingBuild.generation !== generation) {
+            return;
+        }
+
+        // A build that overruns the budget is treated as a hung worker: terminate it so the runaway
+        // encode stops pegging a CPU core, drop the worker so the next build respawns a clean one, and
+        // reject loudly so the editor surfaces an error instead of an endless spinner.
+        this._clearPendingBuild(pendingBuild);
+        pendingBuild.worker.terminate();
+        if (this._worker === pendingBuild.worker) {
+            this._worker = null;
+        }
+        pendingBuild.reject(new NodeAssetBuildTimeoutError(this._buildTimeoutMs));
+    }
+
     private _supersedePendingBuild(): void {
         const pendingBuild = this._pendingBuild;
         if (!pendingBuild) {
@@ -159,6 +216,7 @@ export class NodeAssetBuildWorkerClient implements INodeAssetBuildClient {
     }
 
     private _clearPendingBuild(pendingBuild: IPendingBuild): void {
+        clearTimeout(pendingBuild.timeoutHandle);
         pendingBuild.worker.removeEventListener("message", pendingBuild.messageListener);
         pendingBuild.worker.removeEventListener("error", pendingBuild.errorListener);
         if (this._pendingBuild === pendingBuild) {

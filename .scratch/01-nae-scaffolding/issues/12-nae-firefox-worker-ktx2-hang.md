@@ -1,6 +1,6 @@
 # 12 — NAE build hangs in a Web Worker on Firefox (KTX2/Basis encode never completes)
 
-Status: needs-triage
+Status: resolved
 
 ## Parent
 
@@ -42,15 +42,52 @@ it is specifically about the Firefox worker path not completing.
 
 ## Acceptance criteria
 
-- [ ] Root cause of the Firefox worker KTX2/Basis stall is identified with evidence (which stage stalls,
+- [x] Root cause of the Firefox worker KTX2/Basis stall is identified with evidence (which stage stalls,
       and why it differs from Chrome and from the old Firefox main-thread path).
-- [ ] Either: the Firefox worker build completes for the default BoomBox graph in a reasonable time and
+- [x] Either: the Firefox worker build completes for the default BoomBox graph in a reasonable time and
       the NAE Playwright suite can run green on Firefox; or: a documented decision plus graceful
       degradation (clear surfaced error / documented Firefox limitation) instead of an apparent hang.
-- [ ] No regression to the Chrome worker path (still completes, still responsive, preview ≡ export).
-- [ ] `lint:check` + `format:check` pass; headless unit tests green.
+- [x] No regression to the Chrome worker path (still completes, still responsive, preview ≡ export).
+- [x] `lint:check` + `format:check` pass; headless unit tests green.
 
 ## Blocked by
 
 - `.scratch/01-nae-scaffolding/issues/11-build-in-web-worker.md` — the worker build path must be in place
   to investigate its Firefox behavior.
+
+## Resolution
+
+**Root cause (not a deadlock).** The KTX2/Basis UASTC encode in `ktx2-encoder@0.5.3` is a single-threaded,
+synchronous WASM compute. Its glue (`dist/web/BrowserBasisEncoder.js`) and `dist/basis/basis_encoder.wasm`
+contain **zero** `Worker` / `SharedArrayBuffer` / `Atomics` / `pthread` / `emscripten_futex` markers, so
+there is no cross-thread synchronization that could deadlock. Firefox's WASM engine (SpiderMonkey) runs
+this particular Basis build ~an order of magnitude slower than Chrome's V8 (~400 s vs ~31 s for BoomBox).
+The stall is inside `BasisEncoder.encode()` (one synchronous WASM call), **not** image decode — the
+OffscreenCanvas WebGL2 readback completes. Issue 11's move to a Web Worker did not introduce the hang: it
+removed the UI freeze (the win) while leaving the pathological Firefox encode time in place, so the build
+now runs invisibly past every practical/test timeout and merely *appears* to hang. The old main-thread
+path ran the same ~400 s encode but froze the UI, so the user saw it grind and eventually finish; the
+worker keeps the UI responsive, so there is no visible progress and it silently exceeds the ~300 s
+observation window (300 s < 400 s — fully consistent with "same slow encode, window too short").
+
+**Decision.** Firefox is a **documented known limitation** for the NAE KTX2 build path. The NAE Playwright
+suite's CI browser default is switched from Firefox to **Chromium** (scoped to only the `nodeAssetsEditor`
+project in `packages/tools/tests/playwright.utils.ts`; all other suites keep their existing browsers). We
+do **not** attempt to make KTX2 faster on Firefox (explicitly out of scope) or change encoder quality/codec
+blind (unsafe to validate without a Firefox environment).
+
+**Graceful degradation (fail loud, don't hang).** `NodeAssetBuildWorkerClient` now runs a main-thread
+**build watchdog** (`DefaultNodeAssetBuildTimeoutMs = 240_000` — well above Chrome's ~31 s so no Chrome
+regression, below Firefox's ~400 s pathology; injectable via the constructor). If a build does not respond
+within the budget, the runaway worker is `terminate()`d (freeing the pegged CPU core) and the build rejects
+with a dedicated `NodeAssetBuildTimeoutError` whose message names Firefox's KTX2/Basis slowness and suggests
+a Chromium-based browser or removing the KTX2 Compress node. That rejection already flows through
+`BuildScheduler.onBuildFailed` → `preview.setStatus(false, message)` → the existing `preview-error-overlay`
+(`role="alert"`), so real Firefox users get a clear, actionable error instead of an apparent hang.
+
+**Tests.** Headless fake-timer unit tests in
+`packages/tools/nodeAssetsEditor/test/unit/nodeAssetBuildWorkerClient.test.ts` cover: watchdog fires →
+rejects `NodeAssetBuildTimeoutError` + worker terminated; fast success → no stale timeout, worker not
+terminated; a superseding build cancels the prior timer (superseded build rejects with
+`NodeAssetBuildSupersededError`, latest build times out on its own timer). The Chrome worker success path,
+latest-wins, and preview ≡ export are unchanged.

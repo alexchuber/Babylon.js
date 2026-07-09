@@ -1,6 +1,6 @@
-import { describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-import { NodeAssetBuildSupersededError, NodeAssetBuildWorkerClient, type INodeAssetBuildWorker } from "../../src/nodeAssets/nodeAssetBuildWorkerClient";
+import { NodeAssetBuildSupersededError, NodeAssetBuildTimeoutError, NodeAssetBuildWorkerClient, type INodeAssetBuildWorker } from "../../src/nodeAssets/nodeAssetBuildWorkerClient";
 import { type INodeAssetBuildRequest, type NodeAssetBuildResponse } from "../../src/nodeAssets/nodeAssetBuildMessages";
 
 class TestBuildWorker implements INodeAssetBuildWorker {
@@ -104,5 +104,56 @@ describe("NodeAssetBuildWorkerClient", () => {
 
         await expect(buildPromise).rejects.toThrow("The graph is not connected.");
         client.dispose();
+    });
+
+    describe("build watchdog timeout", () => {
+        beforeEach(() => vi.useFakeTimers());
+        afterEach(() => vi.useRealTimers());
+
+        it("stops the worker and rejects with a timeout error when a build exceeds the budget", async () => {
+            const { workers, createWorker } = CreateWorkerFactory();
+            const client = new NodeAssetBuildWorkerClient(createWorker, 1_000);
+
+            const buildResult = client.buildAsync({ name: "slow" }).catch((error: unknown) => error);
+            expect(workers).toHaveLength(1);
+
+            await vi.advanceTimersByTimeAsync(1_000);
+
+            await expect(buildResult).resolves.toBeInstanceOf(NodeAssetBuildTimeoutError);
+            expect(workers[0].terminated).toBe(true);
+            client.dispose();
+        });
+
+        it("does not fire a stale timeout once the worker responds within the budget", async () => {
+            const { workers, createWorker } = CreateWorkerFactory();
+            const client = new NodeAssetBuildWorkerClient(createWorker, 1_000);
+
+            const buildPromise = client.buildAsync({ name: "fast" });
+            workers[0].sendResponse({ type: "success", generation: 1, bytes: new Uint8Array([1, 2, 3]).buffer });
+
+            await expect(buildPromise).resolves.toEqual(new Uint8Array([1, 2, 3]));
+
+            await vi.advanceTimersByTimeAsync(5_000);
+            expect(workers[0].terminated).toBe(false);
+            client.dispose();
+        });
+
+        it("cancels a superseded build's timeout and times out only the latest build", async () => {
+            const { workers, createWorker } = CreateWorkerFactory();
+            const client = new NodeAssetBuildWorkerClient(createWorker, 1_000);
+
+            const staleBuild = client.buildAsync({ name: "stale" }).catch((error: unknown) => error);
+            const latestBuild = client.buildAsync({ name: "latest" }).catch((error: unknown) => error);
+
+            expect(workers).toHaveLength(2);
+            expect(workers[0].terminated).toBe(true);
+            await expect(staleBuild).resolves.toBeInstanceOf(NodeAssetBuildSupersededError);
+
+            await vi.advanceTimersByTimeAsync(1_000);
+
+            await expect(latestBuild).resolves.toBeInstanceOf(NodeAssetBuildTimeoutError);
+            expect(workers[1].terminated).toBe(true);
+            client.dispose();
+        });
     });
 });
