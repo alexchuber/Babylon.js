@@ -136,6 +136,19 @@ describe("NodeAssetGraphController", () => {
         }
     });
 
+    it("orders the Composition palette category immediately before Selectors", () => {
+        const controller = new NodeAssetGraphController();
+        try {
+            const labels = controller.paletteCategories.map((category) => category.label);
+            const compositionIndex = labels.indexOf("Composition");
+            const selectorsIndex = labels.indexOf("Selectors");
+            expect(compositionIndex).toBeGreaterThanOrEqual(0);
+            expect(selectorsIndex).toBe(compositionIndex + 1);
+        } finally {
+            controller.dispose();
+        }
+    });
+
     it("registers the Selector block with an editable, build-relevant pointer property", () => {
         const controller = new NodeAssetGraphController();
         const changes = CountBuildRelevantChanges(controller);
