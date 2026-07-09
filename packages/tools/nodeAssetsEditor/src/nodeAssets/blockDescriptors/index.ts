@@ -27,3 +27,6 @@ import "./exportImageBlockDescriptor";
 import "./selectorDescriptor";
 import "./getPropertyDescriptor";
 import "./setPropertyDescriptor";
+import "./resizeImageBlockDescriptor";
+import "./convertImageFormatBlockDescriptor";
+import "./flipImageBlockDescriptor";

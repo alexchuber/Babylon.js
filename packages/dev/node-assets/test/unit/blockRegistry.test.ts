@@ -5,11 +5,13 @@ import { describe, expect, it, vi } from "vitest";
 // therefore fails if any block is dropped from the barrel or stops self-registering.
 import {
     CenterBlock,
+    ConvertImageFormatBlock,
     DedupBlock,
     DracoCompressionBlock,
     ExportGLTFBlock,
     ExportImageBlock,
     FlattenBlock,
+    FlipImageBlock,
     GetProperty,
     ImportGLTFBlock,
     ImportUSDBlock,
@@ -23,6 +25,7 @@ import {
     NumberLiteral,
     PruneBlock,
     QuantizeBlock,
+    ResizeImageBlock,
     Selector,
     SetProperty,
     SimplifyBlock,
@@ -158,9 +161,12 @@ describe("block self-registration", () => {
                     Selector.ClassName,
                     GetProperty.ClassName,
                     SetProperty.ClassName,
+                    ResizeImageBlock.ClassName,
+                    ConvertImageFormatBlock.ClassName,
+                    FlipImageBlock.ClassName,
                 ])
             );
-            expect(registeredClassNames).toHaveLength(23);
+            expect(registeredClassNames).toHaveLength(26);
         });
 
         it.each(registeredClassNames)("round-trips %s through serialize/Parse", (className) => {

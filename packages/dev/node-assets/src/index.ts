@@ -28,3 +28,7 @@ export { type IExportBlock, IsExportBlock } from "./blockFoundation/exportBlock"
 export { Selector } from "./Blocks/selector";
 export { GetProperty } from "./Blocks/getProperty";
 export { SetProperty } from "./Blocks/setProperty";
+export { ResizeImageBlock } from "./Blocks/resizeImageBlock";
+export { ConvertImageFormatBlock, type ImageFormat } from "./Blocks/convertImageFormatBlock";
+export { FlipImageBlock, type FlipAxis } from "./Blocks/flipImageBlock";
+export { ProcessImageAsync, type ImageCanvasOperation } from "./Blocks/imageCanvas";
