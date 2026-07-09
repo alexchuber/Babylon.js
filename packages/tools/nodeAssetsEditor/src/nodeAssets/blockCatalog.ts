@@ -27,6 +27,10 @@ export const OperatorHeaderColor = "#2f8f83";
 export const ValuesCategory = "Values";
 export const ValuesHeaderColor = "#5a5fb0";
 
+/** Palette category and shared node header color for the composition block family (e.g. MergeScenes). */
+export const CompositionCategory = "Composition";
+export const CompositionHeaderColor = "#a84f5a";
+
 /**
  * Describes one palette entry: its id and label, its node header color, the backend class it maps to,
  * and how to construct that block.

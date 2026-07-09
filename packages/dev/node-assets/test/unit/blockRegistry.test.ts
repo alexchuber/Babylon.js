@@ -13,6 +13,7 @@ import {
     JoinBlock,
     JsonLiteral,
     KTX2CompressionBlock,
+    MergeScenes,
     NodeAsset,
     NormalsBlock,
     NumberLiteral,
@@ -144,9 +145,10 @@ describe("block self-registration", () => {
                     NumberLiteral.ClassName,
                     StringLiteral.ClassName,
                     JsonLiteral.ClassName,
+                    MergeScenes.ClassName,
                 ])
             );
-            expect(registeredClassNames).toHaveLength(16);
+            expect(registeredClassNames).toHaveLength(17);
         });
 
         it.each(registeredClassNames)("round-trips %s through serialize/Parse", (className) => {
