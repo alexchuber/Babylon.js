@@ -28,3 +28,6 @@ import "./selectorDescriptor";
 import "./getPropertyDescriptor";
 import "./setPropertyDescriptor";
 import "./buildPBRMaterialDescriptor";
+import "./resizeImageBlockDescriptor";
+import "./convertImageFormatBlockDescriptor";
+import "./flipImageBlockDescriptor";

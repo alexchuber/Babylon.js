@@ -6,11 +6,13 @@ import { describe, expect, it, vi } from "vitest";
 import {
     BuildPBRMaterial,
     CenterBlock,
+    ConvertImageFormatBlock,
     DedupBlock,
     DracoCompressionBlock,
     ExportGLTFBlock,
     ExportImageBlock,
     FlattenBlock,
+    FlipImageBlock,
     GetProperty,
     ImportGLTFBlock,
     ImportUSDBlock,
@@ -24,6 +26,7 @@ import {
     NumberLiteral,
     PruneBlock,
     QuantizeBlock,
+    ResizeImageBlock,
     Selector,
     SetProperty,
     SimplifyBlock,
@@ -160,9 +163,12 @@ describe("block self-registration", () => {
                     GetProperty.ClassName,
                     SetProperty.ClassName,
                     BuildPBRMaterial.ClassName,
+                    ResizeImageBlock.ClassName,
+                    ConvertImageFormatBlock.ClassName,
+                    FlipImageBlock.ClassName,
                 ])
             );
-            expect(registeredClassNames).toHaveLength(24);
+            expect(registeredClassNames).toHaveLength(27);
         });
 
         it.each(registeredClassNames)("round-trips %s through serialize/Parse", (className) => {
