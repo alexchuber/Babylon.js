@@ -11,12 +11,15 @@ import {
     FlattenBlock,
     ImportGLTFBlock,
     JoinBlock,
+    JsonLiteral,
     KTX2CompressionBlock,
     NodeAsset,
     NormalsBlock,
+    NumberLiteral,
     PruneBlock,
     QuantizeBlock,
     SimplifyBlock,
+    StringLiteral,
     WeldBlock,
     // eslint-disable-next-line import/no-internal-modules
 } from "../../src/index";
@@ -138,9 +141,12 @@ describe("block self-registration", () => {
                     JoinBlock.ClassName,
                     NormalsBlock.ClassName,
                     CenterBlock.ClassName,
+                    NumberLiteral.ClassName,
+                    StringLiteral.ClassName,
+                    JsonLiteral.ClassName,
                 ])
             );
-            expect(registeredClassNames).toHaveLength(13);
+            expect(registeredClassNames).toHaveLength(16);
         });
 
         it.each(registeredClassNames)("round-trips %s through serialize/Parse", (className) => {
