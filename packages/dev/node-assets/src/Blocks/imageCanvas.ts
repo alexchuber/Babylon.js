@@ -64,7 +64,7 @@ export type ImageCanvasOperation = {
  * @returns The redrawn image as a new {@link ImagePayload} carrying its bytes, mime type, and pixel size.
  */
 export async function ProcessImageAsync(payload: ImagePayload, operation: ImageCanvasOperation): Promise<ImagePayload> {
-    const bitmap = await createImageBitmap(new Blob([payload.data], { type: payload.mimeType }));
+    const bitmap = await createImageBitmap(new Blob([payload.data as BlobPart], { type: payload.mimeType }));
 
     const width = operation.width ?? bitmap.width;
     const height = operation.height ?? bitmap.height;
@@ -90,7 +90,7 @@ export async function ProcessImageAsync(payload: ImagePayload, operation: ImageC
         // Stamp the overlay onto the base at the requested offset (source-over, natural size), leaving
         // the base pixels outside the overlay untouched. The output size still follows the base above.
         if (operation.composite) {
-            overlayBitmap = await createImageBitmap(new Blob([operation.composite.overlay.data], { type: operation.composite.overlay.mimeType }));
+            overlayBitmap = await createImageBitmap(new Blob([operation.composite.overlay.data as BlobPart], { type: operation.composite.overlay.mimeType }));
             context.drawImage(overlayBitmap, operation.composite.offsetX, operation.composite.offsetY);
         }
 

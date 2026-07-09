@@ -164,7 +164,7 @@ describe("GetProperty", () => {
 
     it("round-trips its identity through save/load", () => {
         const asset = new NodeAsset("roundtrip");
-        const getter = new GetProperty("get", asset);
+        new GetProperty("get", asset);
 
         const serialized = JSON.parse(JSON.stringify(asset.serialize()));
         const parsed = NodeAsset.Parse(serialized);

@@ -36,7 +36,6 @@ const ImportedPng = new Uint8Array([0x89, 0x50, 0x4e, 0x47, 0x10, 0x20, 0x30, 0x
 const ResizedBytes = new Uint8Array([0x89, 0x50, 0x4e, 0x47, 0xaa, 0xbb, 0xcc, 0xdd]);
 
 const BaseColorPointer = "/materials/0/pbrMetallicRoughness/baseColorTexture";
-const NormalPointer = "/materials/0/normalTexture";
 const MetallicRoughnessPointer = "/materials/0/pbrMetallicRoughness/metallicRoughnessTexture";
 
 /**

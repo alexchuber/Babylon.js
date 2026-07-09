@@ -6,7 +6,6 @@ import { ExportGLTFBlock } from "../../src/Blocks/exportGLTFBlock";
 import { ImportGLTFBlock } from "../../src/Blocks/importGLTFBlock";
 import { PruneBlock } from "../../src/Blocks/pruneBlock";
 import { NodeAssetBlock } from "../../src/blockFoundation/nodeAssetBlock";
-import { type NodeAssetConnectionPoint } from "../../src/connection/nodeAssetConnectionPoint";
 import { NodeAssetConnectionPointType } from "../../src/connection/nodeAssetConnectionPointType";
 import { NodeAsset } from "../../src/nodeAsset";
 
