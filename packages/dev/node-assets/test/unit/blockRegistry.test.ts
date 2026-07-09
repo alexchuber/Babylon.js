@@ -6,6 +6,7 @@ import { describe, expect, it, vi } from "vitest";
 import {
     BuildPBRMaterial,
     CenterBlock,
+    CompositeImageBlock,
     ConvertImageFormatBlock,
     DedupBlock,
     DracoCompressionBlock,
@@ -168,9 +169,10 @@ describe("block self-registration", () => {
                     ConvertImageFormatBlock.ClassName,
                     FlipImageBlock.ClassName,
                     ExtractTexture.ClassName,
+                    CompositeImageBlock.ClassName,
                 ])
             );
-            expect(registeredClassNames).toHaveLength(28);
+            expect(registeredClassNames).toHaveLength(29);
         });
 
         it.each(registeredClassNames)("round-trips %s through serialize/Parse", (className) => {
