@@ -102,6 +102,17 @@ export type Bounds = {
 };
 
 /**
+ * Computes the axis-aligned bounding box of a single node in graph space, accounting for its rendered
+ * size (collapsed state and port rows).
+ * @param node The node to bound.
+ * @returns The node's bounding box in graph space.
+ */
+export function GetNodeBounds(node: IGraphNode): Bounds {
+    const size = GetNodeSize(node);
+    return { minX: node.position.x, minY: node.position.y, maxX: node.position.x + size.width, maxY: node.position.y + size.height };
+}
+
+/**
  * Computes the combined bounding box of a set of nodes, including their full rendered size.
  * @param nodes The nodes to bound.
  * @returns The bounding box, or undefined if there are no nodes.
