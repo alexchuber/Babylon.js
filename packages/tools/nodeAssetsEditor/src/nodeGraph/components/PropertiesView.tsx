@@ -23,7 +23,17 @@ const HexColorValidator = (value: string): boolean => /^#[0-9a-fA-F]{6}$/.test(v
 function RenderPropertyLine(descriptor: PropertyDescriptor, key: string): ReactElement {
     switch (descriptor.kind) {
         case "text":
-            return <TextInputPropertyLine key={key} uniqueId={key} label={descriptor.label} value={descriptor.value} onChange={descriptor.onChange} />;
+            return (
+                <TextInputPropertyLine
+                    key={key}
+                    uniqueId={key}
+                    label={descriptor.label}
+                    value={descriptor.value}
+                    validator={descriptor.validator}
+                    validateOnlyOnBlur={descriptor.validateOnlyOnBlur}
+                    onChange={descriptor.onChange}
+                />
+            );
         case "dropdown":
             return (
                 <StringDropdownPropertyLine

@@ -1,4 +1,4 @@
-import { useEffect, useRef, type FunctionComponent } from "react";
+import { useCallback, useEffect, useRef, type FunctionComponent } from "react";
 
 import { Body1, Body1Strong, Caption1, makeStyles, Spinner, tokens } from "@fluentui/react-components";
 import { useObservableState } from "shared-ui-components/modularTool/hooks/observableHooks";
@@ -67,7 +67,8 @@ export const PreviewPane: FunctionComponent<{ controller: PreviewController }> =
     const { controller } = props;
     const classes = useStyles();
     const canvasRef = useRef<HTMLCanvasElement>(null);
-    const status = useObservableState(() => ({ isBuilding: controller.isBuilding, errorMessage: controller.errorMessage }), controller.onStatusChanged);
+    const getStatus = useCallback(() => ({ isBuilding: controller.isBuilding, errorMessage: controller.errorMessage }), [controller]);
+    const status = useObservableState(getStatus, controller.onStatusChanged);
 
     useEffect(() => {
         const canvas = canvasRef.current;

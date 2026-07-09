@@ -1,6 +1,7 @@
 import { ExportGLTFBlock } from "./Blocks/exportGLTFBlock";
 import { ImportGLTFBlock } from "./Blocks/importGLTFBlock";
 import { DracoCompressionBlock } from "./Blocks/dracoCompressionBlock";
+import { KTX2CompressionBlock } from "./Blocks/ktx2CompressionBlock";
 import { type NodeAssetBlock } from "./blockFoundation/nodeAssetBlock";
 import { UniqueIdGenerator } from "./utils/uniqueIdGenerator";
 
@@ -18,6 +19,8 @@ function CreateBlockByClassName(customType: string, name: string, nodeAsset: Nod
             return new ImportGLTFBlock(name, nodeAsset);
         case DracoCompressionBlock.ClassName:
             return new DracoCompressionBlock(name, nodeAsset);
+        case KTX2CompressionBlock.ClassName:
+            return new KTX2CompressionBlock(name, nodeAsset);
         case ExportGLTFBlock.ClassName:
             return new ExportGLTFBlock(name, nodeAsset);
         default:

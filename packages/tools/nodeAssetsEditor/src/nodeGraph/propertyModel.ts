@@ -14,6 +14,10 @@ export interface ITextPropertyDescriptor {
     readonly label: string;
     /** Current text value. */
     readonly value: string;
+    /** Optional validator; invalid values are displayed but not committed. */
+    readonly validator?: (value: string) => boolean;
+    /** When true, commits valid edits only when the text box blurs or Enter is pressed. */
+    readonly validateOnlyOnBlur?: boolean;
     /** Called with the new value when the user edits the text. */
     readonly onChange: (value: string) => void;
 }

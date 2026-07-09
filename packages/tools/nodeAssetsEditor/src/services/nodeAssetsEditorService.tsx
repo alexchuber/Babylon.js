@@ -32,6 +32,7 @@ import { PreviewPane } from "../nodeAssets/components/PreviewPane";
 import { DownloadBlob, PromptForFileAsync } from "../nodeAssets/browserFiles";
 
 const AutoBuildDebounceMs = 400;
+const MinimumBuildStatusMs = 250;
 
 function GetErrorMessage(error: unknown): string {
     return error instanceof Error ? error.message : String(error);
@@ -65,6 +66,11 @@ export const NodeAssetsEditorServiceDefinition: ServiceDefinition<[], [IShellSer
         const state = controller.state;
         const view = new CanvasViewController();
         let lastSuccessfulBuildBytes: Uint8Array | null = null;
+        let buildScheduler: BuildScheduler<Uint8Array> | null = null;
+        let isDisposed = false;
+        let buildStatusGeneration = 0;
+        let buildStatusStartedAt = 0;
+        let finishBuildStatusHandle: ReturnType<typeof setTimeout> | null = null;
 
         const context: EditorContextValue = {
             state,
@@ -74,25 +80,65 @@ export const NodeAssetsEditorServiceDefinition: ServiceDefinition<[], [IShellSer
             createNodeFromPaletteItem: (paletteItemId, position) => controller.createNodeFromPaletteItem(paletteItemId, position),
         };
 
-        const buildScheduler = new BuildScheduler({
-            triggerSource: state.onChanged,
-            debounceMs: AutoBuildDebounceMs,
-            buildAsync: async () => await controller.buildAsync(),
-            applyResultAsync: async (bytes) => await preview.loadAssetAsync(bytes),
-            onBuildStarted: () => {
-                preview.cancelPendingLoad();
-                preview.setStatus(true, null);
-            },
-            onBuildSucceeded: (bytes) => {
-                lastSuccessfulBuildBytes = bytes;
-                preview.setStatus(false, null);
-            },
-            onBuildFailed: (error) => {
-                const message = GetErrorMessage(error);
-                Logger.Error(`[NodeAssetsEditor] Build failed: ${message}`);
-                preview.setStatus(false, message);
-            },
-        });
+        const finishBuildStatus = (generation: number, errorMessage: string | null): void => {
+            const elapsed = performance.now() - buildStatusStartedAt;
+            const delay = Math.max(0, MinimumBuildStatusMs - elapsed);
+            const finish = () => {
+                finishBuildStatusHandle = null;
+                if (!isDisposed && generation === buildStatusGeneration) {
+                    preview.setStatus(false, errorMessage);
+                }
+            };
+            if (delay > 0) {
+                finishBuildStatusHandle = setTimeout(finish, delay);
+            } else {
+                finish();
+            }
+        };
+
+        const startBuildScheduler = (): void => {
+            buildScheduler = new BuildScheduler({
+                triggerSource: state.onChanged,
+                debounceMs: AutoBuildDebounceMs,
+                buildAsync: async () => await controller.buildAsync(),
+                applyResultAsync: async (bytes) => await preview.loadAssetAsync(bytes),
+                onBuildStarted: () => {
+                    buildStatusGeneration++;
+                    buildStatusStartedAt = performance.now();
+                    if (finishBuildStatusHandle) {
+                        clearTimeout(finishBuildStatusHandle);
+                        finishBuildStatusHandle = null;
+                    }
+                    preview.cancelPendingLoad();
+                    preview.setStatus(true, null);
+                },
+                onBuildSucceeded: (bytes) => {
+                    lastSuccessfulBuildBytes = bytes;
+                    finishBuildStatus(buildStatusGeneration, null);
+                },
+                onBuildFailed: (error) => {
+                    const message = GetErrorMessage(error);
+                    Logger.Error(`[NodeAssetsEditor] Build failed: ${message}`);
+                    finishBuildStatus(buildStatusGeneration, message);
+                },
+            });
+        };
+
+        preview.setStatus(true, null);
+        void (async () => {
+            try {
+                await controller.loadDefaultImportAsync();
+                if (!isDisposed) {
+                    startBuildScheduler();
+                }
+            } catch (error) {
+                if (!isDisposed) {
+                    const message = GetErrorMessage(error);
+                    Logger.Error(`[NodeAssetsEditor] Default asset load failed: ${message}`);
+                    preview.setStatus(false, message);
+                }
+            }
+        })();
 
         // Downloads exactly the last successful preview bytes; export no longer triggers a fresh build.
         const exportLastSuccessfulBuild = (): void => {
@@ -212,7 +258,12 @@ export const NodeAssetsEditorServiceDefinition: ServiceDefinition<[], [IShellSer
 
         return {
             dispose: () => {
-                buildScheduler.dispose();
+                isDisposed = true;
+                if (finishBuildStatusHandle) {
+                    clearTimeout(finishBuildStatusHandle);
+                    finishBuildStatusHandle = null;
+                }
+                buildScheduler?.dispose();
                 controller.onExportRequested.remove(exportObserver);
                 for (const registration of registrations) {
                     registration.dispose();

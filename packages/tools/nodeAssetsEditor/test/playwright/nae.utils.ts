@@ -148,6 +148,37 @@ export class NodeAssetsEditorPage {
         await this.page.mouse.up();
     }
 
+    /**
+     * Assert the visible wire endpoints by node title.
+     * @param expectedConnections - From-node/to-node title pairs.
+     */
+    async expectWiredPipeline(expectedConnections: readonly (readonly [string, string])[]): Promise<void> {
+        await expect.poll(async () => await this.getWireEndpointKeys()).toEqual(this.getExpectedWireEndpointKeys(expectedConnections));
+    }
+
+    /**
+     * Deletes the visible wire between two titled nodes.
+     * @param fromNodeTitle - The output-side node title.
+     * @param toNodeTitle - The input-side node title.
+     */
+    async deleteWire(fromNodeTitle: string, toNodeTitle: string): Promise<void> {
+        const wire = this.page.locator(`[data-testid="graph-wire"][data-from-node-title="${fromNodeTitle}"][data-to-node-title="${toNodeTitle}"]`);
+        await expect(wire).toHaveCount(1);
+        await wire.locator("path").first().click({ force: true });
+        await this.page.keyboard.press("Delete");
+        await expect(wire).toHaveCount(0);
+    }
+
+    /**
+     * Wait for a build that must start after the triggering action and finish without an overlay error.
+     */
+    async waitForNextSuccessfulPreviewBuild(): Promise<void> {
+        await expect(this.previewBuildingOverlay).toBeVisible({ timeout: 15_000 });
+        await expect(this.previewBuildingOverlay).toBeHidden({ timeout: 120_000 });
+        await expect(this.previewErrorOverlay).toBeHidden({ timeout: 60_000 });
+        await this.page.waitForTimeout(1_000);
+    }
+
     /** Wait for any observable auto-build spinner to clear and leave no in-pane build error. */
     async waitForSuccessfulPreviewBuild(): Promise<void> {
         await this.page.waitForTimeout(500);
@@ -160,5 +191,16 @@ export class NodeAssetsEditorPage {
         }
         await expect(this.previewErrorOverlay).toBeHidden({ timeout: 60_000 });
         await this.page.waitForTimeout(1_000);
+    }
+
+    private async getWireEndpointKeys(): Promise<readonly string[]> {
+        const pairs = await this.page
+            .locator('[data-testid="graph-wire"]')
+            .evaluateAll((wires) => wires.map((wire) => [wire.getAttribute("data-from-node-title") ?? "", wire.getAttribute("data-to-node-title") ?? ""] as [string, string]));
+        return this.getExpectedWireEndpointKeys(pairs);
+    }
+
+    private getExpectedWireEndpointKeys(connections: readonly (readonly [string, string])[]): readonly string[] {
+        return connections.map(([from, to]) => `${from}->${to}`).sort();
     }
 }

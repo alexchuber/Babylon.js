@@ -12,6 +12,7 @@
 
 import { Observable } from "core/Misc/observable";
 
+import { DracoCompressionBlock, DracoEncoderMethod } from "node-assets/Blocks/dracoCompressionBlock";
 import { ExportGLTFBlock } from "node-assets/Blocks/exportGLTFBlock";
 import { ImportGLTFBlock } from "node-assets/Blocks/importGLTFBlock";
 import { KTX2CompressionBlock } from "node-assets/Blocks/ktx2CompressionBlock";
@@ -40,6 +41,59 @@ interface IEditorBlockMetadata {
 interface INodeAssetEditorFile {
     readonly graph: ReturnType<NodeAsset["serialize"]>;
     readonly editor: { readonly blocks: readonly IEditorBlockMetadata[] };
+}
+
+const LocalCdnPort = "1337";
+const DefaultBoomBoxPath = "scenes/BoomBox.glb";
+
+const DracoMethodLabels = ["Edgebreaker", "Sequential"] as const;
+type DracoMethodLabel = (typeof DracoMethodLabels)[number];
+
+function GetDefaultBoomBoxUrl(): string {
+    const currentUrl = new URL(window.location.href);
+    if ((currentUrl.hostname === "localhost" || currentUrl.hostname === "127.0.0.1") && currentUrl.port !== LocalCdnPort) {
+        currentUrl.port = LocalCdnPort;
+        currentUrl.pathname = "/";
+        currentUrl.search = "";
+        currentUrl.hash = "";
+        return new URL(DefaultBoomBoxPath, currentUrl).href;
+    }
+    return new URL(DefaultBoomBoxPath, `${currentUrl.origin}/`).href;
+}
+
+function DracoMethodToLabel(method: DracoEncoderMethod): DracoMethodLabel {
+    return method === DracoEncoderMethod.Sequential ? "Sequential" : "Edgebreaker";
+}
+
+function DracoMethodFromLabel(label: string): DracoEncoderMethod {
+    return label === "Sequential" ? DracoEncoderMethod.Sequential : DracoEncoderMethod.Edgebreaker;
+}
+
+function SerializeQuantizationBits(quantizationBits: Record<string, number> | null): string {
+    return quantizationBits ? JSON.stringify(quantizationBits) : "";
+}
+
+function IsValidQuantizationBitsJson(value: string): boolean {
+    const trimmed = value.trim();
+    if (!trimmed) {
+        return true;
+    }
+    try {
+        const parsed = JSON.parse(trimmed) as unknown;
+        return (
+            typeof parsed === "object" &&
+            parsed !== null &&
+            !Array.isArray(parsed) &&
+            Object.values(parsed).every((entry) => typeof entry === "number" && Number.isFinite(entry) && Number.isInteger(entry) && entry > 0)
+        );
+    } catch {
+        return false;
+    }
+}
+
+function ParseQuantizationBits(value: string): Record<string, number> | null {
+    const trimmed = value.trim();
+    return trimmed ? (JSON.parse(trimmed) as Record<string, number>) : null;
 }
 
 function NodeIdForBlock(block: NodeAssetBlock): string {
@@ -93,24 +147,46 @@ export class NodeAssetGraphController {
     private readonly _onChangedObserver;
 
     /**
-     * Creates a controller seeded with a starter graph: one Import and one Export block, positioned
-     * side by side and left unconnected so the user (or a test) wires them.
+     * Creates a controller seeded with a starter graph: Import -> KTX2 -> Draco -> Export.
      */
     public constructor() {
         this._nodeAsset = new NodeAsset("nodeAsset");
 
         const importDescriptor = GetBlockDescriptorByPaletteItemId("import-gltf")!;
+        const ktx2Descriptor = GetBlockDescriptorByPaletteItemId("ktx2-compression")!;
+        const dracoDescriptor = GetBlockDescriptorByPaletteItemId("draco-compression")!;
         const exportDescriptor = GetBlockDescriptorByPaletteItemId("export-gltf")!;
         const importNode = this._instantiateBlock(importDescriptor, { x: 120, y: 200 });
-        const exportNode = this._instantiateBlock(exportDescriptor, { x: 560, y: 200 });
+        const ktx2Node = this._instantiateBlock(ktx2Descriptor, { x: 400, y: 200 });
+        const dracoNode = this._instantiateBlock(dracoDescriptor, { x: 680, y: 200 });
+        const exportNode = this._instantiateBlock(exportDescriptor, { x: 960, y: 200 });
 
-        const snapshot: IGraphSnapshot = { nodes: [importNode, exportNode], wires: [], frames: [] };
+        const snapshot: IGraphSnapshot = {
+            nodes: [importNode, ktx2Node, dracoNode, exportNode],
+            wires: [this._createWire(importNode, ktx2Node), this._createWire(ktx2Node, dracoNode), this._createWire(dracoNode, exportNode)],
+            frames: [],
+        };
         this.state = new GraphEditorState(snapshot);
 
         this.paletteCategories = [{ label: "Blocks", items: BlockDescriptors.map((descriptor) => ({ id: descriptor.paletteItemId, label: descriptor.label })) }];
 
         // Subscribe only after seeding so the reconcile sees consistent maps and state.
         this._onChangedObserver = this.state.onChanged.add(() => this._reconcile());
+    }
+
+    /**
+     * Loads the default BoomBox sample into the starter import block.
+     * @returns A promise that resolves after the bytes are loaded.
+     */
+    public async loadDefaultImportAsync(): Promise<void> {
+        const importBlock = this._getImportBlock();
+        const url = GetDefaultBoomBoxUrl();
+        const response = await fetch(url);
+        if (!response.ok) {
+            throw new Error(`Could not load the default BoomBox asset from "${url}" (${response.status} ${response.statusText}).`);
+        }
+        importBlock.data = new Uint8Array(await response.arrayBuffer());
+        this.state.notifyChanged();
     }
 
     /**
@@ -129,8 +205,8 @@ export class NodeAssetGraphController {
     }
 
     /**
-     * Builds the property sections for a selected node: a general name field plus a block-specific
-     * action (import a file for import blocks, export for export blocks).
+     * Builds the property sections for a selected node: a general name field plus block-specific
+     * import/export actions or compression settings.
      * @param node - The selected node.
      * @returns The property sections to render.
      */
@@ -159,6 +235,8 @@ export class NodeAssetGraphController {
             sections.push(this._buildExportSection());
         } else if (block instanceof KTX2CompressionBlock) {
             sections.push(this._buildKtx2Section(block));
+        } else if (block instanceof DracoCompressionBlock) {
+            sections.push(this._buildDracoSection(block));
         }
 
         return sections;
@@ -293,6 +371,59 @@ export class NodeAssetGraphController {
         };
     }
 
+    private _buildDracoSection(block: DracoCompressionBlock): IPropertySection {
+        return {
+            title: "DRACO",
+            properties: [
+                {
+                    kind: "dropdown",
+                    label: "Method",
+                    value: DracoMethodToLabel(block.method),
+                    options: DracoMethodLabels,
+                    onChange: (value) => {
+                        block.method = DracoMethodFromLabel(value);
+                        this.state.notifyChanged();
+                    },
+                },
+                {
+                    kind: "slider",
+                    label: "Encode speed",
+                    value: block.encodeSpeed,
+                    min: 0,
+                    max: 10,
+                    step: 1,
+                    onChange: (value) => {
+                        block.encodeSpeed = value;
+                        this.state.notifyChanged();
+                    },
+                },
+                {
+                    kind: "slider",
+                    label: "Decode speed",
+                    value: block.decodeSpeed,
+                    min: 0,
+                    max: 10,
+                    step: 1,
+                    onChange: (value) => {
+                        block.decodeSpeed = value;
+                        this.state.notifyChanged();
+                    },
+                },
+                {
+                    kind: "text",
+                    label: "Quantization bits",
+                    value: SerializeQuantizationBits(block.quantizationBits),
+                    validator: IsValidQuantizationBitsJson,
+                    validateOnlyOnBlur: true,
+                    onChange: (value) => {
+                        block.quantizationBits = ParseQuantizationBits(value);
+                        this.state.notifyChanged();
+                    },
+                },
+            ],
+        };
+    }
+
     private async _promptImportAsync(block: ImportGLTFBlock): Promise<void> {
         const file = await PromptForFileAsync(".glb,.gltf");
         if (!file) {
@@ -308,6 +439,19 @@ export class NodeAssetGraphController {
         return this._registerBlockNode(block, descriptor, position, descriptor.label, false);
     }
 
+    private _createWire(fromNode: IGraphNode, toNode: IGraphNode): IGraphWire {
+        const fromPort = fromNode.ports.find((port) => port.direction === "output");
+        const toPort = toNode.ports.find((port) => port.direction === "input");
+        if (!fromPort || !toPort) {
+            throw new Error(`Cannot wire "${fromNode.title}" to "${toNode.title}" because a compatible port is missing.`);
+        }
+        return {
+            id: `wire-${fromNode.id}-${toNode.id}`,
+            fromPortId: fromPort.id,
+            toPortId: toPort.id,
+        };
+    }
+
     private _registerBlockNode(block: NodeAssetBlock, descriptor: IBlockDescriptor, position: Vec2, title: string, collapsed: boolean): IGraphNode {
         const node = BlockToNode(block, descriptor, position, title, collapsed);
         this._blockByNodeId.set(node.id, block);
@@ -318,6 +462,14 @@ export class NodeAssetGraphController {
             this._pointByPortId.set(PortIdForPoint(block, output), output);
         }
         return node;
+    }
+
+    private _getImportBlock(): ImportGLTFBlock {
+        const importBlock = this._nodeAsset.attachedBlocks.find((block): block is ImportGLTFBlock => block instanceof ImportGLTFBlock);
+        if (!importBlock) {
+            throw new Error(`The "${this._nodeAsset.name}" node asset has no ImportGLTFBlock for the default asset.`);
+        }
+        return importBlock;
     }
 
     private _reconcile(): void {

@@ -61,7 +61,7 @@ export const GraphWiresLayer: FunctionComponent<{ pendingWire?: PendingWire | nu
                 const path = BuildWirePath(from, to);
                 const isSelected = wire.id === selectedWireId;
                 return (
-                    <g key={wire.id} data-testid="graph-wire" data-wire-id={wire.id}>
+                    <g key={wire.id} data-testid="graph-wire" data-wire-id={wire.id} data-from-node-title={fromNode.title} data-to-node-title={toNode.title}>
                         <path
                             d={path}
                             fill="none"

@@ -3,6 +3,7 @@ import { describe, expect, it, vi } from "vitest";
 import { DracoCompressionBlock } from "../../src/Blocks/dracoCompressionBlock";
 import { ExportGLTFBlock } from "../../src/Blocks/exportGLTFBlock";
 import { ImportGLTFBlock } from "../../src/Blocks/importGLTFBlock";
+import { KTX2CompressionBlock } from "../../src/Blocks/ktx2CompressionBlock";
 import { NodeAsset } from "../../src/nodeAsset";
 
 // The import/export blocks register the Draco encoder/decoder, so the roundtrip needs the real
@@ -162,5 +163,31 @@ describe("NodeAsset", () => {
         const parsedExporter = parsed.attachedBlocks[2] as ExportGLTFBlock;
         expect(parsedImporter.output.connectedPoint).toBe((parsedDraco as DracoCompressionBlock).input);
         expect((parsedDraco as DracoCompressionBlock).output.connectedPoint).toBe(parsedExporter.input);
+    });
+
+    it("reconstructs KTX2 and Draco compression blocks through serialize/Parse and restores their wiring", () => {
+        const asset = new NodeAsset("compression-serialize");
+        const importer = new ImportGLTFBlock("import", asset);
+        const ktx2 = new KTX2CompressionBlock("ktx2", asset);
+        const draco = new DracoCompressionBlock("draco", asset);
+        const exporter = new ExportGLTFBlock("export", asset);
+        importer.output.connectTo(ktx2.input);
+        ktx2.output.connectTo(draco.input);
+        draco.output.connectTo(exporter.input);
+
+        const serialized = JSON.parse(JSON.stringify(asset.serialize()));
+        const parsed = NodeAsset.Parse(serialized);
+
+        expect(parsed.attachedBlocks).toHaveLength(4);
+        const parsedImporter = parsed.attachedBlocks[0] as ImportGLTFBlock;
+        const parsedKtx2 = parsed.attachedBlocks[1] as KTX2CompressionBlock;
+        const parsedDraco = parsed.attachedBlocks[2] as DracoCompressionBlock;
+        const parsedExporter = parsed.attachedBlocks[3] as ExportGLTFBlock;
+        expect(parsedKtx2).toBeInstanceOf(KTX2CompressionBlock);
+        expect(parsedDraco).toBeInstanceOf(DracoCompressionBlock);
+
+        expect(parsedImporter.output.connectedPoint).toBe(parsedKtx2.input);
+        expect(parsedKtx2.output.connectedPoint).toBe(parsedDraco.input);
+        expect(parsedDraco.output.connectedPoint).toBe(parsedExporter.input);
     });
 });

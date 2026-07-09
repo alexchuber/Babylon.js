@@ -1,179 +1,19 @@
-import { test, expect } from "@playwright/test";
+import { test, expect, type Page, type Download } from "@playwright/test";
 import { readFileSync } from "node:fs";
-import { deflateSync } from "node:zlib";
 
 import { NodeAssetsEditorPage } from "./nae.utils";
 
-/**
- * Builds a tiny uncompressed glb (one node, one mesh) in the test's Node context so the import/export
- * flow does not depend on a bundled binary fixture. Mirrors the backend's roundtrip fixture.
- * @returns The fixture glb bytes.
- */
-async function createFixtureGlb(): Promise<Buffer> {
-    const { Document, WebIO } = await import("@gltf-transform/core");
-    const { ALL_EXTENSIONS } = await import("@gltf-transform/extensions");
+type GltfJson = {
+    readonly extensionsUsed?: readonly string[];
+    readonly extensionsRequired?: readonly string[];
+    readonly images?: readonly { readonly mimeType?: string }[];
+};
 
-    const document = new Document();
-    const buffer = document.createBuffer();
-    const position = document
-        .createAccessor()
-        .setType("VEC3")
-        .setArray(new Float32Array([0, 0, 0, 1, 0, 0, 0, 1, 0]))
-        .setBuffer(buffer);
-    const primitive = document.createPrimitive().setAttribute("POSITION", position);
-    const mesh = document.createMesh("mesh0").addPrimitive(primitive);
-    const node = document.createNode("node0").setMesh(mesh);
-    document.createScene("scene0").addChild(node);
-
-    const io = new WebIO().registerExtensions(ALL_EXTENSIONS);
-    return Buffer.from(await io.writeBinary(document));
-}
-
-/**
- * Builds an indexed grid glb large enough that the Draco encoder writes KHR_draco_mesh_compression.
- * @returns The fixture glb bytes.
- */
-async function createIndexedGridGlb(): Promise<Buffer> {
-    const { Document, WebIO } = await import("@gltf-transform/core");
-    const { ALL_EXTENSIONS } = await import("@gltf-transform/extensions");
-
-    const segments = 40;
-    const side = segments + 1;
-    const positions = new Float32Array(side * side * 3);
-    for (let i = 0; i < side; i++) {
-        for (let j = 0; j < side; j++) {
-            const index = (i * side + j) * 3;
-            positions[index] = i / segments - 0.5;
-            positions[index + 1] = j / segments - 0.5;
-            positions[index + 2] = 0.1 * Math.sin(i * 0.5) * Math.cos(j * 0.5);
-        }
-    }
-
-    const indices = new Uint32Array(segments * segments * 6);
-    let cursor = 0;
-    for (let i = 0; i < segments; i++) {
-        for (let j = 0; j < segments; j++) {
-            const a = i * side + j;
-            const b = a + 1;
-            const c = a + side + 1;
-            const d = a + side;
-            indices[cursor++] = a;
-            indices[cursor++] = b;
-            indices[cursor++] = c;
-            indices[cursor++] = a;
-            indices[cursor++] = c;
-            indices[cursor++] = d;
-        }
-    }
-
-    const document = new Document();
-    const buffer = document.createBuffer();
-    const position = document.createAccessor().setType("VEC3").setArray(positions).setBuffer(buffer);
-    const index = document.createAccessor().setType("SCALAR").setArray(indices).setBuffer(buffer);
-    const primitive = document.createPrimitive().setAttribute("POSITION", position).setIndices(index);
-    const mesh = document.createMesh("grid").addPrimitive(primitive);
-    const node = document.createNode("gridNode").setMesh(mesh);
-    document.createScene("scene0").addChild(node);
-
-    const io = new WebIO().registerExtensions(ALL_EXTENSIONS);
-    return Buffer.from(await io.writeBinary(document));
-}
-
-/**
- * Encodes a solid-color RGBA image as a minimal (uncompressed) PNG, avoiding any image-library
- * dependency in the test. The KTX2 encoder decodes these bytes via canvas in the browser.
- * @param width - Image width in pixels (a multiple of 4 so the KTX2 block compresses it).
- * @param height - Image height in pixels (a multiple of 4).
- * @param rgba - The fill color as [r, g, b, a] byte values.
- * @returns The PNG file bytes.
- */
-function encodeSolidPng(width: number, height: number, rgba: [number, number, number, number]): Buffer {
-    const crc32 = (buffer: Buffer): number => {
-        let crc = ~0 >>> 0;
-        for (let i = 0; i < buffer.length; i++) {
-            crc ^= buffer[i];
-            for (let k = 0; k < 8; k++) {
-                crc = (crc >>> 1) ^ (0xedb88320 & -(crc & 1));
-            }
-        }
-        return ~crc >>> 0;
-    };
-    const chunk = (type: string, data: Buffer): Buffer => {
-        const length = Buffer.alloc(4);
-        length.writeUInt32BE(data.length);
-        const typeAndData = Buffer.concat([Buffer.from(type, "ascii"), data]);
-        const crc = Buffer.alloc(4);
-        crc.writeUInt32BE(crc32(typeAndData));
-        return Buffer.concat([length, typeAndData, crc]);
-    };
-
-    const header = Buffer.alloc(13);
-    header.writeUInt32BE(width, 0);
-    header.writeUInt32BE(height, 4);
-    header[8] = 8; // bit depth
-    header[9] = 6; // color type: RGBA
-
-    const rowLength = 1 + width * 4;
-    const raw = Buffer.alloc(height * rowLength);
-    for (let y = 0; y < height; y++) {
-        raw[y * rowLength] = 0; // filter type: none
-        for (let x = 0; x < width; x++) {
-            const offset = y * rowLength + 1 + x * 4;
-            raw[offset] = rgba[0];
-            raw[offset + 1] = rgba[1];
-            raw[offset + 2] = rgba[2];
-            raw[offset + 3] = rgba[3];
-        }
-    }
-
-    const signature = Buffer.from([137, 80, 78, 71, 13, 10, 26, 10]);
-    return Buffer.concat([signature, chunk("IHDR", header), chunk("IDAT", deflateSync(raw)), chunk("IEND", Buffer.alloc(0))]);
-}
-
-/**
- * Builds a tiny textured glb with a base-color (color/sRGB) texture and a normal (data) texture, both
- * with multiple-of-4 dimensions so the KTX2 block compresses them (ETC1S for color, UASTC for data).
- * @returns The fixture glb bytes.
- */
-async function createTexturedFixtureGlb(): Promise<Buffer> {
-    const { Document, WebIO } = await import("@gltf-transform/core");
-    const { ALL_EXTENSIONS } = await import("@gltf-transform/extensions");
-
-    const document = new Document();
-    const buffer = document.createBuffer();
-    const position = document
-        .createAccessor()
-        .setType("VEC3")
-        .setArray(new Float32Array([0, 0, 0, 1, 0, 0, 0, 1, 0]))
-        .setBuffer(buffer);
-    const texCoord = document
-        .createAccessor()
-        .setType("VEC2")
-        .setArray(new Float32Array([0, 0, 1, 0, 0, 1]))
-        .setBuffer(buffer);
-
-    const material = document.createMaterial("mat0");
-    material.setBaseColorTexture(
-        document
-            .createTexture("base")
-            .setImage(encodeSolidPng(8, 8, [230, 120, 40, 255]))
-            .setMimeType("image/png")
-    );
-    material.setNormalTexture(
-        document
-            .createTexture("norm")
-            .setImage(encodeSolidPng(8, 8, [128, 128, 255, 255]))
-            .setMimeType("image/png")
-    );
-
-    const primitive = document.createPrimitive().setAttribute("POSITION", position).setAttribute("TEXCOORD_0", texCoord).setMaterial(material);
-    const mesh = document.createMesh("mesh0").addPrimitive(primitive);
-    const node = document.createNode("node0").setMesh(mesh);
-    document.createScene("scene0").addChild(node);
-
-    const io = new WebIO().registerExtensions(ALL_EXTENSIONS);
-    return Buffer.from(await io.writeBinary(document));
-}
+const DefaultPipeline: readonly (readonly [string, string])[] = [
+    ["Import glTF", "KTX2 Compress"],
+    ["KTX2 Compress", "Draco Compression"],
+    ["Draco Compression", "Export glTF"],
+];
 
 /**
  * Parses the JSON chunk of a glb without any glTF dependency, so assertions can inspect the exported
@@ -181,174 +21,136 @@ async function createTexturedFixtureGlb(): Promise<Buffer> {
  * @param glb - The glb file bytes.
  * @returns The parsed glTF JSON.
  */
-function parseGlbJson(glb: Buffer): { extensionsUsed?: string[]; extensionsRequired?: string[]; images?: { mimeType?: string }[] } {
+function parseGlbJson(glb: Buffer): GltfJson {
     // glb layout: 12-byte header, then chunks of [length(4), type(4), data]. The first chunk is JSON.
     const jsonLength = glb.readUInt32LE(12);
     const jsonBytes = glb.subarray(20, 20 + jsonLength);
     return JSON.parse(jsonBytes.toString("utf8"));
 }
 
-test.describe("Node Assets Editor — Backend Wiring", () => {
-    test("seeds a real Import/Export starter graph from the backend", async ({ page }) => {
-        const editor = new NodeAssetsEditorPage(page);
-        await editor.goto();
-
-        // Left panel: palette now offers the real block category, not the old dummy "Inputs".
-        await expect(editor.paletteTitle).toBeVisible();
-        await expect(page.getByPlaceholder("Search palette")).toBeVisible();
-        await expect(page.getByText(/Blocks \(\d+\)/)).toBeVisible();
-
-        // Center panel: the starter graph is an unconnected Import + Export pair.
-        await expect(editor.nodeByTitle("Import glTF")).toBeVisible();
-        await expect(editor.nodeByTitle("Export glTF")).toBeVisible();
-        await expect(editor.wires).toHaveCount(0);
-
-        // Toolbar: auto-build replaces the old manual run button.
-        await expect(page.getByRole("button", { name: "Build and preview" })).toBeHidden();
-        await expect(page.getByRole("button", { name: "Save" })).toBeVisible();
-        await expect(page.getByRole("button", { name: "Load" })).toBeVisible();
+function collectPageErrors(page: Page): string[] {
+    const errors: string[] = [];
+    page.on("console", (message) => {
+        if (message.type() === "error") {
+            errors.push(message.text());
+        }
     });
+    page.on("pageerror", (error) => errors.push(error.message));
+    return errors;
+}
 
-    test("imports a glb, wires the graph, exports a roundtripped glb, and previews it", async ({ page }, testInfo) => {
+async function readDownloadedGlb(download: Download): Promise<Buffer> {
+    expect(download.suggestedFilename()).toBe("asset.glb");
+    const downloadPath = await download.path();
+    const exported = readFileSync(downloadPath);
+    expect(exported.length).toBeGreaterThan(0);
+    expect(exported.subarray(0, 4).toString("ascii")).toBe("glTF");
+    return exported;
+}
+
+test.describe("Node Assets Editor — Milestone 1", () => {
+    test.describe.configure({ timeout: 180_000 });
+
+    test("opens to the premade graph and auto-previews BoomBox without console errors", async ({ page }) => {
+        const pageErrors = collectPageErrors(page);
+        const boomBoxResponse = page.waitForResponse((response) => response.url().endsWith("/scenes/BoomBox.glb") && response.ok());
         const editor = new NodeAssetsEditorPage(page);
+
         await editor.goto();
+        await boomBoxResponse;
 
-        // 1) Import a glb through the Import node's property file picker.
-        await editor.selectNode("Import glTF");
-        const importButton = page.getByRole("button", { name: /Import glTF file/ });
-        await expect(importButton).toBeVisible();
+        await expect(editor.nodes).toHaveCount(4);
+        await expect(editor.nodeByTitle("Import glTF")).toBeVisible();
+        await expect(editor.nodeByTitle("KTX2 Compress")).toBeVisible();
+        await expect(editor.nodeByTitle("Draco Compression")).toBeVisible();
+        await expect(editor.nodeByTitle("Export glTF")).toBeVisible();
+        await editor.expectWiredPipeline(DefaultPipeline);
 
-        const fileChooserPromise = page.waitForEvent("filechooser");
-        await importButton.click();
-        const fileChooser = await fileChooserPromise;
-        await fileChooser.setFiles({ name: "fixture.glb", mimeType: "model/gltf-binary", buffer: await createFixtureGlb() });
-
-        // The import block reflects the loaded bytes in its IMPORT "Source" status field. The properties pane
-        // renders the GENERAL "Name" textbox first and the IMPORT "Source" textbox second, so Source is textbox #1.
-        await expect(page.getByRole("textbox").nth(1)).toHaveValue(/Loaded \(\d+ bytes\)/);
-
-        // 2) Connect the Import output to the Export input via a real pointer drag.
-        await editor.connectPorts(editor.portOfNode("Import glTF"), editor.portOfNode("Export glTF"));
-        await expect(editor.wires).toHaveCount(1);
-
-        // 3) Auto-build previews the current graph, then export downloads those cached bytes.
-        await editor.waitForSuccessfulPreviewBuild();
-        await editor.selectNode("Export glTF");
-        const exportButton = page.getByRole("button", { name: "Export .glb" });
-        await expect(exportButton).toBeVisible();
-
-        const downloadPromise = page.waitForEvent("download");
-        await exportButton.click();
-        const download = await downloadPromise;
-        expect(download.suggestedFilename()).toBe("asset.glb");
-
-        // The downloaded bytes are a genuine glb produced by NodeAsset.buildAsync (magic "glTF").
-        const downloadPath = await download.path();
-        const exported = readFileSync(downloadPath);
-        expect(exported.length).toBeGreaterThan(0);
-        expect(exported.subarray(0, 4).toString("ascii")).toBe("glTF");
-
-        // 4) The preview pane hosts the Babylon canvas that rendered the exported asset.
+        await editor.waitForNextSuccessfulPreviewBuild();
         await expect(editor.previewCanvas).toBeVisible();
 
-        // Give the preview a moment to load and render the exported asset, then capture the result.
-        await page.waitForTimeout(1500);
-        const screenshot = await page.screenshot();
-        await testInfo.attach("import-export-preview", { body: screenshot, contentType: "image/png" });
-    });
-
-    test("compresses textures to KTX2 and exports a KHR_texture_basisu glb", async ({ page }, testInfo) => {
-        const editor = new NodeAssetsEditorPage(page);
-        await editor.goto();
-
-        // 1) Import a textured glb through the Import node's property file picker.
         await editor.selectNode("Import glTF");
-        const importButton = page.getByRole("button", { name: /Import glTF file/ });
-        await expect(importButton).toBeVisible();
-
-        const fileChooserPromise = page.waitForEvent("filechooser");
-        await importButton.click();
-        const fileChooser = await fileChooserPromise;
-        await fileChooser.setFiles({ name: "textured.glb", mimeType: "model/gltf-binary", buffer: await createTexturedFixtureGlb() });
         await expect(page.getByRole("textbox").nth(1)).toHaveValue(/Loaded \(\d+ bytes\)/);
 
-        // 2) Drop a KTX2 Compress block from the palette between the Import and Export nodes.
-        await editor.dropPaletteItem("KTX2 Compress");
-        await expect(editor.nodeByTitle("KTX2 Compress")).toBeVisible();
-        await expect(editor.nodes).toHaveCount(3);
+        await editor.selectNode("Draco Compression");
+        await expect(page.getByText("DRACO", { exact: true })).toBeVisible();
+        await expect(page.getByText("Method", { exact: true })).toBeVisible();
+        await expect(page.getByText("Encode speed", { exact: true })).toBeVisible();
+        await expect(page.getByText("Decode speed", { exact: true })).toBeVisible();
+        await expect(page.getByText("Quantization bits", { exact: true })).toBeVisible();
 
-        // 3) Wire Import.output -> KTX2.input and KTX2.output -> Export.input.
-        await editor.connectPorts(editor.portOfNode("Import glTF"), editor.portOfNode("KTX2 Compress", "in"));
-        await editor.connectPorts(editor.portOfNode("KTX2 Compress", "out"), editor.portOfNode("Export glTF"));
-        await expect(editor.wires).toHaveCount(2);
+        await page.getByRole("combobox").click();
+        await page.getByRole("option", { name: "Sequential" }).click();
+        await page.getByRole("textbox").nth(1).fill("7");
+        await page.getByRole("textbox").nth(1).press("Enter");
+        await page.getByRole("textbox").nth(2).fill("4");
+        await page.getByRole("textbox").nth(2).press("Enter");
+        await page.getByRole("textbox").nth(3).fill('{"POSITION":12}');
+        await page.getByRole("textbox").nth(3).press("Enter");
 
-        // 4) Auto-build runs the in-browser Basis encoder; export downloads the cached glb.
-        await editor.waitForSuccessfulPreviewBuild();
+        await editor.selectNode("Export glTF");
+        await editor.selectNode("Draco Compression");
+        await expect(page.getByRole("combobox")).toContainText("Sequential");
+        await expect(page.getByRole("textbox").nth(1)).toHaveValue("7");
+        await expect(page.getByRole("textbox").nth(2)).toHaveValue("4");
+        await expect(page.getByRole("textbox").nth(3)).toHaveValue('{"POSITION":12}');
+
+        expect(pageErrors).toEqual([]);
+    });
+
+    test("exports the same cached build that the preview rendered", async ({ page }) => {
+        const editor = new NodeAssetsEditorPage(page);
+        await editor.goto();
+        await editor.waitForNextSuccessfulPreviewBuild();
+
         await editor.selectNode("Export glTF");
         const exportButton = page.getByRole("button", { name: "Export .glb" });
         await expect(exportButton).toBeVisible();
 
         const downloadPromise = page.waitForEvent("download");
         await exportButton.click();
-        const download = await downloadPromise;
-        expect(download.suggestedFilename()).toBe("asset.glb");
-
-        // 5) The exported glb is a genuine glb that declares KHR_texture_basisu and carries image/ktx2
-        //    payloads — proving the encode ran in the browser (not just a passthrough).
-        const exported = readFileSync(await download.path());
-        expect(exported.subarray(0, 4).toString("ascii")).toBe("glTF");
+        const exported = await readDownloadedGlb(await downloadPromise);
         const gltf = parseGlbJson(exported);
         expect(gltf.extensionsUsed ?? []).toContain("KHR_texture_basisu");
-        expect((gltf.images ?? []).map((image) => image.mimeType)).toContain("image/ktx2");
-
-        // 6) Screenshot the preview as evidence. The preview's KTX2 decode relies on the external
-        //    transcoder, so this is attached, not asserted on, to keep the test hermetic.
-        await expect(editor.previewCanvas).toBeVisible();
-        await page.waitForTimeout(1500);
-        await testInfo.attach("ktx2-export-preview", { body: await page.screenshot(), contentType: "image/png" });
-    });
-
-    test("compresses geometry to Draco and exports a KHR_draco_mesh_compression glb", async ({ page }, testInfo) => {
-        const editor = new NodeAssetsEditorPage(page);
-        await editor.goto();
-
-        await editor.selectNode("Import glTF");
-        const importButton = page.getByRole("button", { name: /Import glTF file/ });
-        await expect(importButton).toBeVisible();
-
-        const fileChooserPromise = page.waitForEvent("filechooser");
-        await importButton.click();
-        const fileChooser = await fileChooserPromise;
-        await fileChooser.setFiles({ name: "grid.glb", mimeType: "model/gltf-binary", buffer: await createIndexedGridGlb() });
-        await expect(page.getByRole("textbox").nth(1)).toHaveValue(/Loaded \(\d+ bytes\)/);
-
-        await editor.dropPaletteItem("Draco Compression");
-        await expect(editor.nodeByTitle("Draco Compression")).toBeVisible();
-        await expect(editor.nodes).toHaveCount(3);
-
-        await editor.connectPorts(editor.portOfNode("Import glTF"), editor.portOfNode("Draco Compression", "in"));
-        await editor.connectPorts(editor.portOfNode("Draco Compression", "out"), editor.portOfNode("Export glTF"));
-        await expect(editor.wires).toHaveCount(2);
-
-        // Auto-build runs the in-browser Draco encoder; export downloads the cached glb.
-        await editor.waitForSuccessfulPreviewBuild();
-        await editor.selectNode("Export glTF");
-        const exportButton = page.getByRole("button", { name: "Export .glb" });
-        await expect(exportButton).toBeVisible();
-
-        const downloadPromise = page.waitForEvent("download");
-        await exportButton.click();
-        const download = await downloadPromise;
-        expect(download.suggestedFilename()).toBe("asset.glb");
-
-        const exported = readFileSync(await download.path());
-        expect(exported.subarray(0, 4).toString("ascii")).toBe("glTF");
-        const gltf = parseGlbJson(exported);
         expect(gltf.extensionsUsed ?? []).toContain("KHR_draco_mesh_compression");
         expect(gltf.extensionsRequired ?? []).toContain("KHR_draco_mesh_compression");
+        expect((gltf.images ?? []).map((image) => image.mimeType)).toContain("image/ktx2");
+    });
 
+    test("remove, add, and reorder compression nodes rebuilds a previewable graph", async ({ page }) => {
+        const editor = new NodeAssetsEditorPage(page);
+        await editor.goto();
+        await editor.waitForNextSuccessfulPreviewBuild();
+
+        await editor.selectNode("KTX2 Compress");
+        await page.keyboard.press("Delete");
+        await expect(editor.nodeByTitle("KTX2 Compress")).toBeHidden();
+        await editor.connectPorts(editor.portOfNode("Import glTF"), editor.portOfNode("Draco Compression", "in"));
+        await editor.expectWiredPipeline([
+            ["Import glTF", "Draco Compression"],
+            ["Draco Compression", "Export glTF"],
+        ]);
+        await editor.waitForSuccessfulPreviewBuild();
         await expect(editor.previewCanvas).toBeVisible();
-        await page.waitForTimeout(1500);
-        await testInfo.attach("draco-export-preview", { body: await page.screenshot(), contentType: "image/png" });
+        await editor.selectNode("Export glTF");
+        const removeDownloadPromise = page.waitForEvent("download");
+        await page.getByRole("button", { name: "Export .glb" }).click();
+        const removedKtx2Export = parseGlbJson(await readDownloadedGlb(await removeDownloadPromise));
+        expect(removedKtx2Export.extensionsUsed ?? []).not.toContain("KHR_texture_basisu");
+        expect(removedKtx2Export.extensionsUsed ?? []).toContain("KHR_draco_mesh_compression");
+
+        const reorderRebuildPromise = editor.waitForNextSuccessfulPreviewBuild();
+        await editor.dropPaletteItem("KTX2 Compress");
+        await expect(editor.nodeByTitle("KTX2 Compress")).toBeVisible();
+        await editor.deleteWire("Draco Compression", "Export glTF");
+        await editor.connectPorts(editor.portOfNode("Draco Compression", "out"), editor.portOfNode("KTX2 Compress", "in"));
+        await editor.connectPorts(editor.portOfNode("KTX2 Compress", "out"), editor.portOfNode("Export glTF"));
+        await editor.expectWiredPipeline([
+            ["Import glTF", "Draco Compression"],
+            ["Draco Compression", "KTX2 Compress"],
+            ["KTX2 Compress", "Export glTF"],
+        ]);
+        await reorderRebuildPromise;
+        await expect(editor.previewCanvas).toBeVisible();
     });
 });
