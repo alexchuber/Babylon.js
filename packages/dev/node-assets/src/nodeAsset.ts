@@ -1,6 +1,7 @@
 import { ExportGLTFBlock } from "./Blocks/exportGLTFBlock";
 import { CreateBlockByClassName } from "./blockFoundation/blockRegistry";
 import { type NodeAssetBlock } from "./blockFoundation/nodeAssetBlock";
+import { CloneForFanOutAsync } from "./evaluation/fanOutCopy";
 import { UniqueIdGenerator } from "./utils/uniqueIdGenerator";
 
 /**
@@ -188,9 +189,14 @@ export class NodeAsset {
                 await this._evaluateBlockAsync(connection.upstream.ownerBlock, evaluated);
             })
         );
-        for (const connection of connections) {
-            connection.input.value = connection.upstream.value;
-        }
+        // When an upstream output fans out to more than one input, each consumer receives its own
+        // clone of a mutable (SCENE) payload so an in-place edit on one branch cannot stomp another;
+        // a sole consumer — and every immutable scalar payload — shares the value by reference.
+        await Promise.all(
+            connections.map(async ({ input, upstream }) => {
+                input.value = upstream.connectedPoints.length > 1 ? await CloneForFanOutAsync(upstream.type, upstream.value) : upstream.value;
+            })
+        );
 
         await block._buildBlockAsync();
     }
