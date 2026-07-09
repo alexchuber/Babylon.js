@@ -26,7 +26,17 @@ import { type IGraphNode, type IGraphPort, type IGraphSnapshot, type IGraphWire,
 import { type IPaletteCategory } from "../nodeGraph/paletteModel";
 import { type IPropertySection } from "../nodeGraph/propertyModel";
 
-import { BlockDescriptors, ConfigureBlockForEditor, GetBlockDescriptorByPaletteItemId, GetBlockDescriptorForBlock, GltfPortColor, type IBlockDescriptor } from "./blockCatalog";
+// Import the block descriptor modules for their registration side effects, so the palette and
+// load-time lookups below see every built-in block. (See ./blockDescriptors/index.ts.)
+import "./blockDescriptors";
+import {
+    ConfigureBlockForEditor,
+    GetAllBlockDescriptors,
+    GetBlockDescriptorByPaletteItemId,
+    GetBlockDescriptorForBlock,
+    ScenePortColor,
+    type IBlockDescriptor,
+} from "./blockCatalog";
 import { PromptForFileAsync } from "./browserFiles";
 import { NodeAssetBuildWorkerClient, type INodeAssetBuildClient } from "./nodeAssetBuildWorkerClient";
 
@@ -110,9 +120,9 @@ function PointToPort(block: NodeAssetBlock, point: NodeAssetConnectionPoint): IG
     return {
         id: PortIdForPoint(block, point),
         // The port name is purely cosmetic (the controller maps wires by id), so show the type.
-        name: "glTF",
+        name: "Scene",
         direction: point.direction === NodeAssetConnectionPointDirection.Output ? "output" : "input",
-        color: GltfPortColor,
+        color: ScenePortColor,
     };
 }
 
@@ -176,7 +186,7 @@ export class NodeAssetGraphController {
         };
         this.state = new GraphEditorState(snapshot);
 
-        this.paletteCategories = [{ label: "Blocks", items: BlockDescriptors.map((descriptor) => ({ id: descriptor.paletteItemId, label: descriptor.label })) }];
+        this.paletteCategories = [{ label: "Blocks", items: GetAllBlockDescriptors().map((descriptor) => ({ id: descriptor.paletteItemId, label: descriptor.label })) }];
 
         // Subscribe only after seeding so the reconcile sees consistent maps and state.
         this._reconcile();

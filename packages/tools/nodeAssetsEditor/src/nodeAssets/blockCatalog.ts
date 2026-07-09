@@ -1,26 +1,16 @@
 /**
- * App-layer glue between the NodeAssets backend and the visual node-graph palette. It names the
- * blocks the palette offers and knows how to construct and color each one. The reusable framework in
- * `../nodeGraph` never imports this module, keeping it free of NodeAssets/gltf-transform types.
+ * App-layer glue between the NodeAssets backend and the visual node-graph palette. It holds the
+ * registry of block descriptors the palette offers and knows how to construct and color each one.
+ * Each built-in block registers its descriptor from its own module under `./blockDescriptors`; this
+ * module owns only the registry. The reusable framework in `../nodeGraph` never imports this module,
+ * keeping it free of NodeAssets/gltf-transform types.
  */
 
-import { ExportGLTFBlock } from "node-assets/Blocks/exportGLTFBlock";
-import { ImportGLTFBlock } from "node-assets/Blocks/importGLTFBlock";
-import { DracoCompressionBlock } from "node-assets/Blocks/dracoCompressionBlock";
-import { KTX2CompressionBlock } from "node-assets/Blocks/ktx2CompressionBlock";
 import { type NodeAsset } from "node-assets/nodeAsset";
 import { type NodeAssetBlock } from "node-assets/blockFoundation/nodeAssetBlock";
 
-/** Data-driven dot color for glTF-typed ports (applied inline as visual data, not theme chrome). */
-export const GltfPortColor = "#d97b3f";
-
-// Data-driven node header colors: green/blue for the boundary blocks, purple for compression.
-const ImportHeaderColor = "#3f7d4e";
-const ExportHeaderColor = "#3a6ea5";
-const CompressionHeaderColor = "#7d5aa8";
-
-// Data-driven node header color for the Draco compression block.
-const DracoHeaderColor = "#6f5b9e";
+/** Data-driven dot color for scene-typed ports (applied inline as visual data, not theme chrome). */
+export const ScenePortColor = "#d97b3f";
 
 /**
  * Describes one palette entry: its id and label, its node header color, the backend class it maps to,
@@ -39,37 +29,26 @@ export interface IBlockDescriptor {
     readonly create: (nodeAsset: NodeAsset) => NodeAssetBlock;
 }
 
-/** The blocks offered by the palette, in display order. */
-export const BlockDescriptors: readonly IBlockDescriptor[] = [
-    {
-        paletteItemId: "import-gltf",
-        label: "Import glTF",
-        headerColor: ImportHeaderColor,
-        className: ImportGLTFBlock.ClassName,
-        create: (nodeAsset) => ConfigureBlockForEditor(new ImportGLTFBlock("Import glTF", nodeAsset)),
-    },
-    {
-        paletteItemId: "draco-compression",
-        label: "Draco Compression",
-        headerColor: DracoHeaderColor,
-        className: DracoCompressionBlock.ClassName,
-        create: (nodeAsset) => new DracoCompressionBlock("Draco Compression", nodeAsset),
-    },
-    {
-        paletteItemId: "export-gltf",
-        label: "Export glTF",
-        headerColor: ExportHeaderColor,
-        className: ExportGLTFBlock.ClassName,
-        create: (nodeAsset) => ConfigureBlockForEditor(new ExportGLTFBlock("Export glTF", nodeAsset)),
-    },
-    {
-        paletteItemId: "ktx2-compression",
-        label: "KTX2 Compress",
-        headerColor: CompressionHeaderColor,
-        className: KTX2CompressionBlock.ClassName,
-        create: (nodeAsset) => ConfigureBlockForEditor(new KTX2CompressionBlock("KTX2 Compress", nodeAsset)),
-    },
-];
+// Registry of block descriptors keyed by palette item id, populated by the per-block modules under
+// `./blockDescriptors` at import time. Insertion order is the palette display order.
+const DescriptorsByPaletteItemId = new Map<string, IBlockDescriptor>();
+
+/**
+ * Registers a block descriptor so the palette and load-time lookups can find it. Called once per
+ * block at module load; a later registration for the same palette item id replaces the earlier one.
+ * @param descriptor - The descriptor to register.
+ */
+export function RegisterBlockDescriptor(descriptor: IBlockDescriptor): void {
+    DescriptorsByPaletteItemId.set(descriptor.paletteItemId, descriptor);
+}
+
+/**
+ * Lists all registered block descriptors, in registration (palette display) order.
+ * @returns The registered descriptors.
+ */
+export function GetAllBlockDescriptors(): readonly IBlockDescriptor[] {
+    return Array.from(DescriptorsByPaletteItemId.values());
+}
 
 /**
  * Applies editor-side defaults to a newly created block.
@@ -86,7 +65,7 @@ export function ConfigureBlockForEditor<T extends NodeAssetBlock>(block: T): T {
  * @returns The matching descriptor, or undefined if unknown.
  */
 export function GetBlockDescriptorByPaletteItemId(paletteItemId: string): IBlockDescriptor | undefined {
-    return BlockDescriptors.find((descriptor) => descriptor.paletteItemId === paletteItemId);
+    return DescriptorsByPaletteItemId.get(paletteItemId);
 }
 
 /**
@@ -96,5 +75,10 @@ export function GetBlockDescriptorByPaletteItemId(paletteItemId: string): IBlock
  */
 export function GetBlockDescriptorForBlock(block: NodeAssetBlock): IBlockDescriptor | undefined {
     const className = block.getClassName();
-    return BlockDescriptors.find((descriptor) => descriptor.className === className);
+    for (const descriptor of DescriptorsByPaletteItemId.values()) {
+        if (descriptor.className === className) {
+            return descriptor;
+        }
+    }
+    return undefined;
 }

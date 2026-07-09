@@ -1,4 +1,11 @@
 import { NodeAsset } from "node-assets/nodeAsset";
+// Evaluate each block module so it self-registers its factory with NodeAsset.Parse (see
+// node-assets/nodeAsset). The worker runs off the main thread and does not import the app UI's block
+// descriptor modules, so without these imports blocks like Draco stay unregistered and Parse throws.
+import "node-assets/Blocks/importGLTFBlock";
+import "node-assets/Blocks/dracoCompressionBlock";
+import "node-assets/Blocks/exportGLTFBlock";
+import "node-assets/Blocks/ktx2CompressionBlock";
 
 import { ConfigureNodeAssetBuildResources, type INodeAssetBuildResourceUrls } from "./nodeAssetBuildResources";
 

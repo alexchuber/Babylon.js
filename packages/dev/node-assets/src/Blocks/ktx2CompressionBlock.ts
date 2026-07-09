@@ -3,6 +3,7 @@ import { type KTX2Options } from "ktx2-encoder/gltf-transform";
 
 import { type Nullable } from "core/types";
 
+import { RegisterBlock } from "../blockFoundation/blockRegistry";
 import { NodeAssetBlock } from "../blockFoundation/nodeAssetBlock";
 import { type NodeAssetConnectionPoint } from "../connection/nodeAssetConnectionPoint";
 import { NodeAssetConnectionPointType } from "../connection/nodeAssetConnectionPointType";
@@ -70,8 +71,8 @@ export class KTX2CompressionBlock extends NodeAssetBlock {
      */
     public constructor(name: string, nodeAsset: NodeAsset) {
         super(name, nodeAsset);
-        this.input = this._registerInput("input", NodeAssetConnectionPointType.GLTF);
-        this.output = this._registerOutput("output", NodeAssetConnectionPointType.GLTF);
+        this.input = this._registerInput("input", NodeAssetConnectionPointType.SCENE);
+        this.output = this._registerOutput("output", NodeAssetConnectionPointType.SCENE);
     }
 
     /**
@@ -139,3 +140,5 @@ export class KTX2CompressionBlock extends NodeAssetBlock {
         this.generateMipmaps = serializationObject.generateMipmaps ?? false;
     }
 }
+
+RegisterBlock(KTX2CompressionBlock.ClassName, (name, nodeAsset) => new KTX2CompressionBlock(name, nodeAsset));

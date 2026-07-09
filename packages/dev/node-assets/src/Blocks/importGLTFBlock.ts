@@ -3,6 +3,7 @@ import { type Document } from "@gltf-transform/core";
 import { type Nullable } from "core/types";
 import { DecodeBase64ToBinary, EncodeArrayBufferToBase64 } from "core/Misc/stringTools";
 
+import { RegisterBlock } from "../blockFoundation/blockRegistry";
 import { NodeAssetBlock } from "../blockFoundation/nodeAssetBlock";
 import { type NodeAssetConnectionPoint } from "../connection/nodeAssetConnectionPoint";
 import { NodeAssetConnectionPointType } from "../connection/nodeAssetConnectionPointType";
@@ -35,7 +36,7 @@ export class ImportGLTFBlock extends NodeAssetBlock {
      */
     public constructor(name: string, nodeAsset: NodeAsset) {
         super(name, nodeAsset);
-        this.output = this._registerOutput("output", NodeAssetConnectionPointType.GLTF);
+        this.output = this._registerOutput("output", NodeAssetConnectionPointType.SCENE);
     }
 
     /**
@@ -79,3 +80,5 @@ export class ImportGLTFBlock extends NodeAssetBlock {
         this.data = serializationObject.data ? new Uint8Array(DecodeBase64ToBinary(serializationObject.data)) : null;
     }
 }
+
+RegisterBlock(ImportGLTFBlock.ClassName, (name, nodeAsset) => new ImportGLTFBlock(name, nodeAsset));
