@@ -28,6 +28,7 @@ import { type IPropertySection } from "../nodeGraph/propertyModel";
 
 import { BlockDescriptors, ConfigureBlockForEditor, GetBlockDescriptorByPaletteItemId, GetBlockDescriptorForBlock, GltfPortColor, type IBlockDescriptor } from "./blockCatalog";
 import { PromptForFileAsync } from "./browserFiles";
+import { NodeAssetBuildWorkerClient, type INodeAssetBuildClient } from "./nodeAssetBuildWorkerClient";
 
 /** The editor metadata layered on top of a serialized graph: per-block visual state keyed by block id. */
 interface IEditorBlockMetadata {
@@ -146,15 +147,18 @@ export class NodeAssetGraphController {
     private _nodeAsset: NodeAsset;
     private readonly _blockByNodeId = new Map<string, NodeAssetBlock>();
     private readonly _pointByPortId = new Map<string, NodeAssetConnectionPoint>();
+    private readonly _buildClient: INodeAssetBuildClient;
     private _reconciling = false;
     private _buildRelevantSignature: string;
     private readonly _onChangedObserver;
 
     /**
      * Creates a controller seeded with a starter graph: Import -> KTX2 -> Draco -> Export.
+     * @param buildClient - Worker-backed build client.
      */
-    public constructor() {
+    public constructor(buildClient: INodeAssetBuildClient = new NodeAssetBuildWorkerClient()) {
         this._nodeAsset = new NodeAsset("nodeAsset");
+        this._buildClient = buildClient;
 
         const importDescriptor = GetBlockDescriptorByPaletteItemId("import-gltf")!;
         const ktx2Descriptor = GetBlockDescriptorByPaletteItemId("ktx2-compression")!;
@@ -256,7 +260,7 @@ export class NodeAssetGraphController {
      */
     public async buildAsync(): Promise<Uint8Array> {
         this._reconcileAndNotifyBuildRelevantChange();
-        return await this._nodeAsset.buildAsync();
+        return await this._buildClient.buildAsync(this._nodeAsset.serialize());
     }
 
     /**
@@ -329,6 +333,7 @@ export class NodeAssetGraphController {
         this._onChangedObserver.remove();
         this.onExportRequested.clear();
         this.onBuildRelevantChanged.clear();
+        this._buildClient.dispose();
     }
 
     private _buildImportSection(block: ImportGLTFBlock): IPropertySection {

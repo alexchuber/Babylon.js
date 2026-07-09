@@ -68,10 +68,14 @@ export default defineConfig({
         ...base.server,
         fs: {
             ...base.server?.fs,
-            // The KTX2 encoder's matched wasm + JS glue live in the root node_modules; allow the dev
-            // server to serve them for the `?url` imports in blockCatalog (repo root is three levels up).
+            // The worker serves the KTX2 and Draco encoder sidecars from root node_modules via `?url`.
             allow: [...(base.server?.fs?.allow ?? []), path.resolve("../../..")],
         },
+    },
+    worker: {
+        ...base.worker,
+        format: "es",
+        plugins: () => [lowerStandardDecoratorsPlugin()],
     },
     plugins: [...(base.plugins ?? []), lowerStandardDecoratorsPlugin()],
 });
