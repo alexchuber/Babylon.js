@@ -8,9 +8,11 @@ import {
     DedupBlock,
     DracoCompressionBlock,
     ExportGLTFBlock,
+    ExportImageBlock,
     FlattenBlock,
     ImportGLTFBlock,
     ImportUSDBlock,
+    ImportImageBlock,
     JoinBlock,
     JsonLiteral,
     KTX2CompressionBlock,
@@ -148,9 +150,11 @@ describe("block self-registration", () => {
                     StringLiteral.ClassName,
                     JsonLiteral.ClassName,
                     MergeScenes.ClassName,
+                    ImportImageBlock.ClassName,
+                    ExportImageBlock.ClassName,
                 ])
             );
-            expect(registeredClassNames).toHaveLength(18);
+            expect(registeredClassNames).toHaveLength(20);
         });
 
         it.each(registeredClassNames)("round-trips %s through serialize/Parse", (className) => {

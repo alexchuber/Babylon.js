@@ -21,3 +21,7 @@ export { StringLiteral } from "./Blocks/stringLiteral";
 export { JsonLiteral } from "./Blocks/jsonLiteral";
 export { ImportUSDBlock } from "./Blocks/importUSDBlock";
 export { MergeScenes } from "./Blocks/mergeScenes";
+export { ImportImageBlock } from "./Blocks/importImageBlock";
+export { ExportImageBlock } from "./Blocks/exportImageBlock";
+export { type ImagePayload } from "./Blocks/imagePayload";
+export { type IExportBlock, IsExportBlock } from "./blockFoundation/exportBlock";

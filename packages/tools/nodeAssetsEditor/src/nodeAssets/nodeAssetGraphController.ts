@@ -35,6 +35,7 @@ import {
     GetAllBlockDescriptors,
     GetBlockDescriptorByPaletteItemId,
     GetBlockDescriptorForBlock,
+    ImagePortColor,
     JsonPortColor,
     NumberPortColor,
     ScenePortColor,
@@ -129,6 +130,7 @@ const PortStyleByType: Record<NodeAssetConnectionPointType, { readonly name: str
     [NodeAssetConnectionPointType.NUMBER]: { name: "Number", color: NumberPortColor },
     [NodeAssetConnectionPointType.STRING]: { name: "String", color: StringPortColor },
     [NodeAssetConnectionPointType.JSON]: { name: "Json", color: JsonPortColor },
+    [NodeAssetConnectionPointType.IMAGE]: { name: "Image", color: ImagePortColor },
 };
 
 function PointToPort(block: NodeAssetBlock, point: NodeAssetConnectionPoint): IGraphPort {

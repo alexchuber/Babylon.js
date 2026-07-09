@@ -22,3 +22,5 @@ import "./numberLiteralDescriptor";
 import "./stringLiteralDescriptor";
 import "./jsonLiteralDescriptor";
 import "./mergeScenesDescriptor";
+import "./importImageBlockDescriptor";
+import "./exportImageBlockDescriptor";

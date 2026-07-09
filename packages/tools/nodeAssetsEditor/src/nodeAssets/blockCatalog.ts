@@ -31,6 +31,13 @@ export const ValuesHeaderColor = "#5a5fb0";
 export const CompositionCategory = "Composition";
 export const CompositionHeaderColor = "#a84f5a";
 
+/** Data-driven dot color for IMAGE-typed ports, distinct from the scene and scalar port kinds. */
+export const ImagePortColor = "#38b2c4";
+
+/** Palette category and shared node header color for the IMAGE boundary block family. */
+export const ImageCategory = "Image";
+export const ImageHeaderColor = "#a0568f";
+
 /**
  * Describes one palette entry: its id and label, its node header color, the backend class it maps to,
  * and how to construct that block.
