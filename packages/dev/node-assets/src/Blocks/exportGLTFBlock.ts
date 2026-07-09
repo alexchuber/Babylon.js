@@ -6,6 +6,7 @@ import { NodeAssetBlock } from "../blockFoundation/nodeAssetBlock";
 import { type NodeAssetConnectionPoint } from "../connection/nodeAssetConnectionPoint";
 import { NodeAssetConnectionPointType } from "../connection/nodeAssetConnectionPointType";
 import { type NodeAsset } from "../nodeAsset";
+import { GetDracoModuleOptions, ResolveDraco3DGltfModule } from "./dracoWasm";
 
 /**
  * Exports the connected gltf-transform `Document` to glb bytes.
@@ -19,6 +20,12 @@ export class ExportGLTFBlock extends NodeAssetBlock {
 
     /** The exported glb bytes; also returned by {@link NodeAsset.buildAsync}. */
     public result: Nullable<Uint8Array> = null;
+
+    /**
+     * URL of the Draco encoder wasm binary. Left undefined, Draco resolves the sidecar from its package
+     * default location for headless Node usage.
+     */
+    public dracoEncoderWasmUrl: string | undefined = undefined;
 
     /**
      * Creates a new export block.
@@ -41,13 +48,13 @@ export class ExportGLTFBlock extends NodeAssetBlock {
 
         const { WebIO } = await import("@gltf-transform/core");
         const { ALL_EXTENSIONS } = await import("@gltf-transform/extensions");
-        const draco3dModule = await import("draco3dgltf");
-        // Some bundlers wrap the CommonJS exports under `default`; normalize both shapes.
-        const draco3d = (draco3dModule as typeof draco3dModule & { default?: typeof draco3dModule }).default ?? draco3dModule;
+        const draco3d = ResolveDraco3DGltfModule(await import("draco3dgltf"));
+        const dracoModuleOptions = GetDracoModuleOptions(this.dracoEncoderWasmUrl);
 
         // Register the Draco encoder so writeBinary actually encodes documents tagged by DracoCompressionBlock.
         // eslint-disable-next-line @typescript-eslint/naming-convention -- gltf-transform dependency key
-        const io = new WebIO().registerExtensions(ALL_EXTENSIONS).registerDependencies({ "draco3d.encoder": await draco3d.createEncoderModule() });
+        const dependencies = { "draco3d.encoder": dracoModuleOptions ? await draco3d.createEncoderModule(dracoModuleOptions) : await draco3d.createEncoderModule() };
+        const io = new WebIO().registerExtensions(ALL_EXTENSIONS).registerDependencies(dependencies);
         this.result = await io.writeBinary(document);
     }
 }
