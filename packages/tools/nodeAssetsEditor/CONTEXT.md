@@ -6,6 +6,10 @@ framework** that is deliberately domain-agnostic, and a **NodeAssets app** that 
 the `@babylonjs/node-assets` runtime. The runtime terms it visualizes live in
 `packages/dev/node-assets/CONTEXT.md`; this glossary is the editor's own vocabulary.
 
+> **Scope note.** Milestone 01 (the editor scaffolding) is built. Forward references below to image
+> preview and the growing palette categories are the agreed vocabulary for the 02–06 slice PRDs and
+> may not all be implemented yet. See `.scratch/0N-*/PRD.md`.
+
 ## Language
 
 **Node Assets Editor (NAE)**:
@@ -29,7 +33,8 @@ The visual box on the canvas — a titled, colored header over a body of ports. 
 runtime block. _Avoid_: block (that is the runtime's word), card.
 
 **port** (`IGraphPort`):
-The visual input/output dot on a node. The editor's render of a runtime connection point. _Avoid_:
+The visual input/output dot on a node. The editor's render of a runtime connection point; its kind
+reflects the connection point type (SCENE, IMAGE, NUMBER, STRING, JSON, BYTES). _Avoid_:
 connection point (runtime's word), socket, pin.
 
 **wire** (`IGraphWire`):
@@ -49,7 +54,8 @@ model, graph store.
 
 **palette** (`IPaletteCategory` / `IPaletteItem`, `PaletteView`):
 The left pane's categorized, filterable list of block kinds; dragging an item onto the canvas creates a
-node. _Avoid_: toolbox, node list.
+node. As the catalog grows the categories are Sources, Operators, Values, Selectors, Image, and
+Composition. _Avoid_: toolbox, node list.
 
 **properties pane** (`IPropertySection` / `PropertyDescriptor`, `PropertiesView`):
 The right pane showing editable property lines (text, dropdown, slider, switch, color, button) for the
@@ -68,11 +74,14 @@ with it, reconciling visual edits back onto the runtime graph. _Avoid_: bridge, 
 
 **block descriptor** (`IBlockDescriptor`, the block catalog):
 An app-layer entry naming one real block the palette offers — its label, node color, backend class, and
-how to construct it. Deliberately a plain table, not a registry. _Avoid_: registry, factory map.
+how to construct it. As of milestone 02 blocks self-register their descriptor at module load rather
+than being hand-listed in a central table, so adding a block is one local change. _Avoid_: registry,
+factory map.
 
 **preview** (`PreviewController`, `PreviewPane`):
-The Babylon Viewer V2 surface in the right pane that loads the exported glb back through Babylon's glTF
-loader and displays it. _Avoid_: viewport, renderer.
+The right-pane surface showing the built result: the Babylon Viewer V2 loading the exported glb for a
+SCENE pipeline, or the produced image for an IMAGE pipeline (milestone 04). _Avoid_: viewport,
+renderer.
 
 **shell** (`NodeAssetsEditorServiceDefinition`):
 The `MakeModularTool` + `IShellService` root that lays the tool out — canvas as central content;
