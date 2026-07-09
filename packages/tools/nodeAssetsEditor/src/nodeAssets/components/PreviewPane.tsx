@@ -1,9 +1,9 @@
-import { useCallback, useEffect, useRef, type FunctionComponent } from "react";
+import { useCallback, useEffect, useRef, useState, type FunctionComponent } from "react";
 
 import { Body1, Body1Strong, Caption1, makeStyles, Spinner, tokens } from "@fluentui/react-components";
 import { useObservableState } from "shared-ui-components/modularTool/hooks/observableHooks";
 
-import { type PreviewController } from "../previewController";
+import { type IPreviewImageResult, type PreviewController } from "../previewController";
 
 const useStyles = makeStyles({
     root: {
@@ -29,6 +29,32 @@ const useStyles = makeStyles({
         height: "100%",
         outline: "none",
         width: "100%",
+    },
+    imageSurface: {
+        alignItems: "center",
+        backgroundColor: tokens.colorNeutralBackground3,
+        boxSizing: "border-box",
+        display: "flex",
+        inset: 0,
+        justifyContent: "center",
+        padding: tokens.spacingVerticalM,
+        position: "absolute",
+    },
+    image: {
+        display: "block",
+        maxHeight: "100%",
+        maxWidth: "100%",
+        objectFit: "contain",
+    },
+    imageInfo: {
+        backgroundColor: "rgba(0, 0, 0, 0.55)",
+        borderRadius: tokens.borderRadiusMedium,
+        bottom: tokens.spacingVerticalS,
+        color: tokens.colorNeutralForegroundStaticInverted,
+        left: "50%",
+        padding: `${tokens.spacingVerticalXXS} ${tokens.spacingHorizontalS}`,
+        position: "absolute",
+        transform: "translateX(-50%)",
     },
     statusOverlay: {
         alignItems: "center",
@@ -58,6 +84,34 @@ const useStyles = makeStyles({
 });
 
 /**
+ * Renders the produced image of an IMAGE pipeline as the preview's reported result: the image itself
+ * plus a caption of its mime type and (once loaded) its pixel dimensions. Remounted per object URL by
+ * its `key` in {@link PreviewPane}, so dimension state resets for each new result.
+ * @param props - The component props, including the image `result` to display.
+ * @returns The rendered image surface.
+ */
+const PreviewImageSurface: FunctionComponent<{ result: IPreviewImageResult }> = (props) => {
+    const { result } = props;
+    const classes = useStyles();
+    const [dimensions, setDimensions] = useState<{ width: number; height: number } | null>(null);
+
+    return (
+        <div className={classes.imageSurface}>
+            <img
+                className={classes.image}
+                src={result.objectUrl}
+                alt="Produced image preview"
+                data-testid="preview-image"
+                onLoad={(event) => setDimensions({ width: event.currentTarget.naturalWidth, height: event.currentTarget.naturalHeight })}
+            />
+            <Caption1 className={classes.imageInfo} data-testid="preview-image-info">
+                {dimensions ? `${result.mimeType} · ${dimensions.width}×${dimensions.height}` : result.mimeType}
+            </Caption1>
+        </div>
+    );
+};
+
+/**
  * Renders the asset preview surface, hosting the Babylon canvas driven by the {@link PreviewController}.
  * @param props - The component props.
  * @param props.controller - The preview controller to bind to the canvas.
@@ -67,7 +121,7 @@ export const PreviewPane: FunctionComponent<{ controller: PreviewController }> =
     const { controller } = props;
     const classes = useStyles();
     const canvasRef = useRef<HTMLCanvasElement>(null);
-    const getStatus = useCallback(() => ({ isBuilding: controller.isBuilding, errorMessage: controller.errorMessage }), [controller]);
+    const getStatus = useCallback(() => ({ isBuilding: controller.isBuilding, errorMessage: controller.errorMessage, imageResult: controller.imageResult }), [controller]);
     const status = useObservableState(getStatus, controller.onStatusChanged);
 
     useEffect(() => {
@@ -82,6 +136,7 @@ export const PreviewPane: FunctionComponent<{ controller: PreviewController }> =
         <div className={classes.root}>
             <div className={classes.surface}>
                 <canvas ref={canvasRef} className={classes.canvas} data-testid="preview-canvas" />
+                {status.imageResult && <PreviewImageSurface key={status.imageResult.objectUrl} result={status.imageResult} />}
                 {status.isBuilding && (
                     <div className={classes.statusOverlay} role="status" aria-live="polite" data-testid="preview-building-overlay">
                         <Spinner label="Building preview" />
