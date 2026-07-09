@@ -11,6 +11,7 @@ import {
     DracoCompressionBlock,
     ExportGLTFBlock,
     ExportImageBlock,
+    ExtractTexture,
     FlattenBlock,
     FlipImageBlock,
     GetProperty,
@@ -166,9 +167,10 @@ describe("block self-registration", () => {
                     ResizeImageBlock.ClassName,
                     ConvertImageFormatBlock.ClassName,
                     FlipImageBlock.ClassName,
+                    ExtractTexture.ClassName,
                 ])
             );
-            expect(registeredClassNames).toHaveLength(27);
+            expect(registeredClassNames).toHaveLength(28);
         });
 
         it.each(registeredClassNames)("round-trips %s through serialize/Parse", (className) => {

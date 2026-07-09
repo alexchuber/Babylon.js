@@ -31,3 +31,4 @@ import "./buildPBRMaterialDescriptor";
 import "./resizeImageBlockDescriptor";
 import "./convertImageFormatBlockDescriptor";
 import "./flipImageBlockDescriptor";
+import "./extractTextureDescriptor";
