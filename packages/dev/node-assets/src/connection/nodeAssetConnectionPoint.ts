@@ -21,6 +21,13 @@ export class NodeAssetConnectionPoint {
     /** The block that owns this connection point. */
     public readonly ownerBlock: NodeAssetBlock;
 
+    /**
+     * Whether this input may be left unconnected at build time. Optional inputs are skipped (rather
+     * than raising a "not connected" error) when {@link NodeAsset.buildAsync} evaluates the graph, so
+     * a block can fall back to a default. Always `false` for outputs.
+     */
+    public readonly isOptional: boolean;
+
     /** The connection point on the other side of the link, or null when unconnected. */
     public connectedPoint: Nullable<NodeAssetConnectionPoint> = null;
 
@@ -33,12 +40,14 @@ export class NodeAssetConnectionPoint {
      * @param ownerBlock - The block that owns this connection point.
      * @param type - The value type carried by this connection point.
      * @param direction - Whether this is an input or an output point.
+     * @param isOptional - Whether an input may be left unconnected at build time. Defaults to false.
      */
-    public constructor(name: string, ownerBlock: NodeAssetBlock, type: NodeAssetConnectionPointType, direction: NodeAssetConnectionPointDirection) {
+    public constructor(name: string, ownerBlock: NodeAssetBlock, type: NodeAssetConnectionPointType, direction: NodeAssetConnectionPointDirection, isOptional = false) {
         this.name = name;
         this.ownerBlock = ownerBlock;
         this.type = type;
         this.direction = direction;
+        this.isOptional = isOptional;
     }
 
     /** Whether this connection point is linked to another. */

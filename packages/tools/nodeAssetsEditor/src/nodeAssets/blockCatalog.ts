@@ -27,6 +27,10 @@ export const OperatorHeaderColor = "#2f8f83";
 export const ValuesCategory = "Values";
 export const ValuesHeaderColor = "#5a5fb0";
 
+/** Palette category and shared node header color for the selector/property-access block family. */
+export const SelectorsCategory = "Selectors";
+export const SelectorsHeaderColor = "#b0506a";
+
 /**
  * Describes one palette entry: its id and label, its node header color, the backend class it maps to,
  * and how to construct that block.

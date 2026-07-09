@@ -125,4 +125,24 @@ describe("NodeAssetGraphController", () => {
             controller.dispose();
         }
     });
+
+    it("registers the Selector block with an editable, build-relevant pointer property", () => {
+        const controller = new NodeAssetGraphController();
+        const changes = CountBuildRelevantChanges(controller);
+        try {
+            const selectorNode = controller.createNodeFromPaletteItem("selector", { x: 400, y: 400 });
+            controller.state.addNode(selectorNode);
+
+            expect(FindProperty(controller, selectorNode, "Pointer", "text").value).toBe("");
+
+            const before = changes.count();
+            FindProperty(controller, selectorNode, "Pointer", "text").onChange("/materials/0/emissiveFactor");
+            expect(changes.count()).toBe(before + 1);
+
+            expect(FindProperty(controller, selectorNode, "Pointer", "text").value).toBe("/materials/0/emissiveFactor");
+        } finally {
+            changes.dispose();
+            controller.dispose();
+        }
+    });
 });

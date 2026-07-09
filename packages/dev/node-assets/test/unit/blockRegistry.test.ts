@@ -9,6 +9,7 @@ import {
     DracoCompressionBlock,
     ExportGLTFBlock,
     FlattenBlock,
+    GetProperty,
     ImportGLTFBlock,
     JoinBlock,
     JsonLiteral,
@@ -18,6 +19,8 @@ import {
     NumberLiteral,
     PruneBlock,
     QuantizeBlock,
+    Selector,
+    SetProperty,
     SimplifyBlock,
     StringLiteral,
     WeldBlock,
@@ -144,9 +147,12 @@ describe("block self-registration", () => {
                     NumberLiteral.ClassName,
                     StringLiteral.ClassName,
                     JsonLiteral.ClassName,
+                    Selector.ClassName,
+                    GetProperty.ClassName,
+                    SetProperty.ClassName,
                 ])
             );
-            expect(registeredClassNames).toHaveLength(16);
+            expect(registeredClassNames).toHaveLength(19);
         });
 
         it.each(registeredClassNames)("round-trips %s through serialize/Parse", (className) => {
