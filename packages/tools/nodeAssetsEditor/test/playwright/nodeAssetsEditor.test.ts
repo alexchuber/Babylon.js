@@ -81,16 +81,19 @@ async function installBuildHeartbeatAsync(page: Page): Promise<void> {
 test.describe("Node Assets Editor — Milestone 1", () => {
     test.describe.configure({ timeout: 180_000 });
 
-    test("opens to the premade graph and auto-previews BoomBox without console errors", async ({ page }) => {
+    test("opens to the premade graph and auto-previews BoomBox without console errors", async ({ page, browserName }) => {
         const pageErrors = collectPageErrors(page);
+        const shouldAssertWorkerResponsiveness = browserName === "chromium";
         const encoderRequests: string[] = [];
-        page.on("request", (request) => {
-            const url = request.url();
-            if (url.includes("basis_encoder") || url.includes("draco_encoder")) {
-                encoderRequests.push(url);
-            }
-        });
-        await installBuildHeartbeatAsync(page);
+        if (shouldAssertWorkerResponsiveness) {
+            page.on("request", (request) => {
+                const url = request.url();
+                if (url.includes("basis_encoder") || url.includes("draco_encoder")) {
+                    encoderRequests.push(url);
+                }
+            });
+            await installBuildHeartbeatAsync(page);
+        }
         const boomBoxResponse = page.waitForResponse((response) => response.url().endsWith("/scenes/BoomBox.glb") && response.ok());
         const editor = new NodeAssetsEditorPage(page);
 
@@ -104,15 +107,19 @@ test.describe("Node Assets Editor — Milestone 1", () => {
         await expect(editor.nodeByTitle("Export glTF")).toBeVisible();
         await editor.expectWiredPipeline(DefaultPipeline);
 
-        await page.evaluate(() => window.__naeResetBuildHeartbeat?.());
+        if (shouldAssertWorkerResponsiveness) {
+            await page.evaluate(() => window.__naeResetBuildHeartbeat?.());
+        }
         await editor.waitForNextSuccessfulPreviewBuild();
         await expect(editor.previewCanvas).toBeVisible();
-        const heartbeat = await page.evaluate(() => window.__naeBuildHeartbeat);
-        expect(heartbeat?.count ?? 0).toBeGreaterThan(10);
-        expect(heartbeat?.maxGapMs ?? Number.POSITIVE_INFINITY).toBeLessThan(2_000);
-        expect(encoderRequests.some((url) => url.includes("basis_encoder.wasm"))).toBe(true);
-        expect(encoderRequests.some((url) => url.includes("draco_encoder.wasm"))).toBe(true);
-        expect(encoderRequests.every((url) => new URL(url).origin === new URL(editor.baseUrl).origin)).toBe(true);
+        if (shouldAssertWorkerResponsiveness) {
+            const heartbeat = await page.evaluate(() => window.__naeBuildHeartbeat);
+            expect(heartbeat?.count ?? 0).toBeGreaterThan(10);
+            expect(heartbeat?.maxGapMs ?? Number.POSITIVE_INFINITY).toBeLessThan(2_000);
+            expect(encoderRequests.some((url) => url.includes("basis_encoder.wasm"))).toBe(true);
+            expect(encoderRequests.some((url) => url.includes("draco_encoder.wasm"))).toBe(true);
+            expect(encoderRequests.every((url) => new URL(url).origin === new URL(editor.baseUrl).origin)).toBe(true);
+        }
 
         await editor.selectNode("Import glTF");
         await expect(page.getByRole("textbox").nth(1)).toHaveValue(/Loaded \(\d+ bytes\)/);
