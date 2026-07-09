@@ -1,36 +1,17 @@
 import { ExportGLTFBlock } from "./Blocks/exportGLTFBlock";
-import { ImportGLTFBlock } from "./Blocks/importGLTFBlock";
-import { DracoCompressionBlock } from "./Blocks/dracoCompressionBlock";
-import { KTX2CompressionBlock } from "./Blocks/ktx2CompressionBlock";
+import { CreateBlockByClassName } from "./blockFoundation/blockRegistry";
 import { type NodeAssetBlock } from "./blockFoundation/nodeAssetBlock";
 import { UniqueIdGenerator } from "./utils/uniqueIdGenerator";
 
 /**
- * Constructs a block from its serialized class name. Kept as a small switch (rather than a
- * registry) while the block set is small.
- * @param customType - The block's serialized class name.
- * @param name - The display name to give the block.
- * @param nodeAsset - The node asset that will own the block.
- * @returns The constructed block.
- */
-function CreateBlockByClassName(customType: string, name: string, nodeAsset: NodeAsset): NodeAssetBlock {
-    switch (customType) {
-        case ImportGLTFBlock.ClassName:
-            return new ImportGLTFBlock(name, nodeAsset);
-        case DracoCompressionBlock.ClassName:
-            return new DracoCompressionBlock(name, nodeAsset);
-        case KTX2CompressionBlock.ClassName:
-            return new KTX2CompressionBlock(name, nodeAsset);
-        case ExportGLTFBlock.ClassName:
-            return new ExportGLTFBlock(name, nodeAsset);
-        default:
-            throw new Error(`Cannot deserialize unknown block type "${customType}".`);
-    }
-}
-
-/**
  * A node graph of {@link NodeAssetBlock}s. Blocks register themselves with the asset on
  * construction. The graph is run by pulling from the terminal export block.
+ *
+ * Deserialization reconstructs blocks via the {@link CreateBlockByClassName} registry, which each
+ * block module populates at import time (see the `RegisterBlock` call beside each block class). The
+ * package's `index` barrel re-exports every block and the package is marked `sideEffects: true`, so
+ * importing the package entry evaluates every block module and registers its factory before
+ * {@link NodeAsset.Parse} runs.
  */
 export class NodeAsset {
     /** The display name of the node asset. */

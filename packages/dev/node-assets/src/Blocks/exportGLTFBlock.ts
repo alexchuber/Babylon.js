@@ -2,6 +2,7 @@ import { type Document } from "@gltf-transform/core";
 
 import { type Nullable } from "core/types";
 
+import { RegisterBlock } from "../blockFoundation/blockRegistry";
 import { NodeAssetBlock } from "../blockFoundation/nodeAssetBlock";
 import { type NodeAssetConnectionPoint } from "../connection/nodeAssetConnectionPoint";
 import { NodeAssetConnectionPointType } from "../connection/nodeAssetConnectionPointType";
@@ -58,3 +59,5 @@ export class ExportGLTFBlock extends NodeAssetBlock {
         this.result = await io.writeBinary(document);
     }
 }
+
+RegisterBlock(ExportGLTFBlock.ClassName, (name, nodeAsset) => new ExportGLTFBlock(name, nodeAsset));

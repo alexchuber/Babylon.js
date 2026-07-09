@@ -2,6 +2,7 @@ import { type Document } from "@gltf-transform/core";
 
 import { type Nullable } from "core/types";
 
+import { RegisterBlock } from "../blockFoundation/blockRegistry";
 import { NodeAssetBlock } from "../blockFoundation/nodeAssetBlock";
 import { type NodeAssetConnectionPoint } from "../connection/nodeAssetConnectionPoint";
 import { NodeAssetConnectionPointType } from "../connection/nodeAssetConnectionPointType";
@@ -80,3 +81,5 @@ export class DracoCompressionBlock extends NodeAssetBlock {
         this.output.value = document;
     }
 }
+
+RegisterBlock(DracoCompressionBlock.ClassName, (name, nodeAsset) => new DracoCompressionBlock(name, nodeAsset));
