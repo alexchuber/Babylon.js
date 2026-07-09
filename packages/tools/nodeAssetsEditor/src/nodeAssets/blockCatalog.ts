@@ -9,8 +9,14 @@
 import { type NodeAsset } from "node-assets/nodeAsset";
 import { type NodeAssetBlock } from "node-assets/blockFoundation/nodeAssetBlock";
 
+import { type IPropertySection } from "../nodeGraph/propertyModel";
+
 /** Data-driven dot color for scene-typed ports (applied inline as visual data, not theme chrome). */
 export const ScenePortColor = "#d97b3f";
+
+/** Palette category and shared node header color for the SCENE-to-SCENE operator block family. */
+export const OperatorCategory = "Operators";
+export const OperatorHeaderColor = "#2f8f83";
 
 /**
  * Describes one palette entry: its id and label, its node header color, the backend class it maps to,
@@ -25,8 +31,15 @@ export interface IBlockDescriptor {
     readonly headerColor: string;
     /** The backend class name this descriptor maps to, used to recover the descriptor on load. */
     readonly className: string;
+    /** Optional palette category label; entries without one fall into the default category. */
+    readonly category?: string;
     /** Constructs the backing block, registering it with the given node asset. */
     readonly create: (nodeAsset: NodeAsset) => NodeAssetBlock;
+    /**
+     * Optional builder for this block's property pane section. When provided, the controller renders
+     * it for any block whose type it does not handle explicitly. `refresh` re-renders after an edit.
+     */
+    readonly getPropertySection?: (block: NodeAssetBlock, refresh: () => void) => IPropertySection;
 }
 
 // Registry of block descriptors keyed by palette item id, populated by the per-block modules under
