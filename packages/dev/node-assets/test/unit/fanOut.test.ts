@@ -164,7 +164,7 @@ describe("fan-out connections", () => {
 });
 
 describe("evaluate-once", () => {
-    it("evaluates a fanned-out producer exactly once and shares its output with both branches", async () => {
+    it("evaluates a fanned-out producer exactly once and gives each branch its own clone", async () => {
         const glb = await CreateFixtureGlbAsync();
 
         // Diamond: importer -> {branchA, branchB} -> merge -> exporter. The importer output fans
@@ -190,13 +190,15 @@ describe("evaluate-once", () => {
         // The shared producer builds a single time even though two branches consume it.
         expect(buildSpy).toHaveBeenCalledTimes(1);
 
-        // Both branches read the very same upstream payload (shared, not cloned, in this slice).
-        const shared = importer.output.value as Document;
-        expect(shared).not.toBeNull();
-        expect(branchA.output.value).toBe(shared);
-        expect(branchB.output.value).toBe(shared);
+        // Copy-on-fan-out (slice 05/01) hands each branch its own clone of the fanned-out SCENE, so
+        // neither branch holds the canonical evaluated Document and the two copies are independent.
+        const canonical = importer.output.value as Document;
+        expect(canonical).not.toBeNull();
+        expect(branchA.output.value).not.toBe(canonical);
+        expect(branchB.output.value).not.toBe(canonical);
+        expect(branchA.output.value).not.toBe(branchB.output.value);
 
-        // The build succeeds and the exported bytes reflect the shared upstream.
+        // The build still succeeds and produces exported bytes.
         expect(result).toBeInstanceOf(Uint8Array);
         expect(result.length).toBeGreaterThan(0);
     }, 20000);
@@ -212,7 +214,10 @@ describe("evaluate-once", () => {
             public readonly output = this._registerOutput("output", NodeAssetConnectionPointType.SCENE);
             public override async _buildBlockAsync(): Promise<void> {
                 sourceBuilds++;
-                this.output.value = { tag: "shared" };
+                // A real (empty) Document: copy-on-fan-out clones the fanned-out SCENE, and cloning
+                // requires an actual gltf-transform Document rather than a stand-in object.
+                const { Document } = await import("@gltf-transform/core");
+                this.output.value = new Document();
             }
         }
 
@@ -236,7 +241,9 @@ describe("evaluate-once", () => {
         await asset.buildAsync();
 
         expect(sourceBuilds).toBe(1);
-        expect(branchA.output.value).toBe(source.output.value);
-        expect(branchB.output.value).toBe(source.output.value);
+        // The fanned-out SCENE is cloned per branch (slice 05/01), so each branch holds a distinct copy.
+        expect(branchA.output.value).not.toBe(source.output.value);
+        expect(branchB.output.value).not.toBe(source.output.value);
+        expect(branchA.output.value).not.toBe(branchB.output.value);
     });
 });
