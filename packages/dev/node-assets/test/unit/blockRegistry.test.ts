@@ -30,6 +30,7 @@ import {
     ResizeImageBlock,
     Selector,
     SetProperty,
+    SetTexture,
     SimplifyBlock,
     StringLiteral,
     WeldBlock,
@@ -163,6 +164,7 @@ describe("block self-registration", () => {
                     Selector.ClassName,
                     GetProperty.ClassName,
                     SetProperty.ClassName,
+                    SetTexture.ClassName,
                     BuildPBRMaterial.ClassName,
                     ResizeImageBlock.ClassName,
                     ConvertImageFormatBlock.ClassName,
@@ -170,7 +172,7 @@ describe("block self-registration", () => {
                     ExtractTexture.ClassName,
                 ])
             );
-            expect(registeredClassNames).toHaveLength(28);
+            expect(registeredClassNames).toHaveLength(29);
         });
 
         it.each(registeredClassNames)("round-trips %s through serialize/Parse", (className) => {

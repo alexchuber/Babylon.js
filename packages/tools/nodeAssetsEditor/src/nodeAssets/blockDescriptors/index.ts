@@ -32,3 +32,4 @@ import "./resizeImageBlockDescriptor";
 import "./convertImageFormatBlockDescriptor";
 import "./flipImageBlockDescriptor";
 import "./extractTextureDescriptor";
+import "./setTextureDescriptor";

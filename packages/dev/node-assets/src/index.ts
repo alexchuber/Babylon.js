@@ -34,3 +34,4 @@ export { ConvertImageFormatBlock, type ImageFormat } from "./Blocks/convertImage
 export { FlipImageBlock, type FlipAxis } from "./Blocks/flipImageBlock";
 export { ProcessImageAsync, type ImageCanvasOperation } from "./Blocks/imageCanvas";
 export { ExtractTexture } from "./Blocks/extractTexture";
+export { SetTexture } from "./Blocks/setTexture";
