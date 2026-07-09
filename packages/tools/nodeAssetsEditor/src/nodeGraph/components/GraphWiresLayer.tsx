@@ -2,20 +2,10 @@ import { type FunctionComponent, type MouseEvent as ReactMouseEvent, type Pointe
 
 import { tokens } from "@fluentui/react-components";
 
-import { type Vec2 } from "../graphModel";
 import { BuildWirePath, GetPortAnchor } from "../geometry";
+import { type PendingWire } from "../gestureInterpreter";
 import { useCanvasContext } from "./canvasContext";
 import { useObservableState } from "shared-ui-components/modularTool/hooks/observableHooks";
-
-/**
- * A wire currently being dragged from a port but not yet committed. Rendered as a dashed preview.
- */
-export type PendingWire = {
-    /** World-space start anchor (the port the drag originated from). */
-    readonly from: Vec2;
-    /** World-space current pointer position. */
-    readonly to: Vec2;
-};
 
 /**
  * Renders all committed wires (and an optional in-progress wire) as SVG bezier paths inside the

@@ -15,9 +15,23 @@ import { makeStyles, shorthands, tokens } from "@fluentui/react-components";
 import { type EditorContextValue } from "../editorContext";
 import { type GraphClipboard } from "../editorState";
 import { type Vec2 } from "../graphModel";
-import { type Bounds, GetNodeSize, GetNodesBounds, GetPortAnchor, RectsIntersect } from "../geometry";
-import { type Camera, type ContextMenuTarget, type CanvasContextValue, CanvasContextProvider } from "./canvasContext";
-import { type PendingWire, GraphWiresLayer } from "./GraphWiresLayer";
+import { GetNodesBounds, GetPortAnchor } from "../geometry";
+import { type Camera, MinZoom, MaxZoom, ScreenToWorld, ZoomTowardPoint, ComputeFitCamera, CenterCameraOn } from "../canvasCamera";
+import { FindNearestConnectablePort, FindNodesInRegion } from "../canvasHitTest";
+import {
+    type Gesture,
+    type GestureAction,
+    type MarqueeRect,
+    type PendingWire,
+    BeginBackgroundGesture,
+    BeginNodeGesture,
+    BeginFrameGesture,
+    BeginPortGesture,
+    AdvanceGesture,
+    CompleteGesture,
+} from "../gestureInterpreter";
+import { type ContextMenuTarget, type CanvasContextValue, CanvasContextProvider } from "./canvasContext";
+import { GraphWiresLayer } from "./GraphWiresLayer";
 
 import { PaletteDragFormat } from "../paletteModel";
 import { GraphFrameView } from "./GraphFrameView";
@@ -26,23 +40,10 @@ import { GraphNodeView } from "./GraphNodeView";
 import { ContextMenu, type ContextMenuItem } from "shared-ui-components/fluent/primitives/contextMenu";
 import { useObservableState } from "shared-ui-components/modularTool/hooks/observableHooks";
 
-const MinZoom = 0.2;
-const MaxZoom = 3;
 const GridSpacing = 24;
 const PasteOffset = 24;
 // Screen-space radius (px) within which a released wire snaps to the nearest compatible port.
 const ConnectSnapRadius = 28;
-
-const Clamp = (value: number, min: number, max: number) => Math.max(min, Math.min(max, value));
-
-// The active pointer gesture. All interaction math is centralized here so child views stay simple.
-type Gesture =
-    | { kind: "none" }
-    | { kind: "pan"; lastX: number; lastY: number }
-    | { kind: "marquee"; startWorld: Vec2; startClientX: number; startClientY: number; additive: boolean }
-    | { kind: "moveNodes"; lastWorld: Vec2; moved: boolean }
-    | { kind: "moveFrame"; frameId: string; lastWorld: Vec2; moved: boolean }
-    | { kind: "wire"; fromPortId: string; fromAnchor: Vec2 };
 
 const useStyles = makeStyles({
     root: {
@@ -74,10 +75,6 @@ const useStyles = makeStyles({
     },
 });
 
-const GetNodeBounds = (position: Vec2, size: { width: number; height: number }): Bounds => {
-    return { minX: position.x, minY: position.y, maxX: position.x + size.width, maxY: position.y + size.height };
-};
-
 /**
  * The interactive node-graph canvas: renders frames, wires, and nodes in a pan/zoom world layer and
  * owns all pointer, keyboard, and drag-and-drop interactions (select, marquee, move, connect, delete,
@@ -104,7 +101,7 @@ export const GraphCanvas: FunctionComponent<{ context: EditorContextValue }> = (
     const cameraRef = useRef(camera);
     const [size, setSize] = useState({ width: 0, height: 0 });
     const [pendingWire, setPendingWire] = useState<PendingWire | null>(null);
-    const [marquee, setMarquee] = useState<{ x: number; y: number; width: number; height: number } | null>(null);
+    const [marquee, setMarquee] = useState<MarqueeRect | null>(null);
     const [contextTarget, setContextTarget] = useState<ContextMenuTarget>({ kind: "canvas" });
 
     const setCamera = useCallback((next: Camera | ((current: Camera) => Camera)) => {
@@ -115,28 +112,22 @@ export const GraphCanvas: FunctionComponent<{ context: EditorContextValue }> = (
 
     const screenToWorld = useCallback((clientX: number, clientY: number): Vec2 => {
         const rect = containerRef.current?.getBoundingClientRect();
-        const cam = cameraRef.current;
-        const left = rect?.left ?? 0;
-        const top = rect?.top ?? 0;
-        return { x: (clientX - left - cam.x) / cam.zoom, y: (clientY - top - cam.y) / cam.zoom };
+        return ScreenToWorld(cameraRef.current, { x: rect?.left ?? 0, y: rect?.top ?? 0 }, { x: clientX, y: clientY });
+    }, []);
+
+    // Converts a client-space pointer into both world (graph) and viewport-local (client minus origin)
+    // coordinates from a single bounding-rect read, feeding the gesture interpreter.
+    const pointerCoords = useCallback((clientX: number, clientY: number): { world: Vec2; local: Vec2 } => {
+        const rect = containerRef.current?.getBoundingClientRect();
+        const origin = { x: rect?.left ?? 0, y: rect?.top ?? 0 };
+        return { world: ScreenToWorld(cameraRef.current, origin, { x: clientX, y: clientY }), local: { x: clientX - origin.x, y: clientY - origin.y } };
     }, []);
 
     // Frames all node content in the viewport. Stored in a ref so the registered command always runs
     // against the latest camera/size without re-registering.
     const fitRef = useRef<() => void>(() => {});
     fitRef.current = () => {
-        const bounds = GetNodesBounds(state.nodes);
-        if (!bounds || size.width === 0 || size.height === 0) {
-            setCamera({ x: 0, y: 0, zoom: 1 });
-            return;
-        }
-        const padding = 48;
-        const contentWidth = Math.max(bounds.maxX - bounds.minX, 1);
-        const contentHeight = Math.max(bounds.maxY - bounds.minY, 1);
-        const zoom = Clamp(Math.min((size.width - padding * 2) / contentWidth, (size.height - padding * 2) / contentHeight), MinZoom, MaxZoom);
-        const centerX = (bounds.minX + bounds.maxX) / 2;
-        const centerY = (bounds.minY + bounds.maxY) / 2;
-        setCamera({ x: size.width / 2 - centerX * zoom, y: size.height / 2 - centerY * zoom, zoom });
+        setCamera(ComputeFitCamera(GetNodesBounds(state.nodes), size, MinZoom, MaxZoom));
     };
 
     // Measure the container and keep the minimap/zoom-to-fit in sync with its size.
@@ -181,134 +172,85 @@ export const GraphCanvas: FunctionComponent<{ context: EditorContextValue }> = (
         [state]
     );
 
-    // Finds the closest port (in screen space) that could legally connect to the dragged port, so a wire
-    // released near a port still connects instead of requiring a pixel-perfect drop on the port dot.
-    const findNearestConnectablePort = useCallback(
-        (fromPortId: string, clientX: number, clientY: number): string | undefined => {
-            const rect = containerRef.current?.getBoundingClientRect();
-            const left = rect?.left ?? 0;
-            const top = rect?.top ?? 0;
-            const cam = cameraRef.current;
-            let bestPortId: string | undefined;
-            let bestDistance = ConnectSnapRadius;
-            for (const node of state.nodes) {
-                // Collapsed nodes do not render individual ports, so they are not valid snap targets.
-                if (node.collapsed) {
-                    continue;
-                }
-                for (const port of node.ports) {
-                    if (port.id === fromPortId) {
-                        continue;
-                    }
-                    if (!state.canConnect(fromPortId, port.id) && !state.canConnect(port.id, fromPortId)) {
-                        continue;
-                    }
-                    const anchor = GetPortAnchor(node, port.id);
-                    if (!anchor) {
-                        continue;
-                    }
-                    const screenX = left + cam.x + anchor.x * cam.zoom;
-                    const screenY = top + cam.y + anchor.y * cam.zoom;
-                    const distance = Math.hypot(clientX - screenX, clientY - screenY);
-                    if (distance < bestDistance) {
-                        bestDistance = distance;
-                        bestPortId = port.id;
-                    }
+    // Executes the discrete actions produced by the gesture interpreter against the editor store and
+    // canvas React state. The interpreter decides what happens; this decides how.
+    const executeActions = useCallback(
+        (actions: readonly GestureAction[]) => {
+            for (const action of actions) {
+                switch (action.kind) {
+                    case "clearSelection":
+                        state.clearSelection();
+                        break;
+                    case "selectNodes":
+                        state.selectNodes(action.nodeIds);
+                        break;
+                    case "toggleNodeSelection":
+                        state.toggleNodeSelection(action.nodeId);
+                        break;
+                    case "selectNodesInRegion":
+                        state.selectNodes(FindNodesInRegion(state.nodes, action.region), action.additive);
+                        break;
+                    case "beginInteraction":
+                        state.beginInteraction();
+                        break;
+                    case "endInteraction":
+                        state.endInteraction(action.moved);
+                        break;
+                    case "translateSelectedNodes":
+                        state.translateNodes([...state.selectedNodeIds], action.delta);
+                        break;
+                    case "translateFrame":
+                        state.translateFrame(action.frameId, action.delta);
+                        break;
+                    case "panBy":
+                        setCamera((current) => ({ ...current, x: current.x + action.dx, y: current.y + action.dy }));
+                        break;
+                    case "setMarquee":
+                        setMarquee(action.rect);
+                        break;
+                    case "setPendingWire":
+                        setPendingWire(action.wire);
+                        break;
+                    case "connect":
+                        attemptConnect(action.fromPortId, action.toPortId);
+                        break;
                 }
             }
-            return bestPortId;
         },
-        [state]
+        [state, setCamera, attemptConnect]
     );
 
     // Persistent window listeners drive the active gesture so dragging continues outside the canvas.
     useEffect(() => {
         const onPointerMove = (event: PointerEvent) => {
-            const gesture = gestureRef.current;
-            switch (gesture.kind) {
-                case "pan": {
-                    const dx = event.clientX - gesture.lastX;
-                    const dy = event.clientY - gesture.lastY;
-                    gesture.lastX = event.clientX;
-                    gesture.lastY = event.clientY;
-                    setCamera((current) => ({ ...current, x: current.x + dx, y: current.y + dy }));
-                    break;
-                }
-                case "marquee": {
-                    const rect = containerRef.current?.getBoundingClientRect();
-                    const left = rect?.left ?? 0;
-                    const top = rect?.top ?? 0;
-                    const x0 = gesture.startClientX - left;
-                    const y0 = gesture.startClientY - top;
-                    const x1 = event.clientX - left;
-                    const y1 = event.clientY - top;
-                    setMarquee({ x: Math.min(x0, x1), y: Math.min(y0, y1), width: Math.abs(x1 - x0), height: Math.abs(y1 - y0) });
-                    break;
-                }
-                case "moveNodes": {
-                    const world = screenToWorld(event.clientX, event.clientY);
-                    const delta = { x: world.x - gesture.lastWorld.x, y: world.y - gesture.lastWorld.y };
-                    if (delta.x !== 0 || delta.y !== 0) {
-                        state.translateNodes([...state.selectedNodeIds], delta);
-                        gesture.lastWorld = world;
-                        gesture.moved = true;
-                    }
-                    break;
-                }
-                case "moveFrame": {
-                    const world = screenToWorld(event.clientX, event.clientY);
-                    const delta = { x: world.x - gesture.lastWorld.x, y: world.y - gesture.lastWorld.y };
-                    if (delta.x !== 0 || delta.y !== 0) {
-                        state.translateFrame(gesture.frameId, delta);
-                        gesture.lastWorld = world;
-                        gesture.moved = true;
-                    }
-                    break;
-                }
-                case "wire": {
-                    setPendingWire({ from: gesture.fromAnchor, to: screenToWorld(event.clientX, event.clientY) });
-                    break;
-                }
-                default:
-                    break;
-            }
+            const { world, local } = pointerCoords(event.clientX, event.clientY);
+            const { gesture, actions } = AdvanceGesture(gestureRef.current, { world, local });
+            gestureRef.current = gesture;
+            executeActions(actions);
         };
 
         const onPointerUp = (event: PointerEvent) => {
-            const gesture = gestureRef.current;
-            switch (gesture.kind) {
-                case "marquee": {
-                    const end = screenToWorld(event.clientX, event.clientY);
-                    const region: Bounds = {
-                        minX: Math.min(gesture.startWorld.x, end.x),
-                        minY: Math.min(gesture.startWorld.y, end.y),
-                        maxX: Math.max(gesture.startWorld.x, end.x),
-                        maxY: Math.max(gesture.startWorld.y, end.y),
-                    };
-                    const ids = state.nodes.filter((node) => RectsIntersect(GetNodeBounds(node.position, GetNodeSize(node)), region)).map((node) => node.id);
-                    state.selectNodes(ids, gesture.additive);
-                    setMarquee(null);
-                    break;
-                }
-                case "moveNodes":
-                case "moveFrame": {
-                    state.endInteraction(gesture.moved);
-                    break;
-                }
-                case "wire": {
-                    const element = document.elementFromPoint(event.clientX, event.clientY);
-                    const directPortId = element?.closest("[data-port-id]")?.getAttribute("data-port-id") ?? undefined;
-                    const targetPortId = directPortId ?? findNearestConnectablePort(gesture.fromPortId, event.clientX, event.clientY);
-                    if (targetPortId && targetPortId !== gesture.fromPortId) {
-                        attemptConnect(gesture.fromPortId, targetPortId);
-                    }
-                    setPendingWire(null);
-                    break;
-                }
-                default:
-                    break;
+            const current = gestureRef.current;
+            const world = screenToWorld(event.clientX, event.clientY);
+            let resolvedTargetPortId: string | undefined;
+            if (current.kind === "wire") {
+                // A direct drop on a port dot wins; otherwise fall back to the nearest connectable port.
+                const element = document.elementFromPoint(event.clientX, event.clientY);
+                const directPortId = element?.closest("[data-port-id]")?.getAttribute("data-port-id") ?? undefined;
+                resolvedTargetPortId =
+                    directPortId ??
+                    FindNearestConnectablePort({
+                        nodes: state.nodes,
+                        fromPortId: current.fromPortId,
+                        pointerWorld: world,
+                        zoom: cameraRef.current.zoom,
+                        snapRadius: ConnectSnapRadius,
+                        canConnect: (from, to) => state.canConnect(from, to),
+                    });
             }
-            gestureRef.current = { kind: "none" };
+            const { gesture, actions } = CompleteGesture(current, { world, resolvedTargetPortId });
+            gestureRef.current = gesture;
+            executeActions(actions);
         };
 
         window.addEventListener("pointermove", onPointerMove);
@@ -317,7 +259,7 @@ export const GraphCanvas: FunctionComponent<{ context: EditorContextValue }> = (
             window.removeEventListener("pointermove", onPointerMove);
             window.removeEventListener("pointerup", onPointerUp);
         };
-    }, [state, screenToWorld, setCamera, attemptConnect, findNearestConnectablePort]);
+    }, [state, screenToWorld, pointerCoords, executeActions]);
 
     // Keyboard shortcuts (ignored while typing in a form control so the panes keep working).
     useEffect(() => {
@@ -397,15 +339,9 @@ export const GraphCanvas: FunctionComponent<{ context: EditorContextValue }> = (
         }
         const onWheel = (event: WheelEvent) => {
             event.preventDefault();
-            const cam = cameraRef.current;
-            const factor = Math.exp(-event.deltaY * 0.0015);
-            const newZoom = Clamp(cam.zoom * factor, MinZoom, MaxZoom);
             const rect = element.getBoundingClientRect();
-            const localX = event.clientX - rect.left;
-            const localY = event.clientY - rect.top;
-            const worldX = (localX - cam.x) / cam.zoom;
-            const worldY = (localY - cam.y) / cam.zoom;
-            setCamera({ x: localX - worldX * newZoom, y: localY - worldY * newZoom, zoom: newZoom });
+            const localPoint = { x: event.clientX - rect.left, y: event.clientY - rect.top };
+            setCamera(ZoomTowardPoint(cameraRef.current, localPoint, event.deltaY, MinZoom, MaxZoom));
         };
         element.addEventListener("wheel", onWheel, { passive: false });
         return () => element.removeEventListener("wheel", onWheel);
@@ -415,17 +351,19 @@ export const GraphCanvas: FunctionComponent<{ context: EditorContextValue }> = (
         () => ({
             editor: context,
             beginNodeInteraction: (nodeId, event) => {
-                if (event.shiftKey) {
-                    state.toggleNodeSelection(nodeId);
-                } else if (!state.isNodeSelected(nodeId)) {
-                    state.selectNodes([nodeId]);
-                }
-                state.beginInteraction();
-                gestureRef.current = { kind: "moveNodes", lastWorld: screenToWorld(event.clientX, event.clientY), moved: false };
+                const { gesture, actions } = BeginNodeGesture({
+                    nodeId,
+                    additive: event.shiftKey,
+                    isSelected: state.isNodeSelected(nodeId),
+                    world: screenToWorld(event.clientX, event.clientY),
+                });
+                executeActions(actions);
+                gestureRef.current = gesture;
             },
             beginFrameInteraction: (frameId, event) => {
-                state.beginInteraction();
-                gestureRef.current = { kind: "moveFrame", frameId, lastWorld: screenToWorld(event.clientX, event.clientY), moved: false };
+                const { gesture, actions } = BeginFrameGesture({ frameId, world: screenToWorld(event.clientX, event.clientY) });
+                executeActions(actions);
+                gestureRef.current = gesture;
             },
             beginPortInteraction: (portId, event) => {
                 const node = state.getPortNode(portId);
@@ -433,8 +371,9 @@ export const GraphCanvas: FunctionComponent<{ context: EditorContextValue }> = (
                 if (!anchor) {
                     return;
                 }
-                gestureRef.current = { kind: "wire", fromPortId: portId, fromAnchor: anchor };
-                setPendingWire({ from: anchor, to: screenToWorld(event.clientX, event.clientY) });
+                const { gesture, actions } = BeginPortGesture({ portId, anchor, world: screenToWorld(event.clientX, event.clientY) });
+                executeActions(actions);
+                gestureRef.current = gesture;
             },
             selectWire: (wireId) => state.selectWire(wireId),
             openContextMenu: (target) => {
@@ -444,7 +383,7 @@ export const GraphCanvas: FunctionComponent<{ context: EditorContextValue }> = (
                 setContextTarget(target);
             },
         }),
-        [context, state, screenToWorld]
+        [context, state, screenToWorld, executeActions]
     );
 
     const onBackgroundPointerDown = (event: ReactPointerEvent<HTMLDivElement>) => {
@@ -454,20 +393,13 @@ export const GraphCanvas: FunctionComponent<{ context: EditorContextValue }> = (
         }
         containerRef.current?.focus();
 
-        const isPan = event.button === 1 || (event.button === 0 && spaceHeldRef.current);
-        if (isPan) {
-            gestureRef.current = { kind: "pan", lastX: event.clientX, lastY: event.clientY };
+        const { world, local } = pointerCoords(event.clientX, event.clientY);
+        const { gesture, actions } = BeginBackgroundGesture({ button: event.button, spaceHeld: spaceHeldRef.current, additive: event.shiftKey, world, local });
+        if (gesture.kind === "pan") {
             event.preventDefault();
-            return;
         }
-        if (event.button === 0) {
-            const additive = event.shiftKey;
-            if (!additive) {
-                state.clearSelection();
-            }
-            gestureRef.current = { kind: "marquee", startWorld: screenToWorld(event.clientX, event.clientY), startClientX: event.clientX, startClientY: event.clientY, additive };
-            setMarquee({ x: event.clientX, y: event.clientY, width: 0, height: 0 });
-        }
+        executeActions(actions);
+        gestureRef.current = gesture;
     };
 
     const onDragOver = (event: ReactDragEvent<HTMLDivElement>) => {
@@ -570,11 +502,7 @@ export const GraphCanvas: FunctionComponent<{ context: EditorContextValue }> = (
                         </div>
                     }
                 />
-                <GraphMinimap
-                    camera={camera}
-                    viewport={size}
-                    onNavigate={(world) => setCamera((current) => ({ ...current, x: size.width / 2 - world.x * current.zoom, y: size.height / 2 - world.y * current.zoom }))}
-                />
+                <GraphMinimap camera={camera} viewport={size} onNavigate={(world) => setCamera((current) => CenterCameraOn(world, size, current.zoom))} />
             </CanvasContextProvider>
         </div>
     );

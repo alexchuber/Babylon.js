@@ -9,18 +9,7 @@ import { createContext, useContext, type MouseEvent as ReactMouseEvent, type Poi
 
 import { type EditorContextValue } from "../editorContext";
 
-/**
- * The canvas camera: a pan offset (in screen pixels) plus a zoom scale. A graph-space point p maps to
- * the screen as `p * zoom + {x, y}`.
- */
-export type Camera = {
-    /** Horizontal pan offset in screen pixels. */
-    x: number;
-    /** Vertical pan offset in screen pixels. */
-    y: number;
-    /** Zoom scale (1 = 100%). */
-    zoom: number;
-};
+export { type Camera } from "../canvasCamera";
 
 /**
  * The kind of element a context menu was opened on.
