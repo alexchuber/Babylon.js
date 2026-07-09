@@ -23,7 +23,7 @@ import { type NodeAssetConnectionPoint } from "node-assets/connection/nodeAssetC
 
 import { GraphEditorState } from "../nodeGraph/editorState";
 import { type IGraphNode, type IGraphPort, type IGraphSnapshot, type IGraphWire, type Vec2 } from "../nodeGraph/graphModel";
-import { type IPaletteCategory } from "../nodeGraph/paletteModel";
+import { type IPaletteCategory, type IPaletteItem } from "../nodeGraph/paletteModel";
 import { type IPropertySection } from "../nodeGraph/propertyModel";
 
 // Import the block descriptor modules for their registration side effects, so the palette and
@@ -56,6 +56,9 @@ interface INodeAssetEditorFile {
 
 const LocalCdnPort = "1337";
 const DefaultBoomBoxPath = "scenes/BoomBox.glb";
+
+/** Palette category label for blocks whose descriptor does not specify one. */
+const DefaultPaletteCategory = "Blocks";
 
 const DracoMethodLabels = ["Edgebreaker", "Sequential"] as const;
 type DracoMethodLabel = (typeof DracoMethodLabels)[number];
@@ -186,7 +189,7 @@ export class NodeAssetGraphController {
         };
         this.state = new GraphEditorState(snapshot);
 
-        this.paletteCategories = [{ label: "Blocks", items: GetAllBlockDescriptors().map((descriptor) => ({ id: descriptor.paletteItemId, label: descriptor.label })) }];
+        this.paletteCategories = this._buildPaletteCategories();
 
         // Subscribe only after seeding so the reconcile sees consistent maps and state.
         this._reconcile();
@@ -257,9 +260,34 @@ export class NodeAssetGraphController {
             sections.push(this._buildKtx2Section(block));
         } else if (block instanceof DracoCompressionBlock) {
             sections.push(this._buildDracoSection(block));
+        } else if (block) {
+            // Blocks without a bespoke section (e.g. the operator family) describe their own via their descriptor.
+            const descriptorSection = GetBlockDescriptorForBlock(block)?.getPropertySection?.(block, () => this.state.notifyChanged());
+            if (descriptorSection) {
+                sections.push(descriptorSection);
+            }
         }
 
         return sections;
+    }
+
+    /**
+     * Groups the registered block descriptors into palette categories, preserving registration order
+     * both across and within categories. Descriptors without a category fall into the default one.
+     * @returns The palette categories.
+     */
+    private _buildPaletteCategories(): readonly IPaletteCategory[] {
+        const itemsByCategory = new Map<string, IPaletteItem[]>();
+        for (const descriptor of GetAllBlockDescriptors()) {
+            const label = descriptor.category ?? DefaultPaletteCategory;
+            let items = itemsByCategory.get(label);
+            if (!items) {
+                items = [];
+                itemsByCategory.set(label, items);
+            }
+            items.push({ id: descriptor.paletteItemId, label: descriptor.label });
+        }
+        return Array.from(itemsByCategory, ([label, items]) => ({ label, items }));
     }
 
     /**
