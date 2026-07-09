@@ -33,3 +33,4 @@ import "./convertImageFormatBlockDescriptor";
 import "./flipImageBlockDescriptor";
 import "./extractTextureDescriptor";
 import "./compositeImageBlockDescriptor";
+import "./setTextureDescriptor";

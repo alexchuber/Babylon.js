@@ -35,3 +35,4 @@ export { FlipImageBlock, type FlipAxis } from "./Blocks/flipImageBlock";
 export { ProcessImageAsync, type ImageCanvasOperation } from "./Blocks/imageCanvas";
 export { ExtractTexture } from "./Blocks/extractTexture";
 export { CompositeImageBlock } from "./Blocks/compositeImageBlock";
+export { SetTexture } from "./Blocks/setTexture";
