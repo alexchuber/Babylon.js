@@ -16,3 +16,6 @@ export { FlattenBlock } from "./Blocks/flattenBlock";
 export { JoinBlock } from "./Blocks/joinBlock";
 export { NormalsBlock } from "./Blocks/normalsBlock";
 export { CenterBlock, type CenterPivot } from "./Blocks/centerBlock";
+export { NumberLiteral } from "./Blocks/numberLiteral";
+export { StringLiteral } from "./Blocks/stringLiteral";
+export { JsonLiteral } from "./Blocks/jsonLiteral";

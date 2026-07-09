@@ -17,3 +17,6 @@ import "./flattenBlockDescriptor";
 import "./joinBlockDescriptor";
 import "./normalsBlockDescriptor";
 import "./centerBlockDescriptor";
+import "./numberLiteralDescriptor";
+import "./stringLiteralDescriptor";
+import "./jsonLiteralDescriptor";

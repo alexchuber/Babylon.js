@@ -18,6 +18,7 @@ import { ImportGLTFBlock } from "node-assets/Blocks/importGLTFBlock";
 import { KTX2CompressionBlock } from "node-assets/Blocks/ktx2CompressionBlock";
 import { NodeAsset } from "node-assets/nodeAsset";
 import { NodeAssetConnectionPointDirection } from "node-assets/connection/nodeAssetConnectionPointDirection";
+import { NodeAssetConnectionPointType } from "node-assets/connection/nodeAssetConnectionPointType";
 import { type NodeAssetBlock } from "node-assets/blockFoundation/nodeAssetBlock";
 import { type NodeAssetConnectionPoint } from "node-assets/connection/nodeAssetConnectionPoint";
 
@@ -34,7 +35,10 @@ import {
     GetAllBlockDescriptors,
     GetBlockDescriptorByPaletteItemId,
     GetBlockDescriptorForBlock,
+    JsonPortColor,
+    NumberPortColor,
     ScenePortColor,
+    StringPortColor,
     type IBlockDescriptor,
 } from "./blockCatalog";
 import { PromptForFileAsync } from "./browserFiles";
@@ -119,13 +123,22 @@ function PortIdForPoint(block: NodeAssetBlock, point: NodeAssetConnectionPoint):
     return `port-${block.uniqueId}-${direction}-${point.name}`;
 }
 
+/** Per-kind port label and dot color, so each connection-point type renders distinctly. */
+const PortStyleByType: Record<NodeAssetConnectionPointType, { readonly name: string; readonly color: string }> = {
+    [NodeAssetConnectionPointType.SCENE]: { name: "Scene", color: ScenePortColor },
+    [NodeAssetConnectionPointType.NUMBER]: { name: "Number", color: NumberPortColor },
+    [NodeAssetConnectionPointType.STRING]: { name: "String", color: StringPortColor },
+    [NodeAssetConnectionPointType.JSON]: { name: "Json", color: JsonPortColor },
+};
+
 function PointToPort(block: NodeAssetBlock, point: NodeAssetConnectionPoint): IGraphPort {
+    const style = PortStyleByType[point.type];
     return {
         id: PortIdForPoint(block, point),
         // The port name is purely cosmetic (the controller maps wires by id), so show the type.
-        name: "Scene",
+        name: style.name,
         direction: point.direction === NodeAssetConnectionPointDirection.Output ? "output" : "input",
-        color: ScenePortColor,
+        color: style.color,
     };
 }
 
