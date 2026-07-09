@@ -5,6 +5,7 @@ import BasisEncoderJsUrl from "../../../../../node_modules/ktx2-encoder/dist/bas
 import BasisEncoderWasmUrl from "../../../../../node_modules/ktx2-encoder/dist/basis/basis_encoder.wasm?url";
 import DracoDecoderWasmUrl from "../../../../../node_modules/draco3dgltf/draco_decoder_gltf.wasm?url";
 import DracoEncoderWasmUrl from "../../../../../node_modules/draco3dgltf/draco_encoder.wasm?url";
+import UsdWasmUrl from "../../../../../node_modules/tinyusdz/tinyusdz.wasm?url";
 
 /** Worker-local asset URLs used by NodeAsset builds. */
 export const NodeAssetBuildWorkerResourceUrls: INodeAssetBuildResourceUrls = {
@@ -12,4 +13,5 @@ export const NodeAssetBuildWorkerResourceUrls: INodeAssetBuildResourceUrls = {
     basisEncoderWasmUrl: BasisEncoderWasmUrl,
     dracoDecoderWasmUrl: DracoDecoderWasmUrl,
     dracoEncoderWasmUrl: DracoEncoderWasmUrl,
+    usdWasmUrl: UsdWasmUrl,
 };

@@ -10,6 +10,7 @@ import {
     ExportGLTFBlock,
     FlattenBlock,
     ImportGLTFBlock,
+    ImportUSDBlock,
     JoinBlock,
     KTX2CompressionBlock,
     NodeAsset,
@@ -126,6 +127,7 @@ describe("block self-registration", () => {
             expect(registeredClassNames).toEqual(
                 expect.arrayContaining([
                     ImportGLTFBlock.ClassName,
+                    ImportUSDBlock.ClassName,
                     DracoCompressionBlock.ClassName,
                     ExportGLTFBlock.ClassName,
                     KTX2CompressionBlock.ClassName,
@@ -140,7 +142,7 @@ describe("block self-registration", () => {
                     CenterBlock.ClassName,
                 ])
             );
-            expect(registeredClassNames).toHaveLength(13);
+            expect(registeredClassNames).toHaveLength(14);
         });
 
         it.each(registeredClassNames)("round-trips %s through serialize/Parse", (className) => {
