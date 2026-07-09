@@ -35,7 +35,7 @@ export class ImportGLTFBlock extends NodeAssetBlock {
      */
     public constructor(name: string, nodeAsset: NodeAsset) {
         super(name, nodeAsset);
-        this.output = this._registerOutput("output", NodeAssetConnectionPointType.GLTF);
+        this.output = this._registerOutput("output", NodeAssetConnectionPointType.SCENE);
     }
 
     /**

@@ -112,7 +112,7 @@ function GetGeometryCounts(document: Document): { vertexCount: number; indexCoun
 }
 
 describe("DracoCompressionBlock", () => {
-    it("registers a GLTF input and output on construction", () => {
+    it("registers a SCENE input and output on construction", () => {
         const asset = new NodeAsset("draco");
         const block = new DracoCompressionBlock("draco", asset);
 

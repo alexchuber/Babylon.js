@@ -50,8 +50,8 @@ export class DracoCompressionBlock extends NodeAssetBlock {
      */
     public constructor(name: string, nodeAsset: NodeAsset) {
         super(name, nodeAsset);
-        this.input = this._registerInput("input", NodeAssetConnectionPointType.GLTF);
-        this.output = this._registerOutput("output", NodeAssetConnectionPointType.GLTF);
+        this.input = this._registerInput("input", NodeAssetConnectionPointType.SCENE);
+        this.output = this._registerOutput("output", NodeAssetConnectionPointType.SCENE);
     }
 
     /**

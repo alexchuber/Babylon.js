@@ -20,8 +20,8 @@ import BasisEncoderWasmUrl from "../../../../../node_modules/ktx2-encoder/dist/b
 import DracoDecoderWasmUrl from "../../../../../node_modules/draco3dgltf/draco_decoder_gltf.wasm?url";
 import DracoEncoderWasmUrl from "../../../../../node_modules/draco3dgltf/draco_encoder.wasm?url";
 
-/** Data-driven dot color for glTF-typed ports (applied inline as visual data, not theme chrome). */
-export const GltfPortColor = "#d97b3f";
+/** Data-driven dot color for scene-typed ports (applied inline as visual data, not theme chrome). */
+export const ScenePortColor = "#d97b3f";
 
 // Data-driven node header colors: green/blue for the boundary blocks, purple for compression.
 const ImportHeaderColor = "#3f7d4e";

@@ -26,7 +26,7 @@ import { type IGraphNode, type IGraphPort, type IGraphSnapshot, type IGraphWire,
 import { type IPaletteCategory } from "../nodeGraph/paletteModel";
 import { type IPropertySection } from "../nodeGraph/propertyModel";
 
-import { BlockDescriptors, ConfigureBlockForEditor, GetBlockDescriptorByPaletteItemId, GetBlockDescriptorForBlock, GltfPortColor, type IBlockDescriptor } from "./blockCatalog";
+import { BlockDescriptors, ConfigureBlockForEditor, GetBlockDescriptorByPaletteItemId, GetBlockDescriptorForBlock, ScenePortColor, type IBlockDescriptor } from "./blockCatalog";
 import { PromptForFileAsync } from "./browserFiles";
 
 /** The editor metadata layered on top of a serialized graph: per-block visual state keyed by block id. */
@@ -109,9 +109,9 @@ function PointToPort(block: NodeAssetBlock, point: NodeAssetConnectionPoint): IG
     return {
         id: PortIdForPoint(block, point),
         // The port name is purely cosmetic (the controller maps wires by id), so show the type.
-        name: "glTF",
+        name: "Scene",
         direction: point.direction === NodeAssetConnectionPointDirection.Output ? "output" : "input",
-        color: GltfPortColor,
+        color: ScenePortColor,
     };
 }
 

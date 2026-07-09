@@ -13,8 +13,8 @@ import { NodeAssetConnectionPointType } from "../../src/connection/nodeAssetConn
 class TestBlock extends NodeAssetBlock {
     public static override ClassName = "TestBlock";
 
-    public readonly input = this._registerInput("input", NodeAssetConnectionPointType.GLTF);
-    public readonly output = this._registerOutput("output", NodeAssetConnectionPointType.GLTF);
+    public readonly input = this._registerInput("input", NodeAssetConnectionPointType.SCENE);
+    public readonly output = this._registerOutput("output", NodeAssetConnectionPointType.SCENE);
 
     public override async _buildBlockAsync(): Promise<void> {}
 }
@@ -62,8 +62,8 @@ describe("NodeAssetConnectionPoint", () => {
     it("rejects connecting incompatible types", () => {
         const asset = new NodeAsset("test");
         const owner = new TestBlock("owner", asset);
-        const output = new NodeAssetConnectionPoint("out", owner, NodeAssetConnectionPointType.GLTF, NodeAssetConnectionPointDirection.Output);
-        const incompatibleType = (NodeAssetConnectionPointType.GLTF + 1) as NodeAssetConnectionPointType;
+        const output = new NodeAssetConnectionPoint("out", owner, NodeAssetConnectionPointType.SCENE, NodeAssetConnectionPointDirection.Output);
+        const incompatibleType = (NodeAssetConnectionPointType.SCENE + 1) as NodeAssetConnectionPointType;
         const input = new NodeAssetConnectionPoint("in", owner, incompatibleType, NodeAssetConnectionPointDirection.Input);
 
         expect(() => output.connectTo(input)).toThrow();
