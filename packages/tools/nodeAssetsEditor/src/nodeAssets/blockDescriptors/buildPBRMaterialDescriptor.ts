@@ -21,7 +21,7 @@ RegisterBlockDescriptor({
     category: CompositionCategory,
     className: BuildPBRMaterial.ClassName,
     create: (nodeAsset) => new BuildPBRMaterial("Build PBR Material", nodeAsset),
-    getPropertySection: (block, refresh) => {
+    getPropertySection: (block, { refresh }) => {
         const build = block as BuildPBRMaterial;
         return {
             title: "BUILD PBR MATERIAL",

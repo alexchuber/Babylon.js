@@ -9,7 +9,7 @@ RegisterBlockDescriptor({
     category: OperatorCategory,
     className: JoinBlock.ClassName,
     create: (nodeAsset) => new JoinBlock("Join", nodeAsset),
-    getPropertySection: (block, refresh) => {
+    getPropertySection: (block, { refresh }) => {
         const join = block as JoinBlock;
         return {
             title: "JOIN",

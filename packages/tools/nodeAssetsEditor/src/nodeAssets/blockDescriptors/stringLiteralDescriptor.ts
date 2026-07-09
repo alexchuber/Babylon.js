@@ -9,7 +9,7 @@ RegisterBlockDescriptor({
     category: ValuesCategory,
     className: StringLiteral.ClassName,
     create: (nodeAsset) => new StringLiteral("String", nodeAsset),
-    getPropertySection: (block, refresh) => {
+    getPropertySection: (block, { refresh }) => {
         const literal = block as StringLiteral;
         return {
             title: "STRING",

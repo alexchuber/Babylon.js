@@ -11,7 +11,7 @@ RegisterBlockDescriptor({
     category: ImageCategory,
     className: FlipImageBlock.ClassName,
     create: (nodeAsset) => new FlipImageBlock("Flip Image", nodeAsset),
-    getPropertySection: (block, refresh) => {
+    getPropertySection: (block, { refresh }) => {
         const flip = block as FlipImageBlock;
         return {
             title: "FLIP IMAGE",

@@ -1,49 +1,34 @@
 /**
  * The bridge between the NodeAssets domain and the reusable visual node-graph framework.
  *
- * `NodeAsset` is the source of truth. This controller keeps it in sync with a {@link GraphEditorState}
- * via a one-directional (visual -> domain) reconcile subscribed to `state.onChanged`: blocks whose
- * visual node was deleted are removed, and connections are rebuilt from the visual wires. New blocks
- * are created up front in {@link createNodeFromPaletteItem} (palette drops) and {@link load}, so the
- * reconcile only ever needs to remove and re-wire, never add.
+ * `NodeAsset` is the source of truth. The controller creates blocks up front (palette drops and
+ * {@link load}) and delegates keeping the domain in sync with the visuals to a {@link NodeAssetReconciler}:
+ * on every editor change the reconciler removes blocks whose visual node was deleted and rebuilds
+ * connections from the visual wires. The controller itself is a thin adapter — it seeds the showcase
+ * graph, builds property sections through the block descriptors, serializes, and drives builds.
  *
  * All NodeAssets/gltf-transform types are confined to this app layer; the framework never imports it.
  */
 
 import { Observable } from "core/Misc/observable";
 
-import { DracoCompressionBlock, DracoEncoderMethod } from "node-assets/Blocks/dracoCompressionBlock";
-import { ExportGLTFBlock } from "node-assets/Blocks/exportGLTFBlock";
 import { ImportGLTFBlock } from "node-assets/Blocks/importGLTFBlock";
 import { ImportImageBlock } from "node-assets/Blocks/importImageBlock";
-import { KTX2CompressionBlock } from "node-assets/Blocks/ktx2CompressionBlock";
 import { NodeAsset } from "node-assets/nodeAsset";
-import { NodeAssetConnectionPointDirection } from "node-assets/connection/nodeAssetConnectionPointDirection";
-import { NodeAssetConnectionPointType } from "node-assets/connection/nodeAssetConnectionPointType";
 import { type NodeAssetBlock } from "node-assets/blockFoundation/nodeAssetBlock";
-import { type NodeAssetConnectionPoint } from "node-assets/connection/nodeAssetConnectionPoint";
 
 import { GraphEditorState } from "../nodeGraph/editorState";
-import { type IGraphNode, type IGraphPort, type IGraphSnapshot, type IGraphWire, type Vec2 } from "../nodeGraph/graphModel";
-import { type IPaletteCategory, type IPaletteItem } from "../nodeGraph/paletteModel";
+import { type IGraphNode, type IGraphSnapshot, type IGraphWire, type Vec2 } from "../nodeGraph/graphModel";
+import { type IPaletteCategory } from "../nodeGraph/paletteModel";
 import { type IPropertySection } from "../nodeGraph/propertyModel";
 
 // Import the block descriptor modules for their registration side effects, so the palette and
 // load-time lookups below see every built-in block. (See ./blockDescriptors/index.ts.)
 import "./blockDescriptors";
-import {
-    ConfigureBlockForEditor,
-    GetAllBlockDescriptors,
-    GetBlockDescriptorByPaletteItemId,
-    GetBlockDescriptorForBlock,
-    ImagePortColor,
-    JsonPortColor,
-    NumberPortColor,
-    ScenePortColor,
-    StringPortColor,
-    type IBlockDescriptor,
-} from "./blockCatalog";
-import { PromptForFileAsync } from "./browserFiles";
+import { ConfigureBlockForEditor, GetAllBlockDescriptors, GetBlockDescriptorByPaletteItemId, GetBlockDescriptorForBlock, type IBlockDescriptor } from "./blockCatalog";
+import { BlockToNode, PortIdForPoint } from "./blockNodeMapping";
+import { BuildPaletteCategories } from "./paletteCategories";
+import { NodeAssetReconciler } from "./nodeAssetReconciler";
 import { NodeAssetBuildWorkerClient, type INodeAssetBuildClient } from "./nodeAssetBuildWorkerClient";
 
 /** The editor metadata layered on top of a serialized graph: per-block visual state keyed by block id. */
@@ -65,12 +50,6 @@ const LocalCdnPort = "1337";
 const DefaultBareGlbPath = "scenes/nodeAssets/bareCube.glb";
 const DefaultBaseColorImagePath = "scenes/nodeAssets/baseColor.png";
 
-/** Palette category label for blocks whose descriptor does not specify one. */
-const DefaultPaletteCategory = "Blocks";
-
-const DracoMethodLabels = ["Edgebreaker", "Sequential"] as const;
-type DracoMethodLabel = (typeof DracoMethodLabels)[number];
-
 /**
  * Resolves a bundled sample asset path (e.g. `scenes/nodeAssets/bareCube.glb`) to an absolute URL on
  * the local CDN, mirroring how the editor served the default BoomBox: from a `localhost` dev origin the
@@ -90,84 +69,10 @@ function ResolveCdnAssetUrl(assetPath: string): string {
     return new URL(assetPath, `${currentUrl.origin}/`).href;
 }
 
-function DracoMethodToLabel(method: DracoEncoderMethod): DracoMethodLabel {
-    return method === DracoEncoderMethod.Sequential ? "Sequential" : "Edgebreaker";
-}
-
-function DracoMethodFromLabel(label: string): DracoEncoderMethod {
-    return label === "Sequential" ? DracoEncoderMethod.Sequential : DracoEncoderMethod.Edgebreaker;
-}
-
-function SerializeQuantizationBits(quantizationBits: Record<string, number> | null): string {
-    return quantizationBits ? JSON.stringify(quantizationBits) : "";
-}
-
-function IsValidQuantizationBitsJson(value: string): boolean {
-    const trimmed = value.trim();
-    if (!trimmed) {
-        return true;
-    }
-    try {
-        const parsed = JSON.parse(trimmed) as unknown;
-        return (
-            typeof parsed === "object" &&
-            parsed !== null &&
-            !Array.isArray(parsed) &&
-            Object.values(parsed).every((entry) => typeof entry === "number" && Number.isFinite(entry) && Number.isInteger(entry) && entry > 0)
-        );
-    } catch {
-        return false;
-    }
-}
-
-function ParseQuantizationBits(value: string): Record<string, number> | null {
-    const trimmed = value.trim();
-    return trimmed ? (JSON.parse(trimmed) as Record<string, number>) : null;
-}
-
-function NodeIdForBlock(block: NodeAssetBlock): string {
-    return `node-${block.uniqueId}`;
-}
-
-function PortIdForPoint(block: NodeAssetBlock, point: NodeAssetConnectionPoint): string {
-    const direction = point.direction === NodeAssetConnectionPointDirection.Output ? "out" : "in";
-    return `port-${block.uniqueId}-${direction}-${point.name}`;
-}
-
-/** Per-kind port label and dot color, so each connection-point type renders distinctly. */
-const PortStyleByType: Record<NodeAssetConnectionPointType, { readonly name: string; readonly color: string }> = {
-    [NodeAssetConnectionPointType.SCENE]: { name: "Scene", color: ScenePortColor },
-    [NodeAssetConnectionPointType.NUMBER]: { name: "Number", color: NumberPortColor },
-    [NodeAssetConnectionPointType.STRING]: { name: "String", color: StringPortColor },
-    [NodeAssetConnectionPointType.JSON]: { name: "Json", color: JsonPortColor },
-    [NodeAssetConnectionPointType.IMAGE]: { name: "Image", color: ImagePortColor },
-};
-
-function PointToPort(block: NodeAssetBlock, point: NodeAssetConnectionPoint): IGraphPort {
-    const style = PortStyleByType[point.type];
-    return {
-        id: PortIdForPoint(block, point),
-        // The port name is purely cosmetic (the controller maps wires by id), so show the type.
-        name: style.name,
-        direction: point.direction === NodeAssetConnectionPointDirection.Output ? "output" : "input",
-        color: style.color,
-    };
-}
-
-function BlockToNode(block: NodeAssetBlock, descriptor: IBlockDescriptor, position: Vec2, title: string, collapsed: boolean): IGraphNode {
-    const ports: IGraphPort[] = [];
-    for (const input of block.inputs) {
-        ports.push(PointToPort(block, input));
-    }
-    for (const output of block.outputs) {
-        ports.push(PointToPort(block, output));
-    }
-    return { id: NodeIdForBlock(block), title, headerColor: descriptor.headerColor, position, collapsed, ports };
-}
-
 /**
- * Owns a live {@link NodeAsset} and the {@link GraphEditorState} that visualizes it, keeping the two
- * in sync. Fills the framework's editor-context contract (palette, property sections, node factory).
+ * Owns a live {@link NodeAsset} and the {@link GraphEditorState} that visualizes it, delegating the
+ * visual-to-domain sync to a {@link NodeAssetReconciler}. Fills the framework's editor-context
+ * contract (palette, property sections, node factory).
  */
 export class NodeAssetGraphController {
     /** The visual editor state the framework renders and mutates. */
@@ -183,10 +88,8 @@ export class NodeAssetGraphController {
     public readonly onBuildRelevantChanged = new Observable<void>();
 
     private _nodeAsset: NodeAsset;
-    private readonly _blockByNodeId = new Map<string, NodeAssetBlock>();
-    private readonly _pointByPortId = new Map<string, NodeAssetConnectionPoint>();
+    private readonly _reconciler: NodeAssetReconciler;
     private readonly _buildClient: INodeAssetBuildClient;
-    private _reconciling = false;
     private _buildRelevantSignature: string;
     private readonly _onChangedObserver;
 
@@ -198,6 +101,7 @@ export class NodeAssetGraphController {
     public constructor(buildClient: INodeAssetBuildClient = new NodeAssetBuildWorkerClient()) {
         this._nodeAsset = new NodeAsset("nodeAsset");
         this._buildClient = buildClient;
+        this._reconciler = new NodeAssetReconciler(this._nodeAsset);
 
         const importGltfDescriptor = GetBlockDescriptorByPaletteItemId("import-gltf")!;
         const importImageDescriptor = GetBlockDescriptorByPaletteItemId("import-image")!;
@@ -219,10 +123,10 @@ export class NodeAssetGraphController {
         };
         this.state = new GraphEditorState(snapshot);
 
-        this.paletteCategories = this._buildPaletteCategories();
+        this.paletteCategories = BuildPaletteCategories(GetAllBlockDescriptors());
 
-        // Subscribe only after seeding so the reconcile sees consistent maps and state.
-        this._reconcile();
+        // Subscribe only after seeding so the reconcile sees consistent correspondence and state.
+        this._reconciler.reconcile(this.state);
         this._buildRelevantSignature = this._createBuildRelevantSignature();
         this._onChangedObserver = this.state.onChanged.add(() => this._reconcileAndNotifyBuildRelevantChange());
     }
@@ -260,8 +164,8 @@ export class NodeAssetGraphController {
     }
 
     /**
-     * Builds the property sections for a selected node: a general name field plus block-specific
-     * import/export actions or compression settings.
+     * Builds the property sections for a selected node: a general name field plus the block's own
+     * descriptor-provided section, if any.
      * @param node - The selected node.
      * @returns The property sections to render.
      */
@@ -283,43 +187,18 @@ export class NodeAssetGraphController {
             },
         ];
 
-        const block = this._blockByNodeId.get(node.id);
-        if (block instanceof ImportGLTFBlock) {
-            sections.push(this._buildImportSection(block));
-        } else if (block instanceof ExportGLTFBlock) {
-            sections.push(this._buildExportSection());
-        } else if (block instanceof KTX2CompressionBlock) {
-            sections.push(this._buildKtx2Section(block));
-        } else if (block instanceof DracoCompressionBlock) {
-            sections.push(this._buildDracoSection(block));
-        } else if (block) {
-            // Blocks without a bespoke section (e.g. the operator family) describe their own via their descriptor.
-            const descriptorSection = GetBlockDescriptorForBlock(block)?.getPropertySection?.(block, () => this.state.notifyChanged());
-            if (descriptorSection) {
-                sections.push(descriptorSection);
+        const block = this._reconciler.getBlock(node.id);
+        if (block) {
+            const section = GetBlockDescriptorForBlock(block)?.getPropertySection?.(block, {
+                refresh: () => this.state.notifyChanged(),
+                requestExport: () => this.onExportRequested.notifyObservers(),
+            });
+            if (section) {
+                sections.push(section);
             }
         }
 
         return sections;
-    }
-
-    /**
-     * Groups the registered block descriptors into palette categories, preserving registration order
-     * both across and within categories. Descriptors without a category fall into the default one.
-     * @returns The palette categories.
-     */
-    private _buildPaletteCategories(): readonly IPaletteCategory[] {
-        const itemsByCategory = new Map<string, IPaletteItem[]>();
-        for (const descriptor of GetAllBlockDescriptors()) {
-            const label = descriptor.category ?? DefaultPaletteCategory;
-            let items = itemsByCategory.get(label);
-            if (!items) {
-                items = [];
-                itemsByCategory.set(label, items);
-            }
-            items.push({ id: descriptor.paletteItemId, label: descriptor.label });
-        }
-        return Array.from(itemsByCategory, ([label, items]) => ({ label, items }));
     }
 
     /**
@@ -341,7 +220,7 @@ export class NodeAssetGraphController {
         this._reconcileAndNotifyBuildRelevantChange();
         const blocks: IEditorBlockMetadata[] = [];
         for (const node of this.state.nodes) {
-            const block = this._blockByNodeId.get(node.id);
+            const block = this._reconciler.getBlock(node.id);
             if (block) {
                 blocks.push({ id: block.uniqueId, position: node.position, title: node.title, collapsed: node.collapsed });
             }
@@ -360,8 +239,7 @@ export class NodeAssetGraphController {
         const asset = NodeAsset.Parse(file.graph);
 
         this._nodeAsset = asset;
-        this._blockByNodeId.clear();
-        this._pointByPortId.clear();
+        this._reconciler.reset(asset);
 
         const metadataById = new Map<number, IEditorBlockMetadata>();
         for (const metadata of file.editor?.blocks ?? []) {
@@ -394,7 +272,7 @@ export class NodeAssetGraphController {
             }
         }
 
-        // Maps are rebuilt above, so the reconcile fired by reset sees a consistent world.
+        // Correspondence is rebuilt above, so the reconcile fired by reset sees a consistent world.
         this.state.reset({ nodes, wires, frames: [] });
     }
 
@@ -404,116 +282,6 @@ export class NodeAssetGraphController {
         this.onExportRequested.clear();
         this.onBuildRelevantChanged.clear();
         this._buildClient.dispose();
-    }
-
-    private _buildImportSection(block: ImportGLTFBlock): IPropertySection {
-        const status = block.data ? `Loaded (${block.data.length} bytes)` : "No file loaded";
-        return {
-            title: "IMPORT",
-            properties: [
-                { kind: "text", label: "Source", value: status, onChange: () => undefined },
-                {
-                    kind: "button",
-                    label: "Import glTF file\u2026",
-                    onClick: () => {
-                        void this._promptImportAsync(block);
-                    },
-                },
-            ],
-        };
-    }
-
-    private _buildExportSection(): IPropertySection {
-        return {
-            title: "EXPORT",
-            properties: [
-                {
-                    kind: "button",
-                    label: "Export .glb",
-                    onClick: () => this.onExportRequested.notifyObservers(),
-                },
-            ],
-        };
-    }
-
-    private _buildKtx2Section(block: KTX2CompressionBlock): IPropertySection {
-        return {
-            title: "KTX2",
-            properties: [
-                {
-                    kind: "switch",
-                    label: "Generate mipmaps",
-                    value: block.generateMipmaps,
-                    onChange: (value) => {
-                        block.generateMipmaps = value;
-                        this.state.notifyChanged();
-                    },
-                },
-            ],
-        };
-    }
-
-    private _buildDracoSection(block: DracoCompressionBlock): IPropertySection {
-        return {
-            title: "DRACO",
-            properties: [
-                {
-                    kind: "dropdown",
-                    label: "Method",
-                    value: DracoMethodToLabel(block.method),
-                    options: DracoMethodLabels,
-                    onChange: (value) => {
-                        block.method = DracoMethodFromLabel(value);
-                        this.state.notifyChanged();
-                    },
-                },
-                {
-                    kind: "slider",
-                    label: "Encode speed",
-                    value: block.encodeSpeed,
-                    min: 0,
-                    max: 10,
-                    step: 1,
-                    onChange: (value) => {
-                        block.encodeSpeed = value;
-                        this.state.notifyChanged();
-                    },
-                },
-                {
-                    kind: "slider",
-                    label: "Decode speed",
-                    value: block.decodeSpeed,
-                    min: 0,
-                    max: 10,
-                    step: 1,
-                    onChange: (value) => {
-                        block.decodeSpeed = value;
-                        this.state.notifyChanged();
-                    },
-                },
-                {
-                    kind: "text",
-                    label: "Quantization bits",
-                    value: SerializeQuantizationBits(block.quantizationBits),
-                    validator: IsValidQuantizationBitsJson,
-                    validateOnlyOnBlur: true,
-                    onChange: (value) => {
-                        block.quantizationBits = ParseQuantizationBits(value);
-                        this.state.notifyChanged();
-                    },
-                },
-            ],
-        };
-    }
-
-    private async _promptImportAsync(block: ImportGLTFBlock): Promise<void> {
-        const file = await PromptForFileAsync(".glb,.gltf");
-        if (!file) {
-            return;
-        }
-        block.data = new Uint8Array(await file.arrayBuffer());
-        // Refresh so the property pane's status line updates.
-        this.state.notifyChanged();
     }
 
     private _instantiateBlock(descriptor: IBlockDescriptor, position: Vec2): IGraphNode {
@@ -545,7 +313,7 @@ export class NodeAssetGraphController {
      */
     private _createWireToInput(fromNode: IGraphNode, toNode: IGraphNode, toInputName: string): IGraphWire {
         const fromPort = fromNode.ports.find((port) => port.direction === "output");
-        const toBlock = this._blockByNodeId.get(toNode.id);
+        const toBlock = this._reconciler.getBlock(toNode.id);
         const toPoint = toBlock?.inputs.find((input) => input.name === toInputName);
         if (!fromPort || !toBlock || !toPoint) {
             throw new Error(`Cannot wire "${fromNode.title}" to "${toNode.title}"'s "${toInputName}" input because a compatible port is missing.`);
@@ -559,13 +327,7 @@ export class NodeAssetGraphController {
 
     private _registerBlockNode(block: NodeAssetBlock, descriptor: IBlockDescriptor, position: Vec2, title: string, collapsed: boolean): IGraphNode {
         const node = BlockToNode(block, descriptor, position, title, collapsed);
-        this._blockByNodeId.set(node.id, block);
-        for (const input of block.inputs) {
-            this._pointByPortId.set(PortIdForPoint(block, input), input);
-        }
-        for (const output of block.outputs) {
-            this._pointByPortId.set(PortIdForPoint(block, output), output);
-        }
+        this._reconciler.registerNode(block, node);
         return node;
     }
 
@@ -593,91 +355,8 @@ export class NodeAssetGraphController {
         return new Uint8Array(await response.arrayBuffer());
     }
 
-    private _reconcile(): void {
-        if (this._reconciling) {
-            return;
-        }
-        this._reconciling = true;
-        try {
-            // 1) Remove domain blocks whose visual node no longer exists.
-            const liveNodeIds = new Set(this.state.nodes.map((node) => node.id));
-            for (const [nodeId, block] of Array.from(this._blockByNodeId)) {
-                if (!liveNodeIds.has(nodeId)) {
-                    this._nodeAsset.removeBlock(block);
-                    this._blockByNodeId.delete(nodeId);
-                    for (const input of block.inputs) {
-                        this._pointByPortId.delete(PortIdForPoint(block, input));
-                    }
-                    for (const output of block.outputs) {
-                        this._pointByPortId.delete(PortIdForPoint(block, output));
-                    }
-                }
-            }
-
-            // 2) Sync each surviving node's visual ports to its block's connection points. This is a
-            //    no-op for fixed-arity blocks and is what lets a variadic block (MergeScenes) grow: when
-            //    its backing block gains an input, the node gains the matching port and it becomes wirable.
-            this._syncNodePortsToBlocks();
-
-            // 3) Rebuild all connections from the visual wires. Clearing outputs clears both sides.
-            for (const block of this._nodeAsset.attachedBlocks) {
-                for (const output of block.outputs) {
-                    output.disconnect();
-                }
-            }
-            for (const wire of this.state.wires) {
-                const from = this._pointByPortId.get(wire.fromPortId);
-                const to = this._pointByPortId.get(wire.toPortId);
-                if (from && to) {
-                    from.connectTo(to);
-                }
-            }
-        } finally {
-            this._reconciling = false;
-        }
-    }
-
-    /**
-     * Rebuilds any node whose visual ports no longer match its block's connection points, keeping the
-     * port-to-point map in step. Only variadic blocks whose input set changed do any work here; every
-     * fixed-arity node short-circuits on the id comparison. Ports are typed read-only for framework
-     * consumers, but this controller owns the visual-to-domain bridge, so it replaces the port list in
-     * place (mirroring how it mutates other node fields before `notifyChanged`).
-     */
-    private _syncNodePortsToBlocks(): void {
-        for (const node of this.state.nodes) {
-            const block = this._blockByNodeId.get(node.id);
-            if (!block) {
-                continue;
-            }
-
-            const desiredPorts: IGraphPort[] = [];
-            for (const input of block.inputs) {
-                desiredPorts.push(PointToPort(block, input));
-            }
-            for (const output of block.outputs) {
-                desiredPorts.push(PointToPort(block, output));
-            }
-
-            if (node.ports.length === desiredPorts.length && node.ports.every((port, index) => port.id === desiredPorts[index].id)) {
-                continue;
-            }
-
-            for (const port of node.ports) {
-                this._pointByPortId.delete(port.id);
-            }
-            (node as { ports: readonly IGraphPort[] }).ports = desiredPorts;
-            for (const input of block.inputs) {
-                this._pointByPortId.set(PortIdForPoint(block, input), input);
-            }
-            for (const output of block.outputs) {
-                this._pointByPortId.set(PortIdForPoint(block, output), output);
-            }
-        }
-    }
-
     private _reconcileAndNotifyBuildRelevantChange(): void {
-        this._reconcile();
+        this._reconciler.reconcile(this.state);
         const signature = this._createBuildRelevantSignature();
         if (signature !== this._buildRelevantSignature) {
             this._buildRelevantSignature = signature;

@@ -11,4 +11,21 @@ RegisterBlockDescriptor({
     headerColor: CompressionHeaderColor,
     className: KTX2CompressionBlock.ClassName,
     create: (nodeAsset) => ConfigureBlockForEditor(new KTX2CompressionBlock("KTX2 Compress", nodeAsset)),
+    getPropertySection: (block, { refresh }) => {
+        const ktx2Block = block as KTX2CompressionBlock;
+        return {
+            title: "KTX2",
+            properties: [
+                {
+                    kind: "switch",
+                    label: "Generate mipmaps",
+                    value: ktx2Block.generateMipmaps,
+                    onChange: (value) => {
+                        ktx2Block.generateMipmaps = value;
+                        refresh();
+                    },
+                },
+            ],
+        };
+    },
 });

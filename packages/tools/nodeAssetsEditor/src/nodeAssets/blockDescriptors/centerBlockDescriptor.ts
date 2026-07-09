@@ -11,7 +11,7 @@ RegisterBlockDescriptor({
     category: OperatorCategory,
     className: CenterBlock.ClassName,
     create: (nodeAsset) => new CenterBlock("Center", nodeAsset),
-    getPropertySection: (block, refresh) => {
+    getPropertySection: (block, { refresh }) => {
         const center = block as CenterBlock;
         return {
             title: "CENTER",

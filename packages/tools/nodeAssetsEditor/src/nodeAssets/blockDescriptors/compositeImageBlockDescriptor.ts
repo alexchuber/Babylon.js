@@ -9,7 +9,7 @@ RegisterBlockDescriptor({
     category: ImageCategory,
     className: CompositeImageBlock.ClassName,
     create: (nodeAsset) => new CompositeImageBlock("Composite Image", nodeAsset),
-    getPropertySection: (block, refresh) => {
+    getPropertySection: (block, { refresh }) => {
         const composite = block as CompositeImageBlock;
         return {
             title: "COMPOSITE IMAGE",

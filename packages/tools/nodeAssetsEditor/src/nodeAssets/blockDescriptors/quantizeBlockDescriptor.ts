@@ -9,7 +9,7 @@ RegisterBlockDescriptor({
     category: OperatorCategory,
     className: QuantizeBlock.ClassName,
     create: (nodeAsset) => new QuantizeBlock("Quantize", nodeAsset),
-    getPropertySection: (block, refresh) => {
+    getPropertySection: (block, { refresh }) => {
         const quantize = block as QuantizeBlock;
         return {
             title: "QUANTIZE",

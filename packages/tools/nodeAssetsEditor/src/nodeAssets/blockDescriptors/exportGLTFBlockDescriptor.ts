@@ -11,4 +11,14 @@ RegisterBlockDescriptor({
     headerColor: ExportHeaderColor,
     className: ExportGLTFBlock.ClassName,
     create: (nodeAsset) => ConfigureBlockForEditor(new ExportGLTFBlock("Export glTF", nodeAsset)),
+    getPropertySection: (_block, { requestExport }) => ({
+        title: "EXPORT",
+        properties: [
+            {
+                kind: "button",
+                label: "Export .glb",
+                onClick: () => requestExport(),
+            },
+        ],
+    }),
 });

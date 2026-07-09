@@ -9,7 +9,7 @@ RegisterBlockDescriptor({
     category: CompositionCategory,
     className: MergeScenes.ClassName,
     create: (nodeAsset) => new MergeScenes("Merge Scenes", nodeAsset),
-    getPropertySection: (block, refresh) => {
+    getPropertySection: (block, { refresh }) => {
         const merge = block as MergeScenes;
         return {
             title: "MERGE SCENES",

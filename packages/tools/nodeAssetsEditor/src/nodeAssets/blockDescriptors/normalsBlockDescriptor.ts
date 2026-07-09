@@ -9,7 +9,7 @@ RegisterBlockDescriptor({
     category: OperatorCategory,
     className: NormalsBlock.ClassName,
     create: (nodeAsset) => new NormalsBlock("Normals", nodeAsset),
-    getPropertySection: (block, refresh) => {
+    getPropertySection: (block, { refresh }) => {
         const normals = block as NormalsBlock;
         return {
             title: "NORMALS",
