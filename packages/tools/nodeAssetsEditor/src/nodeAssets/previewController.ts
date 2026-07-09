@@ -1,78 +1,38 @@
 /**
- * Owns the Babylon engine/scene that previews an exported asset. Lives in the app layer because it is
- * NodeAssets-specific (it renders the glb produced by the graph); the reusable framework never imports
- * it. A fresh scene is built per load so previews never accumulate.
+ * Owns the Babylon Viewer V2 instance that previews an exported asset. Lives in the app layer because it
+ * is NodeAssets-specific (it renders the glb produced by the graph); the reusable framework never imports
+ * it.
  */
 
-import "loaders/glTF";
-
-import { RegisterSceneHelpers } from "core/Helpers/sceneHelpers.pure";
-
-import { Engine } from "core/Engines/engine";
-import { Scene } from "core/scene";
-import { AppendSceneAsync } from "core/Loading/sceneLoader";
-import { Color4 } from "core/Maths/math.color";
+import { AbortError } from "core/Misc/error";
 import { Logger } from "core/Misc/logger";
-
-// Adds Scene.prototype.createDefaultCameraOrLight without pulling in the VR side effects that the
-// core/Helpers/sceneHelpers side-effect wrapper would.
-RegisterSceneHelpers();
+import { type Viewer } from "viewer/viewer";
+import { CreateViewerForCanvas } from "viewer/viewerFactory";
 
 /**
- * Manages a Babylon engine bound to a canvas and previews glb bytes with a default camera and light.
+ * Manages a Viewer V2 instance bound to the editor-owned preview canvas.
  */
 export class PreviewController {
-    private _engine: Engine | null = null;
-    private _scene: Scene | null = null;
+    private _viewer: Viewer | null = null;
+    private _viewerCreation: Promise<void> | null = null;
     private _canvas: HTMLCanvasElement | null = null;
-    private _resizeObserver: ResizeObserver | null = null;
     private _pendingData: Uint8Array | null = null;
-    // Guards against an earlier, slower load overwriting a later one.
-    private _loadGeneration = 0;
+    private _attachGeneration = 0;
 
     /**
-     * Binds the controller to a canvas, creating the engine and starting the render loop. A no-op if
+     * Binds the controller to a canvas, creating the Viewer V2 instance. A no-op if
      * already bound to the same canvas.
      * @param canvas - The canvas to render into.
      */
     public attach(canvas: HTMLCanvasElement): void {
-        if (this._canvas === canvas) {
+        if (this._canvas === canvas && (this._viewer || this._viewerCreation)) {
             return;
         }
         this.detach();
 
-        let engine: Engine;
-        try {
-            engine = new Engine(canvas, true, { preserveDrawingBuffer: true, stencil: true });
-        } catch (error) {
-            // A browser without a usable WebGL context should leave the editor running, just without a
-            // live preview, rather than crashing the pane that hosts this controller.
-            Logger.Error(`[NodeAssetsEditor] Preview engine could not be created: ${(error as Error).message}`);
-            return;
-        }
-        this._engine = engine;
+        const attachGeneration = ++this._attachGeneration;
         this._canvas = canvas;
-        this._scene = this._createScene(engine);
-        // Give the empty preview a camera so it renders the clear color instead of throwing
-        // "No camera defined" on the first frame, before any asset is loaded.
-        this._scene.createDefaultCameraOrLight(true, true, true);
-        engine.runRenderLoop(() => {
-            const scene = this._scene;
-            // A freshly built load scene has no camera until its asset finishes appending; skip it until
-            // then so the render loop never throws.
-            if (scene && scene.activeCamera) {
-                scene.render();
-            }
-        });
-
-        this._resizeObserver = new ResizeObserver(() => engine.resize());
-        this._resizeObserver.observe(canvas);
-
-        if (this._pendingData) {
-            const data = this._pendingData;
-            this._pendingData = null;
-            void this.loadAssetAsync(data);
-        }
+        this._viewerCreation = this._attachViewerAsync(canvas, attachGeneration);
     }
 
     /**
@@ -81,45 +41,67 @@ export class PreviewController {
      * @param data - The glb bytes to preview.
      */
     public async loadAssetAsync(data: Uint8Array): Promise<void> {
-        const engine = this._engine;
-        if (!engine) {
+        const viewer = this._viewer;
+        if (!viewer) {
             this._pendingData = data;
             return;
         }
 
-        const generation = ++this._loadGeneration;
-        const scene = this._createScene(engine);
-        // The DOM lib's BufferSource requires an ArrayBuffer-backed view, but the glb bytes are typed as
-        // Uint8Array<ArrayBufferLike>. They are always ArrayBuffer-backed at runtime, so the cast is safe.
-        await AppendSceneAsync(new File([data as BlobPart], "asset.glb"), scene);
+        this._pendingData = null;
+        try {
+            await viewer.loadModel(data, { name: "asset.glb", pluginExtension: ".glb" });
+        } catch (error) {
+            if (error instanceof AbortError) {
+                return;
+            }
+            throw error;
+        }
+    }
 
-        if (generation !== this._loadGeneration || this._engine !== engine) {
-            // A newer load (or a detach) superseded this one.
-            scene.dispose();
+    /** Tears down the Viewer V2 instance, releasing GPU resources. */
+    public detach(): void {
+        this._attachGeneration++;
+        this._canvas = null;
+        this._viewerCreation = null;
+        const viewer = this._viewer;
+        this._viewer = null;
+        if (viewer) {
+            viewer.dispose();
+        }
+    }
+
+    private async _attachViewerAsync(canvas: HTMLCanvasElement, attachGeneration: number): Promise<void> {
+        let viewer: Viewer;
+        try {
+            viewer = await CreateViewerForCanvas(canvas, { engine: "WebGL", preserveDrawingBuffer: true, stencil: true });
+        } catch (error) {
+            if (this._attachGeneration !== attachGeneration || this._canvas !== canvas) {
+                return;
+            }
+
+            this._viewerCreation = null;
+            this._canvas = null;
+            Logger.Error(`[NodeAssetsEditor] Preview viewer could not be created: ${(error as Error).message}`);
             return;
         }
 
-        scene.createDefaultCameraOrLight(true, true, true);
-        const previous = this._scene;
-        this._scene = scene;
-        previous?.dispose();
-    }
+        if (this._attachGeneration !== attachGeneration || this._canvas !== canvas) {
+            viewer.dispose();
+            return;
+        }
 
-    /** Tears down the engine and scene, releasing GPU resources. */
-    public detach(): void {
-        this._loadGeneration++;
-        this._resizeObserver?.disconnect();
-        this._resizeObserver = null;
-        this._scene?.dispose();
-        this._scene = null;
-        this._engine?.dispose();
-        this._engine = null;
-        this._canvas = null;
-    }
-
-    private _createScene(engine: Engine): Scene {
-        const scene = new Scene(engine);
-        scene.clearColor = new Color4(0.1, 0.1, 0.12, 1);
-        return scene;
+        this._viewer = viewer;
+        this._viewerCreation = null;
+        const pendingData = this._pendingData;
+        if (pendingData) {
+            this._pendingData = null;
+            try {
+                await this.loadAssetAsync(pendingData);
+            } catch (error) {
+                if (this._attachGeneration === attachGeneration && this._canvas === canvas) {
+                    Logger.Error(`[NodeAssetsEditor] Preview load failed: ${(error as Error).message}`);
+                }
+            }
+        }
     }
 }

@@ -71,7 +71,7 @@ An app-layer entry naming one real block the palette offers — its label, node 
 how to construct it. Deliberately a plain table, not a registry. _Avoid_: registry, factory map.
 
 **preview** (`PreviewController`, `PreviewPane`):
-The Babylon engine and scene in the right pane that loads the exported glb back through Babylon's glTF
+The Babylon Viewer V2 surface in the right pane that loads the exported glb back through Babylon's glTF
 loader and displays it. _Avoid_: viewport, renderer.
 
 **shell** (`NodeAssetsEditorServiceDefinition`):
