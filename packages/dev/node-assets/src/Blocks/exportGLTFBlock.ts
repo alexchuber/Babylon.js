@@ -3,6 +3,7 @@ import { type Document } from "@gltf-transform/core";
 import { type Nullable } from "core/types";
 
 import { RegisterBlock } from "../blockFoundation/blockRegistry";
+import { type IExportBlock } from "../blockFoundation/exportBlock";
 import { NodeAssetBlock } from "../blockFoundation/nodeAssetBlock";
 import { type NodeAssetConnectionPoint } from "../connection/nodeAssetConnectionPoint";
 import { NodeAssetConnectionPointType } from "../connection/nodeAssetConnectionPointType";
@@ -12,9 +13,12 @@ import { GetDracoModuleOptions, ResolveDraco3DGltfModule } from "./dracoWasm";
 /**
  * Exports the connected gltf-transform `Document` to glb bytes.
  */
-export class ExportGLTFBlock extends NodeAssetBlock {
+export class ExportGLTFBlock extends NodeAssetBlock implements IExportBlock {
     /** The class name, used for identification and safe under minification. */
     public static override ClassName = "ExportGLTFBlock";
+
+    /** Marks this as a terminal export block so {@link NodeAsset.buildAsync} can locate it generically. */
+    public readonly isExportTerminal = true;
 
     /** The gltf-transform `Document` to export. */
     public readonly input: NodeAssetConnectionPoint;

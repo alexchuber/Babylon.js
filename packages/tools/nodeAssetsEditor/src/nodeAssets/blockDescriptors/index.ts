@@ -20,3 +20,5 @@ import "./centerBlockDescriptor";
 import "./numberLiteralDescriptor";
 import "./stringLiteralDescriptor";
 import "./jsonLiteralDescriptor";
+import "./importImageBlockDescriptor";
+import "./exportImageBlockDescriptor";

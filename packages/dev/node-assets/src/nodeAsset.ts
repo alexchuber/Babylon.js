@@ -1,5 +1,5 @@
-import { ExportGLTFBlock } from "./Blocks/exportGLTFBlock";
 import { CreateBlockByClassName } from "./blockFoundation/blockRegistry";
+import { IsExportBlock } from "./blockFoundation/exportBlock";
 import { type NodeAssetBlock } from "./blockFoundation/nodeAssetBlock";
 import { UniqueIdGenerator } from "./utils/uniqueIdGenerator";
 
@@ -124,14 +124,15 @@ export class NodeAsset {
     }
 
     /**
-     * Runs the graph by pulling from the terminal {@link ExportGLTFBlock} and returns the
-     * exported glb bytes. Pull-based, no caching; a required input left unconnected is an error.
-     * @returns The exported glb bytes.
+     * Runs the graph by pulling from the terminal export block (located via its
+     * {@link IExportBlock} marker, not by concrete type) and returns the built bytes. Pull-based,
+     * no caching; a required input left unconnected is an error.
+     * @returns The built bytes produced by the terminal export block.
      */
     public async buildAsync(): Promise<Uint8Array> {
-        const exportBlock = this._attachedBlocks.find((block): block is ExportGLTFBlock => block instanceof ExportGLTFBlock);
+        const exportBlock = this._attachedBlocks.find(IsExportBlock);
         if (!exportBlock) {
-            throw new Error(`The "${this.name}" node asset has no ExportGLTFBlock to build.`);
+            throw new Error(`The "${this.name}" node asset has no export block to build.`);
         }
 
         // A per-build memo so each block is evaluated exactly once even when its output fans out to
