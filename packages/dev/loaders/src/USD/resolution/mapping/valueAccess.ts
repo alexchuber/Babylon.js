@@ -1,5 +1,6 @@
 import { type Vec2, type Vec3, type Vec4, type Quat, type Mat4 } from "../resolvedStage";
-import { type ISdfAttributeSpec, type ISdfListOp, type ISdfPrimSpec, type ISdfRelationshipSpec, type SdfMetadata, type SdfValue } from "../sdf";
+import { type ISdfAttributeSpec, type ISdfPrimSpec, type ISdfRelationshipSpec, type SdfMetadata, type SdfValue } from "../sdf";
+import { ReadListOpItems } from "../sdf/sdfListOp";
 
 /**
  * Returns an authored attribute by name, if the property exists and is an attribute.
@@ -44,27 +45,12 @@ export function GetAttributeValue(attribute: ISdfAttributeSpec | undefined): Sdf
 }
 
 /**
- * Composes a flattened list-op into an ordered item array.
- * @param listOp authored list operation
- * @returns list items in application order
- */
-export function GetListOpItems<T>(listOp: ISdfListOp<T> | undefined): T[] {
-    if (!listOp) {
-        return [];
-    }
-    if (listOp.isExplicit && listOp.explicit) {
-        return [...listOp.explicit];
-    }
-    return [...(listOp.prepended ?? []), ...(listOp.added ?? []), ...(listOp.appended ?? [])];
-}
-
-/**
  * Returns connection targets authored on an attribute.
  * @param attribute attribute whose connections should be read
  * @returns ordered connection target paths
  */
 export function GetConnectionTargets(attribute: ISdfAttributeSpec | undefined): string[] {
-    return GetListOpItems(attribute?.connections);
+    return ReadListOpItems(attribute?.connections);
 }
 
 /**
@@ -73,7 +59,7 @@ export function GetConnectionTargets(attribute: ISdfAttributeSpec | undefined): 
  * @returns ordered relationship target paths
  */
 export function GetRelationshipTargets(relationship: ISdfRelationshipSpec | undefined): string[] {
-    return GetListOpItems(relationship?.targets);
+    return ReadListOpItems(relationship?.targets);
 }
 
 /**

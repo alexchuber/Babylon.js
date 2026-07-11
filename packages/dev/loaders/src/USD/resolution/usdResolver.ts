@@ -3,7 +3,7 @@ import { Tools } from "core/Misc/tools.pure";
 import { type USDLoadingOptions } from "../usdLoadingOptions";
 import { type IResolvedStage, type IResolvedDiagnostic, type ResolvedDiagnosticSeverity, type IResolvedTexture } from "./resolvedStage";
 import { type ISdfLayer } from "./sdf";
-import { type ISdfListOp } from "./sdf/sdfListOp";
+import { ReadListOpItems } from "./sdf/sdfListOp";
 import { type ISdfCompositionFields, type ISdfPrimSpec } from "./sdf/sdfSpec";
 import { ParseUsda } from "./parser/usda/usdaParser";
 import { ComposeLayerStack, type ICompositionDiagnostic } from "./composition/composeLayerStack";
@@ -323,12 +323,12 @@ function CollectExternalAssetPaths(layer: ISdfLayer): string[] {
     }
 
     function visitFields(fields: ISdfCompositionFields): void {
-        for (const reference of ListOpItems(fields.references)) {
+        for (const reference of ReadListOpItems(fields.references)) {
             if (reference.assetPath) {
                 paths.push(reference.assetPath);
             }
         }
-        for (const payload of ListOpItems(fields.payloads)) {
+        for (const payload of ReadListOpItems(fields.payloads)) {
             if (payload.assetPath) {
                 paths.push(payload.assetPath);
             }
@@ -355,14 +355,6 @@ function CollectExternalAssetPaths(layer: ISdfLayer): string[] {
     }
 
     return paths;
-}
-
-// Flattens the addition-side opinions of a list op (explicit/prepended/appended/added) into one array.
-function ListOpItems<T>(listOp: ISdfListOp<T> | undefined): readonly T[] {
-    if (!listOp) {
-        return [];
-    }
-    return [...(listOp.explicit ?? []), ...(listOp.prepended ?? []), ...(listOp.appended ?? []), ...(listOp.added ?? [])];
 }
 
 // Maps a composition diagnostic onto the resolved-stage diagnostic shape consumed by the loader.
