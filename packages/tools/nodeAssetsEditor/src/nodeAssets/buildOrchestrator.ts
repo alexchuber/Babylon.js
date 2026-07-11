@@ -47,8 +47,8 @@ export interface IBuildOrchestratorOptions {
     readonly controller: IBuildOrchestratorController;
     /** The preview surface that shows build status and results. */
     readonly preview: IBuildOrchestratorPreview;
-    /** Downloads a successful build result. Defaults to a `.glb` browser download. */
-    readonly exportResult?: (data: Uint8Array) => void;
+    /** Downloads a successful build result. Defaults to a `.glb` browser download named by the export block. */
+    readonly exportResult?: (data: Uint8Array, fileName: string) => void;
     /** Monotonic millisecond clock backing the minimum build-status duration. Defaults to `performance.now`. */
     readonly now?: () => number;
 }
@@ -59,7 +59,7 @@ export interface IBuildOrchestratorOptions {
 export class BuildOrchestrator {
     private readonly _controller: IBuildOrchestratorController;
     private readonly _preview: IBuildOrchestratorPreview;
-    private readonly _exportResult: (data: Uint8Array) => void;
+    private readonly _exportResult: (data: Uint8Array, fileName: string) => void;
     private readonly _now: () => number;
 
     private _scheduler: BuildScheduler<Uint8Array> | null = null;
@@ -76,7 +76,12 @@ export class BuildOrchestrator {
     public constructor(options: IBuildOrchestratorOptions) {
         this._controller = options.controller;
         this._preview = options.preview;
-        this._exportResult = options.exportResult ?? ((data) => DownloadBlob(data, "asset.glb", "model/gltf-binary"));
+        this._exportResult =
+            options.exportResult ??
+            ((data, fileName) => {
+                const baseName = fileName.trim() || "scene";
+                DownloadBlob(data, `${baseName}.glb`, "model/gltf-binary");
+            });
         this._now = options.now ?? (() => performance.now());
     }
 
@@ -103,10 +108,12 @@ export class BuildOrchestrator {
     }
 
     /**
-     * Downloads exactly the last successful preview bytes. If no build has succeeded yet, logs a hint
-     * and shows it in the preview unless a build is already in progress; exporting never triggers a build.
+     * Downloads exactly the last successful preview bytes, named by the export block. If no build has
+     * succeeded yet, logs a hint and shows it in the preview unless a build is already in progress;
+     * exporting never triggers a build.
+     * @param fileName - Base file name (without extension) from the export block.
      */
-    public exportLastSuccessfulBuild(): void {
+    public exportLastSuccessfulBuild(fileName: string): void {
         if (!this._lastSuccessfulBuildBytes) {
             const message = "Build the graph successfully before exporting.";
             Logger.Warn(`[NodeAssetsEditor] Export skipped: ${message}`);
@@ -115,7 +122,7 @@ export class BuildOrchestrator {
             }
             return;
         }
-        this._exportResult(this._lastSuccessfulBuildBytes);
+        this._exportResult(this._lastSuccessfulBuildBytes, fileName);
     }
 
     /** Stops auto-builds and cancels any pending status update. Idempotent. */

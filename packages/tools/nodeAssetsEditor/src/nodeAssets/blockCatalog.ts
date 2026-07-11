@@ -19,8 +19,8 @@ import { type IPropertySection } from "../nodeGraph/propertyModel";
 export interface IPropertySectionContext {
     /** Re-renders the property pane after an edit (and marks the graph changed). */
     readonly refresh: () => void;
-    /** Requests that the editor export the current graph (used by the export block's action). */
-    readonly requestExport: () => void;
+    /** Requests that the editor export the current graph, optionally named by the export block's file name. */
+    readonly requestExport: (fileName?: string) => void;
 }
 
 /** Data-driven dot color for scene-typed ports (applied inline as visual data, not theme chrome). */

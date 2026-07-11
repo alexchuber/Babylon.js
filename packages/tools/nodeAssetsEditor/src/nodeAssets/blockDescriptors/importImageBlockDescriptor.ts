@@ -17,6 +17,7 @@ async function PromptForImageAsync(block: ImportImageBlock, refresh: () => void)
     block.data = new Uint8Array(await file.arrayBuffer());
     // The File's type is the browser-detected mime type; fall back to the block's current one.
     block.mimeType = file.type || block.mimeType;
+    block.source = file.name;
     refresh();
 }
 
@@ -29,7 +30,9 @@ RegisterBlockDescriptor({
     create: (nodeAsset) => ConfigureBlockForEditor(new ImportImageBlock("Import Image", nodeAsset)),
     getPropertySection: (block, { refresh }) => {
         const importBlock = block as ImportImageBlock;
-        const status = importBlock.data ? `Loaded (${importBlock.data.length} bytes, ${importBlock.mimeType})` : "No image loaded";
+        // Show where the bytes came from (the source URL or the uploaded file name); fall back to a byte
+        // count for graphs saved before a source label was recorded.
+        const status = importBlock.data ? (importBlock.source ?? `Loaded (${importBlock.data.length} bytes, ${importBlock.mimeType})`) : "No image loaded";
         return {
             title: "IMPORT IMAGE",
             properties: [

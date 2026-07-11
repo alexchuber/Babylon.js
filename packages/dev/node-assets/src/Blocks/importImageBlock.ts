@@ -23,6 +23,13 @@ export class ImportImageBlock extends NodeAssetBlock {
     /** The mime type of the source image, e.g. from the picker or file extension. */
     public mimeType = "image/png";
 
+    /**
+     * A human-readable label for where {@link data} came from: the source URL when fetched from one, or
+     * the uploaded file's name when picked locally. Purely descriptive (the build reads {@link data}, not
+     * this); the editor surfaces it in the block's "Source" field.
+     */
+    public source: Nullable<string> = null;
+
     /** The imported image, emitted as an {@link ImagePayload}. */
     public readonly output: NodeAssetConnectionPoint;
 
@@ -50,13 +57,14 @@ export class ImportImageBlock extends NodeAssetBlock {
 
     /**
      * Serializes this block, encoding its {@link data} bytes as base64 so the source image roundtrips
-     * through save/load, alongside its {@link mimeType}.
+     * through save/load, alongside its {@link mimeType} and {@link source} label.
      * @returns The serialization object.
      */
     public override serialize(): any {
         const serializationObject = super.serialize();
         serializationObject.data = this.data ? EncodeArrayBufferToBase64(this.data) : null;
         serializationObject.mimeType = this.mimeType;
+        serializationObject.source = this.source;
         return serializationObject;
     }
 
@@ -68,6 +76,7 @@ export class ImportImageBlock extends NodeAssetBlock {
         super._deserialize(serializationObject);
         this.data = serializationObject.data ? new Uint8Array(DecodeBase64ToBinary(serializationObject.data)) : null;
         this.mimeType = serializationObject.mimeType ?? "image/png";
+        this.source = serializationObject.source ?? null;
     }
 }
 

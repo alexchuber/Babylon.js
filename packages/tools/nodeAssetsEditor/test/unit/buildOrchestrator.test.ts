@@ -81,12 +81,12 @@ describe("BuildOrchestrator", () => {
     function Setup(): {
         controller: FakeController;
         preview: FakePreview;
-        exportResult: ReturnType<typeof vi.fn<(data: Uint8Array) => void>>;
+        exportResult: ReturnType<typeof vi.fn<(data: Uint8Array, fileName: string) => void>>;
         orchestrator: BuildOrchestrator;
     } {
         const controller = new FakeController();
         const preview = new FakePreview();
-        const exportResult = vi.fn<(data: Uint8Array) => void>();
+        const exportResult = vi.fn<(data: Uint8Array, fileName: string) => void>();
         const orchestrator = new BuildOrchestrator({
             controller,
             preview,
@@ -251,10 +251,10 @@ describe("BuildOrchestrator", () => {
         orchestrator.start();
         await vi.runAllTimersAsync();
 
-        orchestrator.exportLastSuccessfulBuild();
+        orchestrator.exportLastSuccessfulBuild("scene");
 
         expect(exportResult).toHaveBeenCalledTimes(1);
-        expect(exportResult).toHaveBeenCalledWith(bytes);
+        expect(exportResult).toHaveBeenCalledWith(bytes, "scene");
 
         orchestrator.dispose();
     });
@@ -266,14 +266,14 @@ describe("BuildOrchestrator", () => {
         // A build in progress must not have its status overwritten by the export hint.
         preview.setStatus(true, null);
         const statusCallsBefore = preview.statusCalls.length;
-        orchestrator.exportLastSuccessfulBuild();
+        orchestrator.exportLastSuccessfulBuild("scene");
         expect(exportResult).not.toHaveBeenCalled();
         expect(warnSpy).toHaveBeenCalledTimes(1);
         expect(preview.statusCalls.length).toBe(statusCallsBefore);
 
         // When idle, the hint is surfaced.
         preview.setStatus(false, null);
-        orchestrator.exportLastSuccessfulBuild();
+        orchestrator.exportLastSuccessfulBuild("scene");
         expect(exportResult).not.toHaveBeenCalled();
         expect(warnSpy).toHaveBeenCalledTimes(2);
         expect(preview.lastStatus).toEqual({ isBuilding: false, errorMessage: "Build the graph successfully before exporting." });

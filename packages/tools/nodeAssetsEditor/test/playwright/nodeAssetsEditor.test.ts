@@ -48,7 +48,7 @@ function collectPageErrors(page: Page): string[] {
 }
 
 async function readDownloadedGlb(download: Download): Promise<Buffer> {
-    expect(download.suggestedFilename()).toBe("asset.glb");
+    expect(download.suggestedFilename()).toBe("scene.glb");
     const downloadPath = await download.path();
     const exported = readFileSync(downloadPath);
     expect(exported.length).toBeGreaterThan(0);
@@ -89,11 +89,11 @@ test.describe("Node Assets Editor — Energy orb showcase", () => {
         await editor.waitForNextSuccessfulPreviewBuild();
         await expect(editor.previewCanvas).toBeVisible();
 
-        // All three bundled sources are seeded on open, so the graph builds the orb without any manual import.
+        // All three bundled sources are seeded from the CDN on open, so the Source field shows each asset's URL.
         await editor.selectNode("Import glTF");
-        await expect(page.getByRole("textbox").nth(1)).toHaveValue(/Loaded \(\d+ bytes\)/);
+        await expect(page.getByRole("textbox").nth(1)).toHaveValue(/\/scenes\/nodeAssets\/orb\.glb$/);
         await editor.selectNode("Import Image", 0);
-        await expect(page.getByRole("textbox").nth(1)).toHaveValue(/Loaded \(\d+ bytes, image\/png\)/);
+        await expect(page.getByRole("textbox").nth(1)).toHaveValue(/\/scenes\/nodeAssets\/orb(Metal|Pattern)\.png$/);
 
         expect(pageErrors).toEqual([]);
     });

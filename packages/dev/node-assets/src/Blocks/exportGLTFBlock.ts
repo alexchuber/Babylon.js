@@ -23,6 +23,13 @@ export class ExportGLTFBlock extends NodeAssetBlock implements IExportBlock {
     /** The gltf-transform `Document` to export. */
     public readonly input: NodeAssetConnectionPoint;
 
+    /**
+     * Base name (without extension) for the exported file, customizable in the editor and defaulting to
+     * `"scene"`. This is editor-owned download metadata — the build only produces {@link result} bytes and
+     * ignores this — so it is intentionally not part of {@link serialize} (the editor persists it separately).
+     */
+    public fileName = "scene";
+
     /** The exported glb bytes; also returned by {@link NodeAsset.buildAsync}. */
     public result: Nullable<Uint8Array> = null;
 

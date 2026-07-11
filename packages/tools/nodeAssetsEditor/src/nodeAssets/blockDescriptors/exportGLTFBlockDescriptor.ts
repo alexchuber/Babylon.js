@@ -11,14 +11,26 @@ RegisterBlockDescriptor({
     headerColor: ExportHeaderColor,
     className: ExportGLTFBlock.ClassName,
     create: (nodeAsset) => ConfigureBlockForEditor(new ExportGLTFBlock("Export glTF", nodeAsset)),
-    getPropertySection: (_block, { requestExport }) => ({
-        title: "EXPORT",
-        properties: [
-            {
-                kind: "button",
-                label: "Export .glb",
-                onClick: () => requestExport(),
-            },
-        ],
-    }),
+    getPropertySection: (block, { refresh, requestExport }) => {
+        const exportBlock = block as ExportGLTFBlock;
+        return {
+            title: "EXPORT",
+            properties: [
+                {
+                    kind: "text",
+                    label: "Name",
+                    value: exportBlock.fileName,
+                    onChange: (value) => {
+                        exportBlock.fileName = value;
+                        refresh();
+                    },
+                },
+                {
+                    kind: "button",
+                    label: "Export .glb",
+                    onClick: () => requestExport(exportBlock.fileName),
+                },
+            ],
+        };
+    },
 });

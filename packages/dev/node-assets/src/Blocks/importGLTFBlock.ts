@@ -20,6 +20,13 @@ export class ImportGLTFBlock extends NodeAssetBlock {
     /** The source glTF/glb bytes to import (set by the caller / editor file picker). */
     public data: Nullable<Uint8Array> = null;
 
+    /**
+     * A human-readable label for where {@link data} came from: the source URL when fetched from one, or
+     * the uploaded file's name when picked locally. Purely descriptive (the build reads {@link data}, not
+     * this); the editor surfaces it in the block's "Source" field.
+     */
+    public source: Nullable<string> = null;
+
     /** The imported gltf-transform `Document`. */
     public readonly output: NodeAssetConnectionPoint;
 
@@ -62,12 +69,13 @@ export class ImportGLTFBlock extends NodeAssetBlock {
 
     /**
      * Serializes this block, encoding its {@link data} bytes as base64 so the source glTF roundtrips
-     * through save/load.
+     * through save/load, alongside its {@link source} label.
      * @returns The serialization object.
      */
     public override serialize(): any {
         const serializationObject = super.serialize();
         serializationObject.data = this.data ? EncodeArrayBufferToBase64(this.data) : null;
+        serializationObject.source = this.source;
         return serializationObject;
     }
 
@@ -78,6 +86,7 @@ export class ImportGLTFBlock extends NodeAssetBlock {
     public override _deserialize(serializationObject: any): void {
         super._deserialize(serializationObject);
         this.data = serializationObject.data ? new Uint8Array(DecodeBase64ToBinary(serializationObject.data)) : null;
+        this.source = serializationObject.source ?? null;
     }
 }
 

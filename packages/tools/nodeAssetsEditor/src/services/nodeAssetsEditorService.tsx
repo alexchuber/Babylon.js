@@ -88,7 +88,7 @@ export const NodeAssetsEditorServiceDefinition: ServiceDefinition<[], [IShellSer
             }
         };
 
-        const exportObserver = controller.onExportRequested.add(() => orchestrator.exportLastSuccessfulBuild());
+        const exportObserver = controller.onExportRequested.add((fileName) => orchestrator.exportLastSuccessfulBuild(fileName));
 
         const registrations = [
             shellService.addCentralContent({

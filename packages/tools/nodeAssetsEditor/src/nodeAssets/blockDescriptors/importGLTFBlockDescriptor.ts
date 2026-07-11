@@ -18,6 +18,7 @@ async function PromptForGLTFAsync(block: ImportGLTFBlock, refresh: () => void): 
         return;
     }
     block.data = new Uint8Array(await file.arrayBuffer());
+    block.source = file.name;
     refresh();
 }
 
@@ -30,7 +31,9 @@ RegisterBlockDescriptor({
     create: (nodeAsset) => ConfigureBlockForEditor(new ImportGLTFBlock("Import glTF", nodeAsset)),
     getPropertySection: (block, { refresh }) => {
         const importBlock = block as ImportGLTFBlock;
-        const status = importBlock.data ? `Loaded (${importBlock.data.length} bytes)` : "No file loaded";
+        // Show where the bytes came from (the source URL or the uploaded file name); fall back to a byte
+        // count for graphs saved before a source label was recorded.
+        const status = importBlock.data ? (importBlock.source ?? `Loaded (${importBlock.data.length} bytes)`) : "No file loaded";
         return {
             title: "IMPORT",
             properties: [

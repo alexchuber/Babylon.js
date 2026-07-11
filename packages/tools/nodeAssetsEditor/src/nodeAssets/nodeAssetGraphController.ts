@@ -13,6 +13,7 @@
 import { Observable } from "core/Misc/observable";
 
 import { type BuildPBRMaterial } from "node-assets/Blocks/buildPBRMaterial";
+import { ExportGLTFBlock } from "node-assets/Blocks/exportGLTFBlock";
 import { type ImportGLTFBlock } from "node-assets/Blocks/importGLTFBlock";
 import { type ImportImageBlock } from "node-assets/Blocks/importImageBlock";
 import { type KTX2CompressionBlock } from "node-assets/Blocks/ktx2CompressionBlock";
@@ -39,6 +40,8 @@ interface IEditorBlockMetadata {
     readonly position: Vec2;
     readonly title: string;
     readonly collapsed: boolean;
+    /** Export blocks only: the user-chosen base file name for the download (editor-owned, kept out of the domain graph). */
+    readonly fileName?: string;
 }
 
 /** The full editor save file: the domain graph plus the editor-owned visual metadata. */
@@ -84,8 +87,11 @@ export class NodeAssetGraphController {
     /** The palette contents shown in the left pane, derived from the block catalog. */
     public readonly paletteCategories: readonly IPaletteCategory[];
 
-    /** Fires when a build (export) is requested from the graph, e.g. the export node's action button. */
-    public readonly onExportRequested = new Observable<void>();
+    /**
+     * Fires when a build (export) is requested from the graph, e.g. the export node's action button.
+     * Carries the export block's base file name (without extension) so the download can be named.
+     */
+    public readonly onExportRequested = new Observable<string>();
 
     /** Fires only when the runtime graph's serialized build identity changes. */
     public readonly onBuildRelevantChanged = new Observable<void>();
@@ -183,19 +189,25 @@ export class NodeAssetGraphController {
      * @returns A promise that resolves after all assets are loaded.
      */
     public async loadDefaultImportAsync(): Promise<void> {
+        const orbGlbUrl = ResolveCdnAssetUrl(DefaultOrbGlbPath);
+        const orbMetalUrl = ResolveCdnAssetUrl(DefaultOrbMetalImagePath);
+        const orbPatternUrl = ResolveCdnAssetUrl(DefaultOrbPatternImagePath);
         const [orbGlb, orbMetal, orbPattern] = await Promise.all([
-            this._fetchAssetBytesAsync(ResolveCdnAssetUrl(DefaultOrbGlbPath)),
-            this._fetchAssetBytesAsync(ResolveCdnAssetUrl(DefaultOrbMetalImagePath)),
-            this._fetchAssetBytesAsync(ResolveCdnAssetUrl(DefaultOrbPatternImagePath)),
+            this._fetchAssetBytesAsync(orbGlbUrl),
+            this._fetchAssetBytesAsync(orbMetalUrl),
+            this._fetchAssetBytesAsync(orbPatternUrl),
         ]);
 
         this._orbGltfBlock.data = orbGlb;
+        this._orbGltfBlock.source = orbGlbUrl;
 
         this._orbMetalImageBlock.data = orbMetal;
         this._orbMetalImageBlock.mimeType = "image/png";
+        this._orbMetalImageBlock.source = orbMetalUrl;
 
         this._orbPatternImageBlock.data = orbPattern;
         this._orbPatternImageBlock.mimeType = "image/png";
+        this._orbPatternImageBlock.source = orbPatternUrl;
 
         this.state.notifyChanged();
     }
@@ -243,7 +255,7 @@ export class NodeAssetGraphController {
         if (block) {
             const section = GetBlockDescriptorForBlock(block)?.getPropertySection?.(block, {
                 refresh: () => this.state.notifyChanged(),
-                requestExport: () => this.onExportRequested.notifyObservers(),
+                requestExport: (fileName) => this.onExportRequested.notifyObservers(fileName ?? "scene"),
             });
             if (section) {
                 sections.push(section);
@@ -274,7 +286,13 @@ export class NodeAssetGraphController {
         for (const node of this.state.nodes) {
             const block = this._reconciler.getBlock(node.id);
             if (block) {
-                blocks.push({ id: block.uniqueId, position: node.position, title: node.title, collapsed: node.collapsed });
+                blocks.push({
+                    id: block.uniqueId,
+                    position: node.position,
+                    title: node.title,
+                    collapsed: node.collapsed,
+                    fileName: block instanceof ExportGLTFBlock ? block.fileName : undefined,
+                });
             }
         }
         const file: INodeAssetEditorFile = { graph: this._nodeAsset.serialize(), editor: { blocks } };
@@ -306,6 +324,9 @@ export class NodeAssetGraphController {
                 continue;
             }
             const metadata = metadataById.get(block.uniqueId);
+            if (block instanceof ExportGLTFBlock && metadata?.fileName !== undefined) {
+                block.fileName = metadata.fileName;
+            }
             const node = this._registerBlockNode(block, descriptor, metadata?.position ?? { x: 0, y: 0 }, metadata?.title ?? descriptor.label, metadata?.collapsed ?? false);
             nodes.push(node);
         }
