@@ -56,8 +56,9 @@ export function UsdMatrixToResolvedLayout(matrix: Mat4): Mat4 {
 }
 
 /**
- * Decomposes an affine column-major matrix into TRS.
- * @param matrix column-major affine matrix
+ * Decomposes an affine matrix in the resolved `Mat4` flat layout (Babylon `Matrix.m` order, with the
+ * translation in flat indices 12-14) into TRS.
+ * @param matrix affine matrix in the resolved `Mat4` layout
  * @returns decomposed transform
  */
 export function DecomposeMatrix(matrix: Mat4): IResolvedTransform {

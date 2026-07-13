@@ -142,30 +142,26 @@ export class USDFileLoader implements ISceneLoaderPluginAsync, ISceneLoaderPlugi
         const existingMaterials = new Set(scene.materials);
         const existingMultiMaterials = new Set(scene.multiMaterials);
         const existingTextures = new Set(scene.textures);
+        // Both the success and failure paths must hand ownership of the newly-created scene entities to
+        // the container (so it can removeAllFromScene or dispose them), so collect them once.
+        const collectNewEntities = () => {
+            AppendNewEntities(container.meshes, scene.meshes, existingMeshes);
+            AppendNewEntities(container.transformNodes, scene.transformNodes, existingTransformNodes);
+            AppendNewEntities(container.skeletons, scene.skeletons, existingSkeletons);
+            AppendNewEntities(container.animationGroups, scene.animationGroups, existingAnimationGroups);
+            AppendNewEntities(container.lights, scene.lights, existingLights);
+            AppendNewEntities(container.cameras, scene.cameras, existingCameras);
+            AppendNewEntities(container.geometries, scene.geometries, existingGeometries);
+            AppendNewEntities(container.materials, scene.materials, existingMaterials);
+            AppendNewEntities(container.multiMaterials, scene.multiMaterials, existingMultiMaterials);
+            AppendNewEntities(container.textures, scene.textures, existingTextures);
+        };
         try {
             await this._ImportMeshAsync(scene, data, rootUrl, fileName, container);
-            AppendNewEntities(container.meshes, scene.meshes, existingMeshes);
-            AppendNewEntities(container.transformNodes, scene.transformNodes, existingTransformNodes);
-            AppendNewEntities(container.skeletons, scene.skeletons, existingSkeletons);
-            AppendNewEntities(container.animationGroups, scene.animationGroups, existingAnimationGroups);
-            AppendNewEntities(container.lights, scene.lights, existingLights);
-            AppendNewEntities(container.cameras, scene.cameras, existingCameras);
-            AppendNewEntities(container.geometries, scene.geometries, existingGeometries);
-            AppendNewEntities(container.materials, scene.materials, existingMaterials);
-            AppendNewEntities(container.multiMaterials, scene.multiMaterials, existingMultiMaterials);
-            AppendNewEntities(container.textures, scene.textures, existingTextures);
+            collectNewEntities();
             container.removeAllFromScene();
         } catch (error) {
-            AppendNewEntities(container.meshes, scene.meshes, existingMeshes);
-            AppendNewEntities(container.transformNodes, scene.transformNodes, existingTransformNodes);
-            AppendNewEntities(container.skeletons, scene.skeletons, existingSkeletons);
-            AppendNewEntities(container.animationGroups, scene.animationGroups, existingAnimationGroups);
-            AppendNewEntities(container.lights, scene.lights, existingLights);
-            AppendNewEntities(container.cameras, scene.cameras, existingCameras);
-            AppendNewEntities(container.geometries, scene.geometries, existingGeometries);
-            AppendNewEntities(container.materials, scene.materials, existingMaterials);
-            AppendNewEntities(container.multiMaterials, scene.multiMaterials, existingMultiMaterials);
-            AppendNewEntities(container.textures, scene.textures, existingTextures);
+            collectNewEntities();
             container.dispose();
             throw error;
         }

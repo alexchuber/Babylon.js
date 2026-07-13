@@ -7,9 +7,9 @@
 export type USDLoadingOptions = {
     /**
      * URL to load [fflate](https://github.com/101arrowz/fflate) from, used to decompress USDZ
-     * archives. If null or undefined, it is loaded from unpkg.com
-     * (https://unpkg.com/fflate/umd/index.js). This mirrors the SPLAT loader so no new package
-     * dependency is introduced.
+     * archives. If null or undefined, it is loaded from the pinned unpkg.com build
+     * (https://unpkg.com/fflate@0.8.2/umd/index.js). This mirrors the SPLAT loader so no new runtime
+     * package dependency is introduced.
      */
     deflateURL?: string;
 

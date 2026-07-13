@@ -378,9 +378,9 @@ export interface IResolvedSkeleton {
     joints: string[];
     /** Parent index for each joint (`-1` for roots), aligned with `joints`. */
     parentIndices: Int32Array;
-    /** World-space bind transforms per joint (each a column-major `Mat4`). */
+    /** World-space bind transforms per joint (each a `Mat4` in the shared resolved layout). */
     bindTransforms: Mat4[];
-    /** Local rest transforms per joint (each a column-major `Mat4`). */
+    /** Local rest transforms per joint (each a `Mat4` in the shared resolved layout). */
     restTransforms: Mat4[];
     /** Optional resolved animation of joint local transforms, keyed by joint index. */
     animation?: IResolvedSkeletonAnimation;
@@ -416,7 +416,7 @@ export interface IResolvedSkinning {
     jointIndices: Uint32Array;
     /** Flat joint weights (`influencesPerVertex` per vertex). */
     jointWeights: Float32Array;
-    /** Optional geom-bind transform (column-major) applied before skinning. */
+    /** Optional geom-bind transform (in the shared resolved `Mat4` layout) applied before skinning. */
     geomBindTransform?: Mat4;
 }
 
