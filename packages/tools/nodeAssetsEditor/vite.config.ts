@@ -6,6 +6,7 @@ import { commonDevViteConfiguration } from "../../public/viteToolsHelper.mjs";
 
 const coreSrc = path.resolve("../../dev/core/src");
 const loadersSrc = path.resolve("../../dev/loaders/src");
+const serializersSrc = path.resolve("../../dev/serializers/src");
 const viewerDist = path.resolve("../viewer/dist/tsbuild");
 
 /**
@@ -19,7 +20,7 @@ const viewerDist = path.resolve("../viewer/dist/tsbuild");
  * oxc only ever sees decorator-free JS.
  */
 function lowerStandardDecoratorsPlugin(): Plugin {
-    const decoratorDirs = [coreSrc, loadersSrc];
+    const decoratorDirs = [coreSrc, loadersSrc, serializersSrc];
     return {
         name: "lower-babylon-standard-decorators",
         enforce: "pre",
@@ -52,6 +53,7 @@ const base = commonDevViteConfiguration({
     aliases: {
         core: coreSrc,
         loaders: loadersSrc,
+        serializers: serializersSrc,
         "node-assets": path.resolve("../../dev/node-assets/src"),
         "shared-ui-components": path.resolve("../../dev/sharedUiComponents/src"),
         viewer: viewerDist,
