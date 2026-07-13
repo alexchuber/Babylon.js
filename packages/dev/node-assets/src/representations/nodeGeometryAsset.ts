@@ -1,6 +1,6 @@
 import { RegisterAllNodeGeometryBlocks } from "core/Meshes/Node/Blocks/allBlocks.pure";
 import { NodeGeometry } from "core/Meshes/Node/nodeGeometry";
-import { VertexData } from "core/Meshes/mesh.vertexData";
+import { VertexData, VertexDataMaterialInfo } from "core/Meshes/mesh.vertexData";
 
 import { type NodeAssetJsonObject } from "../connection/nodeAssetValueMap";
 import { DeepFreeze, ValidateAndFreezeAssetMetadata } from "./immutableMetadata";
@@ -44,7 +44,7 @@ export class NodeGeometryAsset {
         this.identity = validatedMetadata.identity;
         this.revision = validatedMetadata.revision;
         this.manifest = validatedMetadata.manifest;
-        this.evaluatedVertexData = evaluatedVertexData ? CloneAndValidateVertexData(evaluatedVertexData) : undefined;
+        this.evaluatedVertexData = evaluatedVertexData === undefined ? undefined : CloneAndValidateVertexData(evaluatedVertexData);
     }
 
     /** Whether this resource was disposed by its build scope. */
@@ -100,43 +100,65 @@ function CloneAndValidateVertexData(vertexData: VertexData): Readonly<VertexData
         throw new TypeError("The evaluated VertexData snapshot must be a VertexData instance.");
     }
 
-    const snapshot = VertexData.Parse(vertexData.serialize());
-    const positions = ValidateVertexAttribute("positions", snapshot.positions, 3);
+    const positions = ValidateVertexAttribute("positions", vertexData.positions, 3);
     const vertexCount = positions.length / 3;
-    const attributes: ReadonlyArray<readonly [string, ArrayLike<number> | null | undefined, number]> = [
-        ["normals", snapshot.normals, 3],
-        ["tangents", snapshot.tangents, 4],
-        ["uvs", snapshot.uvs, 2],
-        ["uvs2", snapshot.uvs2, 2],
-        ["uvs3", snapshot.uvs3, 2],
-        ["uvs4", snapshot.uvs4, 2],
-        ["uvs5", snapshot.uvs5, 2],
-        ["uvs6", snapshot.uvs6, 2],
-        ["colors", snapshot.colors, 4],
-        ["matricesIndices", snapshot.matricesIndices, 4],
-        ["matricesWeights", snapshot.matricesWeights, 4],
-        ["matricesIndicesExtra", snapshot.matricesIndicesExtra, 4],
-        ["matricesWeightsExtra", snapshot.matricesWeightsExtra, 4],
-    ];
-    for (const [name, values, stride] of attributes) {
-        if (values == null) {
-            continue;
-        }
-        const attribute = ValidateVertexAttribute(name, values, stride);
-        if (attribute.length / stride !== vertexCount) {
-            throw new TypeError(`The evaluated VertexData snapshot ${name} count must match its position count.`);
-        }
-    }
 
-    if (snapshot.indices) {
-        for (const index of snapshot.indices) {
+    const snapshot = new VertexData();
+    snapshot.positions = Array.from(positions);
+    snapshot.normals = CloneOptionalVertexAttribute("normals", vertexData.normals, 3, vertexCount);
+    snapshot.tangents = CloneOptionalVertexAttribute("tangents", vertexData.tangents, 4, vertexCount);
+    snapshot.uvs = CloneOptionalVertexAttribute("uvs", vertexData.uvs, 2, vertexCount);
+    snapshot.uvs2 = CloneOptionalVertexAttribute("uvs2", vertexData.uvs2, 2, vertexCount);
+    snapshot.uvs3 = CloneOptionalVertexAttribute("uvs3", vertexData.uvs3, 2, vertexCount);
+    snapshot.uvs4 = CloneOptionalVertexAttribute("uvs4", vertexData.uvs4, 2, vertexCount);
+    snapshot.uvs5 = CloneOptionalVertexAttribute("uvs5", vertexData.uvs5, 2, vertexCount);
+    snapshot.uvs6 = CloneOptionalVertexAttribute("uvs6", vertexData.uvs6, 2, vertexCount);
+    snapshot.colors = CloneOptionalVertexAttribute("colors", vertexData.colors, 4, vertexCount);
+    snapshot.matricesIndices = CloneOptionalVertexAttribute("matricesIndices", vertexData.matricesIndices, 4, vertexCount);
+    snapshot.matricesWeights = CloneOptionalVertexAttribute("matricesWeights", vertexData.matricesWeights, 4, vertexCount);
+    snapshot.matricesIndicesExtra = CloneOptionalVertexAttribute("matricesIndicesExtra", vertexData.matricesIndicesExtra, 4, vertexCount);
+    snapshot.matricesWeightsExtra = CloneOptionalVertexAttribute("matricesWeightsExtra", vertexData.matricesWeightsExtra, 4, vertexCount);
+
+    if (vertexData.indices) {
+        for (const index of vertexData.indices) {
             if (!Number.isSafeInteger(index) || index < 0 || index >= vertexCount) {
                 throw new TypeError("The evaluated VertexData snapshot indices must reference existing vertices.");
             }
         }
+        snapshot.indices = Array.from(vertexData.indices);
+    } else {
+        snapshot.indices = null;
+    }
+    snapshot.materialInfos = vertexData.materialInfos
+        ? vertexData.materialInfos.map((info) =>
+              Object.assign(new VertexDataMaterialInfo(), {
+                  materialIndex: info.materialIndex,
+                  verticesStart: info.verticesStart,
+                  verticesCount: info.verticesCount,
+                  indexStart: info.indexStart,
+                  indexCount: info.indexCount,
+              })
+          )
+        : null;
+    snapshot.hasVertexAlpha = vertexData.hasVertexAlpha;
+    try {
+        snapshot.metadata = structuredClone(vertexData.metadata);
+    } catch {
+        throw new TypeError("The evaluated VertexData snapshot metadata must be structured-cloneable.");
     }
 
     return DeepFreeze(snapshot);
+}
+
+function CloneOptionalVertexAttribute(name: string, values: ArrayLike<number> | null | undefined, stride: number, vertexCount: number): number[] | null {
+    if (values == null) {
+        return null;
+    }
+    const attribute = ValidateVertexAttribute(name, values, stride);
+    if (attribute.length / stride !== vertexCount) {
+        throw new TypeError(`The evaluated VertexData snapshot ${name} count must match its position count.`);
+    }
+    return Array.from(attribute);
 }
 
 function ValidateVertexAttribute(name: string, values: ArrayLike<number> | null | undefined, stride: number): ArrayLike<number> {

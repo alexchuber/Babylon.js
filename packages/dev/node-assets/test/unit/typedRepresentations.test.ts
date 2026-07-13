@@ -221,6 +221,9 @@ describe("typed representations", () => {
         const vertexData = new VertexData();
         vertexData.positions = [0, 0, 0, 1, 0, 0, 0, 1, 0];
         vertexData.indices = [0, 1, 2];
+        vertexData.matricesIndicesExtra = [4, 5, 6, 7, 4, 5, 6, 7, 4, 5, 6, 7];
+        vertexData.matricesWeightsExtra = [0.25, 0.25, 0.25, 0.25, 0.25, 0.25, 0.25, 0.25, 0.25, 0.25, 0.25, 0.25];
+        vertexData.metadata = { source: { kind: "evaluated" } };
 
         const unevaluated = new NodeGeometryAsset(nodeGeometry, {
             identity: "fixture-node-geometry",
@@ -242,8 +245,12 @@ describe("typed representations", () => {
         expect(evaluated.nodeGeometry).toBe(nodeGeometry);
         expect(evaluated.evaluatedVertexData).not.toBe(vertexData);
         expect(evaluated.evaluatedVertexData?.positions).toEqual(vertexData.positions);
+        expect(evaluated.evaluatedVertexData?.matricesIndicesExtra).toEqual(vertexData.matricesIndicesExtra);
+        expect(evaluated.evaluatedVertexData?.matricesWeightsExtra).toEqual(vertexData.matricesWeightsExtra);
+        expect(evaluated.evaluatedVertexData?.metadata).toEqual(vertexData.metadata);
         expect(Object.isFrozen(evaluated.evaluatedVertexData)).toBe(true);
         expect(Object.isFrozen(evaluated.evaluatedVertexData?.positions)).toBe(true);
+        expect(Object.isFrozen(evaluated.evaluatedVertexData?.metadata.source)).toBe(true);
         expect(IsNodeGeometryAsset(evaluated)).toBe(true);
         expect(IsNodeGeometryAsset(nodeGeometry)).toBe(false);
 
@@ -279,6 +286,13 @@ describe("typed representations", () => {
                 indices: [1],
             }),
         ],
+        [
+            "mismatched extra matrix weights",
+            Object.assign(new VertexData(), {
+                positions: [0, 0, 0],
+                matricesWeightsExtra: [0.25, 0.25, 0.25, 0.25, 0.25, 0.25, 0.25, 0.25],
+            }),
+        ],
     ])("rejects an invalid evaluated VertexData snapshot with %s", (_case, vertexData) => {
         const nodeGeometry = new NodeGeometry("invalid snapshot");
         try {
@@ -293,6 +307,25 @@ describe("typed representations", () => {
                         },
                         vertexData
                     )
+            ).toThrow(/evaluated VertexData snapshot/);
+        } finally {
+            nodeGeometry.dispose();
+        }
+    });
+
+    it.each([null, false, 0, ""])("rejects a non-undefined runtime snapshot value: %j", (invalidSnapshot) => {
+        const nodeGeometry = new NodeGeometry("invalid runtime snapshot");
+        try {
+            expect(() =>
+                Reflect.construct(NodeGeometryAsset, [
+                    nodeGeometry,
+                    {
+                        identity: "invalid-runtime-snapshot",
+                        revision: 0,
+                        manifest: {},
+                    },
+                    invalidSnapshot,
+                ])
             ).toThrow(/evaluated VertexData snapshot/);
         } finally {
             nodeGeometry.dispose();
