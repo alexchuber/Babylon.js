@@ -1,4 +1,15 @@
 export { NodeAsset } from "./nodeAsset";
+export {
+    BuildScope,
+    type BuildDiagnosticProducerKind,
+    type BuildRepresentationKind,
+    type IBuildDiagnostic,
+    type IBuildDiagnosticProducer,
+    type IResolvedDiagnosticLossContext,
+    type LossDisposition,
+    type LossRecord,
+    NodeAssetBuildResult,
+} from "./evaluation/buildScope";
 export { NodeAssetBlock } from "./blockFoundation/nodeAssetBlock";
 export { NodeAssetConnectionPoint } from "./connection/nodeAssetConnectionPoint";
 export { NodeAssetConnectionPointDirection } from "./connection/nodeAssetConnectionPointDirection";

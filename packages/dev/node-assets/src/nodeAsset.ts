@@ -2,6 +2,7 @@ import { CreateBlockByClassName } from "./blockFoundation/blockRegistry";
 import { IsExportBlock } from "./blockFoundation/exportBlock";
 import { type NodeAssetBlock } from "./blockFoundation/nodeAssetBlock";
 import { type NodeAssetConnectionPoint } from "./connection/nodeAssetConnectionPoint";
+import { BuildScope, NodeAssetBuildResult } from "./evaluation/buildScope";
 import { CloneForFanOutAsync } from "./evaluation/fanOutCopy";
 import { IsNodeAssetSerializedGraph, type NodeAssetConnectionSerialization, type NodeAssetSerializedGraph } from "./serialization/nodeAssetSerialization";
 import { UniqueIdGenerator } from "./utils/uniqueIdGenerator";
@@ -143,7 +144,7 @@ export class NodeAsset {
      * no caching; a required input left unconnected is an error.
      * @returns The built bytes produced by the terminal export block.
      */
-    public async buildAsync(): Promise<Uint8Array> {
+    public async buildAsync(): Promise<NodeAssetBuildResult> {
         const exportBlock = this._attachedBlocks.find(IsExportBlock);
         if (!exportBlock) {
             throw new Error(`The "${this.name}" node asset has no export block to build.`);
@@ -151,13 +152,14 @@ export class NodeAsset {
 
         // A per-build memo so each block is evaluated exactly once even when its output fans out to
         // several consumers. Scoped to this call: a fresh build starts with a fresh memo.
+        const scope = new BuildScope();
         const evaluated = new Map<NodeAssetBlock, Promise<void>>();
-        await this._evaluateBlockAsync(exportBlock, evaluated);
+        await this._evaluateBlockAsync(exportBlock, evaluated, scope);
 
         if (!exportBlock.result) {
             throw new Error(`The "${this.name}" node asset produced no result.`);
         }
-        return exportBlock.result;
+        return new NodeAssetBuildResult(exportBlock.result, scope.diagnostics, scope.lossRecords);
     }
 
     /**
@@ -167,16 +169,17 @@ export class NodeAsset {
      * dedupe onto the same evaluation.
      * @param block - The block to evaluate.
      * @param evaluated - The per-build memo of block evaluations.
+     * @param scope - The per-build owner of diagnostics and lifecycle state.
      * @returns The block's single evaluation promise, shared across all of its consumers.
      */
-    private async _evaluateBlockAsync(block: NodeAssetBlock, evaluated: Map<NodeAssetBlock, Promise<void>>): Promise<void> {
+    private async _evaluateBlockAsync(block: NodeAssetBlock, evaluated: Map<NodeAssetBlock, Promise<void>>, scope: BuildScope): Promise<void> {
         const existing = evaluated.get(block);
         if (existing) {
             return await existing;
         }
         // Populate the memo synchronously (before the await below) so a sibling branch reaching this
         // same block dedupes onto this promise instead of starting a second evaluation.
-        const promise = this._doEvaluateBlockAsync(block, evaluated);
+        const promise = this._doEvaluateBlockAsync(block, evaluated, scope);
         evaluated.set(block, promise);
         return await promise;
     }
@@ -187,8 +190,9 @@ export class NodeAsset {
      * builds this block.
      * @param block - The block to evaluate.
      * @param evaluated - The per-build memo of block evaluations.
+     * @param scope - The per-build owner of diagnostics and lifecycle state.
      */
-    private async _doEvaluateBlockAsync(block: NodeAssetBlock, evaluated: Map<NodeAssetBlock, Promise<void>>): Promise<void> {
+    private async _doEvaluateBlockAsync(block: NodeAssetBlock, evaluated: Map<NodeAssetBlock, Promise<void>>, scope: BuildScope): Promise<void> {
         const connections: Array<{ input: NodeAssetConnectionPoint; upstream: NodeAssetConnectionPoint }> = [];
         for (const input of block.inputs) {
             const upstream = input.connectedPoint;
@@ -206,7 +210,7 @@ export class NodeAsset {
         // Build all upstream blocks first, then propagate their resolved values.
         await Promise.all(
             connections.map(async (connection) => {
-                await this._evaluateBlockAsync(connection.upstream.ownerBlock, evaluated);
+                await this._evaluateBlockAsync(connection.upstream.ownerBlock, evaluated, scope);
             })
         );
         // When an upstream output fans out to more than one input, each consumer receives its own
@@ -218,6 +222,6 @@ export class NodeAsset {
             })
         );
 
-        await block._buildBlockAsync();
+        await block._buildBlockAsync(scope);
     }
 }
