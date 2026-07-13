@@ -789,7 +789,7 @@ function MergeVariantOpinion(context: ICompositionContext, weakerVariant: ISdfVa
         payloads: MergeListOpField(weakerVariant.payloads, strongerVariant.payloads, CreatePayloadKey),
         inherits: MergeListOpField(weakerVariant.inherits, strongerVariant.inherits),
         specializes: MergeListOpField(weakerVariant.specializes, strongerVariant.specializes),
-        variantSets: MergeVariantSets(weakerVariant.variantSets, strongerVariant.variantSets),
+        variantSets: MergeVariantSets(context, weakerVariant.variantSets, strongerVariant.variantSets),
         variantSelections: MergeRecord(weakerVariant.variantSelections, strongerVariant.variantSelections),
         relocates: MergeRelocates(weakerVariant.relocates, strongerVariant.relocates),
         metadata: MergeMetadata(weakerVariant.metadata, strongerVariant.metadata),
