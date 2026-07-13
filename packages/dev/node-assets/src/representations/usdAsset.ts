@@ -1,7 +1,7 @@
 import { type IResolvedStage } from "loaders/USD/resolution/resolvedStage";
 
 import { type NodeAssetJsonObject } from "../connection/nodeAssetValueMap";
-import { DeepFreeze } from "./immutableMetadata";
+import { ValidateAndFreezeAssetMetadata, ValidateAndFreezeJsonObject } from "./immutableMetadata";
 
 /** Immutable caller-supplied metadata for a {@link UsdAsset}. */
 export interface IUsdAssetMetadata {
@@ -34,11 +34,12 @@ export class UsdAsset {
      * @param metadata Stable caller-supplied identity, revision, manifest, and overlay.
      */
     public constructor(stage: IResolvedStage, metadata: IUsdAssetMetadata) {
+        const validatedMetadata = ValidateAndFreezeAssetMetadata(metadata);
         this.stage = CloneImmutableStage(stage);
-        this.identity = metadata.identity;
-        this.revision = metadata.revision;
-        this.manifest = DeepFreeze(metadata.manifest);
-        this.overlay = DeepFreeze(metadata.overlay);
+        this.identity = validatedMetadata.identity;
+        this.revision = validatedMetadata.revision;
+        this.manifest = validatedMetadata.manifest;
+        this.overlay = ValidateAndFreezeJsonObject(metadata.overlay, "overlay");
     }
 }
 

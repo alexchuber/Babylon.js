@@ -2,7 +2,7 @@ import { type NullEngine } from "core/Engines/nullEngine";
 import { type Scene } from "core/scene";
 
 import { type NodeAssetJsonObject } from "../connection/nodeAssetValueMap";
-import { DeepFreeze } from "./immutableMetadata";
+import { ValidateAndFreezeAssetMetadata } from "./immutableMetadata";
 
 /** Immutable caller-supplied metadata for a {@link BabylonAsset}. */
 export interface IBabylonAssetMetadata {
@@ -38,15 +38,16 @@ export class BabylonAsset {
      * @param metadata Stable caller-supplied identity, revision, and manifest.
      */
     public constructor(engine: NullEngine, scene: Scene, metadata: IBabylonAssetMetadata) {
+        const validatedMetadata = ValidateAndFreezeAssetMetadata(metadata);
         if (scene.getEngine() !== engine) {
             throw new Error("A BabylonAsset scene must belong to the supplied NullEngine.");
         }
 
         this.engine = engine;
         this.scene = scene;
-        this.identity = metadata.identity;
-        this.revision = metadata.revision;
-        this.manifest = DeepFreeze(metadata.manifest);
+        this.identity = validatedMetadata.identity;
+        this.revision = validatedMetadata.revision;
+        this.manifest = validatedMetadata.manifest;
     }
 
     /** Disposes the owned scene and engine once. */

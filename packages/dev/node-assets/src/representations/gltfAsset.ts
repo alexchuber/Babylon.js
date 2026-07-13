@@ -2,7 +2,7 @@ import { type Document } from "@gltf-transform/core";
 import { cloneDocument } from "@gltf-transform/functions";
 
 import { type NodeAssetJsonObject } from "../connection/nodeAssetValueMap";
-import { DeepFreeze } from "./immutableMetadata";
+import { ValidateAndFreezeAssetMetadata } from "./immutableMetadata";
 
 /** Immutable caller-supplied metadata for a {@link GltfAsset}. */
 export interface IGltfAssetMetadata {
@@ -31,10 +31,11 @@ export class GltfAsset {
      * @param metadata Stable caller-supplied identity, revision, and manifest.
      */
     public constructor(document: Document, metadata: IGltfAssetMetadata) {
+        const validatedMetadata = ValidateAndFreezeAssetMetadata(metadata);
         this.document = document;
-        this.identity = metadata.identity;
-        this.revision = metadata.revision;
-        this.manifest = DeepFreeze(metadata.manifest);
+        this.identity = validatedMetadata.identity;
+        this.revision = validatedMetadata.revision;
+        this.manifest = validatedMetadata.manifest;
     }
 
     /**

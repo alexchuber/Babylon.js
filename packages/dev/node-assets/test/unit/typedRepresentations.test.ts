@@ -49,6 +49,47 @@ function CreateResolvedStage(): IResolvedStage {
     };
 }
 
+const MetadataConstructors = [
+    {
+        name: "GltfAsset",
+        construct(metadata: unknown): void {
+            Reflect.construct(GltfAsset, [new Document(), metadata]);
+        },
+    },
+    {
+        name: "UsdAsset",
+        construct(metadata: unknown): void {
+            Reflect.construct(UsdAsset, [CreateResolvedStage(), metadata]);
+        },
+    },
+    {
+        name: "BabylonAsset",
+        construct(metadata: unknown): void {
+            const engine = new NullEngine();
+            const scene = new Scene(engine);
+            try {
+                Reflect.construct(BabylonAsset, [engine, scene, metadata]);
+            } finally {
+                if (!scene.isDisposed) {
+                    scene.dispose();
+                }
+                engine.dispose();
+            }
+        },
+    },
+    {
+        name: "NodeGeometryAsset",
+        construct(metadata: unknown): void {
+            const nodeGeometry = new NodeGeometry("metadata-validation");
+            try {
+                Reflect.construct(NodeGeometryAsset, [nodeGeometry, metadata]);
+            } finally {
+                nodeGeometry.dispose();
+            }
+        },
+    },
+] as const;
+
 describe("typed representations", () => {
     it("keeps the flat enum stable and appends concrete representation and resource kinds", () => {
         expect(NodeAssetConnectionPointType.GLTF_DOCUMENT).toBe(0);
@@ -72,6 +113,28 @@ describe("typed representations", () => {
         expectTypeOf<NodeAssetValueMap[NodeAssetConnectionPointType.NUMBER]>().toEqualTypeOf<number>();
         expectTypeOf<NodeAssetValueMap[NodeAssetConnectionPointType.STRING]>().toEqualTypeOf<string>();
         expectTypeOf<NodeAssetValueMap[NodeAssetConnectionPointType.JSON]>().toEqualTypeOf<NodeAssetJsonValue>();
+    });
+
+    it.each(MetadataConstructors)("validates explicit metadata for $name", ({ construct }) => {
+        expect(() => construct({ identity: " ", revision: 0, manifest: {}, overlay: {} })).toThrow(/identity/);
+        expect(() => construct({ identity: "asset", revision: -1, manifest: {}, overlay: {} })).toThrow(/revision/);
+        expect(() => construct({ identity: "asset", revision: 1.5, manifest: {}, overlay: {} })).toThrow(/revision/);
+        expect(() => construct({ identity: "asset", revision: Number.POSITIVE_INFINITY, manifest: {}, overlay: {} })).toThrow(/revision/);
+        expect(() => construct({ identity: "asset", revision: 0, manifest: { invalid: undefined }, overlay: {} })).toThrow(/manifest/);
+    });
+
+    it("validates the explicit USD overlay", () => {
+        expect(() =>
+            Reflect.construct(UsdAsset, [
+                CreateResolvedStage(),
+                {
+                    identity: "fixture-usd",
+                    revision: 0,
+                    manifest: {},
+                    overlay: { invalid: undefined },
+                },
+            ])
+        ).toThrow(/overlay/);
     });
 
     it("owns a live glTF document and preserves explicit metadata across clones", () => {

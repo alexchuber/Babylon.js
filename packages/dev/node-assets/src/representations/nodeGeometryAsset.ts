@@ -2,7 +2,7 @@ import { type NodeGeometry } from "core/Meshes/Node/nodeGeometry";
 import { VertexData } from "core/Meshes/mesh.vertexData";
 
 import { type NodeAssetJsonObject } from "../connection/nodeAssetValueMap";
-import { DeepFreeze } from "./immutableMetadata";
+import { DeepFreeze, ValidateAndFreezeAssetMetadata } from "./immutableMetadata";
 
 /** Immutable caller-supplied metadata for a {@link NodeGeometryAsset}. */
 export interface INodeGeometryAssetMetadata {
@@ -36,10 +36,11 @@ export class NodeGeometryAsset {
      * @param evaluatedVertexData An optional evaluated snapshot to clone and freeze.
      */
     public constructor(nodeGeometry: NodeGeometry, metadata: INodeGeometryAssetMetadata, evaluatedVertexData?: VertexData) {
+        const validatedMetadata = ValidateAndFreezeAssetMetadata(metadata);
         this.nodeGeometry = nodeGeometry;
-        this.identity = metadata.identity;
-        this.revision = metadata.revision;
-        this.manifest = DeepFreeze(metadata.manifest);
+        this.identity = validatedMetadata.identity;
+        this.revision = validatedMetadata.revision;
+        this.manifest = validatedMetadata.manifest;
         this.evaluatedVertexData = evaluatedVertexData ? DeepFreeze(VertexData.Parse(evaluatedVertexData.serialize())) : undefined;
     }
 
