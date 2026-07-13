@@ -1,4 +1,5 @@
 export { NodeAsset } from "./nodeAsset";
+export { BuildFanOutError } from "./evaluation/fanOutCopy";
 export {
     BuildCancelledError,
     BuildConfigurationError,

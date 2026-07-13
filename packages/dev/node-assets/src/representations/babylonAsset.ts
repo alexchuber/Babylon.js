@@ -50,6 +50,11 @@ export class BabylonAsset {
         this.manifest = validatedMetadata.manifest;
     }
 
+    /** Whether this affine representation was disposed by its build scope. */
+    public get isDisposed(): boolean {
+        return this._isDisposed;
+    }
+
     /** Disposes the owned scene and engine once. */
     public dispose(): void {
         if (this._isDisposed) {

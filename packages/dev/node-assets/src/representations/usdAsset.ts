@@ -28,6 +28,8 @@ export class UsdAsset {
     /** Deeply frozen additive USD edits. */
     public readonly overlay: Readonly<NodeAssetJsonObject>;
 
+    private _isDisposed = false;
+
     /**
      * Creates a USD representation payload.
      * @param stage The resolved plain-data stage owned by this payload.
@@ -40,6 +42,33 @@ export class UsdAsset {
         this.revision = validatedMetadata.revision;
         this.manifest = validatedMetadata.manifest;
         this.overlay = ValidateAndFreezeJsonObject(metadata.overlay, "overlay");
+    }
+
+    /** Whether this representation was released by its build scope. */
+    public get isDisposed(): boolean {
+        return this._isDisposed;
+    }
+
+    /**
+     * Copies the value-like USD wrapper for fan-out without cloning the already-frozen stage.
+     * @returns A wrapper sharing the exact stage with an independent immutable overlay.
+     */
+    public copyForFanOut(): UsdAsset {
+        const copy = Object.create(UsdAsset.prototype) as UsdAsset;
+        Object.assign(copy, {
+            stage: this.stage,
+            identity: this.identity,
+            revision: this.revision,
+            manifest: this.manifest,
+            overlay: ValidateAndFreezeJsonObject(structuredClone(this.overlay), "overlay"),
+            _isDisposed: false,
+        });
+        return copy;
+    }
+
+    /** Releases this wrapper's build ownership once. */
+    public dispose(): void {
+        this._isDisposed = true;
     }
 }
 

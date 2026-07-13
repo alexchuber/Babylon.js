@@ -250,7 +250,15 @@ export class NodeAsset {
         await this._settleInOrderAsync(
             connections.map(async ({ input, upstream }) => {
                 try {
-                    input.value = upstream.connectedPoints.length > 1 ? await CloneForFanOutAsync(upstream.type, upstream.value) : upstream.value;
+                    const producer = {
+                        kind: "block" as const,
+                        blockId: upstream.ownerBlock.uniqueId,
+                        blockName: upstream.ownerBlock.name,
+                    };
+                    input.value = upstream.connectedPoints.length > 1 ? await CloneForFanOutAsync(upstream.type, upstream.value, scope, producer) : upstream.value;
+                    if (input.value != null) {
+                        scope.registerValue(input.value, producer);
+                    }
                 } catch (error) {
                     scope.abortForFailure(error);
                     throw error;
