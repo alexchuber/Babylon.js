@@ -132,6 +132,7 @@ const catalog: DemoCatalog = {
                     resourceIds: ["source"],
                     assetBindingIds: ["orb-metal-image"],
                     textureBindingIds: [],
+                    diagnostics: [],
                 },
                 {
                     id: "procedural-lane",
@@ -139,6 +140,7 @@ const catalog: DemoCatalog = {
                     resourceIds: ["geometry", "inline-geometry"],
                     assetBindingIds: [],
                     textureBindingIds: [],
+                    diagnostics: [],
                 },
             ],
             resources: [
@@ -310,6 +312,7 @@ const catalog: DemoCatalog = {
                 },
             ],
             textureBindings: [],
+            materialTargets: [],
             selectionOwners: ["usd"],
             terminal: {
                 kind: "gltf",
@@ -526,6 +529,29 @@ describe("demo catalog schema", () => {
                 }),
             ])
         );
+        expect(materialDemo.materialTargets).toEqual(
+            expect.arrayContaining([
+                expect.objectContaining({
+                    domain: "materialx",
+                    type: "gltf_pbr",
+                    fidelity: "high-fidelity",
+                    expectedLosses: [],
+                }),
+                expect.objectContaining({
+                    domain: "usd",
+                    type: "UsdPreviewSurface",
+                    fidelity: "fallback",
+                    expectedLosses: [expect.objectContaining({ feature: "MaterialX gltf_pbr fidelity", severity: "warning" })],
+                }),
+            ])
+        );
+        expect(materialDemo.expectedLosses).toEqual(
+            expect.arrayContaining([expect.objectContaining({ id: "materialx-preview-surface-fallback", policy: "drop", severity: "warning" })])
+        );
+        expect(materialDemo.editor.lossBadges).toEqual(
+            expect.arrayContaining([{ diagnosticId: "materialx-preview-surface-fallback", label: "UsdPreviewSurface fallback", severity: "warning", graphNodeIds: [5] }])
+        );
+        expect(materialDemo.preExportReview.accumulatedLosses).toEqual(expect.arrayContaining([expect.objectContaining({ id: "materialx-preview-surface-fallback" })]));
 
         const babylonDemo = DemoCatalogRegistry.demos.find(({ id }) => id === "babylon-mutation-to-gltf")!;
         expect(babylonDemo.availability).toEqual(expect.objectContaining({ status: "requires-selection-adapter" }));
@@ -536,5 +562,21 @@ describe("demo catalog schema", () => {
         expect(viewModels.map(({ id }) => id)).toEqual(DemoCatalogRegistry.demos.map(({ id }) => id));
         expect(viewModels[0].selectionPills).toEqual(DemoCatalogRegistry.demos[0].selections.map(({ pill }) => pill));
         expect(viewModels.find(({ id }) => id === materialDemo.id)?.textureBindings).toEqual(materialDemo.textureBindings);
+        expect(viewModels.find(({ id }) => id === "usd-to-babylon-to-gltf")?.sceneDiagnostics).toEqual(
+            expect.arrayContaining([
+                expect.objectContaining({
+                    kind: "left-handed-scene",
+                    representation: "babylon",
+                    handedness: "left",
+                    scope: "representation-lane",
+                }),
+                expect.objectContaining({
+                    kind: "left-handed-scene",
+                    representation: "babylon",
+                    handedness: "left",
+                    scope: "conversion",
+                }),
+            ])
+        );
     });
 });

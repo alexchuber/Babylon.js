@@ -175,6 +175,31 @@ export type DemoStaleSelection = {
     };
 };
 
+/** Diagnostic kinds that are not conversion losses but must remain visible. */
+export const DemoSceneDiagnosticKind = {
+    LEFT_HANDED_SCENE: "left-handed-scene",
+} as const;
+
+/** A scene warning attached to a representation lane or conversion node. */
+export type DemoSceneDiagnostic = {
+    /** Stable diagnostic identifier. */
+    readonly id: string;
+    /** Structured warning kind used by the UI. */
+    readonly kind: (typeof DemoSceneDiagnosticKind)[keyof typeof DemoSceneDiagnosticKind];
+    /** Exact badge or warning label shown to the user. */
+    readonly label: string;
+    /** Severity used for the warning tone. */
+    readonly severity: DemoLossSeverity;
+    /** Representation whose scene semantics produce the warning. */
+    readonly representation: typeof DemoSceneRepresentation.BABYLON;
+    /** Handedness carried by the representation. */
+    readonly handedness: typeof DemoHandedness.LEFT;
+    /** Surface where the warning is attached. */
+    readonly scope: "representation-lane" | "conversion";
+    /** Why the warning must remain visible. */
+    readonly why: string;
+};
+
 /** A selection whose source-domain value cannot be found. */
 export type DemoDanglingSelection = {
     readonly status: "dangling";
@@ -305,6 +330,8 @@ export type DemoResourceLane = {
     readonly assetBindingIds: readonly string[];
     /** Semantic texture bindings displayed in this lane. */
     readonly textureBindingIds: readonly string[];
+    /** Scene warnings displayed with this representation lane. */
+    readonly diagnostics: readonly DemoSceneDiagnostic[];
 };
 
 /** Common metadata for a demo resource. */
@@ -439,6 +466,8 @@ export type DemoAdaptSceneNode = {
     readonly input: string;
     readonly output: string;
     readonly target: typeof DemoSceneRepresentation.BABYLON | typeof DemoSceneRepresentation.GLTF;
+    /** Scene diagnostics surfaced on this domain conversion. */
+    readonly diagnostics?: readonly DemoSceneDiagnostic[];
 };
 
 /** Merges multiple scene outputs without hiding the composition boundary. */
@@ -604,6 +633,40 @@ export type TextureBinding<Role extends DemoTextureBindingRole = DemoTextureBind
     readonly channelView?: ChannelView;
 };
 
+/** Material domains that can provide a target material model. */
+export const DemoMaterialDomain = {
+    MATERIALX: "materialx",
+    USD: "usd",
+} as const;
+
+/** A material domain supported by the catalog. */
+export type DemoMaterialDomain = (typeof DemoMaterialDomain)[keyof typeof DemoMaterialDomain];
+
+/** Material model names that need distinct fidelity labels. */
+export const DemoMaterialType = {
+    GLTF_PBR: "gltf_pbr",
+    USD_PREVIEW_SURFACE: "UsdPreviewSurface",
+} as const;
+
+/** A material model supported by the catalog. */
+export type DemoMaterialType = (typeof DemoMaterialType)[keyof typeof DemoMaterialType];
+
+/** A material target with explicit fidelity and target-specific losses. */
+export type DemoMaterialTarget = {
+    /** Stable target identifier used by catalog views. */
+    readonly id: string;
+    /** Label shown to distinguish high-fidelity and fallback targets. */
+    readonly label: string;
+    /** Material domain that owns the model name. */
+    readonly domain: DemoMaterialDomain;
+    /** Exact material model represented by this target. */
+    readonly type: DemoMaterialType;
+    /** Whether this target preserves the intended material fidelity. */
+    readonly fidelity: "high-fidelity" | "fallback";
+    /** Losses expected when this target is selected. */
+    readonly expectedLosses: readonly DemoLossDiagnostic[];
+};
+
 /** Terminal preview/output metadata for a demo. */
 export type DemoTerminal = {
     readonly kind: "gltf" | "image";
@@ -731,6 +794,8 @@ export type DemoDefinition = {
     readonly assets: readonly DemoAssetBinding[];
     /** Semantic texture-slot bindings, including packed-channel views. */
     readonly textureBindings: readonly TextureBinding[];
+    /** Material model targets, including high-fidelity and fallback alternatives. */
+    readonly materialTargets: readonly DemoMaterialTarget[];
     /** Exact source-domain selections and their explicit resolution diagnostics. */
     readonly selections: readonly DemoSelectionExpectation[];
     /** Domain owners used by this demo's selections. */
@@ -774,11 +839,23 @@ export type DemoCatalogViewModel = {
     readonly selectionOwners: readonly DemoSceneRepresentation[];
     readonly selectionPills: readonly DemoSelectionPill[];
     readonly textureBindings: readonly TextureBinding[];
+    readonly materialTargets: readonly DemoMaterialTarget[];
+    readonly sceneDiagnostics: readonly DemoSceneDiagnostic[];
     readonly lossBadges: readonly DemoLossBadge[];
     readonly graph: DemoGraphPayload;
     readonly editor: DemoEditorMetadata;
     readonly preExportReview: DemoPreExportReview;
 };
+
+function CollectDemoSceneDiagnostics(demo: DemoDefinition): readonly DemoSceneDiagnostic[] {
+    const laneDiagnostics = demo.resourceLanes.flatMap(({ diagnostics }) => diagnostics);
+    const graphDiagnostics = Array.isArray(demo.graph) ? demo.graph.flatMap((node) => ("diagnostics" in node ? (node.diagnostics ?? []) : [])) : [];
+    const diagnosticsById = new Map<string, DemoSceneDiagnostic>();
+    for (const diagnostic of [...laneDiagnostics, ...graphDiagnostics]) {
+        diagnosticsById.set(diagnostic.id, diagnostic);
+    }
+    return [...diagnosticsById.values()];
+}
 
 /**
  * Builds presentation data directly from the registry contract.
@@ -802,6 +879,8 @@ export function BuildDemoCatalogViewModels(catalog: DemoCatalog): readonly DemoC
             selectionOwners: demo.selectionOwners,
             selectionPills: demo.selections.map(({ pill }) => pill),
             textureBindings: demo.textureBindings,
+            materialTargets: demo.materialTargets,
+            sceneDiagnostics: CollectDemoSceneDiagnostics(demo),
             lossBadges: demo.editor.lossBadges,
             graph: demo.graph,
             editor: demo.editor,
@@ -919,9 +998,10 @@ function CreateResourceLane(
     label: string,
     resourceIds: readonly string[],
     assetBindingIds: readonly string[],
-    textureBindingIds: readonly string[] = []
+    textureBindingIds: readonly string[] = [],
+    diagnostics: readonly DemoSceneDiagnostic[] = []
 ): DemoResourceLane {
-    return { id, label, resourceIds, assetBindingIds, textureBindingIds };
+    return { id, label, resourceIds, assetBindingIds, textureBindingIds, diagnostics };
 }
 
 const DemoCatalogSelectionParity: readonly DemoSelectionOwnerParity[] = [
@@ -1032,6 +1112,28 @@ const UsdDomainTags: DemoDomainTags = {
     handedness: "right",
     unit: "meters",
     upAxis: "Z",
+};
+
+const BabylonLeftHandedLaneDiagnostic: DemoSceneDiagnostic = {
+    id: "babylon-left-handed-scene-lane",
+    kind: DemoSceneDiagnosticKind.LEFT_HANDED_SCENE,
+    label: "Left-handed scene",
+    severity: "warning",
+    representation: DemoSceneRepresentation.BABYLON,
+    handedness: DemoHandedness.LEFT,
+    scope: "representation-lane",
+    why: "Babylon representation lanes carry a left-handed scene and must keep that convention visible.",
+};
+
+const BabylonLeftHandedConversionDiagnostic: DemoSceneDiagnostic = {
+    id: "babylon-left-handed-scene-conversion",
+    kind: DemoSceneDiagnosticKind.LEFT_HANDED_SCENE,
+    label: "Left-handed scene",
+    severity: "warning",
+    representation: DemoSceneRepresentation.BABYLON,
+    handedness: DemoHandedness.LEFT,
+    scope: "conversion",
+    why: "The Babylon-to-target conversion must make its left-handed scene convention explicit before export.",
 };
 
 const GltfDracoLoss: DemoLossDiagnostic = {
@@ -1172,6 +1274,14 @@ const MaterialConstructionLoss: DemoLossDiagnostic = {
     why: "The material-construction block creates a portable glTF PBR material from semantic image bindings.",
 };
 
+const MaterialXPreviewSurfaceFallbackLoss: DemoLossDiagnostic = {
+    id: "materialx-preview-surface-fallback",
+    feature: "MaterialX gltf_pbr fidelity",
+    policy: "drop",
+    severity: "warning",
+    why: "UsdPreviewSurface is a lower-fidelity fallback and cannot preserve the full MaterialX gltf_pbr target semantics.",
+};
+
 const UsdAdaptationLosses = [UsdTextureGraphLoss, UsdLightsLoss, UsdCamerasLoss, UsdSkinningAnimationLoss, UsdPointInstancingLoss, UsdVariantsLoss] as const;
 
 const ToyCarUsdzResource = CreateUsdResource("toycar-usdz", "Bundled ToyCar USDZ fixture", "toycar-usdz", "scenes/nodeAssets/toycar.usdz", DemoUsdFixtureFormat.USDZ, [
@@ -1310,6 +1420,7 @@ export const DemoCatalogRegistry: DemoCatalog = {
                 },
             ],
             textureBindings: [],
+            materialTargets: [],
             selections: [
                 CreateResolvedSelection("source-mesh", { domain: "gltf", granularity: "mesh", valueKind: "jsonPointer", value: "/meshes/0" }, "Source mesh"),
                 CreateResolvedSelection("source-material", { domain: "gltf", granularity: "material", valueKind: "jsonPointer", value: "/materials/0" }, "Source material"),
@@ -1377,6 +1488,7 @@ export const DemoCatalogRegistry: DemoCatalog = {
                 },
             ],
             textureBindings: [],
+            materialTargets: [],
             selections: [
                 CreateResolvedSelection("toycar-prim", { domain: "usd", granularity: "prim", valueKind: "primPath", value: "/ToyCar/Body" }, "ToyCar body"),
                 CreateStaleSelection(
@@ -1433,12 +1545,29 @@ export const DemoCatalogRegistry: DemoCatalog = {
                 status: "requires-selection-adapter",
                 why: "Babylon-owned exact selections are not yet backed by the editor's owned resolver.",
             },
-            resourceLanes: [CreateResourceLane("source", "Source stage", ["toycar-usda"], ["source-toycar-usda"])],
+            resourceLanes: [
+                CreateResourceLane("source", "Source stage", ["toycar-usda"], ["source-toycar-usda"]),
+                CreateResourceLane("babylon", "Babylon representation", [], [], [], [BabylonLeftHandedLaneDiagnostic]),
+            ],
             resources: [ToyCarUsdaResource],
             graph: [
                 { kind: "ImportScene", id: "import-usda", resourceId: "toycar-usda", output: "resolvedStage" },
-                { kind: "AdaptScene", id: "adapt-babylon", input: "resolvedStage", output: "babylonScene", target: "babylon" },
-                { kind: "AdaptScene", id: "adapt-gltf", input: "babylonScene", output: "gltfScene", target: "gltf" },
+                {
+                    kind: "AdaptScene",
+                    id: "adapt-babylon",
+                    input: "resolvedStage",
+                    output: "babylonScene",
+                    target: "babylon",
+                    diagnostics: [BabylonLeftHandedConversionDiagnostic],
+                },
+                {
+                    kind: "AdaptScene",
+                    id: "adapt-gltf",
+                    input: "babylonScene",
+                    output: "gltfScene",
+                    target: "gltf",
+                    diagnostics: [BabylonLeftHandedConversionDiagnostic],
+                },
                 { kind: "ExportScene", id: "export-babylon-gltf", input: "gltfScene", format: "gltf" },
             ],
             editor: {
@@ -1467,6 +1596,7 @@ export const DemoCatalogRegistry: DemoCatalog = {
                 },
             ],
             textureBindings: [],
+            materialTargets: [],
             selections: [
                 CreateResolvedSelection("usd-body", { domain: "usd", granularity: "prim", valueKind: "primPath", value: "/ToyCar/Body" }, "USD body"),
                 CreateResolvedSelection("babylon-body", { domain: "babylon", granularity: "mesh", valueKind: "name", value: "Body" }, "Babylon body"),
@@ -1512,12 +1642,22 @@ export const DemoCatalogRegistry: DemoCatalog = {
                 status: "requires-selection-adapter",
                 why: "Babylon-owned exact selections are not yet backed by the editor's owned resolver.",
             },
-            resourceLanes: [CreateResourceLane("source", "Source scene", ["source-babylon"], ["source-toycar-babylon"])],
+            resourceLanes: [
+                CreateResourceLane("source", "Source scene", ["source-babylon"], ["source-toycar-babylon"]),
+                CreateResourceLane("babylon", "Babylon representation", [], [], [], [BabylonLeftHandedLaneDiagnostic]),
+            ],
             resources: [CreateBabylonResource("source-babylon", "Bundled Babylon scene", "toycar-babylon", "scenes/nodeAssets/toycar.babylon")],
             graph: [
                 { kind: "ImportScene", id: "import-babylon", resourceId: "source-babylon", output: "babylonScene" },
                 { kind: "MutateScene", id: "mutate-babylon", input: "babylonScene", output: "mutatedBabylonScene", selectionId: "body-translation", operation: "set-property" },
-                { kind: "AdaptScene", id: "adapt-mutated-babylon", input: "mutatedBabylonScene", output: "gltfScene", target: "gltf" },
+                {
+                    kind: "AdaptScene",
+                    id: "adapt-mutated-babylon",
+                    input: "mutatedBabylonScene",
+                    output: "gltfScene",
+                    target: "gltf",
+                    diagnostics: [BabylonLeftHandedConversionDiagnostic],
+                },
                 { kind: "ExportScene", id: "export-mutated-babylon", input: "gltfScene", format: "gltf" },
             ],
             editor: {
@@ -1546,6 +1686,7 @@ export const DemoCatalogRegistry: DemoCatalog = {
                 },
             ],
             textureBindings: [],
+            materialTargets: [],
             selections: [
                 CreateResolvedSelection("body-translation", { domain: "babylon", granularity: "node", valueKind: "name", value: "Body" }, "Body node"),
                 CreateResolvedSelection("body-material", { domain: "babylon", granularity: "material", valueKind: "name", value: "Paint" }, "Paint material"),
@@ -1590,7 +1731,10 @@ export const DemoCatalogRegistry: DemoCatalog = {
                 status: "requires-selection-adapter",
                 why: "The realized Babylon mesh selection is gated until Babylon selection parity exists.",
             },
-            resourceLanes: [CreateResourceLane("procedural", "Procedural geometry", ["box-geometry"], [])],
+            resourceLanes: [
+                CreateResourceLane("procedural", "Procedural geometry", ["box-geometry"], []),
+                CreateResourceLane("babylon", "Babylon representation", [], [], [], [BabylonLeftHandedLaneDiagnostic]),
+            ],
             resources: [NodeGeometryBoxResource],
             graph: [
                 { kind: "ImportNodeGeometry", id: "import-node-geometry", resourceId: "box-geometry", output: "proceduralGeometry" },
@@ -1624,6 +1768,7 @@ export const DemoCatalogRegistry: DemoCatalog = {
             },
             assets: [],
             textureBindings: [],
+            materialTargets: [],
             selections: [
                 CreateResolvedSelection("box-output", { domain: "babylon", granularity: "mesh", valueKind: "name", value: "Box" }, "Realized box"),
                 CreateEmptySelection(
@@ -1707,6 +1852,7 @@ export const DemoCatalogRegistry: DemoCatalog = {
                     target: { selectionId: "base-color-slot", slot: "baseColorTexture" },
                 },
             ],
+            materialTargets: [],
             selections: [
                 CreateResolvedSelection(
                     "base-color-slot",
@@ -1764,11 +1910,19 @@ export const DemoCatalogRegistry: DemoCatalog = {
             resourceLanes: [
                 CreateResourceLane("source", "Source scene", ["orb-gltf"], ["source-orb-composition"]),
                 CreateResourceLane("procedural", "Procedural geometry", ["box-geometry"], []),
+                CreateResourceLane("babylon", "Babylon representation", [], [], [], [BabylonLeftHandedLaneDiagnostic]),
             ],
             resources: [OrbGltfResource, NodeGeometryBoxResource],
             graph: [
                 { kind: "ImportScene", id: "import-composition-gltf", resourceId: "orb-gltf", output: "gltfScene" },
-                { kind: "AdaptScene", id: "adapt-composition-babylon", input: "gltfScene", output: "babylonScene", target: "babylon" },
+                {
+                    kind: "AdaptScene",
+                    id: "adapt-composition-babylon",
+                    input: "gltfScene",
+                    output: "babylonScene",
+                    target: "babylon",
+                    diagnostics: [BabylonLeftHandedConversionDiagnostic],
+                },
                 { kind: "ImportNodeGeometry", id: "import-composition-geometry", resourceId: "box-geometry", output: "proceduralGeometry" },
                 {
                     kind: "EvaluateNodeGeometry",
@@ -1815,6 +1969,7 @@ export const DemoCatalogRegistry: DemoCatalog = {
                 },
             ],
             textureBindings: [],
+            materialTargets: [],
             selections: [
                 CreateResolvedSelection("composition-parent", { domain: "babylon", granularity: "scene", valueKind: "name", value: "babylonScene" }, "Babylon scene"),
                 CreateResolvedSelection("composed-box", { domain: "babylon", granularity: "mesh", valueKind: "name", value: "ComposedBox" }, "Composed box"),
@@ -1884,7 +2039,10 @@ export const DemoCatalogRegistry: DemoCatalog = {
                     CreateEditorBlock(6, "Export material glTF", 1060, 240, "material-orb"),
                 ],
                 frames: [CreateEditorFrame("frame-material-bindings", "Semantic image bindings", "#0f766e", 280, 20, 360, 500, ["2", "3", "4"])],
-                lossBadges: [CreateLossBadge(MaterialConstructionLoss, "Material baked", [5])],
+                lossBadges: [
+                    CreateLossBadge(MaterialConstructionLoss, "Material baked", [5]),
+                    CreateLossBadge(MaterialXPreviewSurfaceFallbackLoss, "UsdPreviewSurface fallback", [5]),
+                ],
             },
             assets: [
                 {
@@ -1952,6 +2110,24 @@ export const DemoCatalogRegistry: DemoCatalog = {
                     channelView: { channel: "g", colorSpace: "linear", packedGroupId: "metallic-roughness" },
                 },
             ],
+            materialTargets: [
+                {
+                    id: "materialx-gltf-pbr",
+                    label: "MaterialX gltf_pbr (high fidelity)",
+                    domain: DemoMaterialDomain.MATERIALX,
+                    type: DemoMaterialType.GLTF_PBR,
+                    fidelity: "high-fidelity",
+                    expectedLosses: [],
+                },
+                {
+                    id: "usd-preview-surface-fallback",
+                    label: "UsdPreviewSurface (fallback)",
+                    domain: DemoMaterialDomain.USD,
+                    type: DemoMaterialType.USD_PREVIEW_SURFACE,
+                    fidelity: "fallback",
+                    expectedLosses: [MaterialXPreviewSurfaceFallbackLoss],
+                },
+            ],
             selections: [
                 CreateResolvedSelection("material-target", { domain: "gltf", granularity: "mesh", valueKind: "jsonPointer", value: "/meshes/0" }, "Material target mesh"),
                 CreateResolvedSelection(
@@ -1980,13 +2156,13 @@ export const DemoCatalogRegistry: DemoCatalog = {
             selectionOwners: ["gltf"],
             terminal: { kind: "gltf", expectedMimeType: "model/gltf-binary" },
             conventions: StandardGltfConventions,
-            expectedLosses: [MaterialConstructionLoss],
+            expectedLosses: [MaterialConstructionLoss, MaterialXPreviewSurfaceFallbackLoss],
             nodeGeometry: NoNodeGeometry,
             expectedOutcome: {
                 description: "The imported mesh receives a portable glTF PBR material populated from semantic image bindings.",
                 assertions: ["Base-color, normal, and roughness bindings are distinct.", "No image subtype is used as a resource kind."],
             },
-            preExportReview: CreatePreExportReview(5, StandardGltfConventions, [MaterialConstructionLoss]),
+            preExportReview: CreatePreExportReview(5, StandardGltfConventions, [MaterialConstructionLoss, MaterialXPreviewSurfaceFallbackLoss]),
             teaching: {
                 order: 8,
                 concepts: [
