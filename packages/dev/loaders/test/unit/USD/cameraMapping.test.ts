@@ -40,7 +40,13 @@ describe("USD camera mapping", () => {
             fStop: 5.6,
             focusDistance: 12,
         });
-        expect(stage.diagnostics).toEqual([]);
+        expect(stage.diagnostics).toEqual([
+            {
+                severity: "info",
+                path: "/Camera",
+                message: "Camera depth-of-field settings are preserved in IResolvedCamera but are not applied by the direct Babylon adapter.",
+            },
+        ]);
     });
 
     it("uses UsdGeomCamera defaults for omitted attributes", () => {

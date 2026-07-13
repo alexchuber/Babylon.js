@@ -21,6 +21,21 @@ describe("USDC crate reader POC", () => {
         expect(() => ParseCrate(data.buffer, "memory:newer.usdc")).toThrow("unsupported USDC version 1.1.0");
     });
 
+    it("rejects truncated crates with a crate-specific error", () => {
+        const data = CreateMinimalCrate();
+
+        expect(() => ParseCrate(data.slice(0, BootstrapSize - 1).buffer, "memory:truncated.usdc")).toThrow("file is too small");
+        expect(() => ParseCrate(data.slice(0, data.length - 1).buffer, "memory:truncated-toc.usdc")).toThrow(/USD crate:/);
+    });
+
+    it("rejects table counts above the crate resource cap", () => {
+        const data = CreateMinimalCrate();
+        const tocOffset = Number(new DataView(data.buffer).getBigInt64(16, true));
+        new DataView(data.buffer).setBigUint64(tocOffset, 65_537n, true);
+
+        expect(() => ParseCrate(data.buffer, "memory:oversized.usdc")).toThrow("section count exceeds");
+    });
+
     it("decodes a synthetic minimal crate with one empty prim", () => {
         const layer = ParseCrate(CreateMinimalCrate().buffer, "memory:minimal.usdc");
 

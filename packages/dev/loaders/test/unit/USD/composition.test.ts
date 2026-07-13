@@ -165,6 +165,21 @@ describe("USD composition", () => {
         expect(diagnostics).toEqual([]);
         expect(world.children.map((child) => child.name)).toEqual(["B", "C"]);
     });
+
+    it("produces the same composed structure and diagnostics on every run", () => {
+        const asset = createReferencedAssetLayer("asset.usd", "Child");
+        const root = createLayer("root.usd", [
+            createPrim("/World", {
+                references: explicitReferences([{ assetPath: "asset.usd", primPath: "/Asset" }]),
+            }),
+        ]);
+        const resolve = (assetPath: string) => (assetPath === asset.identifier ? asset : undefined);
+
+        const first = ComposeLayerStack(root, resolve);
+        const second = ComposeLayerStack(root, resolve);
+
+        expect(second).toEqual(first);
+    });
 });
 
 function createReferencedAssetLayer(identifier: string, childName: string): ISdfLayer {

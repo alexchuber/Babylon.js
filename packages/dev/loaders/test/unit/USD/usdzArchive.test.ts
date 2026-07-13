@@ -37,4 +37,24 @@ describe("USDZ archive reader", () => {
         expect(archive.assets.get("textures/base.png")).toEqual(new Uint8Array([4, 5, 6]));
         expect(archive.assets.get("layers/mesh.usdc")).toEqual(new Uint8Array([7, 8, 9]));
     });
+
+    it("rejects malformed and truncated archives", async () => {
+        await expect(ReadUsdzArchive(new Uint8Array([0x50, 0x4b]).buffer, fflate)).rejects.toThrow();
+    });
+
+    it("rejects archive expansion above the resource cap before extracting entries", async () => {
+        const oversizedArchive = {
+            unzipSync: (_data: Uint8Array, options?: { filter?: (file: { name: string; size: number; originalSize: number; compression: number }) => boolean }) => {
+                options?.filter?.({
+                    name: "root.usda",
+                    size: 1,
+                    originalSize: 1024 * 1024 * 1024 + 1,
+                    compression: 8,
+                });
+                return {};
+            },
+        };
+
+        await expect(ReadUsdzArchive(new ArrayBuffer(0), oversizedArchive)).rejects.toThrow("uncompressed size exceeds");
+    });
 });

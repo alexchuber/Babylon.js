@@ -9,8 +9,8 @@
  *   are produced. The adapter performs zero USD reasoning — it only maps this data onto
  *   Babylon nodes, meshes, materials, animations, lights and cameras.
  * - Coordinates are expressed in USD's native space (right-handed, units = `metersPerUnit`,
- *   up = `upAxis`). The adapter is solely responsible for any handedness / up-axis / unit
- *   conversion when creating Babylon objects.
+ *   up = `upAxis`). The adapter enables Babylon's right-handed scene mode and applies only
+ *   up-axis / unit conversion; authored geometry buffers are not rewritten.
  *
  * Resource pooling: meshes, materials and skeletons live in flat arrays on `IResolvedStage`
  * and are referenced from prims by index, so that USD `instanceable` prims and `PointInstancer`
@@ -44,6 +44,32 @@ export interface IResolvedStage {
     skeletons: IResolvedSkeleton[];
     /** Non-fatal diagnostics collected during resolution (composition warnings, skipped features, etc.). */
     diagnostics: IResolvedDiagnostic[];
+}
+
+/**
+ * Deeply freezes the plain object/array graph of a resolved stage.
+ *
+ * Typed-array payloads stay readable and are intentionally not passed to `Object.freeze`, which
+ * JavaScript rejects for non-empty views. Their containing objects and arrays are frozen, so the
+ * resolution boundary cannot be structurally mutated or have buffers replaced.
+ * @param stage the completed stage to freeze
+ * @returns the same stage instance after freezing its plain-data graph
+ */
+export function FreezeResolvedStage(stage: IResolvedStage): IResolvedStage {
+    FreezePlainData(stage, new Set<object>());
+    return stage;
+}
+
+function FreezePlainData(value: unknown, visited: Set<object>): void {
+    if (typeof value !== "object" || value === null || ArrayBuffer.isView(value) || visited.has(value)) {
+        return;
+    }
+
+    visited.add(value);
+    for (const child of Object.values(value)) {
+        FreezePlainData(child, visited);
+    }
+    Object.freeze(value);
 }
 
 /** Severity of a resolution-time diagnostic. */

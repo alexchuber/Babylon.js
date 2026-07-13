@@ -3,6 +3,7 @@
 // means "one chunk, raw LZ4 block follows" and N>=1 means N chunks each prefixed by an int32 little
 // endian size. pxr splits input into chunks no larger than this so each decodes independently.
 const Lz4MaxInputSize = 0x7e000000;
+const MaxCrateDecompressedBytes = 512 * 1024 * 1024;
 
 /**
  * Decodes a TfFastCompression buffer (the framing USD uses for crate sections and integer arrays)
@@ -26,9 +27,7 @@ export function DecompressFromBuffer(data: Uint8Array, uncompressedSize: number)
  * @returns The decoded bytes, trimmed to the actual decoded size.
  */
 export function DecompressFromBufferToSizeLimit(data: Uint8Array, maxUncompressedSize: number): Uint8Array {
-    if (maxUncompressedSize < 0 || !Number.isSafeInteger(maxUncompressedSize)) {
-        throw new Error("USD crate: invalid decompressed output size.");
-    }
+    ValidateOutputSize(maxUncompressedSize, "decompressed");
     if (data.length === 0) {
         return new Uint8Array(0);
     }
@@ -59,6 +58,9 @@ export function DecompressFromBufferToSizeLimit(data: Uint8Array, maxUncompresse
         outputOffset += decoded.length;
     }
 
+    if (inputOffset !== data.length) {
+        throw new Error("USD crate: trailing TfFastCompression data.");
+    }
     return output.subarray(0, outputOffset);
 }
 
@@ -83,9 +85,7 @@ export function DecodeLz4Block(data: Uint8Array, uncompressedSize: number): Uint
  * @returns The decoded bytes, trimmed to the actual decoded size.
  */
 export function DecodeLz4BlockToSizeLimit(data: Uint8Array, maxUncompressedSize: number): Uint8Array {
-    if (maxUncompressedSize < 0 || !Number.isSafeInteger(maxUncompressedSize)) {
-        throw new Error("USD crate: invalid LZ4 output size.");
-    }
+    ValidateOutputSize(maxUncompressedSize, "LZ4");
 
     const output = new Uint8Array(maxUncompressedSize);
     let inputOffset = 0;
@@ -97,6 +97,7 @@ export function DecodeLz4BlockToSizeLimit(data: Uint8Array, maxUncompressedSize:
         if (inputOffset + literalLength > data.length) {
             throw new Error("USD crate: invalid LZ4 literal length.");
         }
+
         if (outputOffset + literalLength > output.length) {
             throw new Error("USD crate: LZ4 literal output exceeds expected size.");
         }
@@ -130,6 +131,15 @@ export function DecodeLz4BlockToSizeLimit(data: Uint8Array, maxUncompressedSize:
     }
 
     return output.subarray(0, outputOffset);
+}
+
+function ValidateOutputSize(size: number, kind: string): void {
+    if (size < 0 || !Number.isSafeInteger(size)) {
+        throw new Error(`USD crate: invalid ${kind} output size.`);
+    }
+    if (size > MaxCrateDecompressedBytes) {
+        throw new Error(`USD crate: ${kind} output exceeds the ${MaxCrateDecompressedBytes}-byte resource cap.`);
+    }
 }
 
 // Reads an LZ4 nibble length and its optional 255-byte extension chain.

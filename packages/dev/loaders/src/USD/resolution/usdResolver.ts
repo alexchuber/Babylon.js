@@ -1,7 +1,7 @@
 import { Tools } from "core/Misc/tools.pure";
 
 import { type USDLoadingOptions } from "../usdLoadingOptions";
-import { type IResolvedStage, type IResolvedDiagnostic, type ResolvedDiagnosticSeverity, type IResolvedTexture } from "./resolvedStage";
+import { FreezeResolvedStage, type IResolvedStage, type IResolvedDiagnostic, type ResolvedDiagnosticSeverity, type IResolvedTexture } from "./resolvedStage";
 import { type ISdfLayer } from "./sdf";
 import { ReadListOpItems } from "./sdf/sdfListOp";
 import { type ISdfCompositionFields, type ISdfPrimSpec } from "./sdf/sdfSpec";
@@ -97,7 +97,7 @@ export async function ResolveUsdStageWithFetcherAsync(
     }
 
     const rootLayer = detected.format === "usdc" ? ParseCrate(data as ArrayBuffer, rootIdentifier) : ParseUsda(detected.text ?? "", rootIdentifier);
-    return await ComposeAndMapStageAsync(rootLayer, fetchAsset, diagnostics);
+    return FreezeResolvedStage(await ComposeAndMapStageAsync(rootLayer, fetchAsset, diagnostics));
 }
 
 // Unzips a USDZ archive, parses its inner root layer (USDA or USDC), and composes the stage with a
@@ -140,7 +140,7 @@ async function ResolveUsdzStageAsync(
 
     const stage = await ComposeAndMapStageAsync(rootLayer, fetchArchiveAssetAsync, diagnostics);
     await LoadEmbeddedTextureDataAsync(stage, fetchArchiveAssetAsync, diagnostics);
-    return stage;
+    return FreezeResolvedStage(stage);
 }
 
 // USDZ packs its textures inside the archive, so a resolved texture URI such as "textures/base.png"

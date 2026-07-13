@@ -1,7 +1,12 @@
 import { Tools } from "core/Misc/tools.pure";
 
 type FflateUnzipModule = {
-    unzipSync(data: Uint8Array): Record<string, Uint8Array>;
+    unzipSync(
+        data: Uint8Array,
+        options?: {
+            filter?: (file: { name: string; size: number; originalSize: number; compression: number }) => boolean;
+        }
+    ): Record<string, Uint8Array>;
 };
 
 type ZipCentralDirectoryEntry = {
@@ -16,6 +21,8 @@ const EndOfCentralDirectoryMinSize = 22;
 const MaxZipCommentLength = 0xffff;
 const CentralDirectoryFileHeaderSignature = 0x02014b50;
 const CentralDirectoryFileHeaderSize = 46;
+const MaxArchiveEntryCount = 4096;
+const MaxArchiveUncompressedBytes = 1024 * 1024 * 1024;
 
 /**
  * Extracted contents of a USDZ archive.
@@ -38,12 +45,22 @@ export interface IUsdzArchive {
 export async function ReadUsdzArchive(data: ArrayBuffer, fflateInstance?: unknown, deflateUrl?: string): Promise<IUsdzArchive> {
     const fflateModule = await LoadFflateAsync(fflateInstance, deflateUrl);
     const archiveBytes = new Uint8Array(data);
-    const unzipped = fflateModule.unzipSync(archiveBytes);
+    let entryCount = 0;
+    let uncompressedBytes = 0;
+    const unzipped = fflateModule.unzipSync(archiveBytes, {
+        filter: (file) => {
+            entryCount++;
+            uncompressedBytes += file.originalSize;
+            ValidateArchiveResourceLimits(entryCount, uncompressedBytes);
+            return true;
+        },
+    });
     const assets = new Map<string, Uint8Array>();
 
     for (const [fileName, content] of Object.entries(unzipped)) {
         assets.set(fileName, content);
     }
+    ValidateExtractedArchive(assets);
 
     const orderedFileNames = ReadZipFileOrder(archiveBytes);
     const rootFileName = FindRootLayerFileName(assets, orderedFileNames);
@@ -88,6 +105,23 @@ async function LoadFflateAsync(fflateInstance: unknown, deflateUrl: string | und
 
 function HasUnzipSync(value: unknown): value is FflateUnzipModule {
     return typeof value === "object" && value !== null && "unzipSync" in value && typeof (value as { unzipSync?: unknown }).unzipSync === "function";
+}
+
+function ValidateExtractedArchive(assets: Map<string, Uint8Array>): void {
+    let totalBytes = 0;
+    for (const content of Array.from(assets.values())) {
+        totalBytes += content.byteLength;
+    }
+    ValidateArchiveResourceLimits(assets.size, totalBytes);
+}
+
+function ValidateArchiveResourceLimits(entryCount: number, uncompressedBytes: number): void {
+    if (entryCount > MaxArchiveEntryCount) {
+        throw new Error(`USDZ archive entry count exceeds the ${MaxArchiveEntryCount}-entry resource cap.`);
+    }
+    if (!Number.isSafeInteger(uncompressedBytes) || uncompressedBytes > MaxArchiveUncompressedBytes) {
+        throw new Error(`USDZ archive uncompressed size exceeds the ${MaxArchiveUncompressedBytes}-byte resource cap.`);
+    }
 }
 
 function FindRootLayerFileName(assets: Map<string, Uint8Array>, orderedFileNames: string[] | undefined): string | undefined {

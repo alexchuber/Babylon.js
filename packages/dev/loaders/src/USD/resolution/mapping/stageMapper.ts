@@ -112,6 +112,13 @@ function ApplySchemaPayload(prim: IResolvedPrim, primSpec: ISdfPrimSpec, metadat
     if (camera) {
         prim.kind = "camera";
         prim.camera = camera;
+        if (camera.fStop !== undefined || camera.focusDistance !== undefined) {
+            context.diagnostics.push({
+                severity: "info",
+                path: primSpec.path,
+                message: "Camera depth-of-field settings are preserved in IResolvedCamera but are not applied by the direct Babylon adapter.",
+            });
+        }
         return;
     }
 

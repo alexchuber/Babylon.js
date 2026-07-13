@@ -50,4 +50,18 @@ describe("USDC TfFastCompression framing", () => {
 
         expect(() => DecompressFromBuffer(buffer, 8)).toThrow("invalid decompressed length");
     });
+
+    it("rejects output sizes above the crate resource cap before allocating", () => {
+        const buffer = new Uint8Array([0x00, 0x00]);
+
+        expect(() => DecompressFromBuffer(buffer, 512 * 1024 * 1024 + 1)).toThrow("decompressed output exceeds");
+    });
+
+    it("rejects truncated and trailing multi-chunk framing", () => {
+        expect(() => DecompressFromBuffer(new Uint8Array([0x01, 0x04, 0x00]), 1)).toThrow("truncated TfFastCompression chunk size");
+
+        const chunk = [0x10, 0x61];
+        const trailing = new Uint8Array([0x01, chunk.length, 0, 0, 0, ...chunk, 0xff]);
+        expect(() => DecompressFromBuffer(trailing, 1)).toThrow("trailing TfFastCompression data");
+    });
 });

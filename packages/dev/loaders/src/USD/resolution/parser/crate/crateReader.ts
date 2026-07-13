@@ -10,6 +10,8 @@ const BootstrapSize = 88;
 const SectionRecordSize = 32;
 const SectionNameSize = 16;
 const InvalidIndex = 0xffffffff;
+const MaxCrateSectionCount = 65_536;
+const MaxCrateTableEntries = 16 * 1024 * 1024;
 
 const enum CrateSpecType {
     Attribute = 1,
@@ -156,6 +158,7 @@ function ReadBootstrap(reader: BinaryReader): { version: ICrateVersion; tocOffse
 function ReadTableOfContents(reader: BinaryReader, tocOffset: number): Map<string, ICrateSection> {
     reader.seek(tocOffset);
     const sectionCount = reader.readUint64();
+    ValidateCount(sectionCount, MaxCrateSectionCount, "section");
     const sections = new Map<string, ICrateSection>();
     for (let i = 0; i < sectionCount; i++) {
         const name = reader.readNullTerminatedAscii(SectionNameSize);
@@ -181,6 +184,7 @@ function ReadTokens(reader: BinaryReader, sections: Map<string, ICrateSection>, 
     const section = GetRequiredSection(sections, "TOKENS");
     reader.seek(section.start);
     const tokenCount = reader.readUint64();
+    ValidateTableCount(tokenCount, "token");
     let tokenBytes: Uint8Array;
     if (CompareVersion(version, { major: 0, minor: 4, patch: 0 }) < 0) {
         const byteCount = reader.readUint64();
@@ -215,6 +219,7 @@ function ReadFields(reader: BinaryReader, sections: Map<string, ICrateSection>, 
     reader.seek(section.start);
     if (CompareVersion(version, { major: 0, minor: 4, patch: 0 }) < 0) {
         const fieldCount = reader.readUint64();
+        ValidateTableCount(fieldCount, "field");
         const fields: ICrateField[] = [];
         for (let i = 0; i < fieldCount; i++) {
             reader.readUint32();
@@ -224,6 +229,7 @@ function ReadFields(reader: BinaryReader, sections: Map<string, ICrateSection>, 
     }
 
     const fieldCount = reader.readUint64();
+    ValidateTableCount(fieldCount, "field");
     const tokenIndexes = ReadCompressedInt32FromReader(reader, fieldCount);
     const compressedRepSize = reader.readUint64();
     const repBytes = DecompressFromBuffer(reader.readBytes(compressedRepSize), fieldCount * 8);
@@ -241,6 +247,7 @@ function ReadFieldSets(reader: BinaryReader, sections: Map<string, ICrateSection
     reader.seek(section.start);
     if (CompareVersion(version, { major: 0, minor: 4, patch: 0 }) < 0) {
         const fieldSetCount = reader.readUint64();
+        ValidateTableCount(fieldSetCount, "field-set");
         const fieldSets: number[] = [];
         for (let i = 0; i < fieldSetCount; i++) {
             fieldSets.push(reader.readUint32());
@@ -249,6 +256,7 @@ function ReadFieldSets(reader: BinaryReader, sections: Map<string, ICrateSection
     }
 
     const fieldSetCount = reader.readUint64();
+    ValidateTableCount(fieldSetCount, "field-set");
     return ReadCompressedInt32FromReader(reader, fieldSetCount).map((value) => value >>> 0);
 }
 
@@ -257,6 +265,7 @@ function ReadPaths(reader: BinaryReader, sections: Map<string, ICrateSection>, v
     const section = GetRequiredSection(sections, "PATHS");
     reader.seek(section.start);
     const pathCount = reader.readUint64();
+    ValidateTableCount(pathCount, "path");
     const paths = new Array<string>(pathCount).fill("");
 
     if (CompareVersion(version, { major: 0, minor: 4, patch: 0 }) < 0) {
@@ -265,6 +274,7 @@ function ReadPaths(reader: BinaryReader, sections: Map<string, ICrateSection>, v
     }
 
     const encodedPathCount = reader.readUint64();
+    ValidateTableCount(encodedPathCount, "encoded path");
     const pathIndexes = ReadCompressedInt32FromReader(reader, encodedPathCount).map((value) => value >>> 0);
     const elementTokenIndexes = ReadCompressedInt32FromReader(reader, encodedPathCount);
     const jumps = ReadCompressedInt32FromReader(reader, encodedPathCount);
@@ -279,6 +289,7 @@ function ReadSpecs(reader: BinaryReader, sections: Map<string, ICrateSection>, v
 
     if (CompareVersion(version, { major: 0, minor: 4, patch: 0 }) < 0) {
         const specCount = reader.readUint64();
+        ValidateTableCount(specCount, "spec");
         const specs: ICrateSpec[] = [];
         for (let i = 0; i < specCount; i++) {
             specs.push({ pathIndex: reader.readUint32(), fieldSetIndex: reader.readUint32(), specType: reader.readInt32() as CrateSpecType });
@@ -287,6 +298,7 @@ function ReadSpecs(reader: BinaryReader, sections: Map<string, ICrateSection>, v
     }
 
     const specCount = reader.readUint64();
+    ValidateTableCount(specCount, "spec");
     const pathIndexes = ReadCompressedInt32FromReader(reader, specCount);
     const fieldSetIndexes = ReadCompressedInt32FromReader(reader, specCount);
     const specTypes = ReadCompressedInt32FromReader(reader, specCount);
@@ -1119,6 +1131,19 @@ function GetRequiredSection(sections: Map<string, ICrateSection>, name: string):
         throw new Error(`USD crate: missing required '${name}' section.`);
     }
     return section;
+}
+
+function ValidateTableCount(count: number, tableName: string): void {
+    ValidateCount(count, MaxCrateTableEntries, `${tableName} table`);
+}
+
+function ValidateCount(count: number, maximum: number, name: string): void {
+    if (!Number.isSafeInteger(count) || count < 0) {
+        throw new Error(`USD crate: invalid ${name} count.`);
+    }
+    if (count > maximum) {
+        throw new Error(`USD crate: ${name} count exceeds the ${maximum}-entry resource cap.`);
+    }
 }
 
 // Compares crate semantic versions.

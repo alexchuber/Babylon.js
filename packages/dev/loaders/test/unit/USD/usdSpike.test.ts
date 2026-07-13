@@ -69,4 +69,18 @@ describe("USD loader (Phase 0 spike)", () => {
         scene.dispose();
         engine.dispose();
     });
+
+    it("clears asset-container loading state after a failed load", async () => {
+        const engine = new NullEngine();
+        const scene = new Scene(engine);
+        const loader = new USDFileLoader();
+
+        await expect(loader.loadAssetContainerAsync(scene, "not a usd file", "")).rejects.toThrow(/USDA/i);
+
+        const result = await loader.importMeshAsync(null, scene, quadUsda, "");
+        expect(result.meshes.some((mesh) => mesh.name === "Quad")).toBe(true);
+
+        scene.dispose();
+        engine.dispose();
+    });
 });

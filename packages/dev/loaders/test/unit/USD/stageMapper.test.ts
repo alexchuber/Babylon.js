@@ -338,4 +338,115 @@ describe("USD stage mapper", () => {
         expect(geom?.materialBinding).toBeDefined();
         expect(stage.materials[geom!.materialBinding!.materialIndex].baseColor).toEqual([0.1, 0.2, 0.3]);
     });
+
+    it("records unsupported material, animation, skeleton, light, camera, and instancing fidelity", () => {
+        const triangleProperties = {
+            points: {
+                kind: "attribute" as const,
+                typeName: "point3f[]",
+                default: {
+                    type: "point3f[]" as const,
+                    value: [
+                        [0, 0, 0],
+                        [1, 0, 0],
+                        [0, 1, 0],
+                    ],
+                },
+            },
+            faceVertexCounts: {
+                kind: "attribute" as const,
+                typeName: "int[]",
+                default: { type: "int[]" as const, value: [3] },
+            },
+            faceVertexIndices: {
+                kind: "attribute" as const,
+                typeName: "int[]",
+                default: { type: "int[]" as const, value: [0, 1, 2] },
+            },
+            "material:binding": {
+                kind: "relationship" as const,
+                targets: { isExplicit: true, explicit: ["/MissingMaterial"] },
+            },
+            "skel:skeleton": {
+                kind: "relationship" as const,
+                targets: { isExplicit: true, explicit: ["/MissingSkeleton"] },
+            },
+        };
+        const layer: ISdfLayer = {
+            identifier: "/diagnostics.usda",
+            subLayers: [],
+            rootPrims: [
+                {
+                    name: "Animated",
+                    path: "/Animated",
+                    specifier: "def",
+                    typeName: "Xform",
+                    properties: {
+                        "xformOp:rotateZYX": {
+                            kind: "attribute",
+                            typeName: "float3",
+                            timeSamples: {
+                                times: [0],
+                                values: [{ type: "vec3f", value: [0, 0, 0] }],
+                            },
+                        },
+                    },
+                    children: [],
+                },
+                {
+                    name: "Portal",
+                    path: "/Portal",
+                    specifier: "def",
+                    typeName: "PortalLight",
+                    properties: {},
+                    children: [],
+                },
+                {
+                    name: "Camera",
+                    path: "/Camera",
+                    specifier: "def",
+                    typeName: "Camera",
+                    properties: {
+                        fStop: { kind: "attribute", typeName: "float", default: { type: "float", value: 2.8 } },
+                        focusDistance: { kind: "attribute", typeName: "float", default: { type: "float", value: 5 } },
+                    },
+                    children: [],
+                },
+                {
+                    name: "Instancer",
+                    path: "/Instancer",
+                    specifier: "def",
+                    typeName: "PointInstancer",
+                    properties: {
+                        prototypes: {
+                            kind: "relationship",
+                            targets: { isExplicit: true, explicit: ["/MissingPrototype"] },
+                        },
+                    },
+                    children: [],
+                },
+                {
+                    name: "Mesh",
+                    path: "/Mesh",
+                    specifier: "def",
+                    typeName: "Mesh",
+                    properties: triangleProperties,
+                    children: [],
+                },
+            ],
+        };
+
+        const messages = MapLayerToResolvedStage(layer).diagnostics.map((diagnostic) => diagnostic.message);
+
+        expect(messages).toEqual(
+            expect.arrayContaining([
+                expect.stringContaining("Animation for 'xformOp:rotateZYX' is deferred"),
+                expect.stringContaining("Schema PortalLight mapping is not supported"),
+                expect.stringContaining("depth-of-field"),
+                expect.stringContaining("PointInstancer prototype target was not found"),
+                expect.stringContaining("Material binding target was not found"),
+                expect.stringContaining("Skel binding target was not found"),
+            ])
+        );
+    });
 });
