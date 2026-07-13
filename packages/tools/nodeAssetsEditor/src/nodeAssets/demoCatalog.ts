@@ -1,10 +1,14 @@
 /**
  * Shared metadata contract for Node Assets Editor demos.
  *
- * The graph is represented as declarative node descriptors so resource
- * realization steps remain inspectable alongside domain and transcoding
- * expectations.
+ * The graph is represented as a serialized NodeAsset payload or declarative
+ * node descriptors so resource realization steps remain inspectable alongside
+ * domain and transcoding expectations.
  */
+
+import { type NodeAsset } from "node-assets/nodeAsset";
+
+import { type IGraphFrame, type Vec2 } from "../nodeGraph/graphModel";
 
 /** Current version of the demo catalog metadata contract. */
 export const DemoCatalogSchemaVersion = 1 as const;
@@ -56,6 +60,8 @@ export type DemoLossSeverity = (typeof DemoLossSeverity)[keyof typeof DemoLossSe
 export const DemoHandedness = {
     LEFT: "left",
     RIGHT: "right",
+    PRESERVED: "preserved",
+    CONVERTED: "converted",
 } as const;
 
 /** Coordinate handedness used by a scene resource or demo. */
@@ -63,9 +69,11 @@ export type DemoHandedness = (typeof DemoHandedness)[keyof typeof DemoHandedness
 
 /** Axis identifiers used by the up-axis domain tag. */
 export const DemoUpAxis = {
-    X: "x",
-    Y: "y",
-    Z: "z",
+    X: "X",
+    Y: "Y",
+    Z: "Z",
+    PRESERVED: "preserved",
+    CONVERTED: "converted",
 } as const;
 
 /** Up axis used by a scene resource or demo. */
@@ -79,6 +87,20 @@ export type DemoDomainTags = {
     readonly unit?: string;
     /** Positive axis treated as up by the source or target domain. */
     readonly upAxis?: DemoUpAxis;
+    /** Optional scale applied when converting the authored unit. */
+    readonly unitScale?: number;
+};
+
+/** Conventions declared for a demo's source and target asset domains. */
+export type DemoAssetConventions = {
+    /** Whether handedness is preserved or converted at the boundary. */
+    readonly handedness: DemoHandedness;
+    /** Authored or target unit, such as `meter` or `centimeter`. */
+    readonly unit: string;
+    /** Authored or target up axis. */
+    readonly upAxis: DemoUpAxis;
+    /** Optional scale applied when converting the authored unit. */
+    readonly unitScale?: number;
 };
 
 /** A URL-backed resource source. */
@@ -102,7 +124,8 @@ export type DemoInlineSource = {
 /** An inline JSON resource source, used by serialized graph resources. */
 export type DemoInlineJsonSource = {
     readonly kind: "inlineJson";
-    readonly json: string;
+    /** JSON text or a plain serialized JSON object, never a live engine object. */
+    readonly json: string | Readonly<Record<string, unknown>>;
 };
 
 /** A file-backed resource source. */
@@ -159,6 +182,9 @@ export type DemoNodeGeometryResource = DemoResourceBase & {
 /** Any resource that may be listed by a demo. */
 export type DemoResource = DemoSceneResource | DemoImageResource | DemoNodeGeometryResource;
 
+/** A serialized NodeAsset graph payload. */
+export type DemoNodeAssetGraph = ReturnType<NodeAsset["serialize"]>;
+
 /** An import node that exposes a NodeGeometry resource as geometry data. */
 export type DemoImportNodeGeometryNode = {
     readonly kind: "ImportNodeGeometry";
@@ -192,6 +218,78 @@ export type DemoGenericGraphNode = {
 /** Declarative node descriptor accepted by a demo graph. */
 export type DemoGraphNode = DemoImportNodeGeometryNode | DemoRealizeNodeGeometryNode | DemoGenericGraphNode;
 
+/** Graph payloads supported by the catalog. */
+export type DemoGraphPayload = DemoNodeAssetGraph | readonly DemoGraphNode[];
+
+/** Visual metadata for one block in the editor canvas. */
+export type DemoEditorBlockMetadata = {
+    /** Runtime block id used to match the visual node to the serialized graph. */
+    readonly id: number;
+    /** Graph-space position. */
+    readonly position: Vec2;
+    /** Human-readable node title. */
+    readonly title: string;
+    /** Whether the node body is collapsed. */
+    readonly collapsed: boolean;
+    /** Optional export file name owned by the editor. */
+    readonly fileName?: string;
+};
+
+/** Editor-owned metadata that must round-trip with a demo graph. */
+export type DemoEditorMetadata = {
+    /** Visual block metadata. */
+    readonly blocks: readonly DemoEditorBlockMetadata[];
+    /** Frames that group and position related nodes. */
+    readonly frames: readonly IGraphFrame[];
+};
+
+/** A bundled asset binding used to hydrate an import block. */
+export type DemoAssetBinding = {
+    /** Runtime block id whose input receives the asset. */
+    readonly blockId: number;
+    /** Key for the bundled asset in the editor package. */
+    readonly bundledAssetKey: string;
+    /** MIME type supplied to the runtime block, when required. */
+    readonly mimeType?: string;
+    /** Human-readable source label shown in the editor. */
+    readonly sourceLabel?: string;
+};
+
+/** Terminal preview/output metadata for a demo. */
+export type DemoTerminal = {
+    readonly kind: "gltf" | "image";
+    readonly expectedMimeType?: string;
+};
+
+/** Status of NodeGeometry support for a demo. */
+export type DemoNodeGeometryEvaluationStatus = "not-applicable" | "supported" | "requires-adapter" | "deferred";
+
+/** A serialized NodeGeometry definition, never a live NodeGeometry instance. */
+export type DemoSerializedNodeGeometry = Readonly<Record<string, unknown>>;
+
+/** Metadata for evaluating or realizing NodeGeometry in a demo. */
+export type DemoNodeGeometryEvaluation = {
+    /** Current adapter/build support for this demo. */
+    readonly status: DemoNodeGeometryEvaluationStatus;
+    /** Serialized NodeGeometry JSON, when the demo supplies one. */
+    readonly definition?: DemoSerializedNodeGeometry;
+    /** Target scene location for the realized mesh, when applicable. */
+    readonly target?: {
+        readonly parentPointer?: string;
+        readonly name: string;
+    };
+    /** Why this status is correct for the demo. */
+    readonly why: string;
+};
+
+/** Expected observable result of running a demo. */
+export type DemoOutcome = {
+    /** Human-readable result expected in the preview or output. */
+    readonly description: string;
+    /** Optional assertions used by validation or demo documentation. */
+    readonly assertions?: readonly string[];
+};
+
 /** Base fields shared by all expected loss diagnostics. */
 type DemoLossDiagnosticBase = {
     /** Feature whose representation changes at the transcoder boundary. */
@@ -223,16 +321,30 @@ export type DemoDefinition = {
     readonly id: string;
     /** Human-readable title. */
     readonly title: string;
-    /** Short explanation of the scenario and its intended outcome. */
-    readonly description: string;
+    /** Short explanation shown in the demo gallery. */
+    readonly summary: string;
+    /** Backward-compatible longer description, when the gallery needs one. */
+    readonly description?: string;
     /** Search and filter labels shown by the demo gallery. */
     readonly tags: readonly string[];
     /** Resources required to construct the demo graph. */
     readonly resources: readonly DemoResource[];
-    /** Declarative graph nodes and their resource references. */
-    readonly graph: readonly DemoGraphNode[];
+    /** Serialized runtime graph or declarative graph nodes for a non-NodeAsset adapter. */
+    readonly graph: DemoGraphPayload;
+    /** Editor-owned positions, frames, and node display metadata. */
+    readonly editor: DemoEditorMetadata;
+    /** Bundled assets bound to runtime import blocks. */
+    readonly assets: readonly DemoAssetBinding[];
+    /** Terminal preview/output contract. */
+    readonly terminal: DemoTerminal;
+    /** Conventions for the demo's active source and target domains. */
+    readonly conventions: DemoAssetConventions;
     /** Conversion expectations for the demo as a whole. */
     readonly expectedLosses: readonly DemoLossDiagnostic[];
+    /** Explicit NodeGeometry status, even when the demo does not use it. */
+    readonly nodeGeometry: DemoNodeGeometryEvaluation;
+    /** Observable result expected after the graph runs. */
+    readonly expectedOutcome: DemoOutcome;
     /** Default conventions for the demo's active domain. */
     readonly domainTags?: DemoDomainTags;
 };

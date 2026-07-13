@@ -8,7 +8,7 @@ import {
     IsRealizeNodeGeometryNode,
     type DemoCatalog,
     type DemoNodeGeometryResource,
-} from "../../src/nodeAssets/demoCatalogSchema";
+} from "../../src/nodeAssets/demoCatalog";
 
 const nodeGeometryResource: DemoNodeGeometryResource = {
     id: "geometry",
@@ -18,12 +18,24 @@ const nodeGeometryResource: DemoNodeGeometryResource = {
     source: { kind: "snippet", snippetId: "PYY6XE#69" },
 };
 
+const inlineNodeGeometryResource: DemoNodeGeometryResource = {
+    id: "inline-geometry",
+    label: "Inline generated geometry",
+    kind: DemoResourceKind.NODE_GEOMETRY,
+    format: "babylon-node-geometry",
+    source: {
+        kind: "inlineJson",
+        json: { blocks: [], metadata: { name: "box" } },
+    },
+};
+
 const catalog: DemoCatalog = {
     version: DemoCatalogSchemaVersion,
     demos: [
         {
             id: "usd-to-gltf",
             title: "USD to glTF",
+            summary: "Transcode a USD scene to the glTF scene spine.",
             description: "Transcode a USD scene to the glTF scene spine.",
             tags: ["usd", "gltf", "transcoding"],
             resources: [
@@ -35,10 +47,11 @@ const catalog: DemoCatalog = {
                     domainTags: {
                         handedness: "right",
                         unit: "meters",
-                        upAxis: "y",
+                        upAxis: "Y",
                     },
                 },
                 nodeGeometryResource,
+                inlineNodeGeometryResource,
             ],
             graph: [
                 {
@@ -54,6 +67,21 @@ const catalog: DemoCatalog = {
                     evaluation: { mode: "explicit" },
                 },
             ],
+            editor: {
+                blocks: [],
+                frames: [],
+            },
+            assets: [],
+            terminal: {
+                kind: "gltf",
+                expectedMimeType: "model/gltf-binary",
+            },
+            conventions: {
+                handedness: "preserved",
+                unit: "meter",
+                upAxis: "converted",
+                unitScale: 0.01,
+            },
             expectedLosses: [
                 {
                     feature: "USD variants",
@@ -72,7 +100,14 @@ const catalog: DemoCatalog = {
             domainTags: {
                 handedness: "right",
                 unit: "meters",
-                upAxis: "y",
+                upAxis: "Y",
+            },
+            nodeGeometry: {
+                status: "not-applicable",
+                why: "This pipeline demo does not contain a NodeGeometry resource.",
+            },
+            expectedOutcome: {
+                description: "The converted scene is available in the glTF terminal preview.",
             },
         },
     ],
@@ -90,18 +125,29 @@ describe("demo catalog schema", () => {
         expect(demo.domainTags).toEqual({
             handedness: "right",
             unit: "meters",
-            upAxis: "y",
+            upAxis: "Y",
+        });
+        expect(demo.conventions).toMatchObject({
+            upAxis: "converted",
+            unitScale: 0.01,
         });
     });
 
     it("treats NodeGeometry as a resource and marks evaluation on realization", () => {
         expect(IsNodeGeometryResource(nodeGeometryResource)).toBe(true);
         expect("evaluation" in nodeGeometryResource).toBe(false);
+        expect(inlineNodeGeometryResource.source).toEqual({
+            kind: "inlineJson",
+            json: { blocks: [], metadata: { name: "box" } },
+        });
 
         const realization = catalog.demos[0].graph[1];
         expect(IsRealizeNodeGeometryNode(realization)).toBe(true);
         expect(realization.evaluation).toEqual({
             mode: "explicit",
+        });
+        expect(catalog.demos[0].nodeGeometry).toMatchObject({
+            status: "not-applicable",
         });
     });
 });
