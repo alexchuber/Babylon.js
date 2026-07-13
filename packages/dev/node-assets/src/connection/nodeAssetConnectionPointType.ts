@@ -8,15 +8,15 @@
  */
 export enum NodeAssetConnectionPointType {
     /**
-     * A {@link GltfAsset} containing a live gltf-transform `Document`.
-     */
-    GLTF_DOCUMENT = 0,
-
-    /**
      * Legacy name for {@link GLTF_DOCUMENT}.
      * @deprecated Use {@link GLTF_DOCUMENT}.
      */
-    SCENE = GLTF_DOCUMENT,
+    SCENE = 0,
+
+    /**
+     * A {@link GltfAsset} containing a live gltf-transform `Document`.
+     */
+    GLTF_DOCUMENT = SCENE,
 
     /** A single numeric value (a JavaScript `number`). */
     NUMBER = 1,

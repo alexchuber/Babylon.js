@@ -20,6 +20,40 @@ export type NodeAssetJsonObject = {
 export type NodeAssetJsonValue = NodeAssetJsonPrimitive | NodeAssetJsonArray | NodeAssetJsonObject;
 
 /**
+ * Tests whether an unknown runtime value is a finite, acyclic JSON value.
+ * @param value The value to test.
+ * @returns Whether the value can travel on a JSON connection point.
+ */
+export function IsNodeAssetJsonValue(value: unknown): value is NodeAssetJsonValue {
+    return IsJsonValue(value, new Set<object>());
+}
+
+function IsJsonValue(value: unknown, ancestors: Set<object>): value is NodeAssetJsonValue {
+    if (value === null || typeof value === "boolean" || typeof value === "string") {
+        return true;
+    }
+    if (typeof value === "number") {
+        return Number.isFinite(value);
+    }
+    if (typeof value !== "object") {
+        return false;
+    }
+
+    const prototype = Object.getPrototypeOf(value);
+    if (!Array.isArray(value) && prototype !== Object.prototype && prototype !== null) {
+        return false;
+    }
+    if (ancestors.has(value)) {
+        return false;
+    }
+
+    ancestors.add(value);
+    const isJson = (Array.isArray(value) ? value : Object.values(value)).every((entry) => IsJsonValue(entry, ancestors));
+    ancestors.delete(value);
+    return isJson;
+}
+
+/**
  * Correlates each concrete connection point kind with its runtime payload.
  *
  * Connection points keep their storage as `unknown`; blocks narrow at their representation seam with

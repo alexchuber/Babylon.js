@@ -1,4 +1,4 @@
-import { FreezeResolvedStage, type IResolvedStage } from "loaders/USD/resolution/resolvedStage";
+import { type IResolvedStage } from "loaders/USD/resolution/resolvedStage";
 
 import { type NodeAssetJsonObject } from "../connection/nodeAssetValueMap";
 import { DeepFreeze } from "./immutableMetadata";
@@ -34,12 +34,39 @@ export class UsdAsset {
      * @param metadata Stable caller-supplied identity, revision, manifest, and overlay.
      */
     public constructor(stage: IResolvedStage, metadata: IUsdAssetMetadata) {
-        this.stage = FreezeResolvedStage(stage);
+        this.stage = CloneImmutableStage(stage);
         this.identity = metadata.identity;
         this.revision = metadata.revision;
         this.manifest = DeepFreeze(metadata.manifest);
         this.overlay = DeepFreeze(metadata.overlay);
     }
+}
+
+function CloneImmutableStage(stage: IResolvedStage): IResolvedStage {
+    const clone = structuredClone(stage);
+    FreezeWithDefensiveViews(clone, new Set<object>());
+    return clone;
+}
+
+function FreezeWithDefensiveViews(value: unknown, visited: Set<object>): void {
+    if (typeof value !== "object" || value === null || ArrayBuffer.isView(value) || visited.has(value)) {
+        return;
+    }
+
+    visited.add(value);
+    for (const [key, child] of Object.entries(value)) {
+        if (ArrayBuffer.isView(child)) {
+            const snapshot = structuredClone(child);
+            Object.defineProperty(value, key, {
+                configurable: false,
+                enumerable: true,
+                get: () => structuredClone(snapshot),
+            });
+        } else {
+            FreezeWithDefensiveViews(child, visited);
+        }
+    }
+    Object.freeze(value);
 }
 
 /**

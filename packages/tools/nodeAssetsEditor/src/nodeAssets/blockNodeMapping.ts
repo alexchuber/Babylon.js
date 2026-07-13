@@ -36,11 +36,14 @@ export function PortIdForPoint(block: NodeAssetBlock, point: NodeAssetConnection
 
 /** Per-kind port label and dot color, so each connection-point type renders distinctly. */
 const PortStyleByType: Record<NodeAssetConnectionPointType, { readonly name: string; readonly color: string }> = {
-    [NodeAssetConnectionPointType.SCENE]: { name: "Scene", color: ScenePortColor },
+    [NodeAssetConnectionPointType.GLTF_DOCUMENT]: { name: "glTF Document", color: ScenePortColor },
     [NodeAssetConnectionPointType.NUMBER]: { name: "Number", color: NumberPortColor },
     [NodeAssetConnectionPointType.STRING]: { name: "String", color: StringPortColor },
     [NodeAssetConnectionPointType.JSON]: { name: "Json", color: JsonPortColor },
     [NodeAssetConnectionPointType.IMAGE]: { name: "Image", color: ImagePortColor },
+    [NodeAssetConnectionPointType.USD_STAGE]: { name: "USD Stage", color: ScenePortColor },
+    [NodeAssetConnectionPointType.BABYLON_SCENE]: { name: "Babylon Scene", color: ScenePortColor },
+    [NodeAssetConnectionPointType.NODE_GEOMETRY]: { name: "Node Geometry", color: ScenePortColor },
 };
 
 /**

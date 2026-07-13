@@ -4,10 +4,11 @@ import { type NodeAssetConnectionPoint } from "../connection/nodeAssetConnection
 import { NodeAssetConnectionPointType } from "../connection/nodeAssetConnectionPointType";
 import { type NodeAsset } from "../nodeAsset";
 import { GetGltfAsset, GltfAsset } from "../representations/gltfAsset";
-import { GetSerializedNumber, type NodeAssetBlockSerialization } from "../serialization/nodeAssetSerialization";
+import { GetSerializedIntegerInRange, type NodeAssetBlockSerialization } from "../serialization/nodeAssetSerialization";
 
 /** The number of glTF representation inputs a freshly created MergeScenes block starts with. */
 const DefaultInputCount = 2;
+const MaxInputCount = 256;
 
 /**
  * A composition block that folds several glTF representation inputs into one combined representation, wrapping
@@ -123,7 +124,7 @@ export class MergeScenes extends NodeAssetBlock {
      */
     public override _deserialize(serializationObject: NodeAssetBlockSerialization): void {
         super._deserialize(serializationObject);
-        const inputCount = GetSerializedNumber(serializationObject, "inputCount", DefaultInputCount);
+        const inputCount = GetSerializedIntegerInRange(serializationObject, "inputCount", DefaultInputCount, MaxInputCount, DefaultInputCount);
         while (this.inputs.length < inputCount) {
             this.addInput();
         }

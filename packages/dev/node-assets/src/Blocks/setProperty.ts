@@ -2,6 +2,7 @@ import { RegisterBlock } from "../blockFoundation/blockRegistry";
 import { NodeAssetBlock } from "../blockFoundation/nodeAssetBlock";
 import { type NodeAssetConnectionPoint } from "../connection/nodeAssetConnectionPoint";
 import { NodeAssetConnectionPointType } from "../connection/nodeAssetConnectionPointType";
+import { IsNodeAssetJsonValue } from "../connection/nodeAssetValueMap";
 import { type NodeAsset } from "../nodeAsset";
 import { GetGltfAsset } from "../representations/gltfAsset";
 import { ResolvePointerToAccessor } from "../selector/pointerToAccessor";
@@ -56,6 +57,9 @@ export class SetProperty extends NodeAssetBlock {
         const asset = GetGltfAsset(this.scene.value, this.scene.name);
 
         const accessor = ResolvePointerToAccessor(asset.document, this.pointer.value as string);
+        if (accessor.type === "texture" || accessor.type === "image" || !IsNodeAssetJsonValue(this.value.value)) {
+            throw new Error(`The "${this.name}" SetProperty block requires a JSON-compatible accessor and value.`);
+        }
         accessor.set(this.value.value);
         // In-place mutation: emit the same reference (copy-on-fan-out is deferred to a later slice).
         this.output.value = asset;

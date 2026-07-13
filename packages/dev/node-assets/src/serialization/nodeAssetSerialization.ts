@@ -1,4 +1,4 @@
-import { type NodeAssetJsonObject, type NodeAssetJsonValue } from "../connection/nodeAssetValueMap";
+import { IsNodeAssetJsonValue, type NodeAssetJsonObject, type NodeAssetJsonValue } from "../connection/nodeAssetValueMap";
 
 /** The serialized identity and JSON state shared by every node asset block. */
 export type NodeAssetBlockSerialization = NodeAssetJsonObject & {
@@ -58,6 +58,23 @@ export function GetSerializedNumber(serializationObject: NodeAssetBlockSerializa
     }
 
     if (typeof value !== "number" || !Number.isFinite(value)) {
+        throw InvalidBlockProperty(property);
+    }
+    return value;
+}
+
+/**
+ * Reads a serialized integer within an inclusive range.
+ * @param serializationObject The serialized block.
+ * @param property The property to read.
+ * @param minimum The smallest accepted value.
+ * @param maximum The largest accepted value.
+ * @param defaultValue The value used when the property is absent.
+ * @returns The validated property value.
+ */
+export function GetSerializedIntegerInRange(serializationObject: NodeAssetBlockSerialization, property: string, minimum: number, maximum: number, defaultValue: number): number {
+    const value = GetSerializedNumber(serializationObject, property, defaultValue);
+    if (!Number.isInteger(value) || value < minimum || value > maximum) {
         throw InvalidBlockProperty(property);
     }
     return value;
@@ -177,25 +194,17 @@ export function GetSerializedJsonValue(serializationObject: NodeAssetBlockSerial
     return serializationObject[property] ?? defaultValue;
 }
 
-function IsJsonObject(value: unknown): value is NodeAssetJsonObject {
-    return typeof value === "object" && value !== null && !Array.isArray(value) && Object.values(value).every(IsJsonValue);
-}
-
-function IsJsonValue(value: unknown): value is NodeAssetJsonValue {
-    if (value === null || typeof value === "boolean" || typeof value === "string") {
-        return true;
-    }
-    if (typeof value === "number") {
-        return Number.isFinite(value);
-    }
-    if (Array.isArray(value)) {
-        return value.every(IsJsonValue);
-    }
-    return IsJsonObject(value);
-}
-
 function IsBlockSerialization(value: unknown): value is NodeAssetBlockSerialization {
-    return IsJsonObject(value) && typeof value.customType === "string" && typeof value.id === "number" && Number.isInteger(value.id) && typeof value.name === "string";
+    return (
+        IsNodeAssetJsonValue(value) &&
+        typeof value === "object" &&
+        value !== null &&
+        !Array.isArray(value) &&
+        typeof value.customType === "string" &&
+        typeof value.id === "number" &&
+        Number.isInteger(value.id) &&
+        typeof value.name === "string"
+    );
 }
 
 function IsConnectionSerialization(value: unknown): value is NodeAssetConnectionSerialization {
@@ -225,11 +234,22 @@ export function IsNodeAssetSerializedGraph(value: unknown): value is NodeAssetSe
     }
 
     const graph = value as Record<string, unknown>;
-    return (
-        typeof graph.name === "string" &&
-        Array.isArray(graph.blocks) &&
-        graph.blocks.every(IsBlockSerialization) &&
-        Array.isArray(graph.connections) &&
-        graph.connections.every(IsConnectionSerialization)
-    );
+    if (
+        typeof graph.name !== "string" ||
+        !Array.isArray(graph.blocks) ||
+        !graph.blocks.every(IsBlockSerialization) ||
+        !Array.isArray(graph.connections) ||
+        !graph.connections.every(IsConnectionSerialization)
+    ) {
+        return false;
+    }
+
+    const blockIds = new Set<number>();
+    for (const block of graph.blocks) {
+        if (blockIds.has(block.id)) {
+            return false;
+        }
+        blockIds.add(block.id);
+    }
+    return graph.connections.every((connection) => blockIds.has(connection.fromBlock) && blockIds.has(connection.toBlock));
 }

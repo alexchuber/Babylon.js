@@ -104,6 +104,9 @@ export class NodeAsset {
         const blocksById = new Map<number, NodeAssetBlock>();
         let maxId = 0;
         for (const blockData of serializationObject.blocks ?? []) {
+            if (blocksById.has(blockData.id)) {
+                throw new TypeError(`Invalid NodeAsset serialized graph: duplicate block id ${blockData.id}.`);
+            }
             const block = CreateBlockByClassName(blockData.customType, blockData.name, asset);
             block.uniqueId = blockData.id;
             block._deserialize(blockData);
@@ -118,13 +121,17 @@ export class NodeAsset {
             const fromBlock = blocksById.get(connection.fromBlock);
             const toBlock = blocksById.get(connection.toBlock);
             if (!fromBlock || !toBlock) {
-                continue;
+                throw new TypeError("Invalid NodeAsset serialized graph: a connection references a missing block.");
             }
             const fromPoint = fromBlock.outputs.find((point) => point.name === connection.fromPoint);
             const toPoint = toBlock.inputs.find((point) => point.name === connection.toPoint);
-            if (fromPoint && toPoint) {
-                fromPoint.connectTo(toPoint);
+            if (!fromPoint || !toPoint) {
+                throw new TypeError("Invalid NodeAsset serialized graph: a connection references an unknown point.");
             }
+            if (toPoint.isConnected) {
+                throw new TypeError("Invalid NodeAsset serialized graph: an input has more than one serialized source.");
+            }
+            fromPoint.connectTo(toPoint);
         }
 
         return asset;

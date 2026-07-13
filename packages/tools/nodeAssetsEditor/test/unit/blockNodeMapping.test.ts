@@ -10,9 +10,19 @@ import { BlockToNode, NodeIdForBlock, PointToPort, PortIdForPoint } from "../../
 class MappingTestBlock extends NodeAssetBlock {
     public static override ClassName = "MappingTestBlock";
 
-    public readonly scene = this._registerInput("scene", NodeAssetConnectionPointType.SCENE);
+    public readonly scene = this._registerInput("scene", NodeAssetConnectionPointType.GLTF_DOCUMENT);
     public readonly count = this._registerInput("count", NodeAssetConnectionPointType.NUMBER);
-    public readonly output = this._registerOutput("output", NodeAssetConnectionPointType.SCENE);
+    public readonly output = this._registerOutput("output", NodeAssetConnectionPointType.GLTF_DOCUMENT);
+
+    public override async _buildBlockAsync(): Promise<void> {}
+}
+
+class RepresentationMappingTestBlock extends NodeAssetBlock {
+    public static override ClassName = "RepresentationMappingTestBlock";
+
+    public readonly usd = this._registerOutput("usd", NodeAssetConnectionPointType.USD_STAGE);
+    public readonly babylon = this._registerOutput("babylon", NodeAssetConnectionPointType.BABYLON_SCENE);
+    public readonly nodeGeometry = this._registerOutput("nodeGeometry", NodeAssetConnectionPointType.NODE_GEOMETRY);
 
     public override async _buildBlockAsync(): Promise<void> {}
 }
@@ -42,7 +52,7 @@ describe("blockNodeMapping", () => {
 
         expect(PointToPort(block, block.scene)).toEqual({
             id: PortIdForPoint(block, block.scene),
-            name: "Scene",
+            name: "glTF Document",
             direction: "input",
             color: ScenePortColor,
         });
@@ -53,6 +63,15 @@ describe("blockNodeMapping", () => {
             color: NumberPortColor,
         });
         expect(PointToPort(block, block.output).direction).toBe("output");
+    });
+
+    it("maps every appended representation kind without an undefined style", () => {
+        const asset = new NodeAsset("representations");
+        const block = new RepresentationMappingTestBlock("block", asset);
+
+        expect(PointToPort(block, block.usd).name).toBe("USD Stage");
+        expect(PointToPort(block, block.babylon).name).toBe("Babylon Scene");
+        expect(PointToPort(block, block.nodeGeometry).name).toBe("Node Geometry");
     });
 
     it("builds a node with input ports before output ports", () => {

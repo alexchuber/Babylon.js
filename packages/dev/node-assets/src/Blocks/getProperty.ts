@@ -2,6 +2,7 @@ import { RegisterBlock } from "../blockFoundation/blockRegistry";
 import { NodeAssetBlock } from "../blockFoundation/nodeAssetBlock";
 import { type NodeAssetConnectionPoint } from "../connection/nodeAssetConnectionPoint";
 import { NodeAssetConnectionPointType } from "../connection/nodeAssetConnectionPointType";
+import { IsNodeAssetJsonValue } from "../connection/nodeAssetValueMap";
 import { type NodeAsset } from "../nodeAsset";
 import { GetGltfAsset } from "../representations/gltfAsset";
 import { ResolvePointerToAccessor } from "../selector/pointerToAccessor";
@@ -50,7 +51,11 @@ export class GetProperty extends NodeAssetBlock {
         const asset = GetGltfAsset(this.scene.value, this.scene.name);
 
         const accessor = ResolvePointerToAccessor(asset.document, this.pointer.value as string);
-        this.output.value = accessor.get();
+        const value = accessor.get();
+        if (accessor.type === "texture" || accessor.type === "image" || !IsNodeAssetJsonValue(value)) {
+            throw new Error(`The "${this.name}" GetProperty block resolved a value that is not JSON-compatible.`);
+        }
+        this.output.value = value;
     }
 }
 

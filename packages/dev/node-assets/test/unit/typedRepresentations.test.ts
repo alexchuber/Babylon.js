@@ -34,7 +34,15 @@ function CreateResolvedStage(): IResolvedStage {
             visible: true,
             children: [],
         },
-        meshes: [],
+        meshes: [
+            {
+                positions: new Float32Array([1, 2, 3]),
+                indices: new Uint32Array([0]),
+                subdivisionScheme: "none",
+                doubleSided: false,
+                orientation: "rightHanded",
+            },
+        ],
         materials: [],
         skeletons: [],
         diagnostics: [],
@@ -53,6 +61,7 @@ describe("typed representations", () => {
         expect(NodeAssetConnectionPointType.BABYLON_SCENE).toBe(6);
         expect(NodeAssetConnectionPointType.NODE_GEOMETRY).toBe(7);
         expect("REPRESENTATION" in NodeAssetConnectionPointType).toBe(false);
+        expect(NodeAssetConnectionPointType[NodeAssetConnectionPointType.GLTF_DOCUMENT]).toBe("GLTF_DOCUMENT");
     });
 
     it("correlates every kind with its concrete value type", () => {
@@ -97,13 +106,16 @@ describe("typed representations", () => {
             overlay,
         });
 
-        expect(asset.stage).toBe(stage);
+        expect(asset.stage).not.toBe(stage);
         expect(asset.overlay).toEqual(overlay);
         expect(Object.isFrozen(asset.stage)).toBe(true);
         expect(Object.isFrozen(asset.stage.root)).toBe(true);
         expect(Object.isFrozen(asset.stage.root.transform.translation)).toBe(true);
         expect(Object.isFrozen(asset.overlay)).toBe(true);
         expect(Object.isFrozen(asset.overlay["/World"])).toBe(true);
+        stage.meshes[0].positions[0] = 10;
+        asset.stage.meshes[0].positions[0] = 20;
+        expect(asset.stage.meshes[0].positions[0]).toBe(1);
         expect(IsUsdAsset(asset)).toBe(true);
         expect(IsUsdAsset(stage)).toBe(false);
     });

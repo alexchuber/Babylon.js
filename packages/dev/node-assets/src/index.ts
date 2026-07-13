@@ -3,7 +3,14 @@ export { NodeAssetBlock } from "./blockFoundation/nodeAssetBlock";
 export { NodeAssetConnectionPoint } from "./connection/nodeAssetConnectionPoint";
 export { NodeAssetConnectionPointDirection } from "./connection/nodeAssetConnectionPointDirection";
 export { NodeAssetConnectionPointType } from "./connection/nodeAssetConnectionPointType";
-export { type NodeAssetJsonArray, type NodeAssetJsonObject, type NodeAssetJsonPrimitive, type NodeAssetJsonValue, type NodeAssetValueMap } from "./connection/nodeAssetValueMap";
+export {
+    IsNodeAssetJsonValue,
+    type NodeAssetJsonArray,
+    type NodeAssetJsonObject,
+    type NodeAssetJsonPrimitive,
+    type NodeAssetJsonValue,
+    type NodeAssetValueMap,
+} from "./connection/nodeAssetValueMap";
 export { GetGltfAsset, GltfAsset, type IGltfAssetMetadata, IsGltfAsset } from "./representations/gltfAsset";
 export { type IUsdAssetMetadata, IsUsdAsset, UsdAsset } from "./representations/usdAsset";
 export { BabylonAsset, type IBabylonAssetMetadata, IsBabylonAsset } from "./representations/babylonAsset";

@@ -225,6 +225,22 @@ describe("SetProperty", () => {
         await expect(setter._buildBlockAsync()).rejects.toThrow(/out of range/);
     });
 
+    it("rejects texture accessors and non-JSON runtime values", async () => {
+        const { Document } = await import("@gltf-transform/core");
+        const document = new Document();
+        document.createMaterial("mat0");
+
+        const setter = new SetProperty("set", new NodeAsset("non-json"));
+        setter.scene.value = CreateTestGltfAsset(document);
+        setter.pointer.value = "/materials/0/pbrMetallicRoughness/baseColorTexture";
+        setter.value.value = null;
+        await expect(setter._buildBlockAsync()).rejects.toThrow(/JSON-compatible/);
+
+        setter.pointer.value = "/materials/0/extras/value";
+        setter.value.value = undefined;
+        await expect(setter._buildBlockAsync()).rejects.toThrow(/JSON-compatible/);
+    });
+
     it("throws when the input document is missing", async () => {
         const setter = new SetProperty("set", new NodeAsset("missing"));
         setter.pointer.value = "/materials/0/emissiveFactor";

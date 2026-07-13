@@ -155,6 +155,19 @@ describe("GetProperty", () => {
         await expect(getter._buildBlockAsync()).rejects.toThrow(/out of range/);
     });
 
+    it("rejects texture handles and missing extras values that cannot travel on a JSON port", async () => {
+        const asset = new NodeAsset("non-json");
+        const gltf = await ImportFixtureAsync(asset);
+        const getter = new GetProperty("get", asset);
+        getter.scene.value = gltf;
+
+        getter.pointer.value = "/materials/0/pbrMetallicRoughness/baseColorTexture";
+        await expect(getter._buildBlockAsync()).rejects.toThrow(/JSON-compatible/);
+
+        getter.pointer.value = "/materials/0/extras/missing";
+        await expect(getter._buildBlockAsync()).rejects.toThrow(/JSON-compatible/);
+    });
+
     it("throws when the input document is missing", async () => {
         const asset = new NodeAsset("missing");
         const getter = new GetProperty("get", asset);

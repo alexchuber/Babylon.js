@@ -3,6 +3,7 @@ import { describe, expect, expectTypeOf, it, vi } from "vitest";
 
 import { ExportGLTFBlock } from "../../src/Blocks/exportGLTFBlock";
 import { ImportGLTFBlock } from "../../src/Blocks/importGLTFBlock";
+import { MergeScenes } from "../../src/Blocks/mergeScenes";
 import { NodeAsset } from "../../src/nodeAsset";
 import { type NodeAssetSerializedGraph } from "../../src/serialization/nodeAssetSerialization";
 
@@ -73,6 +74,70 @@ describe("serialized graph schema", () => {
         { name: "invalid", blocks: [{ customType: "ImportGLTFBlock", id: "1", name: "import" }], connections: [] },
         { name: "invalid", blocks: [], connections: [{ fromBlock: 1 }] },
     ])("rejects invalid raw input safely", (rawGraph) => {
+        expect(() => NodeAsset.Parse(rawGraph)).toThrow("Invalid NodeAsset serialized graph");
+    });
+
+    it.each([-1, 1.5, 257])("rejects unsafe MergeScenes input counts", (inputCount) => {
+        expect(() =>
+            NodeAsset.Parse({
+                name: "invalid-merge",
+                blocks: [{ customType: MergeScenes.ClassName, id: 1, name: "merge", inputCount }],
+                connections: [],
+            })
+        ).toThrow("Invalid serialized block property");
+    });
+
+    it.each([
+        {
+            name: "duplicate-ids",
+            blocks: [
+                { customType: ImportGLTFBlock.ClassName, id: 1, name: "a", data: null, source: null },
+                { customType: ExportGLTFBlock.ClassName, id: 1, name: "b" },
+            ],
+            connections: [],
+        },
+        {
+            name: "missing-block",
+            blocks: [{ customType: ImportGLTFBlock.ClassName, id: 1, name: "a", data: null, source: null }],
+            connections: [{ fromBlock: 1, fromPoint: "output", toBlock: 2, toPoint: "input" }],
+        },
+        {
+            name: "missing-point",
+            blocks: [
+                { customType: ImportGLTFBlock.ClassName, id: 1, name: "a", data: null, source: null },
+                { customType: ExportGLTFBlock.ClassName, id: 2, name: "b" },
+            ],
+            connections: [{ fromBlock: 1, fromPoint: "not-output", toBlock: 2, toPoint: "input" }],
+        },
+        {
+            name: "multiple-sources",
+            blocks: [
+                { customType: ImportGLTFBlock.ClassName, id: 1, name: "a", data: null, source: null },
+                { customType: ImportGLTFBlock.ClassName, id: 2, name: "b", data: null, source: null },
+                { customType: ExportGLTFBlock.ClassName, id: 3, name: "out" },
+            ],
+            connections: [
+                { fromBlock: 1, fromPoint: "output", toBlock: 3, toPoint: "input" },
+                { fromBlock: 2, fromPoint: "output", toBlock: 3, toPoint: "input" },
+            ],
+        },
+    ])("rejects structurally lossy graph relationships", (rawGraph) => {
+        expect(() => NodeAsset.Parse(rawGraph)).toThrow("Invalid NodeAsset serialized graph");
+    });
+
+    it("rejects cyclic unknown input without recursing indefinitely", () => {
+        const cyclicBlock: { customType: string; id: number; name: string; cycle?: unknown } = {
+            customType: ImportGLTFBlock.ClassName,
+            id: 1,
+            name: "import",
+        };
+        cyclicBlock.cycle = cyclicBlock;
+        const rawGraph = {
+            name: "cyclic",
+            blocks: [cyclicBlock],
+            connections: [],
+        };
+
         expect(() => NodeAsset.Parse(rawGraph)).toThrow("Invalid NodeAsset serialized graph");
     });
 });
