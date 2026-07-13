@@ -1,6 +1,7 @@
 export { NodeAsset } from "./nodeAsset";
 export { BuildFanOutError } from "./evaluation/fanOutCopy";
 export {
+    BuildResourceIdentities,
     BuildCancelledError,
     BuildConfigurationError,
     BuildLimitError,
@@ -15,7 +16,9 @@ export {
     type IBuildResource,
     type INodeAssetBuildLimits,
     type INodeAssetBuildOptions,
+    type INodeAssetBuildReport,
     type IResolvedDiagnosticLossContext,
+    GetNodeAssetBuildReport,
     type LossDisposition,
     type LossRecord,
     type NodeAssetBuildResult,

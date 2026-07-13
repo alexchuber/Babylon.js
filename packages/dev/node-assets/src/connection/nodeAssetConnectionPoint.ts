@@ -37,7 +37,10 @@ export class NodeAssetConnectionPoint {
 
     private readonly _connectedPoints: NodeAssetConnectionPoint[] = [];
 
-    /** The runtime payload, resolved during {@link NodeAsset.buildAsync}. */
+    /**
+     * The runtime payload. {@link NodeAsset.buildAsync} clears values it uses after build-owned
+     * resources are disposed; direct block callers retain values they assign.
+     */
     public value: unknown = null;
 
     /**

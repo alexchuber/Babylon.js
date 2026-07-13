@@ -3,7 +3,7 @@ import { describe, expect, it } from "vitest";
 import { NodeAssetBlock } from "../../src/blockFoundation/nodeAssetBlock";
 import { type NodeAssetConnectionPoint } from "../../src/connection/nodeAssetConnectionPoint";
 import { NodeAssetConnectionPointType } from "../../src/connection/nodeAssetConnectionPointType";
-import { BuildCancelledError, type BuildScope } from "../../src/evaluation/buildScope";
+import { BuildCancelledError, BuildScope, GetNodeAssetBuildReport } from "../../src/evaluation/buildScope";
 import { NodeAsset } from "../../src/nodeAsset";
 
 class CountingSourceBlock extends NodeAssetBlock {
@@ -29,6 +29,33 @@ class BytesExportBlock extends NodeAssetBlock {
 
     public override async _buildBlockAsync(): Promise<void> {
         this.evaluations++;
+        this.result = (this.input.value as { data: Uint8Array }).data;
+    }
+}
+
+class QueueBlockingBytesExportBlock extends BytesExportBlock {
+    public readonly entered: Promise<void>;
+    public release: () => void = () => {};
+
+    private readonly _markEntered: () => void;
+    private readonly _releaseBuild: Promise<void>;
+
+    public constructor(name: string, nodeAsset: NodeAsset) {
+        super(name, nodeAsset);
+        let markEntered = () => {};
+        this.entered = new Promise<void>((resolve) => {
+            markEntered = resolve;
+        });
+        this._markEntered = markEntered;
+        this._releaseBuild = new Promise<void>((resolve) => {
+            this.release = resolve;
+        });
+    }
+
+    public override async _buildBlockAsync(): Promise<void> {
+        this.evaluations++;
+        this._markEntered();
+        await this._releaseBuild;
         this.result = (this.input.value as { data: Uint8Array }).data;
     }
 }
@@ -62,6 +89,59 @@ class WaitingResourceSourceBlock extends NodeAssetBlock {
         this._markStarted();
         await WaitForAbortAsync(scope!.signal);
         scope!.throwIfAborted();
+    }
+}
+
+class NativeAbortSourceBlock extends NodeAssetBlock {
+    public readonly output = this._registerOutput("output", NodeAssetConnectionPointType.IMAGE);
+    public readonly started: Promise<void>;
+    public createAbortError: () => Error = () => new DOMException("The native operation was aborted.", "AbortError");
+
+    private _markStarted: () => void = () => {};
+
+    public constructor(name: string, nodeAsset: NodeAsset) {
+        super(name, nodeAsset);
+        this.started = new Promise<void>((resolve) => {
+            this._markStarted = resolve;
+        });
+    }
+
+    public override async _buildBlockAsync(scope?: BuildScope): Promise<void> {
+        this._markStarted();
+        await scope!.runAbortableAsync(
+            async () =>
+                await new Promise<void>((_resolve, reject) => {
+                    const rejectAbort = () => reject(this.createAbortError());
+                    if (scope!.signal.aborted) {
+                        rejectAbort();
+                    } else {
+                        scope!.signal.addEventListener("abort", rejectAbort, { once: true });
+                    }
+                })
+        );
+    }
+}
+
+class ScopeNormalizedAbortSourceBlock extends NodeAssetBlock {
+    public readonly output = this._registerOutput("output", NodeAssetConnectionPointType.NODE_GEOMETRY);
+    public readonly started: Promise<void>;
+    private _markStarted: () => void = () => {};
+
+    public constructor(name: string, nodeAsset: NodeAsset) {
+        super(name, nodeAsset);
+        this.started = new Promise<void>((resolve) => {
+            this._markStarted = resolve;
+        });
+    }
+
+    public override async _buildBlockAsync(scope?: BuildScope): Promise<void> {
+        this._markStarted();
+        await scope!.runAbortableAsync(
+            async () =>
+                await new Promise<void>((_resolve, reject) => {
+                    scope!.signal.addEventListener("abort", () => reject(new DOMException("The native operation was aborted.", "AbortError")), { once: true });
+                })
+        );
     }
 }
 
@@ -211,6 +291,42 @@ async function WaitForAbortAsync(signal: AbortSignal): Promise<void> {
 }
 
 describe("build scope cancellation", () => {
+    it("promptly cancels a queued build without evaluating any of its blocks", async () => {
+        const asset = new NodeAsset("queued cancellation");
+        const source = new CountingSourceBlock("source", asset);
+        const exporter = new QueueBlockingBytesExportBlock("export", asset);
+        source.output.connectTo(exporter.input);
+        const firstBuild = asset.buildAsync();
+        await exporter.entered;
+
+        const controller = new AbortController();
+        const queuedBuild = asset.buildAsync(controller.signal).catch((error: unknown) => error);
+        await new Promise<void>((resolve) => {
+            setTimeout(resolve, 0);
+        });
+        controller.abort("queued caller stopped");
+        const outcome = await Promise.race([
+            queuedBuild,
+            new Promise<"timed out">((resolve) => {
+                setTimeout(() => resolve("timed out"), 25);
+            }),
+        ]);
+
+        expect(outcome).toBeInstanceOf(BuildCancelledError);
+        expect(source.evaluations).toBe(1);
+        expect(exporter.evaluations).toBe(1);
+
+        exporter.release();
+        await expect(firstBuild).resolves.toBeInstanceOf(Uint8Array);
+        await Promise.resolve();
+        expect(source.evaluations).toBe(1);
+        expect(exporter.evaluations).toBe(1);
+
+        await expect(asset.buildAsync()).resolves.toBeInstanceOf(Uint8Array);
+        expect(source.evaluations).toBe(2);
+        expect(exporter.evaluations).toBe(2);
+    });
+
     it("evaluates zero blocks when the caller signal is already aborted", async () => {
         const asset = new NodeAsset("pre-aborted");
         const source = new CountingSourceBlock("source", asset);
@@ -245,6 +361,65 @@ describe("build scope cancellation", () => {
 
         expect(outcome).toBeInstanceOf(BuildCancelledError);
         expect(source.resource.disposeCalls).toBe(1);
+    });
+
+    it("normalizes a caller-triggered native AbortError to the build cancellation error", async () => {
+        const asset = new NodeAsset("native caller cancellation");
+        const source = new NativeAbortSourceBlock("native source", asset);
+        const exporter = new BytesExportBlock("export", asset);
+        source.output.connectTo(exporter.input);
+        const controller = new AbortController();
+
+        const build = asset.buildAsync(controller.signal).catch((error: unknown) => error);
+        await source.started;
+        controller.abort("caller stopped native work");
+        const error = await build;
+
+        expect(error).toBeInstanceOf(BuildCancelledError);
+        expect(error).toMatchObject({
+            code: "NODE_ASSET_BUILD_CANCELLED",
+            reason: "caller stopped native work",
+        });
+        expect(GetNodeAssetBuildReport(error)).toEqual({
+            diagnostics: [],
+            lossRecords: [],
+        });
+        expect(source.output.value).toBeNull();
+        expect(exporter.input.value).toBeNull();
+    });
+
+    it("normalizes a caller-triggered non-DOM AbortError to the build cancellation error", async () => {
+        const asset = new NodeAsset("node native caller cancellation");
+        const source = new NativeAbortSourceBlock("native source", asset);
+        source.createAbortError = () => Object.assign(new Error("The Node operation was aborted."), { name: "AbortError" });
+        const exporter = new BytesExportBlock("export", asset);
+        source.output.connectTo(exporter.input);
+        const controller = new AbortController();
+
+        const build = asset.buildAsync(controller.signal).catch((error: unknown) => error);
+        await source.started;
+        controller.abort("caller stopped Node work");
+        const error = await build;
+
+        expect(error).toBeInstanceOf(BuildCancelledError);
+        expect(error).toMatchObject({
+            code: "NODE_ASSET_BUILD_CANCELLED",
+            reason: "caller stopped Node work",
+        });
+    });
+
+    it("preserves an independent AbortError that settles before caller cancellation", async () => {
+        const controller = new AbortController();
+        const scope = new BuildScope({ signal: controller.signal });
+        const independent = new DOMException("independent", "AbortError");
+
+        const operation = scope.runAbortableAsync(async () => {
+            throw independent;
+        });
+        controller.abort("caller stopped after rejection");
+
+        await expect(operation).rejects.toBe(independent);
+        await scope.disposeAsync();
     });
 
     it("awaits a non-cooperative terminal export, then rejects caller cancellation and cleans up", async () => {
@@ -314,6 +489,39 @@ describe("build scope cancellation", () => {
         await expect(build).rejects.toBe(firstError);
         expect(first.settled).toBe(true);
         expect(second.settled).toBe(true);
+    });
+
+    it("keeps an earlier input's independent AbortError primary after a later input aborts the scope", async () => {
+        const asset = new NodeAsset("deterministic abort-error primary");
+        const first = new ControlledFatalSourceBlock("first", asset);
+        const second = new ControlledFatalSourceBlock("second", asset);
+        const exporter = new ResourcePairExportBlock("export", asset);
+        first.output.connectTo(exporter.inputA);
+        second.output.connectTo(exporter.inputB);
+        first.error = new DOMException("first input aborted independently", "AbortError");
+        second.error = new Error("second input failure");
+
+        const build = asset.buildAsync();
+        await Promise.all([first.started, second.started]);
+        second.fail();
+        await Promise.resolve();
+        first.fail();
+
+        await expect(build).rejects.toBe(first.error);
+        expect(first.settled).toBe(true);
+        expect(second.settled).toBe(true);
+    });
+
+    it("keeps the real fatal primary when an earlier native operation rejects because the scope aborted it", async () => {
+        const asset = new NodeAsset("scope-caused native abort");
+        const native = new ScopeNormalizedAbortSourceBlock("native", asset);
+        const fatal = new FatalSourceBlock("fatal", asset);
+        fatal.siblingStarted = native.started;
+        const exporter = new ResourcePairExportBlock("export", asset);
+        native.output.connectTo(exporter.inputA);
+        fatal.output.connectTo(exporter.inputB);
+
+        await expect(asset.buildAsync()).rejects.toBe(fatal.error);
     });
 
     it("treats an independent AbortError as fatal and aborts its started sibling", async () => {

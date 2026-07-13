@@ -34,8 +34,8 @@ export function PortIdForPoint(block: NodeAssetBlock, point: NodeAssetConnection
     return `port-${block.uniqueId}-${direction}-${point.name}`;
 }
 
-/** Per-kind port label and dot color, so each connection-point type renders distinctly. */
-const PortStyleByType: Record<NodeAssetConnectionPointType, { readonly name: string; readonly color: string }> = {
+/** Per-kind port label and dot color for connection-point types currently supported by the editor. */
+const PortStyleByType: Partial<Record<NodeAssetConnectionPointType, { readonly name: string; readonly color: string }>> = {
     [NodeAssetConnectionPointType.GLTF_DOCUMENT]: { name: "glTF Document", color: ScenePortColor },
     [NodeAssetConnectionPointType.NUMBER]: { name: "Number", color: NumberPortColor },
     [NodeAssetConnectionPointType.STRING]: { name: "String", color: StringPortColor },
@@ -54,6 +54,9 @@ const PortStyleByType: Record<NodeAssetConnectionPointType, { readonly name: str
  */
 export function PointToPort(block: NodeAssetBlock, point: NodeAssetConnectionPoint): IGraphPort {
     const style = PortStyleByType[point.type];
+    if (!style) {
+        throw new Error(`Connection point type "${NodeAssetConnectionPointType[point.type] ?? point.type}" is not supported by the Node Assets Editor.`);
+    }
     return {
         id: PortIdForPoint(block, point),
         // The port name is purely cosmetic (wires are mapped by id), so show the type.

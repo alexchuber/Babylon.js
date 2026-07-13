@@ -2,6 +2,7 @@ import { type Document } from "@gltf-transform/core";
 import { cloneDocument } from "@gltf-transform/functions";
 
 import { type NodeAssetJsonObject } from "../connection/nodeAssetValueMap";
+import { BuildResourceIdentities } from "../evaluation/buildScope";
 import { ValidateAndFreezeAssetMetadata } from "./immutableMetadata";
 
 /** Immutable caller-supplied metadata for a {@link GltfAsset}. */
@@ -24,6 +25,8 @@ export class GltfAsset {
     public readonly revision: number;
     /** Deeply frozen representation facts. */
     public readonly manifest: Readonly<NodeAssetJsonObject>;
+    /** The live document identity exclusively owned by this wrapper during a build. */
+    public readonly [BuildResourceIdentities]: ReadonlyArray<object>;
 
     private _isDisposed = false;
 
@@ -38,6 +41,7 @@ export class GltfAsset {
         this.identity = validatedMetadata.identity;
         this.revision = validatedMetadata.revision;
         this.manifest = validatedMetadata.manifest;
+        this[BuildResourceIdentities] = Object.freeze([document]);
     }
 
     /** Whether this representation was released by its build scope. */

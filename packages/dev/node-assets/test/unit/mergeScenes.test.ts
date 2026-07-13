@@ -80,9 +80,9 @@ async function ReimportAsync(glb: Uint8Array): Promise<Document> {
  * Wires an import block for each glb into a MergeScenes block, whose output feeds an export block, then
  * builds the asset and re-imports the exported result.
  * @param glbs - The source glbs, one per merge input.
- * @returns The re-imported merged `Document`, the asset, and the import blocks (to check sources).
+ * @returns The re-imported merged `Document`, the asset, import blocks, and source documents captured before cleanup.
  */
-async function MergeGlbsAsync(glbs: Uint8Array[]): Promise<{ merged: Document; asset: NodeAsset; imports: ImportGLTFBlock[] }> {
+async function MergeGlbsAsync(glbs: Uint8Array[]): Promise<{ merged: Document; asset: NodeAsset; imports: ImportGLTFBlock[]; sources: Document[] }> {
     const asset = new NodeAsset("merge");
     const merge = new MergeScenes("merge", asset);
     while (merge.inputs.length < glbs.length) {
@@ -98,10 +98,16 @@ async function MergeGlbsAsync(glbs: Uint8Array[]): Promise<{ merged: Document; a
 
     const exporter = new ExportGLTFBlock("export", asset);
     merge.output.connectTo(exporter.input);
+    let sources: Document[] = [];
+    const buildExportAsync = exporter._buildBlockAsync;
+    vi.spyOn(exporter, "_buildBlockAsync").mockImplementation(async () => {
+        sources = imports.map((importer) => GetTestGltfDocument(importer.output.value));
+        await buildExportAsync.call(exporter);
+    });
 
     const glb = await asset.buildAsync();
     const merged = await ReimportAsync(glb);
-    return { merged, asset, imports };
+    return { merged, asset, imports, sources };
 }
 
 describe("MergeScenes", () => {
@@ -203,11 +209,10 @@ describe("MergeScenes", () => {
         const glbA = await CreateGlbAsync("a", [1, 0, 0, 1]);
         const glbB = await CreateGlbAsync("b", [0, 1, 0, 1]);
 
-        const { imports } = await MergeGlbsAsync([glbA, glbB]);
+        const { sources } = await MergeGlbsAsync([glbA, glbB]);
 
         // mergeDocuments copies each source into the target, so each source is left exactly as imported.
-        for (const importer of imports) {
-            const source = GetTestGltfDocument(importer.output.value);
+        for (const source of sources) {
             expect(source.getRoot().listNodes()).toHaveLength(1);
             expect(source.getRoot().listMeshes()).toHaveLength(1);
             expect(source.getRoot().listMaterials()).toHaveLength(1);

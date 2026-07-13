@@ -1,5 +1,7 @@
 import { type IResolvedDiagnostic, type ResolvedDiagnosticSeverity } from "loaders/USD/resolution/resolvedStage";
 
+import { type NodeAssetConnectionPoint } from "../connection/nodeAssetConnectionPoint";
+
 /** Configurable ceilings enforced by one build scope. Equality is allowed; only exceeding fails. */
 export interface INodeAssetBuildLimits {
     /** Maximum bytes accepted from any one source block. */
@@ -18,6 +20,16 @@ export interface INodeAssetBuildOptions {
     readonly signal?: AbortSignal;
     /** Partial ceilings; omitted values use behavior-safe defaults. */
     readonly limits?: Partial<INodeAssetBuildLimits>;
+}
+
+/**
+ * Immutable diagnostics retained for a settled build that rejected.
+ */
+export interface INodeAssetBuildReport {
+    /** Non-fatal diagnostics produced before the build rejected, including cleanup failures. */
+    readonly diagnostics: ReadonlyArray<IBuildDiagnostic>;
+    /** Canonical loss records produced before the build rejected. */
+    readonly lossRecords: ReadonlyArray<LossRecord>;
 }
 
 /** Raised when a configured build limit is not finite, non-negative, or count-safe. */
@@ -128,10 +140,15 @@ export interface IResolvedDiagnosticLossContext {
     readonly tags?: ReadonlyArray<string>;
 }
 
+/** Identifies additional object identities exclusively owned by a build-resource wrapper. */
+export const BuildResourceIdentities = Symbol("NodeAssetBuildResourceIdentities");
+
 /** A build-owned value that releases resources synchronously or asynchronously. */
 export interface IBuildResource {
     /** Whether the resource was already disposed before registration. */
     readonly isDisposed?: boolean;
+    /** Additional underlying object identities that this wrapper exclusively owns. */
+    readonly [BuildResourceIdentities]?: ReadonlyArray<object>;
     /** Releases resources owned by this value. */
     dispose(): void | Promise<void>;
 }
@@ -162,10 +179,12 @@ interface IResourceOwnership {
 
 interface IBuildResourceEntry {
     readonly resource: IBuildResource & object;
+    readonly identities: ReadonlyArray<object>;
     readonly producer?: IBuildDiagnosticProducer;
 }
 
 const ResourceOwnership = new WeakMap<object, IResourceOwnership>();
+const BuildReports = new WeakMap<object, INodeAssetBuildReport>();
 const DefaultBuildLimits: INodeAssetBuildLimits = Object.freeze({
     maxSourceAssetBytes: Number.MAX_SAFE_INTEGER,
     maxTotalSourceBytes: Number.MAX_SAFE_INTEGER,
@@ -194,6 +213,7 @@ export class BuildCancelledError extends Error {
 /** Owns diagnostics and other per-build state for one {@link NodeAsset.buildAsync} call. */
 export class BuildScope {
     private readonly _abortController = new AbortController();
+    private readonly _connectionPoints = new Set<NodeAssetConnectionPoint>();
     private readonly _diagnostics: IBuildDiagnostic[] = [];
     private readonly _limits: INodeAssetBuildLimits;
     private readonly _lossRecords: LossRecord[] = [];
@@ -263,7 +283,7 @@ export class BuildScope {
      * @param diagnostic The diagnostic to collect.
      */
     public addDiagnostic(diagnostic: IBuildDiagnostic): void {
-        this._diagnostics.push(Object.freeze({ ...diagnostic }));
+        this._diagnostics.push(FreezeBuildDiagnostic(diagnostic));
     }
 
     /**
@@ -273,19 +293,20 @@ export class BuildScope {
      * @returns The collected loss record.
      */
     public addResolvedDiagnostic(diagnostic: IResolvedDiagnostic, context: IResolvedDiagnosticLossContext): LossRecord {
+        const producer = FreezeBuildDiagnosticProducer(context.producer);
         const buildDiagnostic: IBuildDiagnostic = Object.freeze({
             code: context.code,
             severity: diagnostic.severity,
             message: diagnostic.message,
             path: diagnostic.path,
-            producer: context.producer,
+            producer,
         });
         const lossRecord: LossRecord = Object.freeze({
             ...buildDiagnostic,
             disposition: context.disposition,
             sourceRepresentation: context.sourceRepresentation,
             targetRepresentation: context.targetRepresentation,
-            producer: context.producer,
+            producer,
             tags: context.tags ? Object.freeze([...context.tags]) : undefined,
         });
         this._diagnostics.push(buildDiagnostic);
@@ -303,6 +324,55 @@ export class BuildScope {
         }
         if (this.signal.aborted) {
             throw this.signal.reason;
+        }
+    }
+
+    /**
+     * Runs an operation that cooperatively uses this scope's signal. The scope's abort listener is
+     * installed before the operation starts, so a scope-caused abort is branded without inferring
+     * causality from an error name after the fact. All started operation work is still awaited.
+     * @param operation The abortable operation to run.
+     * @returns The operation result.
+     */
+    public async runAbortableAsync<T>(operation: () => Promise<T>): Promise<T> {
+        this.throwIfAborted();
+        let markAborted = () => {};
+        const abortRequested = new Promise<void>((resolve) => {
+            markAborted = resolve;
+            this.signal.addEventListener("abort", markAborted, { once: true });
+        });
+        // Give operation settlement and abort notification equivalent promise depth so their actual
+        // ordering, rather than an extra reaction hop, decides the race.
+        // eslint-disable-next-line github/no-then
+        const aborted = abortRequested.then(() => "aborted" as const);
+        let operationPromise: Promise<T>;
+        try {
+            operationPromise = operation();
+        } catch (error) {
+            this.signal.removeEventListener("abort", markAborted);
+            throw error;
+        }
+        // eslint-disable-next-line github/no-then
+        const settled = operationPromise.then(
+            (value) => ({ status: "fulfilled" as const, value }),
+            (reason: unknown) => ({ status: "rejected" as const, reason })
+        );
+        try {
+            const first = await Promise.race([settled, aborted]);
+            if (first !== "aborted") {
+                if (first.status === "rejected") {
+                    throw first.reason;
+                }
+                return first.value;
+            }
+
+            const final = await settled;
+            if (final.status === "rejected" && !IsAbortError(final.reason)) {
+                throw final.reason;
+            }
+            throw this.signal.reason;
+        } finally {
+            this.signal.removeEventListener("abort", markAborted);
         }
     }
 
@@ -349,7 +419,13 @@ export class BuildScope {
      * @returns Whether the value represents cancellation rather than a primary fatal failure.
      */
     public isCancellationError(error: unknown): boolean {
-        return this.signal.aborted && (error instanceof BuildCancelledError || (error instanceof DOMException && error.name === "AbortError"));
+        if (!this.signal.aborted) {
+            return false;
+        }
+        if (error === this.signal.reason || error instanceof BuildCancelledError) {
+            return true;
+        }
+        return false;
     }
 
     /**
@@ -370,13 +446,50 @@ export class BuildScope {
         if (this._registeredResources.has(value)) {
             return;
         }
-        if (ownership) {
-            throw new BuildResourceOwnershipError("NODE_ASSET_RESOURCE_OWNED", "A build resource cannot be shared by concurrent build scopes.");
+        const identities = [...new Set<object>([value, ...(value[BuildResourceIdentities] ?? [])])];
+        for (const identity of identities) {
+            const identityOwnership = ResourceOwnership.get(identity);
+            if (identityOwnership?.disposed) {
+                throw new BuildResourceOwnershipError("NODE_ASSET_RESOURCE_STALE", "A disposed underlying build resource cannot be reused by the same or a later build.");
+            }
+            if (identityOwnership) {
+                throw new BuildResourceOwnershipError("NODE_ASSET_RESOURCE_OWNED", "An underlying build resource cannot be shared by concurrent build scopes.");
+            }
         }
 
         this._registeredResources.add(value);
-        ResourceOwnership.set(value, { disposed: false });
-        this._resources.push({ resource: value, producer });
+        for (const identity of identities) {
+            ResourceOwnership.set(identity, { disposed: false });
+        }
+        this._resources.push({ resource: value, identities, producer });
+    }
+
+    /**
+     * Tracks a connection point whose transient value belongs to this build.
+     * @param point The connection point used while evaluating the graph.
+     * @internal
+     */
+    public _registerConnectionPoint(point: NodeAssetConnectionPoint): void {
+        this._connectionPoints.add(point);
+    }
+
+    /**
+     * Retains this build's immutable post-cleanup report for an object thrown to the caller.
+     * Primitive thrown values intentionally remain unchanged and cannot carry a report.
+     * @param error The exact value that will be thrown.
+     * @internal
+     */
+    public _attachReport(error: unknown): void {
+        if (!IsObject(error)) {
+            return;
+        }
+        BuildReports.set(
+            error,
+            Object.freeze({
+                diagnostics: Object.freeze([...this._diagnostics]),
+                lossRecords: Object.freeze([...this._lossRecords]),
+            })
+        );
     }
 
     /**
@@ -420,6 +533,10 @@ export class BuildScope {
                 this._wallClockTimer = undefined;
             }
             this._resources.length = 0;
+            for (const point of this._connectionPoints) {
+                point.value = null;
+            }
+            this._connectionPoints.clear();
         }
     }
 
@@ -450,7 +567,7 @@ export class BuildScope {
     }
 }
 
-/** Existing export bytes augmented in place with immutable, non-enumerable build metadata. */
+/** Export bytes augmented with immutable, non-enumerable build metadata. */
 export type NodeAssetBuildResult = Uint8Array & {
     /** Non-fatal diagnostics produced by the build. */
     readonly diagnostics: ReadonlyArray<IBuildDiagnostic>;
@@ -459,16 +576,17 @@ export type NodeAssetBuildResult = Uint8Array & {
 };
 
 /**
- * Attaches build metadata without copying fresh terminal bytes. If a later build reuses bytes that
- * already carry metadata, it copies them so each result keeps immutable per-build metadata.
+ * Attaches build metadata without copying fresh extensible terminal bytes. Non-extensible bytes and
+ * bytes that already carry metadata are copied with a base typed-array constructor so Buffer-like
+ * slice semantics cannot retain shared storage.
  * @param bytes The terminal export bytes.
  * @param diagnostics Non-fatal build diagnostics.
  * @param lossRecords Representation loss records.
- * @returns The fresh Uint8Array, or a copy of reused bytes, augmented with readonly build metadata.
+ * @returns The original fresh extensible bytes, or an independent copy, with readonly build metadata.
  */
 export function CreateNodeAssetBuildResult(bytes: Uint8Array, diagnostics: ReadonlyArray<IBuildDiagnostic>, lossRecords: ReadonlyArray<LossRecord>): NodeAssetBuildResult {
     const hasBuildMetadata = Object.prototype.hasOwnProperty.call(bytes, "diagnostics") || Object.prototype.hasOwnProperty.call(bytes, "lossRecords");
-    const result = hasBuildMetadata ? bytes.slice() : bytes;
+    const result = hasBuildMetadata || !Object.isExtensible(bytes) ? new Uint8Array(bytes) : bytes;
     Object.defineProperties(result, {
         diagnostics: {
             configurable: false,
@@ -486,8 +604,34 @@ export function CreateNodeAssetBuildResult(bytes: Uint8Array, diagnostics: Reado
     return result as NodeAssetBuildResult;
 }
 
+/**
+ * Gets the immutable diagnostics retained for a failed build without modifying or replacing its
+ * primary thrown object.
+ * @param error The value rejected by {@link NodeAsset.buildAsync}.
+ * @returns The build report for an object error, or `undefined` for unrelated or primitive values.
+ */
+export function GetNodeAssetBuildReport(error: unknown): INodeAssetBuildReport | undefined {
+    return IsObject(error) ? BuildReports.get(error) : undefined;
+}
+
 function IsBuildResource(value: unknown): value is IBuildResource & object {
     return typeof value === "object" && value !== null && "dispose" in value && typeof value.dispose === "function";
+}
+
+function IsObject(value: unknown): value is object {
+    return (typeof value === "object" && value !== null) || typeof value === "function";
+}
+
+function IsAbortError(value: unknown): value is Error {
+    return (value instanceof Error || value instanceof DOMException) && value.name === "AbortError";
+}
+
+function FreezeBuildDiagnostic(diagnostic: IBuildDiagnostic): IBuildDiagnostic {
+    return diagnostic.producer ? Object.freeze({ ...diagnostic, producer: FreezeBuildDiagnosticProducer(diagnostic.producer) }) : Object.freeze({ ...diagnostic });
+}
+
+function FreezeBuildDiagnosticProducer(producer: IBuildDiagnosticProducer): IBuildDiagnosticProducer {
+    return Object.freeze({ ...producer });
 }
 
 function GetErrorMessage(error: unknown): string {

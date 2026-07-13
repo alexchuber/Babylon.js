@@ -1,10 +1,15 @@
-import { describe, expect, it } from "vitest";
+import { NullEngine } from "core/Engines/nullEngine";
+import { NodeGeometry } from "core/Meshes/Node/nodeGeometry";
+import { Scene } from "core/scene";
+import { describe, expect, it, vi } from "vitest";
 
 import { NodeAssetBlock } from "../../src/blockFoundation/nodeAssetBlock";
 import { type NodeAssetConnectionPoint } from "../../src/connection/nodeAssetConnectionPoint";
 import { NodeAssetConnectionPointType } from "../../src/connection/nodeAssetConnectionPointType";
-import { BuildLimitError, BuildResourceOwnershipError, type BuildScope } from "../../src/evaluation/buildScope";
+import { BuildLimitError, BuildResourceOwnershipError, GetNodeAssetBuildReport, type BuildScope } from "../../src/evaluation/buildScope";
 import { NodeAsset } from "../../src/nodeAsset";
+import { BabylonAsset } from "../../src/representations/babylonAsset";
+import { NodeGeometryAsset } from "../../src/representations/nodeGeometryAsset";
 
 class TrackedResource {
     public disposeCalls = 0;
@@ -55,6 +60,68 @@ class BlockingCleanupResource extends TrackedResource {
         await this._releaseCleanup;
         this.events.push("dispose");
         this.isDisposed = true;
+    }
+}
+
+class SequencedResource extends TrackedResource {
+    public constructor(
+        public readonly id: number,
+        events: string[]
+    ) {
+        super(events);
+    }
+}
+
+class SequencedResourceSourceBlock extends NodeAssetBlock {
+    public readonly output = this._registerOutput("output", NodeAssetConnectionPointType.NODE_GEOMETRY);
+    public readonly resources: SequencedResource[] = [];
+
+    public override async _buildBlockAsync(): Promise<void> {
+        const resource = new SequencedResource(this.resources.length + 1, []);
+        this.resources.push(resource);
+        this.output.value = resource;
+    }
+}
+
+class OverlappingResourceExportBlock extends NodeAssetBlock {
+    public readonly isExportTerminal = true;
+    public readonly input: NodeAssetConnectionPoint;
+    public readonly firstBuildEntered: Promise<void>;
+    public result: Uint8Array | null = null;
+
+    private _evaluations = 0;
+    private readonly _markFirstBuildEntered: () => void;
+    private readonly _releaseFirstBuild: Promise<void>;
+    private _release: () => void = () => {};
+
+    public constructor(name: string, nodeAsset: NodeAsset) {
+        super(name, nodeAsset);
+        this.input = this._registerInput("input", NodeAssetConnectionPointType.NODE_GEOMETRY);
+        let markFirstBuildEntered = () => {};
+        this.firstBuildEntered = new Promise<void>((resolve) => {
+            markFirstBuildEntered = resolve;
+        });
+        this._markFirstBuildEntered = markFirstBuildEntered;
+        this._releaseFirstBuild = new Promise<void>((resolve) => {
+            this._release = resolve;
+        });
+    }
+
+    public releaseFirstBuild(): void {
+        this._release();
+    }
+
+    public override async _buildBlockAsync(): Promise<void> {
+        this._evaluations++;
+        if (this._evaluations === 1) {
+            this._markFirstBuildEntered();
+            await this._releaseFirstBuild;
+        } else {
+            this._release();
+            await Promise.resolve();
+        }
+        const resource = this.input.value as SequencedResource;
+        this.result = new Uint8Array([resource.id]);
     }
 }
 
@@ -126,6 +193,60 @@ class DisposingPassThroughBlock extends NodeAssetBlock {
     }
 }
 
+class OwnedWrapperSourceBlock extends NodeAssetBlock {
+    public readonly output = this._registerOutput("output", NodeAssetConnectionPointType.NODE_GEOMETRY);
+    public value: unknown = null;
+
+    public override async _buildBlockAsync(): Promise<void> {
+        this.output.value = this.value;
+    }
+}
+
+class OwnedWrapperExportBlock extends NodeAssetBlock {
+    public readonly isExportTerminal = true;
+    public readonly input: NodeAssetConnectionPoint;
+    public result: Uint8Array | null = null;
+
+    public constructor(name: string, nodeAsset: NodeAsset) {
+        super(name, nodeAsset);
+        this.input = this._registerInput("input", NodeAssetConnectionPointType.NODE_GEOMETRY);
+    }
+
+    public override async _buildBlockAsync(): Promise<void> {
+        this.result = new Uint8Array([1]);
+    }
+}
+
+class BlockingOwnedWrapperExportBlock extends OwnedWrapperExportBlock {
+    public readonly entered: Promise<void>;
+    public isUnderlyingLive: () => boolean = () => true;
+    public release: () => void = () => {};
+
+    private readonly _markEntered: () => void;
+    private readonly _releaseBuild: Promise<void>;
+
+    public constructor(name: string, nodeAsset: NodeAsset) {
+        super(name, nodeAsset);
+        let markEntered = () => {};
+        this.entered = new Promise<void>((resolve) => {
+            markEntered = resolve;
+        });
+        this._markEntered = markEntered;
+        this._releaseBuild = new Promise<void>((resolve) => {
+            this.release = resolve;
+        });
+    }
+
+    public override async _buildBlockAsync(): Promise<void> {
+        this._markEntered();
+        await this._releaseBuild;
+        if (!this.isUnderlyingLive()) {
+            throw new Error("The shared underlying resource was disposed by another build scope.");
+        }
+        this.result = new Uint8Array([1]);
+    }
+}
+
 class UncheckedResourceExportBlock extends NodeAssetBlock {
     public readonly isExportTerminal = true;
     public readonly input: NodeAssetConnectionPoint;
@@ -190,7 +311,36 @@ function CreateSuccessfulResourceBuild(resource: TrackedResource): NodeAsset {
     return asset;
 }
 
+function ExpectConnectionValuesCleared(asset: NodeAsset): void {
+    for (const block of asset.attachedBlocks) {
+        for (const point of [...block.inputs, ...block.outputs]) {
+            expect(point.value).toBeNull();
+        }
+    }
+}
+
 describe("build scope resource lifecycle", () => {
+    it("serializes overlapping builds of one asset and clears their transient connection values", async () => {
+        const asset = new NodeAsset("serialized builds");
+        const source = new SequencedResourceSourceBlock("source", asset);
+        const exporter = new OverlappingResourceExportBlock("export", asset);
+        source.output.connectTo(exporter.input);
+
+        const firstBuild = asset.buildAsync();
+        await exporter.firstBuildEntered;
+        const secondBuild = asset.buildAsync();
+        const fallbackRelease = setTimeout(() => exporter.releaseFirstBuild(), 10);
+
+        const [first, second] = await Promise.all([firstBuild, secondBuild]);
+        clearTimeout(fallbackRelease);
+
+        expect(Array.from(first)).toEqual([1]);
+        expect(Array.from(second)).toEqual([2]);
+        expect(source.resources).toHaveLength(2);
+        expect(source.resources.map((resource) => resource.disposeCalls)).toEqual([1, 1]);
+        ExpectConnectionValuesCleared(asset);
+    });
+
     it.each([
         ["synchronous", false],
         ["asynchronous", true],
@@ -222,6 +372,7 @@ describe("build scope resource lifecycle", () => {
         await expect(asset.buildAsync()).rejects.toBe(primary);
         expect(events).toEqual(["produce", "dispose"]);
         expect(resource.disposeCalls).toBe(1);
+        ExpectConnectionValuesCleared(asset);
     });
 
     it("keeps cleanup idempotent after the build already disposed its ledger", async () => {
@@ -267,15 +418,21 @@ describe("build scope resource lifecycle", () => {
         const primary = new Error("primary");
         consumer.error = primary;
 
-        await expect(asset.buildAsync()).rejects.toBe(primary);
+        const thrown = await asset.buildAsync().catch((error: unknown) => error);
+
+        expect(thrown).toBe(primary);
         expect(fatalResource.disposeCalls).toBe(1);
-        expect(source.scope?.diagnostics).toMatchObject([
+        const report = GetNodeAssetBuildReport(thrown);
+        expect(report?.diagnostics).toMatchObject([
             {
                 code: "NODE_ASSET_CLEANUP_FAILED",
                 severity: "warning",
                 message: "cleanup failed",
             },
         ]);
+        expect(report?.lossRecords).toEqual([]);
+        expect(Object.isFrozen(report)).toBe(true);
+        expect(Object.isFrozen(report?.diagnostics)).toBe(true);
     });
 
     it("rejects a resource shared by concurrent build scopes without disposing the owner's resource", async () => {
@@ -301,6 +458,67 @@ describe("build scope resource lifecycle", () => {
         expect(resource.disposeCalls).toBe(1);
     });
 
+    it("rejects distinct BabylonAsset wrappers that share one live engine and scene", async () => {
+        const engine = new NullEngine();
+        const scene = new Scene(engine);
+        const firstWrapper = new BabylonAsset(engine, scene, { identity: "first", revision: 0, manifest: {} });
+        const secondWrapper = new BabylonAsset(engine, scene, { identity: "second", revision: 0, manifest: {} });
+        const firstAsset = new NodeAsset("first Babylon owner");
+        const firstSource = new OwnedWrapperSourceBlock("first source", firstAsset);
+        firstSource.value = firstWrapper;
+        const firstExporter = new BlockingOwnedWrapperExportBlock("first export", firstAsset);
+        firstExporter.isUnderlyingLive = () => !scene.isDisposed;
+        firstSource.output.connectTo(firstExporter.input);
+        const firstBuild = firstAsset.buildAsync();
+        await firstExporter.entered;
+
+        const secondAsset = new NodeAsset("second Babylon owner");
+        const secondSource = new OwnedWrapperSourceBlock("second source", secondAsset);
+        secondSource.value = secondWrapper;
+        const secondExporter = new OwnedWrapperExportBlock("second export", secondAsset);
+        secondSource.output.connectTo(secondExporter.input);
+        const secondOutcome = await secondAsset.buildAsync().catch((error: unknown) => error);
+        const wasLiveBeforeRelease = !scene.isDisposed;
+        firstExporter.release();
+        const firstOutcome = await firstBuild.catch((error: unknown) => error);
+
+        expect(secondOutcome).toMatchObject<BuildResourceOwnershipError>({ code: "NODE_ASSET_RESOURCE_OWNED" });
+        expect(wasLiveBeforeRelease).toBe(true);
+        expect(firstOutcome).toBeInstanceOf(Uint8Array);
+        expect(scene.isDisposed).toBe(true);
+    });
+
+    it("rejects distinct NodeGeometryAsset wrappers that share one live graph", async () => {
+        const graph = new NodeGeometry("shared graph");
+        graph.setToDefault();
+        const disposeSpy = vi.spyOn(graph, "dispose");
+        const firstWrapper = new NodeGeometryAsset(graph, { identity: "first", revision: 0, manifest: {} });
+        const secondWrapper = new NodeGeometryAsset(graph, { identity: "second", revision: 0, manifest: {} });
+        const firstAsset = new NodeAsset("first NodeGeometry owner");
+        const firstSource = new OwnedWrapperSourceBlock("first source", firstAsset);
+        firstSource.value = firstWrapper;
+        const firstExporter = new BlockingOwnedWrapperExportBlock("first export", firstAsset);
+        firstExporter.isUnderlyingLive = () => disposeSpy.mock.calls.length === 0;
+        firstSource.output.connectTo(firstExporter.input);
+        const firstBuild = firstAsset.buildAsync();
+        await firstExporter.entered;
+
+        const secondAsset = new NodeAsset("second NodeGeometry owner");
+        const secondSource = new OwnedWrapperSourceBlock("second source", secondAsset);
+        secondSource.value = secondWrapper;
+        const secondExporter = new OwnedWrapperExportBlock("second export", secondAsset);
+        secondSource.output.connectTo(secondExporter.input);
+        const secondOutcome = await secondAsset.buildAsync().catch((error: unknown) => error);
+        const wasLiveBeforeRelease = disposeSpy.mock.calls.length === 0;
+        firstExporter.release();
+        const firstOutcome = await firstBuild.catch((error: unknown) => error);
+
+        expect(secondOutcome).toMatchObject<BuildResourceOwnershipError>({ code: "NODE_ASSET_RESOURCE_OWNED" });
+        expect(wasLiveBeforeRelease).toBe(true);
+        expect(firstOutcome).toBeInstanceOf(Uint8Array);
+        expect(disposeSpy).toHaveBeenCalledTimes(1);
+    });
+
     it("rejects a disposed resource reused by a later build", async () => {
         const resource = new TrackedResource([]);
         await CreateSuccessfulResourceBuild(resource).buildAsync();
@@ -318,10 +536,17 @@ describe("build scope resource lifecycle", () => {
         source.output.connectTo(exporter.inputA);
         source.output.connectTo(exporter.inputB);
 
-        await expect(asset.buildAsync({ limits: { maxSourceAssetBytes: 0 } })).rejects.toMatchObject<BuildLimitError>({
+        const error = await asset.buildAsync({ limits: { maxSourceAssetBytes: 0 } }).catch((reason: unknown) => reason);
+
+        expect(error).toMatchObject<BuildLimitError>({
             code: "NODE_ASSET_LIMIT_SOURCE_BYTES",
         });
+        expect(GetNodeAssetBuildReport(error)).toEqual({
+            diagnostics: [],
+            lossRecords: [],
+        });
         expect(source.resource.disposeCalls).toBe(1);
+        ExpectConnectionValuesCleared(asset);
     });
 
     it("disposes all started resources exactly once when aggregate source bytes exceed the limit", async () => {
@@ -379,5 +604,17 @@ describe("build scope resource lifecycle", () => {
             code: "NODE_ASSET_BUILD_CANCELLED",
         });
         expect(resource.disposeCalls).toBe(1);
+    });
+
+    it("leaves values assigned by direct block callers unchanged", async () => {
+        const asset = new NodeAsset("direct block build");
+        const source = new ResourceSourceBlock("source", asset);
+
+        await source._buildBlockAsync();
+
+        expect(source.outputA.value).toBe(source.resource);
+        expect(source.outputB.value).toBe(source.resource);
+        expect(source.resource.disposeCalls).toBe(0);
+        await source.resource.dispose();
     });
 });

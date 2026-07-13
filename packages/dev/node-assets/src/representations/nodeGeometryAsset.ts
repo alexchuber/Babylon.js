@@ -1,8 +1,9 @@
 import { RegisterAllNodeGeometryBlocks } from "core/Meshes/Node/Blocks/allBlocks.pure";
 import { NodeGeometry } from "core/Meshes/Node/nodeGeometry";
-import { VertexData } from "core/Meshes/mesh.vertexData";
+import { VertexData, VertexDataMaterialInfo } from "core/Meshes/mesh.vertexData";
 
-import { type NodeAssetJsonObject } from "../connection/nodeAssetValueMap";
+import { IsNodeAssetJsonValue, type NodeAssetJsonObject, type NodeAssetJsonValue } from "../connection/nodeAssetValueMap";
+import { BuildResourceIdentities } from "../evaluation/buildScope";
 import { DeepFreeze, ValidateAndFreezeAssetMetadata } from "./immutableMetadata";
 
 RegisterAllNodeGeometryBlocks();
@@ -29,6 +30,8 @@ export class NodeGeometryAsset {
     public readonly revision: number;
     /** Deeply frozen representation facts. */
     public readonly manifest: Readonly<NodeAssetJsonObject>;
+    /** The parsed graph identity exclusively owned by this wrapper during a build. */
+    public readonly [BuildResourceIdentities]: ReadonlyArray<object>;
 
     private _isDisposed = false;
 
@@ -36,7 +39,7 @@ export class NodeGeometryAsset {
      * Creates a NodeGeometry resource payload.
      * @param nodeGeometry The parsed, unevaluated graph owned by this payload.
      * @param metadata Stable caller-supplied identity, revision, and manifest.
-     * @param evaluatedVertexData An optional evaluated snapshot to clone and freeze.
+     * @param evaluatedVertexData An optional evaluated snapshot to validate, clone, and freeze.
      */
     public constructor(nodeGeometry: NodeGeometry, metadata: INodeGeometryAssetMetadata, evaluatedVertexData?: VertexData) {
         const validatedMetadata = ValidateAndFreezeAssetMetadata(metadata);
@@ -44,7 +47,8 @@ export class NodeGeometryAsset {
         this.identity = validatedMetadata.identity;
         this.revision = validatedMetadata.revision;
         this.manifest = validatedMetadata.manifest;
-        this.evaluatedVertexData = evaluatedVertexData ? DeepFreeze(VertexData.Parse(evaluatedVertexData.serialize())) : undefined;
+        this[BuildResourceIdentities] = Object.freeze([nodeGeometry]);
+        this.evaluatedVertexData = evaluatedVertexData === undefined ? undefined : CloneAndValidateVertexData(evaluatedVertexData);
     }
 
     /** Whether this resource was disposed by its build scope. */
@@ -93,4 +97,107 @@ export class NodeGeometryAsset {
  */
 export function IsNodeGeometryAsset(value: unknown): value is NodeGeometryAsset {
     return value instanceof NodeGeometryAsset;
+}
+
+function CloneAndValidateVertexData(vertexData: VertexData): Readonly<VertexData> {
+    if (!(vertexData instanceof VertexData)) {
+        throw new TypeError("The evaluated VertexData snapshot must be a VertexData instance.");
+    }
+
+    const positions = ValidateVertexAttribute("positions", vertexData.positions, 3);
+    const vertexCount = positions.length / 3;
+
+    const snapshot = new VertexData();
+    snapshot.positions = Array.from(positions);
+    CloneOptionalVertexAttribute("normals", vertexData.normals, [3], vertexCount, (value) => (snapshot.normals = value));
+    CloneOptionalVertexAttribute("tangents", vertexData.tangents, [4], vertexCount, (value) => (snapshot.tangents = value));
+    CloneOptionalVertexAttribute("uvs", vertexData.uvs, [2], vertexCount, (value) => (snapshot.uvs = value));
+    CloneOptionalVertexAttribute("uvs2", vertexData.uvs2, [2], vertexCount, (value) => (snapshot.uvs2 = value));
+    CloneOptionalVertexAttribute("uvs3", vertexData.uvs3, [2], vertexCount, (value) => (snapshot.uvs3 = value));
+    CloneOptionalVertexAttribute("uvs4", vertexData.uvs4, [2], vertexCount, (value) => (snapshot.uvs4 = value));
+    CloneOptionalVertexAttribute("uvs5", vertexData.uvs5, [2], vertexCount, (value) => (snapshot.uvs5 = value));
+    CloneOptionalVertexAttribute("uvs6", vertexData.uvs6, [2], vertexCount, (value) => (snapshot.uvs6 = value));
+    CloneOptionalVertexAttribute("colors", vertexData.colors, [3, 4], vertexCount, (value) => (snapshot.colors = value));
+    CloneOptionalVertexAttribute("matricesIndices", vertexData.matricesIndices, [4], vertexCount, (value) => (snapshot.matricesIndices = value));
+    CloneOptionalVertexAttribute("matricesWeights", vertexData.matricesWeights, [4], vertexCount, (value) => (snapshot.matricesWeights = value));
+    CloneOptionalVertexAttribute("matricesIndicesExtra", vertexData.matricesIndicesExtra, [4], vertexCount, (value) => (snapshot.matricesIndicesExtra = value));
+    CloneOptionalVertexAttribute("matricesWeightsExtra", vertexData.matricesWeightsExtra, [4], vertexCount, (value) => (snapshot.matricesWeightsExtra = value));
+
+    if (vertexData.indices === null) {
+        snapshot.indices = null;
+    } else if (vertexData.indices !== undefined) {
+        for (const index of vertexData.indices) {
+            if (!Number.isSafeInteger(index) || index < 0 || index >= vertexCount) {
+                throw new TypeError("The evaluated VertexData snapshot indices must reference existing vertices.");
+            }
+        }
+        snapshot.indices = Array.from(vertexData.indices);
+    }
+    if (vertexData.materialInfos === null) {
+        snapshot.materialInfos = null;
+    } else if (vertexData.materialInfos !== undefined) {
+        snapshot.materialInfos = vertexData.materialInfos.map((info) =>
+            Object.assign(new VertexDataMaterialInfo(), {
+                materialIndex: info.materialIndex,
+                verticesStart: info.verticesStart,
+                verticesCount: info.verticesCount,
+                indexStart: info.indexStart,
+                indexCount: info.indexCount,
+            })
+        );
+    }
+    snapshot.hasVertexAlpha = vertexData.hasVertexAlpha;
+    snapshot.metadata = CloneVertexDataMetadata(vertexData.metadata);
+
+    return DeepFreeze(snapshot);
+}
+
+function CloneOptionalVertexAttribute(
+    name: string,
+    values: ArrayLike<number> | null | undefined,
+    allowedStrides: ReadonlyArray<number>,
+    vertexCount: number,
+    assign: (value: number[] | null) => void
+): void {
+    if (values === undefined) {
+        return;
+    }
+    if (values === null) {
+        assign(null);
+        return;
+    }
+    for (let index = 0; index < values.length; index++) {
+        if (!Number.isFinite(values[index])) {
+            throw new TypeError(`The evaluated VertexData snapshot ${name} must contain only finite numbers.`);
+        }
+    }
+    if (!allowedStrides.some((stride) => values.length === vertexCount * stride)) {
+        throw new TypeError(`The evaluated VertexData snapshot ${name} count must match its position count.`);
+    }
+    assign(Array.from(values));
+}
+
+function CloneVertexDataMetadata(metadata: unknown): NodeAssetJsonValue | undefined {
+    if (metadata === undefined) {
+        return undefined;
+    }
+    if (!IsNodeAssetJsonValue(metadata)) {
+        throw new TypeError("The evaluated VertexData snapshot metadata must contain only finite, acyclic JSON values.");
+    }
+    return structuredClone(metadata);
+}
+
+function ValidateVertexAttribute(name: string, values: ArrayLike<number> | null | undefined, stride: number): ArrayLike<number> {
+    if (values == null) {
+        throw new TypeError(`The evaluated VertexData snapshot requires ${name}.`);
+    }
+    if (values.length % stride !== 0) {
+        throw new TypeError(`The evaluated VertexData snapshot ${name} length must be a multiple of ${stride}.`);
+    }
+    for (let index = 0; index < values.length; index++) {
+        if (!Number.isFinite(values[index])) {
+            throw new TypeError(`The evaluated VertexData snapshot ${name} must contain only finite numbers.`);
+        }
+    }
+    return values;
 }

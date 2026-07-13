@@ -1,5 +1,5 @@
 import { CreateBlockByClassName } from "./blockFoundation/blockRegistry";
-import { IsExportBlock } from "./blockFoundation/exportBlock";
+import { type IExportBlock, IsExportBlock } from "./blockFoundation/exportBlock";
 import { type NodeAssetBlock } from "./blockFoundation/nodeAssetBlock";
 import { type NodeAssetConnectionPoint } from "./connection/nodeAssetConnectionPoint";
 import { BuildScope, CreateNodeAssetBuildResult, type INodeAssetBuildOptions, type NodeAssetBuildResult } from "./evaluation/buildScope";
@@ -22,6 +22,7 @@ export class NodeAsset {
     public name: string;
 
     private readonly _attachedBlocks: NodeAssetBlock[] = [];
+    private _buildQueue: Promise<void> = Promise.resolve();
 
     /**
      * Creates a new node asset.
@@ -114,10 +115,6 @@ export class NodeAsset {
             blocksById.set(blockData.id, block);
             maxId = Math.max(maxId, blockData.id);
         }
-        // Restored ids can exceed the freshly-generated ones assigned in the block constructors above;
-        // advance the generator so later blocks cannot collide with them.
-        UniqueIdGenerator.EnsureIdsGreaterThan(maxId);
-
         for (const connection of serializationObject.connections ?? []) {
             const fromBlock = blocksById.get(connection.fromBlock);
             const toBlock = blocksById.get(connection.toBlock);
@@ -135,20 +132,23 @@ export class NodeAsset {
             fromPoint.connectTo(toPoint);
         }
 
+        // Advance only after every semantic graph check succeeds. A rejected graph must not poison the
+        // process-wide generator with an id that never became part of a usable NodeAsset.
+        UniqueIdGenerator.EnsureIdsGreaterThan(maxId);
         return asset;
     }
 
     /**
      * Runs the graph by pulling from the terminal export block (located via its
      * {@link IExportBlock} marker, not by concrete type) and returns the built bytes. Pull-based,
-     * no caching; a required input left unconnected is an error.
-     * @param signalOrOptions - A direct caller signal or cancellation and partial limit options.
+     * with evaluate-once caching inside each call; builds of this same asset are serialized so custom
+     * blocks can continue reading and writing connection-point values safely. A required input left
+     * unconnected is an error.
+     * @param signalOrOptions - An optional direct caller signal, or cancellation and partial limit options.
      * @returns The built bytes produced by the terminal export block.
      */
     // eslint-disable-next-line no-restricted-syntax
-    public buildAsync(): Promise<NodeAssetBuildResult>;
-    // eslint-disable-next-line no-restricted-syntax
-    public buildAsync(signal: AbortSignal): Promise<NodeAssetBuildResult>;
+    public buildAsync(signal?: AbortSignal): Promise<NodeAssetBuildResult>;
     // eslint-disable-next-line no-restricted-syntax
     public buildAsync(options: INodeAssetBuildOptions): Promise<NodeAssetBuildResult>;
     public async buildAsync(signalOrOptions?: AbortSignal | INodeAssetBuildOptions): Promise<NodeAssetBuildResult> {
@@ -159,11 +159,27 @@ export class NodeAsset {
 
         const options = IsAbortSignal(signalOrOptions) ? { signal: signalOrOptions } : (signalOrOptions ?? {});
         const scope = new BuildScope(options);
+        const previousBuild = this._buildQueue;
+        let releaseBuild = () => {};
+        const buildComplete = new Promise<void>((resolve) => {
+            releaseBuild = resolve;
+        });
+        this._buildQueue = CompleteQueuedBuildAsync(previousBuild, buildComplete);
+        try {
+            return await this._buildWithScopeAsync(exportBlock, scope, previousBuild);
+        } finally {
+            releaseBuild();
+        }
+    }
+
+    private async _buildWithScopeAsync(exportBlock: NodeAssetBlock & IExportBlock, scope: BuildScope, previousBuild: Promise<void>): Promise<NodeAssetBuildResult> {
         let result: Uint8Array | null = null;
         let primaryError: unknown;
         let failed = false;
         try {
+            await WaitForBuildTurnAsync(previousBuild, scope.signal);
             scope.throwIfAborted();
+            exportBlock.result = null;
             // A per-build memo so each block is evaluated exactly once even when its output fans out to
             // several consumers. Scoped to this call: a fresh build starts with a fresh memo.
             const evaluated = new Map<NodeAssetBlock, Promise<void>>();
@@ -180,16 +196,29 @@ export class NodeAsset {
         }
 
         if (failed) {
-            if (scope.hasPrimaryError && scope.isCancellationError(primaryError)) {
-                throw scope.primaryError;
+            let errorToThrow = primaryError;
+            if (scope.isCancellationError(primaryError)) {
+                errorToThrow = scope.hasPrimaryError ? scope.primaryError : scope.signal.reason;
             }
-            throw primaryError;
+            scope._attachReport(errorToThrow);
+            throw errorToThrow;
         }
         if (scope.hasPrimaryError) {
+            scope._attachReport(scope.primaryError);
             throw scope.primaryError;
         }
-        scope.throwIfAborted();
-        return CreateNodeAssetBuildResult(result!, scope.diagnostics, scope.lossRecords);
+        try {
+            scope.throwIfAborted();
+        } catch (error) {
+            scope._attachReport(error);
+            throw error;
+        }
+        try {
+            return CreateNodeAssetBuildResult(result!, scope.diagnostics, scope.lossRecords);
+        } catch (error) {
+            scope._attachReport(error);
+            throw error;
+        }
     }
 
     /**
@@ -232,6 +261,7 @@ export class NodeAsset {
     private async _doEvaluateBlockAsync(block: NodeAssetBlock, evaluated: Map<NodeAssetBlock, Promise<void>>, scope: BuildScope): Promise<void> {
         const connections: Array<{ input: NodeAssetConnectionPoint; upstream: NodeAssetConnectionPoint }> = [];
         for (const input of block.inputs) {
+            scope._registerConnectionPoint(input);
             const upstream = input.connectedPoint;
             if (upstream) {
                 connections.push({ input, upstream });
@@ -275,6 +305,9 @@ export class NodeAsset {
         );
 
         scope.throwIfAborted();
+        for (const output of block.outputs) {
+            scope._registerConnectionPoint(output);
+        }
         let primaryError: unknown;
         let failed = false;
         try {
@@ -329,4 +362,26 @@ export class NodeAsset {
 
 function IsAbortSignal(value: AbortSignal | INodeAssetBuildOptions | undefined): value is AbortSignal {
     return typeof value === "object" && value !== null && "aborted" in value && "addEventListener" in value;
+}
+
+async function WaitForBuildTurnAsync(previousBuild: Promise<void>, signal: AbortSignal): Promise<void> {
+    if (signal.aborted) {
+        throw signal.reason;
+    }
+
+    let onAbort = () => {};
+    const cancelled = new Promise<never>((_resolve, reject) => {
+        onAbort = () => reject(signal.reason as Error);
+        signal.addEventListener("abort", onAbort, { once: true });
+    });
+    try {
+        await Promise.race([previousBuild, cancelled]);
+    } finally {
+        signal.removeEventListener("abort", onAbort);
+    }
+}
+
+async function CompleteQueuedBuildAsync(previousBuild: Promise<void>, buildComplete: Promise<void>): Promise<void> {
+    await previousBuild;
+    await buildComplete;
 }

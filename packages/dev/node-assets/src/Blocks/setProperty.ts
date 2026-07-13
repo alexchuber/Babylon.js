@@ -15,7 +15,7 @@ import { ResolvePointerToAccessor } from "../selector/pointerToAccessor";
  * nodes.
  *
  * In-place mutation is retained: the incoming `Document` is mutated and the same reference is emitted.
- * Fan-out safety (copy-on-fan-out) is deferred to a later slice; this block does not clone.
+ * The evaluator isolates fanned-out consumers before this block runs; this block does not clone.
  */
 export class SetProperty extends NodeAssetBlock {
     /** The class name, used for identification and safe under minification. */
@@ -61,7 +61,7 @@ export class SetProperty extends NodeAssetBlock {
             throw new Error(`The "${this.name}" SetProperty block requires a JSON-compatible accessor and value.`);
         }
         accessor.set(this.value.value);
-        // In-place mutation: emit the same reference (copy-on-fan-out is deferred to a later slice).
+        // In-place mutation: emit the evaluator-isolated reference.
         this.output.value = asset;
     }
 }

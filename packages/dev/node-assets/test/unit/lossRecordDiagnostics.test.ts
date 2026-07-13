@@ -3,7 +3,7 @@ import { describe, expect, expectTypeOf, it } from "vitest";
 import { NodeAssetBlock } from "../../src/blockFoundation/nodeAssetBlock";
 import { type NodeAssetConnectionPoint } from "../../src/connection/nodeAssetConnectionPoint";
 import { NodeAssetConnectionPointType } from "../../src/connection/nodeAssetConnectionPointType";
-import { type BuildScope, type NodeAssetBuildResult } from "../../src/evaluation/buildScope";
+import { GetNodeAssetBuildReport, type BuildScope, type NodeAssetBuildResult } from "../../src/evaluation/buildScope";
 import { NodeAsset } from "../../src/nodeAsset";
 
 class DiagnosticSourceBlock extends NodeAssetBlock {
@@ -53,9 +53,25 @@ class BytesExportBlock extends NodeAssetBlock {
 
 class FatalSourceBlock extends NodeAssetBlock {
     public readonly output = this._registerOutput("output", NodeAssetConnectionPointType.IMAGE);
-    public error: Error = new Error("fatal");
+    public error: unknown = new Error("fatal");
 
     public override async _buildBlockAsync(): Promise<void> {
+        throw this.error;
+    }
+}
+
+class MutableProducerFailureBlock extends NodeAssetBlock {
+    public readonly output = this._registerOutput("output", NodeAssetConnectionPointType.IMAGE);
+    public readonly error = new Error("producer failure");
+    public readonly producer = { kind: "block" as const, blockId: this.uniqueId, blockName: this.name };
+
+    public override async _buildBlockAsync(scope?: BuildScope): Promise<void> {
+        scope?.addDiagnostic({
+            code: "BEFORE_FAILURE",
+            severity: "warning",
+            message: "Produced before failure.",
+            producer: this.producer,
+        });
         throw this.error;
     }
 }
@@ -85,6 +101,21 @@ function CreateDiagnosticAsset(): NodeAsset {
 }
 
 describe("build diagnostics and loss records", () => {
+    it("accepts an optional caller signal while preserving result and legacy byte promise types", async () => {
+        const asset = CreateDiagnosticAsset();
+        const optionalSignal = undefined as AbortSignal | undefined;
+
+        const optionalSignalBuild = asset.buildAsync(optionalSignal);
+        const explicitUndefinedBuild = asset.buildAsync(undefined);
+        const optionsBuild = asset.buildAsync({ signal: optionalSignal });
+        const legacyBuild: Promise<Uint8Array> = optionalSignalBuild;
+
+        expectTypeOf(optionalSignalBuild).toEqualTypeOf<Promise<NodeAssetBuildResult>>();
+        expectTypeOf(explicitUndefinedBuild).toEqualTypeOf<Promise<NodeAssetBuildResult>>();
+        expectTypeOf(optionsBuild).toEqualTypeOf<Promise<NodeAssetBuildResult>>();
+        await expect(Promise.all([optionalSignalBuild, explicitUndefinedBuild, optionsBuild, legacyBuild])).resolves.toHaveLength(4);
+    });
+
     it("returns Uint8Array-compatible bytes with build diagnostics and canonical lossRecords", async () => {
         const asset = CreateDiagnosticAsset();
 
@@ -140,6 +171,34 @@ describe("build diagnostics and loss records", () => {
         source.error = primary;
 
         await expect(asset.buildAsync()).rejects.toBe(primary);
+    });
+
+    it("preserves a primitive thrown value without manufacturing a build report", async () => {
+        const asset = new NodeAsset("primitive failure");
+        const source = new FatalSourceBlock("fatal source", asset);
+        const exporter = new BytesExportBlock("export", asset);
+        source.output.connectTo(exporter.input);
+        source.error = "primitive failure";
+
+        const thrown = await asset.buildAsync().catch((error: unknown) => error);
+
+        expect(thrown).toBe("primitive failure");
+        expect(GetNodeAssetBuildReport(thrown)).toBeUndefined();
+    });
+
+    it("keeps nested failed-build producer diagnostics immutable after settlement", async () => {
+        const asset = new NodeAsset("immutable failure report");
+        const source = new MutableProducerFailureBlock("failing producer", asset);
+        const exporter = new BytesExportBlock("export", asset);
+        source.output.connectTo(exporter.input);
+
+        const thrown = await asset.buildAsync().catch((error: unknown) => error);
+        const report = GetNodeAssetBuildReport(thrown);
+        source.producer.blockName = "mutated after settlement";
+
+        expect(thrown).toBe(source.error);
+        expect(report?.diagnostics[0].producer?.blockName).toBe("failing producer");
+        expect(Object.isFrozen(report?.diagnostics[0].producer)).toBe(true);
     });
 
     it("keeps prior result metadata immutable when a later build reuses the same export bytes", async () => {

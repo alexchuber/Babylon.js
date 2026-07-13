@@ -122,7 +122,7 @@ describe("SetProperty", () => {
         setter.value.value = [1, 0, 0];
         await setter._buildBlockAsync();
 
-        // Same reference, mutated in place (no clone / copy-on-fan-out yet).
+        // Same reference, mutated in place; fan-out isolation happens in the evaluator, not this block.
         expect(setter.output.value).toBe(gltf);
         expect(setter.output.type).toBe(NodeAssetConnectionPointType.GLTF_DOCUMENT);
         expect(document.getRoot().listMaterials()[0].getEmissiveFactor()).toEqual([1, 0, 0]);

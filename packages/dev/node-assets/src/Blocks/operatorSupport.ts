@@ -11,8 +11,8 @@ import { GetGltfAsset } from "../representations/gltfAsset";
  * pass the configured transform(s). It is a helper, not an operator base class: blocks do not extend
  * it, and each keeps its own params, serialization, and registration.
  *
- * The document is mutated in place (fan-out correctness is deferred to a later slice), matching the
- * other middle blocks.
+ * The document is mutated in place; the evaluator isolates fanned-out consumers before this helper
+ * runs, matching the other middle blocks.
  * @param block - The operator block, which must expose a single GLTF_DOCUMENT `input` and `output`.
  * @param transforms - The gltf-transform operations to apply to the document, in order.
  */

@@ -218,9 +218,14 @@ describe("typed representations", () => {
 
     it("owns an unevaluated NodeGeometry and an optional frozen VertexData snapshot", () => {
         const nodeGeometry = new NodeGeometry("fixture");
+        const evaluatedNodeGeometry = new NodeGeometry("evaluated fixture");
         const vertexData = new VertexData();
         vertexData.positions = [0, 0, 0, 1, 0, 0, 0, 1, 0];
         vertexData.indices = [0, 1, 2];
+        vertexData.colors = [1, 0, 0, 0, 1, 0, 0, 0, 1];
+        vertexData.matricesIndicesExtra = [4, 5, 6, 7, 4, 5, 6, 7, 4, 5, 6, 7];
+        vertexData.matricesWeightsExtra = [0.25, 0.25, 0.25, 0.25, 0.25, 0.25, 0.25, 0.25, 0.25, 0.25, 0.25, 0.25];
+        vertexData.metadata = { source: { kind: "evaluated" } };
 
         const unevaluated = new NodeGeometryAsset(nodeGeometry, {
             identity: "fixture-node-geometry",
@@ -228,7 +233,7 @@ describe("typed representations", () => {
             manifest: { source: "fixture.json" },
         });
         const evaluated = new NodeGeometryAsset(
-            nodeGeometry,
+            evaluatedNodeGeometry,
             {
                 identity: "fixture-node-geometry",
                 revision: 1,
@@ -239,15 +244,125 @@ describe("typed representations", () => {
 
         expect(unevaluated.nodeGeometry).toBe(nodeGeometry);
         expect(unevaluated.evaluatedVertexData).toBeUndefined();
-        expect(evaluated.nodeGeometry).toBe(nodeGeometry);
+        expect(evaluated.nodeGeometry).toBe(evaluatedNodeGeometry);
         expect(evaluated.evaluatedVertexData).not.toBe(vertexData);
         expect(evaluated.evaluatedVertexData?.positions).toEqual(vertexData.positions);
+        expect(evaluated.evaluatedVertexData?.colors).toEqual(vertexData.colors);
+        expect(evaluated.evaluatedVertexData?.matricesIndicesExtra).toEqual(vertexData.matricesIndicesExtra);
+        expect(evaluated.evaluatedVertexData?.matricesWeightsExtra).toEqual(vertexData.matricesWeightsExtra);
+        expect(evaluated.evaluatedVertexData?.metadata).toEqual(vertexData.metadata);
         expect(Object.isFrozen(evaluated.evaluatedVertexData)).toBe(true);
         expect(Object.isFrozen(evaluated.evaluatedVertexData?.positions)).toBe(true);
+        expect(Object.isFrozen(evaluated.evaluatedVertexData?.metadata.source)).toBe(true);
         expect(IsNodeGeometryAsset(evaluated)).toBe(true);
         expect(IsNodeGeometryAsset(nodeGeometry)).toBe(false);
 
+        unevaluated.dispose();
         evaluated.dispose();
         evaluated.dispose();
+    });
+
+    it.each([
+        ["missing positions", new VertexData()],
+        [
+            "misaligned positions",
+            Object.assign(new VertexData(), {
+                positions: [0, 0],
+            }),
+        ],
+        [
+            "non-finite positions",
+            Object.assign(new VertexData(), {
+                positions: [0, Number.NaN, 0],
+            }),
+        ],
+        [
+            "mismatched normals",
+            Object.assign(new VertexData(), {
+                positions: [0, 0, 0],
+                normals: [0, 1, 0, 0, 1, 0],
+            }),
+        ],
+        [
+            "out-of-range indices",
+            Object.assign(new VertexData(), {
+                positions: [0, 0, 0],
+                indices: [1],
+            }),
+        ],
+        [
+            "mismatched extra matrix weights",
+            Object.assign(new VertexData(), {
+                positions: [0, 0, 0],
+                matricesWeightsExtra: [0.25, 0.25, 0.25, 0.25, 0.25, 0.25, 0.25, 0.25],
+            }),
+        ],
+        [
+            "mutable metadata containers",
+            Object.assign(new VertexData(), {
+                positions: [0, 0, 0],
+                metadata: { values: new Uint8Array([1]) },
+            }),
+        ],
+    ])("rejects an invalid evaluated VertexData snapshot with %s", (_case, vertexData) => {
+        const nodeGeometry = new NodeGeometry("invalid snapshot");
+        try {
+            expect(
+                () =>
+                    new NodeGeometryAsset(
+                        nodeGeometry,
+                        {
+                            identity: "invalid-snapshot",
+                            revision: 0,
+                            manifest: {},
+                        },
+                        vertexData
+                    )
+            ).toThrow(/evaluated VertexData snapshot/);
+        } finally {
+            nodeGeometry.dispose();
+        }
+    });
+
+    it("preserves absent and explicitly null snapshot fields distinctly", () => {
+        const nodeGeometry = new NodeGeometry("optional snapshot fields");
+        const vertexData = new VertexData();
+        vertexData.positions = [0, 0, 0];
+        vertexData.normals = null;
+
+        const asset = new NodeGeometryAsset(
+            nodeGeometry,
+            {
+                identity: "optional-snapshot-fields",
+                revision: 0,
+                manifest: {},
+            },
+            vertexData
+        );
+
+        expect(asset.evaluatedVertexData?.normals).toBeNull();
+        expect(asset.evaluatedVertexData?.uvs).toBeUndefined();
+        expect(asset.evaluatedVertexData?.indices).toBeUndefined();
+        expect(asset.evaluatedVertexData?.materialInfos).toBeUndefined();
+        asset.dispose();
+    });
+
+    it.each([null, false, 0, ""])("rejects a non-undefined runtime snapshot value: %j", (invalidSnapshot) => {
+        const nodeGeometry = new NodeGeometry("invalid runtime snapshot");
+        try {
+            expect(() =>
+                Reflect.construct(NodeGeometryAsset, [
+                    nodeGeometry,
+                    {
+                        identity: "invalid-runtime-snapshot",
+                        revision: 0,
+                        manifest: {},
+                    },
+                    invalidSnapshot,
+                ])
+            ).toThrow(/evaluated VertexData snapshot/);
+        } finally {
+            nodeGeometry.dispose();
+        }
     });
 });

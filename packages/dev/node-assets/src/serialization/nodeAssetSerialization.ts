@@ -201,8 +201,7 @@ function IsBlockSerialization(value: unknown): value is NodeAssetBlockSerializat
         value !== null &&
         !Array.isArray(value) &&
         typeof value.customType === "string" &&
-        typeof value.id === "number" &&
-        Number.isInteger(value.id) &&
+        IsSafeSerializedId(value.id) &&
         typeof value.name === "string"
     );
 }
@@ -213,14 +212,7 @@ function IsConnectionSerialization(value: unknown): value is NodeAssetConnection
     }
 
     const connection = value as Record<string, unknown>;
-    return (
-        typeof connection.fromBlock === "number" &&
-        Number.isInteger(connection.fromBlock) &&
-        typeof connection.fromPoint === "string" &&
-        typeof connection.toBlock === "number" &&
-        Number.isInteger(connection.toBlock) &&
-        typeof connection.toPoint === "string"
-    );
+    return IsSafeSerializedId(connection.fromBlock) && typeof connection.fromPoint === "string" && IsSafeSerializedId(connection.toBlock) && typeof connection.toPoint === "string";
 }
 
 /**
@@ -252,4 +244,8 @@ export function IsNodeAssetSerializedGraph(value: unknown): value is NodeAssetSe
         blockIds.add(block.id);
     }
     return graph.connections.every((connection) => blockIds.has(connection.fromBlock) && blockIds.has(connection.toBlock));
+}
+
+function IsSafeSerializedId(value: unknown): value is number {
+    return typeof value === "number" && Number.isSafeInteger(value) && value >= 0 && value < Number.MAX_SAFE_INTEGER;
 }
