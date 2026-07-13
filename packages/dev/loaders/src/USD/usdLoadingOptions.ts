@@ -25,4 +25,26 @@ export type USDLoadingOptions = {
      * stage's `timeCodesPerSecond` when unset.
      */
     targetFps?: number;
+
+    /**
+     * Maximum number of prims layer-stack composition may produce before it aborts with a typed
+     * {@link UsdResourceLimitError}. Guards against adversarial reference/payload/inherit/specialize
+     * amplification. Must be a finite, non-negative safe integer. Defaults to 1,000,000.
+     */
+    maxCompositionNodes?: number;
+
+    /**
+     * Maximum composition recursion depth before composition aborts with a typed
+     * {@link UsdResourceLimitError}, keeping deep arc chains from overflowing the JavaScript call
+     * stack. Must be a finite, non-negative safe integer. Defaults to 512.
+     */
+    maxCompositionDepth?: number;
+
+    /**
+     * Maximum units of composition work (prims composed, merged, and cloned) before composition aborts
+     * with a typed {@link UsdResourceLimitError}. Bounds actual effort so inputs that produce a small
+     * output through super-linear merging/cloning are still rejected. Must be a finite, non-negative
+     * safe integer. Defaults to 20,000,000.
+     */
+    maxCompositionWork?: number;
 };

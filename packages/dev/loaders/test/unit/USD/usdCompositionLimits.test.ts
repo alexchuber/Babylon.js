@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { ComposeLayerStack } from "loaders/USD/resolution/composition/composeLayerStack";
+import { ResolveUsdStageWithFetcherAsync } from "loaders/USD/resolution/usdResolver";
 import { UsdConfigurationError, UsdResourceLimitError } from "loaders/USD/usdErrors";
 import { type ISdfLayer, type ISdfPrimSpec } from "loaders/USD/resolution/sdf";
 
@@ -167,5 +168,24 @@ describe("USD composition option validation", () => {
         );
         expect(error.limit).toBe(0);
         expect(error.actual).toBe(1);
+    });
+});
+
+describe("USD composition limits propagate through the public loader options", () => {
+    const usda = `#usda 1.0\ndef Xform "A" {\n    def Xform "B" {}\n    def Xform "C" {}\n}\n`;
+    const noExternalFetch = async (): Promise<ArrayBuffer> => {
+        throw new Error("no external assets");
+    };
+
+    it("applies maxCompositionNodes from USDLoadingOptions end to end", async () => {
+        await expect(ResolveUsdStageWithFetcherAsync(usda, "", "stage.usda", { maxCompositionNodes: 1 }, noExternalFetch)).rejects.toBeInstanceOf(UsdResourceLimitError);
+    });
+
+    it("validates composition options at the public boundary before parsing", async () => {
+        await expect(ResolveUsdStageWithFetcherAsync(usda, "", "stage.usda", { maxCompositionDepth: Number.NaN }, noExternalFetch)).rejects.toBeInstanceOf(UsdConfigurationError);
+    });
+
+    it("composes normally when the configured limits are ample", async () => {
+        await expect(ResolveUsdStageWithFetcherAsync(usda, "", "stage.usda", {}, noExternalFetch)).resolves.toBeDefined();
     });
 });
