@@ -277,7 +277,7 @@ export class BuildScope {
      * @param diagnostic The diagnostic to collect.
      */
     public addDiagnostic(diagnostic: IBuildDiagnostic): void {
-        this._diagnostics.push(Object.freeze({ ...diagnostic }));
+        this._diagnostics.push(FreezeBuildDiagnostic(diagnostic));
     }
 
     /**
@@ -287,19 +287,20 @@ export class BuildScope {
      * @returns The collected loss record.
      */
     public addResolvedDiagnostic(diagnostic: IResolvedDiagnostic, context: IResolvedDiagnosticLossContext): LossRecord {
+        const producer = FreezeBuildDiagnosticProducer(context.producer);
         const buildDiagnostic: IBuildDiagnostic = Object.freeze({
             code: context.code,
             severity: diagnostic.severity,
             message: diagnostic.message,
             path: diagnostic.path,
-            producer: context.producer,
+            producer,
         });
         const lossRecord: LossRecord = Object.freeze({
             ...buildDiagnostic,
             disposition: context.disposition,
             sourceRepresentation: context.sourceRepresentation,
             targetRepresentation: context.targetRepresentation,
-            producer: context.producer,
+            producer,
             tags: context.tags ? Object.freeze([...context.tags]) : undefined,
         });
         this._diagnostics.push(buildDiagnostic);
@@ -363,7 +364,7 @@ export class BuildScope {
      * @returns Whether the value represents cancellation rather than a primary fatal failure.
      */
     public isCancellationError(error: unknown): boolean {
-        return this.signal.aborted && (error instanceof BuildCancelledError || (error instanceof DOMException && error.name === "AbortError"));
+        return this.signal.aborted && (error instanceof BuildCancelledError || ((error instanceof Error || error instanceof DOMException) && error.name === "AbortError"));
     }
 
     /**
@@ -557,6 +558,14 @@ function IsBuildResource(value: unknown): value is IBuildResource & object {
 
 function IsObject(value: unknown): value is object {
     return (typeof value === "object" && value !== null) || typeof value === "function";
+}
+
+function FreezeBuildDiagnostic(diagnostic: IBuildDiagnostic): IBuildDiagnostic {
+    return diagnostic.producer ? Object.freeze({ ...diagnostic, producer: FreezeBuildDiagnosticProducer(diagnostic.producer) }) : Object.freeze({ ...diagnostic });
+}
+
+function FreezeBuildDiagnosticProducer(producer: IBuildDiagnosticProducer): IBuildDiagnosticProducer {
+    return Object.freeze({ ...producer });
 }
 
 function GetErrorMessage(error: unknown): string {

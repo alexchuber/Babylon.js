@@ -95,6 +95,7 @@ class WaitingResourceSourceBlock extends NodeAssetBlock {
 class NativeAbortSourceBlock extends NodeAssetBlock {
     public readonly output = this._registerOutput("output", NodeAssetConnectionPointType.IMAGE);
     public readonly started: Promise<void>;
+    public createAbortError: () => Error = () => new DOMException("The native operation was aborted.", "AbortError");
 
     private _markStarted: () => void = () => {};
 
@@ -108,7 +109,7 @@ class NativeAbortSourceBlock extends NodeAssetBlock {
     public override async _buildBlockAsync(scope?: BuildScope): Promise<void> {
         this._markStarted();
         await new Promise<void>((_resolve, reject) => {
-            const rejectAbort = () => reject(new DOMException("The native operation was aborted.", "AbortError"));
+            const rejectAbort = () => reject(this.createAbortError());
             if (scope!.signal.aborted) {
                 rejectAbort();
             } else {
@@ -359,6 +360,26 @@ describe("build scope cancellation", () => {
         });
         expect(source.output.value).toBeNull();
         expect(exporter.input.value).toBeNull();
+    });
+
+    it("normalizes a caller-triggered non-DOM AbortError to the build cancellation error", async () => {
+        const asset = new NodeAsset("node native caller cancellation");
+        const source = new NativeAbortSourceBlock("native source", asset);
+        source.createAbortError = () => Object.assign(new Error("The Node operation was aborted."), { name: "AbortError" });
+        const exporter = new BytesExportBlock("export", asset);
+        source.output.connectTo(exporter.input);
+        const controller = new AbortController();
+
+        const build = asset.buildAsync(controller.signal).catch((error: unknown) => error);
+        await source.started;
+        controller.abort("caller stopped Node work");
+        const error = await build;
+
+        expect(error).toBeInstanceOf(BuildCancelledError);
+        expect(error).toMatchObject({
+            code: "NODE_ASSET_BUILD_CANCELLED",
+            reason: "caller stopped Node work",
+        });
     });
 
     it("awaits a non-cooperative terminal export, then rejects caller cancellation and cleans up", async () => {

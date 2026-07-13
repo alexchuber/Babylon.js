@@ -60,6 +60,22 @@ class FatalSourceBlock extends NodeAssetBlock {
     }
 }
 
+class MutableProducerFailureBlock extends NodeAssetBlock {
+    public readonly output = this._registerOutput("output", NodeAssetConnectionPointType.IMAGE);
+    public readonly error = new Error("producer failure");
+    public readonly producer = { kind: "block" as const, blockId: this.uniqueId, blockName: this.name };
+
+    public override async _buildBlockAsync(scope?: BuildScope): Promise<void> {
+        scope?.addDiagnostic({
+            code: "BEFORE_FAILURE",
+            severity: "warning",
+            message: "Produced before failure.",
+            producer: this.producer,
+        });
+        throw this.error;
+    }
+}
+
 class ReusedBytesSourceBlock extends NodeAssetBlock {
     public readonly output = this._registerOutput("output", NodeAssetConnectionPointType.IMAGE);
     public readonly bytes = new Uint8Array([8]);
@@ -168,6 +184,21 @@ describe("build diagnostics and loss records", () => {
 
         expect(thrown).toBe("primitive failure");
         expect(GetNodeAssetBuildReport(thrown)).toBeUndefined();
+    });
+
+    it("keeps nested failed-build producer diagnostics immutable after settlement", async () => {
+        const asset = new NodeAsset("immutable failure report");
+        const source = new MutableProducerFailureBlock("failing producer", asset);
+        const exporter = new BytesExportBlock("export", asset);
+        source.output.connectTo(exporter.input);
+
+        const thrown = await asset.buildAsync().catch((error: unknown) => error);
+        const report = GetNodeAssetBuildReport(thrown);
+        source.producer.blockName = "mutated after settlement";
+
+        expect(thrown).toBe(source.error);
+        expect(report?.diagnostics[0].producer?.blockName).toBe("failing producer");
+        expect(Object.isFrozen(report?.diagnostics[0].producer)).toBe(true);
     });
 
     it("keeps prior result metadata immutable when a later build reuses the same export bytes", async () => {
