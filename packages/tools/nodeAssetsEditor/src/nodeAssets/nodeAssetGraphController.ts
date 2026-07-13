@@ -33,6 +33,7 @@ import { BlockToNode, PortIdForPoint } from "./blockNodeMapping";
 import { BuildPaletteCategories } from "./paletteCategories";
 import { NodeAssetReconciler } from "./nodeAssetReconciler";
 import { NodeAssetBuildWorkerClient, type INodeAssetBuildClient } from "./nodeAssetBuildWorkerClient";
+import { DefaultSampleAssetUrls } from "./defaultSampleAssets";
 
 /** The editor metadata layered on top of a serialized graph: per-block visual state keyed by block id. */
 interface IEditorBlockMetadata {
@@ -50,30 +51,12 @@ interface INodeAssetEditorFile {
     readonly editor: { readonly blocks: readonly IEditorBlockMetadata[] };
 }
 
-const LocalCdnPort = "1337";
-// The "energy orb" showcase assets, served alongside the editor's other samples (see BoomBox) by the CDN.
+// Human-readable provenance labels for the seeded "energy orb" sample assets, shown in each import
+// block's read-only "Source" field. The asset bytes are bundled with the editor and fetched from its
+// own origin (see ./defaultSampleAssets and loadDefaultImportAsync), so these are display labels only.
 const DefaultOrbGlbPath = "scenes/nodeAssets/orb.glb";
 const DefaultOrbMetalImagePath = "scenes/nodeAssets/orbMetal.png";
 const DefaultOrbPatternImagePath = "scenes/nodeAssets/orbPattern.png";
-
-/**
- * Resolves a bundled sample asset path (e.g. `scenes/nodeAssets/orb.glb`) to an absolute URL on
- * the local CDN, mirroring how the editor served the default BoomBox: from a `localhost` dev origin the
- * assets live on the CDN port, otherwise they resolve against the current origin.
- * @param assetPath - The CDN-relative asset path.
- * @returns The absolute asset URL.
- */
-function ResolveCdnAssetUrl(assetPath: string): string {
-    const currentUrl = new URL(window.location.href);
-    if ((currentUrl.hostname === "localhost" || currentUrl.hostname === "127.0.0.1") && currentUrl.port !== LocalCdnPort) {
-        currentUrl.port = LocalCdnPort;
-        currentUrl.pathname = "/";
-        currentUrl.search = "";
-        currentUrl.hash = "";
-        return new URL(assetPath, currentUrl).href;
-    }
-    return new URL(assetPath, `${currentUrl.origin}/`).href;
-}
 
 /**
  * Owns a live {@link NodeAsset} and the {@link GraphEditorState} that visualizes it, delegating the
@@ -189,25 +172,22 @@ export class NodeAssetGraphController {
      * @returns A promise that resolves after all assets are loaded.
      */
     public async loadDefaultImportAsync(): Promise<void> {
-        const orbGlbUrl = ResolveCdnAssetUrl(DefaultOrbGlbPath);
-        const orbMetalUrl = ResolveCdnAssetUrl(DefaultOrbMetalImagePath);
-        const orbPatternUrl = ResolveCdnAssetUrl(DefaultOrbPatternImagePath);
         const [orbGlb, orbMetal, orbPattern] = await Promise.all([
-            this._fetchAssetBytesAsync(orbGlbUrl),
-            this._fetchAssetBytesAsync(orbMetalUrl),
-            this._fetchAssetBytesAsync(orbPatternUrl),
+            this._fetchAssetBytesAsync(DefaultSampleAssetUrls.orbGlb),
+            this._fetchAssetBytesAsync(DefaultSampleAssetUrls.orbMetalImage),
+            this._fetchAssetBytesAsync(DefaultSampleAssetUrls.orbPatternImage),
         ]);
 
         this._orbGltfBlock.data = orbGlb;
-        this._orbGltfBlock.source = orbGlbUrl;
+        this._orbGltfBlock.source = DefaultOrbGlbPath;
 
         this._orbMetalImageBlock.data = orbMetal;
         this._orbMetalImageBlock.mimeType = "image/png";
-        this._orbMetalImageBlock.source = orbMetalUrl;
+        this._orbMetalImageBlock.source = DefaultOrbMetalImagePath;
 
         this._orbPatternImageBlock.data = orbPattern;
         this._orbPatternImageBlock.mimeType = "image/png";
-        this._orbPatternImageBlock.source = orbPatternUrl;
+        this._orbPatternImageBlock.source = DefaultOrbPatternImagePath;
 
         this.state.notifyChanged();
     }

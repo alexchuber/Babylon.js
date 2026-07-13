@@ -61,11 +61,16 @@ test.describe("Node Assets Editor — Energy orb showcase", () => {
 
     test("opens to the energy-orb graph and auto-previews the compressed, self-lit orb without console errors", async ({ page }) => {
         const pageErrors = collectPageErrors(page);
-        // All three bundled sources must be fetched from the CDN before the first build can compose the orb.
-        const orbGlbResponse = page.waitForResponse((response) => response.url().endsWith("/scenes/nodeAssets/orb.glb") && response.ok());
-        const orbMetalResponse = page.waitForResponse((response) => response.url().endsWith("/scenes/nodeAssets/orbMetal.png") && response.ok());
-        const orbPatternResponse = page.waitForResponse((response) => response.url().endsWith("/scenes/nodeAssets/orbPattern.png") && response.ok());
         const editor = new NodeAssetsEditorPage(page);
+        const editorOrigin = new URL(editor.baseUrl).origin;
+
+        // Regression guard for the "Preview build failed / Failed to fetch" bug: the default graph's sample
+        // assets are bundled with the editor, so each is fetched from the editor's own origin rather than a
+        // separate sample-asset CDN. If any of these resolved back to the CDN port, the standalone editor's
+        // first build would fail before it could compose the orb.
+        const orbGlbResponse = page.waitForResponse((response) => response.url().startsWith(editorOrigin) && response.url().includes("orb.glb") && response.ok());
+        const orbMetalResponse = page.waitForResponse((response) => response.url().startsWith(editorOrigin) && response.url().includes("orbMetal") && response.ok());
+        const orbPatternResponse = page.waitForResponse((response) => response.url().startsWith(editorOrigin) && response.url().includes("orbPattern") && response.ok());
 
         await editor.goto();
         await orbGlbResponse;
@@ -89,11 +94,12 @@ test.describe("Node Assets Editor — Energy orb showcase", () => {
         await editor.waitForNextSuccessfulPreviewBuild();
         await expect(editor.previewCanvas).toBeVisible();
 
-        // All three bundled sources are seeded from the CDN on open, so the Source field shows each asset's URL.
+        // Each import block is seeded on open with a stable, human-readable provenance label, so the
+        // read-only Source field shows each asset's sample path.
         await editor.selectNode("Import glTF");
-        await expect(page.getByRole("textbox").nth(1)).toHaveValue(/\/scenes\/nodeAssets\/orb\.glb$/);
+        await expect(page.getByRole("textbox").nth(1)).toHaveValue("scenes/nodeAssets/orb.glb");
         await editor.selectNode("Import Image", 0);
-        await expect(page.getByRole("textbox").nth(1)).toHaveValue(/\/scenes\/nodeAssets\/orb(Metal|Pattern)\.png$/);
+        await expect(page.getByRole("textbox").nth(1)).toHaveValue(/^scenes\/nodeAssets\/orb(Metal|Pattern)\.png$/);
 
         expect(pageErrors).toEqual([]);
     });
