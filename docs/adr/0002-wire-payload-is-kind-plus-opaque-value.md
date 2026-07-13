@@ -1,5 +1,11 @@
 # A wire carries a kind plus an opaque value, with a flat enum of kinds
 
+> **Status: superseded by [ADR 0005](./0005-typed-representation-payloads-and-build-lifecycle.md).** The
+> flat-enum + opaque-`value` model held through the POC. Milestone 07 keeps the flat enum of kinds but
+> replaces the opaque, block-interpreted `value` for the three 3D representations with concrete typed
+> payload wrappers (GltfAsset / UsdAsset / BabylonAsset) whose lifecycle is owned by the build scope.
+> The reasoning below is retained as the record of the original trade-off.
+
 A connection's payload is modelled as its `NodeAssetConnectionPointType` (the kind) plus an untyped
 `value` slot the block bodies interpret; the type enum is a flat, hand-maintained list
 (`SCENE/GLTF`, `IMAGE`, `BYTES`, `NUMBER`, `STRING`, `JSON`) rather than a format/capability
