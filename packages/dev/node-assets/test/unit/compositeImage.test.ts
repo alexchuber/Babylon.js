@@ -81,11 +81,11 @@ describe("CompositeImage block", () => {
 
         expect(processImageMock).toHaveBeenCalledTimes(1);
         // The base payload is the redraw source; the overlay + offset ride along as the composite op.
-        expect(processImageMock.mock.calls[0][0]).toBe(base.output.value);
+        expect(processImageMock.mock.calls[0][0]).toMatchObject({ data: BaseBytes, mimeType: "image/png" });
         // Exact-equality proves nothing else is delegated: no width/height/mimeType override, so the
         // output size and mime are left to follow the base.
         expect(processImageMock.mock.calls[0][1]).toEqual({
-            composite: { overlay: overlay.output.value, offsetX: 12, offsetY: 34 },
+            composite: { overlay: { data: OverlayBytes, mimeType: "image/jpeg" }, offsetX: 12, offsetY: 34 },
         });
     });
 
@@ -129,9 +129,9 @@ describe("CompositeImage block", () => {
 
         await asset.buildAsync();
 
-        const baseInput = base.output.value as ImagePayload;
-        const overlayInput = overlay.output.value as ImagePayload;
-        const output = composite.output.value as ImagePayload;
+        const baseInput = processImageMock.mock.calls[0][0] as ImagePayload;
+        const overlayInput = (processImageMock.mock.calls[0][1] as ImageCanvasOperation).composite!.overlay;
+        const output = await (processImageMock.mock.results[0].value as Promise<ImagePayload>);
         expect(output).not.toBe(baseInput);
         expect(output).not.toBe(overlayInput);
         expect(output.data).not.toBe(baseInput.data);
@@ -154,7 +154,7 @@ describe("CompositeImage block", () => {
         expect(result).toBeInstanceOf(Uint8Array);
         expect(processImageMock).toHaveBeenCalledTimes(1);
         // The exported bytes are the composited payload's bytes, and its mime follows the base.
-        const output = composite.output.value as ImagePayload;
+        const output = await (processImageMock.mock.results[0].value as Promise<ImagePayload>);
         expect(result).toBe(output.data);
         expect(output.mimeType).toBe("image/webp");
     });

@@ -1,5 +1,7 @@
 import { type IResolvedDiagnostic, type ResolvedDiagnosticSeverity } from "loaders/USD/resolution/resolvedStage";
 
+import { type NodeAssetConnectionPoint } from "../connection/nodeAssetConnectionPoint";
+
 /** Configurable ceilings enforced by one build scope. Equality is allowed; only exceeding fails. */
 export interface INodeAssetBuildLimits {
     /** Maximum bytes accepted from any one source block. */
@@ -18,6 +20,16 @@ export interface INodeAssetBuildOptions {
     readonly signal?: AbortSignal;
     /** Partial ceilings; omitted values use behavior-safe defaults. */
     readonly limits?: Partial<INodeAssetBuildLimits>;
+}
+
+/**
+ * Immutable diagnostics retained for a settled build that rejected.
+ */
+export interface INodeAssetBuildReport {
+    /** Non-fatal diagnostics produced before the build rejected, including cleanup failures. */
+    readonly diagnostics: ReadonlyArray<IBuildDiagnostic>;
+    /** Canonical loss records produced before the build rejected. */
+    readonly lossRecords: ReadonlyArray<LossRecord>;
 }
 
 /** Raised when a configured build limit is not finite, non-negative, or count-safe. */
@@ -166,6 +178,7 @@ interface IBuildResourceEntry {
 }
 
 const ResourceOwnership = new WeakMap<object, IResourceOwnership>();
+const BuildReports = new WeakMap<object, INodeAssetBuildReport>();
 const DefaultBuildLimits: INodeAssetBuildLimits = Object.freeze({
     maxSourceAssetBytes: Number.MAX_SAFE_INTEGER,
     maxTotalSourceBytes: Number.MAX_SAFE_INTEGER,
@@ -194,6 +207,7 @@ export class BuildCancelledError extends Error {
 /** Owns diagnostics and other per-build state for one {@link NodeAsset.buildAsync} call. */
 export class BuildScope {
     private readonly _abortController = new AbortController();
+    private readonly _connectionPoints = new Set<NodeAssetConnectionPoint>();
     private readonly _diagnostics: IBuildDiagnostic[] = [];
     private readonly _limits: INodeAssetBuildLimits;
     private readonly _lossRecords: LossRecord[] = [];
@@ -380,6 +394,34 @@ export class BuildScope {
     }
 
     /**
+     * Tracks a connection point whose transient value belongs to this build.
+     * @param point The connection point used while evaluating the graph.
+     * @internal
+     */
+    public _registerConnectionPoint(point: NodeAssetConnectionPoint): void {
+        this._connectionPoints.add(point);
+    }
+
+    /**
+     * Retains this build's immutable post-cleanup report for an object thrown to the caller.
+     * Primitive thrown values intentionally remain unchanged and cannot carry a report.
+     * @param error The exact value that will be thrown.
+     * @internal
+     */
+    public _attachReport(error: unknown): void {
+        if (!IsObject(error)) {
+            return;
+        }
+        BuildReports.set(
+            error,
+            Object.freeze({
+                diagnostics: Object.freeze([...this._diagnostics]),
+                lossRecords: Object.freeze([...this._lossRecords]),
+            })
+        );
+    }
+
+    /**
      * Disposes registered resources once in reverse registration order. Cleanup errors are collected as
      * diagnostics and never reject this operation.
      * @returns A promise that resolves after all registered resources settle.
@@ -401,6 +443,10 @@ export class BuildScope {
                 this._wallClockTimer = undefined;
             }
             this._resources.length = 0;
+            for (const point of this._connectionPoints) {
+                point.value = null;
+            }
+            this._connectionPoints.clear();
         }
     }
 
@@ -458,7 +504,7 @@ export class BuildScope {
     }
 }
 
-/** Existing export bytes augmented in place with immutable, non-enumerable build metadata. */
+/** Export bytes augmented with immutable, non-enumerable build metadata. */
 export type NodeAssetBuildResult = Uint8Array & {
     /** Non-fatal diagnostics produced by the build. */
     readonly diagnostics: ReadonlyArray<IBuildDiagnostic>;
@@ -467,16 +513,17 @@ export type NodeAssetBuildResult = Uint8Array & {
 };
 
 /**
- * Attaches build metadata without copying fresh terminal bytes. If a later build reuses bytes that
- * already carry metadata, it copies them so each result keeps immutable per-build metadata.
+ * Attaches build metadata without copying fresh extensible terminal bytes. Non-extensible bytes and
+ * bytes that already carry metadata are copied with a base typed-array constructor so Buffer-like
+ * slice semantics cannot retain shared storage.
  * @param bytes The terminal export bytes.
  * @param diagnostics Non-fatal build diagnostics.
  * @param lossRecords Representation loss records.
- * @returns The fresh Uint8Array, or a copy of reused bytes, augmented with readonly build metadata.
+ * @returns The original fresh extensible bytes, or an independent copy, with readonly build metadata.
  */
 export function CreateNodeAssetBuildResult(bytes: Uint8Array, diagnostics: ReadonlyArray<IBuildDiagnostic>, lossRecords: ReadonlyArray<LossRecord>): NodeAssetBuildResult {
     const hasBuildMetadata = Object.prototype.hasOwnProperty.call(bytes, "diagnostics") || Object.prototype.hasOwnProperty.call(bytes, "lossRecords");
-    const result = hasBuildMetadata ? bytes.slice() : bytes;
+    const result = hasBuildMetadata || !Object.isExtensible(bytes) ? new Uint8Array(bytes) : bytes;
     Object.defineProperties(result, {
         diagnostics: {
             configurable: false,
@@ -494,8 +541,22 @@ export function CreateNodeAssetBuildResult(bytes: Uint8Array, diagnostics: Reado
     return result as NodeAssetBuildResult;
 }
 
+/**
+ * Gets the immutable diagnostics retained for a failed build without modifying or replacing its
+ * primary thrown object.
+ * @param error The value rejected by {@link NodeAsset.buildAsync}.
+ * @returns The build report for an object error, or `undefined` for unrelated or primitive values.
+ */
+export function GetNodeAssetBuildReport(error: unknown): INodeAssetBuildReport | undefined {
+    return IsObject(error) ? BuildReports.get(error) : undefined;
+}
+
 function IsBuildResource(value: unknown): value is IBuildResource & object {
     return typeof value === "object" && value !== null && "dispose" in value && typeof value.dispose === "function";
+}
+
+function IsObject(value: unknown): value is object {
+    return (typeof value === "object" && value !== null) || typeof value === "function";
 }
 
 function GetErrorMessage(error: unknown): string {

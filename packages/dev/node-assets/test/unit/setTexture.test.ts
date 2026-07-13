@@ -230,11 +230,21 @@ describe("SetTexture", () => {
         resize.output.connectTo(setter.image);
         setPointer.output.connectTo(setter.pointer);
         setter.output.connectTo(exporter.input);
+        let readDocument: Document | undefined;
+        let writeDocument: Document | undefined;
+        let importedDocument: Document | undefined;
+        const buildExportAsync = exporter._buildBlockAsync;
+        vi.spyOn(exporter, "_buildBlockAsync").mockImplementation(async () => {
+            readDocument = GetTestGltfDocument(extract.scene.value);
+            writeDocument = GetTestGltfDocument(setter.output.value);
+            importedDocument = GetTestGltfDocument(importer.output.value);
+            await buildExportAsync.call(exporter);
+        });
 
         const reparsed = await ReparseAsync(await asset.buildAsync());
 
         // The resize ran on the extracted texture and set its target dimensions on the new payload.
-        const resized = resize.output.value as ImagePayload;
+        const resized = await (processImageMock.mock.results[0].value as Promise<ImagePayload>);
         expect(resized.data).toEqual(ResizedBytes);
         expect(resized.width).toBe(8);
         expect(resized.height).toBe(8);
@@ -247,15 +257,13 @@ describe("SetTexture", () => {
         expect(reparsedMaterial.getBaseColorFactor()).toEqual([0.2, 0.4, 0.6, 1]);
 
         // Diamond isolation: each branch got its own Document clone (copy-on-fan-out)...
-        const readDocument = GetTestGltfDocument(extract.scene.value);
-        const writeDocument = GetTestGltfDocument(setter.output.value);
         expect(readDocument).not.toBe(writeDocument);
         // ...the read branch's clone still holds the ORIGINAL texture (the write did not stomp it)...
-        expect(readDocument.getRoot().listMaterials()[0].getBaseColorTexture()!.getImage()).toEqual(OriginalBaseColorPng);
+        expect(readDocument!.getRoot().listMaterials()[0].getBaseColorTexture()!.getImage()).toEqual(OriginalBaseColorPng);
         // ...the write branch's clone holds the resized texture...
-        expect(writeDocument.getRoot().listMaterials()[0].getBaseColorTexture()!.getImage()).toEqual(ResizedBytes);
+        expect(writeDocument!.getRoot().listMaterials()[0].getBaseColorTexture()!.getImage()).toEqual(ResizedBytes);
         // ...and the canonical imported Document is never mutated by either branch.
-        expect(GetTestGltfDocument(importer.output.value).getRoot().listMaterials()[0].getBaseColorTexture()!.getImage()).toEqual(OriginalBaseColorPng);
+        expect(importedDocument!.getRoot().listMaterials()[0].getBaseColorTexture()!.getImage()).toEqual(OriginalBaseColorPng);
     });
 
     it("fails the build with the converter's clear error when the pointer does not name a texture slot", async () => {

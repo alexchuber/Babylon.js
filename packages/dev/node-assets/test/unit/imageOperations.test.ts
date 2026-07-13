@@ -73,10 +73,10 @@ describe("single-input image operations", () => {
         await asset.buildAsync();
 
         expect(processImageMock).toHaveBeenCalledTimes(1);
-        expect(processImageMock.mock.calls[0][0]).toBe(importer.output.value);
+        expect(processImageMock.mock.calls[0][0]).toMatchObject({ data: SourceBytes, mimeType: "image/png" });
         expect(processImageMock.mock.calls[0][1]).toEqual({ width: 100, height: 50 });
 
-        const output = resize.output.value as ImagePayload;
+        const output = await (processImageMock.mock.results[0].value as Promise<ImagePayload>);
         expect(output.width).toBe(100);
         expect(output.height).toBe(50);
         // Resize preserves the source format.
@@ -96,7 +96,7 @@ describe("single-input image operations", () => {
 
         expect(processImageMock).toHaveBeenCalledTimes(1);
         expect(processImageMock.mock.calls[0][1]).toEqual({ mimeType: "image/jpeg", quality: 0.8 });
-        expect((convert.output.value as ImagePayload).mimeType).toBe("image/jpeg");
+        expect((await (processImageMock.mock.results[0].value as Promise<ImagePayload>)).mimeType).toBe("image/jpeg");
     });
 
     it.each([
@@ -115,7 +115,7 @@ describe("single-input image operations", () => {
         expect(processImageMock).toHaveBeenCalledTimes(1);
         expect(processImageMock.mock.calls[0][1]).toEqual(expected);
         // Flip changes neither the format nor (with no resize) the dimensions.
-        expect((flip.output.value as ImagePayload).mimeType).toBe("image/webp");
+        expect((await (processImageMock.mock.results[0].value as Promise<ImagePayload>)).mimeType).toBe("image/webp");
     });
 
     it("throws a clear error when an op has no input image", async () => {
@@ -140,8 +140,8 @@ describe("single-input image operations", () => {
 
         await asset.buildAsync();
 
-        const input = importer.output.value as ImagePayload;
-        const output = flip.output.value as ImagePayload;
+        const input = processImageMock.mock.calls[0][0] as ImagePayload;
+        const output = await (processImageMock.mock.results[0].value as Promise<ImagePayload>);
         expect(output).not.toBe(input);
         expect(output.data).not.toBe(input.data);
         // The source bytes are left intact for any other consumer sharing them by reference.
@@ -165,7 +165,7 @@ describe("single-input image operations", () => {
         expect(processImageMock).toHaveBeenCalledTimes(2);
 
         // The resize sets the dimensions; the later convert preserves them while changing the format.
-        const output = convert.output.value as ImagePayload;
+        const output = await (processImageMock.mock.results[1].value as Promise<ImagePayload>);
         expect(output.width).toBe(120);
         expect(output.height).toBe(30);
         expect(output.mimeType).toBe("image/webp");

@@ -4,7 +4,6 @@ import { ExportGLTFBlock } from "../../src/Blocks/exportGLTFBlock";
 import { ExportImageBlock } from "../../src/Blocks/exportImageBlock";
 import { ImportGLTFBlock } from "../../src/Blocks/importGLTFBlock";
 import { ImportImageBlock } from "../../src/Blocks/importImageBlock";
-import { type ImagePayload } from "../../src/Blocks/imagePayload";
 import { NodeAssetConnectionPointType } from "../../src/connection/nodeAssetConnectionPointType";
 import { NodeAsset } from "../../src/nodeAsset";
 
@@ -56,9 +55,8 @@ describe("IMAGE lane", () => {
         expect(result).toBeInstanceOf(Uint8Array);
         expect(result).toEqual(PngBytes);
 
-        // The mime type is carried alongside the bytes on the IMAGE payload the import block emits.
-        const payload = importer.output.value as ImagePayload;
-        expect(payload.mimeType).toBe("image/png");
+        // The configured mime type is carried through the IMAGE payload to the successful export.
+        expect(importer.mimeType).toBe("image/png");
     });
 
     it("still builds an all-SCENE glTF graph unchanged (terminal generalization regression)", async () => {

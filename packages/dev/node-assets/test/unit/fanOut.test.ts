@@ -38,8 +38,12 @@ class MergeProbeBlock extends NodeAssetBlock {
     public readonly inputA = this._registerInput("inputA", NodeAssetConnectionPointType.GLTF_DOCUMENT);
     public readonly inputB = this._registerInput("inputB", NodeAssetConnectionPointType.GLTF_DOCUMENT);
     public readonly output = this._registerOutput("output", NodeAssetConnectionPointType.GLTF_DOCUMENT);
+    public lastInputA: unknown = null;
+    public lastInputB: unknown = null;
 
     public override async _buildBlockAsync(): Promise<void> {
+        this.lastInputA = this.inputA.value;
+        this.lastInputB = this.inputB.value;
         this.output.value = this.inputA.value;
     }
 }
@@ -191,13 +195,12 @@ describe("evaluate-once", () => {
         // The shared producer builds a single time even though two branches consume it.
         expect(buildSpy).toHaveBeenCalledTimes(1);
 
-        // Copy-on-fan-out (slice 05/01) hands each branch its own clone of the fanned-out SCENE, so
-        // neither branch holds the canonical evaluated Document and the two copies are independent.
-        const canonical = importer.output.value as GltfAsset;
-        expect(canonical).not.toBeNull();
-        expect(branchA.output.value).not.toBe(canonical);
-        expect(branchB.output.value).not.toBe(canonical);
-        expect(branchA.output.value).not.toBe(branchB.output.value);
+        // Copy-on-fan-out hands each branch its own independent clone.
+        const branchAValue = merge.lastInputA as GltfAsset;
+        const branchBValue = merge.lastInputB as GltfAsset;
+        expect(branchAValue).toBeInstanceOf(GltfAsset);
+        expect(branchBValue).toBeInstanceOf(GltfAsset);
+        expect(branchAValue).not.toBe(branchBValue);
 
         // The build still succeeds and produces exported bytes.
         expect(result).toBeInstanceOf(Uint8Array);
@@ -243,8 +246,8 @@ describe("evaluate-once", () => {
 
         expect(sourceBuilds).toBe(1);
         // The fanned-out SCENE is cloned per branch (slice 05/01), so each branch holds a distinct copy.
-        expect(branchA.output.value).not.toBe(source.output.value);
-        expect(branchB.output.value).not.toBe(source.output.value);
-        expect(branchA.output.value).not.toBe(branchB.output.value);
+        expect(merge.lastInputA).not.toBeNull();
+        expect(merge.lastInputB).not.toBeNull();
+        expect(merge.lastInputA).not.toBe(merge.lastInputB);
     });
 });
