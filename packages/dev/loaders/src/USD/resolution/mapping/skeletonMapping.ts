@@ -109,20 +109,42 @@ export function ResolveSkinning(meshPrim: ISdfPrimSpec, context: ISkeletonMappin
 
     const aligned = AlignSkinningBuffers(meshPrim, resolvedMesh, jointIndices, jointWeights, influencesPerVertex);
     const skeleton = context.skeletons[skeletonIndex];
-    const bindingJoints = GetTokenArrayAttribute(meshPrim, "skel:joints") ?? GetRelationshipTargets(GetRelationship(meshPrim, "skel:joints"));
-    const remappedJointIndices =
-        bindingJoints.length > 0 && skeleton
-            ? aligned.jointIndices.map((value) => {
-                  const jointPath = bindingJoints[Math.max(0, Math.trunc(value))];
-                  const skeletonJointIndex = jointPath === undefined ? -1 : skeleton.joints.indexOf(jointPath);
-                  return skeletonJointIndex >= 0 ? skeletonJointIndex : 0;
-              })
-            : aligned.jointIndices;
+    // skel:joints is a uniform token[] attribute in USD SkelBindingAPI; there is no relationship form.
+    // A relationship fallback would read absolute prim paths that never match the skeleton's joint
+    // tokens and silently remap every influence onto joint 0, so only the attribute is read.
+    const bindingJoints = GetTokenArrayAttribute(meshPrim, "skel:joints") ?? [];
+    const remappedJointWeights = Float32Array.from(aligned.jointWeights);
+    let remappedJointIndices = aligned.jointIndices;
+    let hasUnresolvedJoint = false;
+    if (bindingJoints.length > 0 && skeleton) {
+        // Index the skeleton joints once so remapping is O(V + J) rather than O(V * J) via indexOf.
+        const jointIndexByPath = new Map<string, number>();
+        skeleton.joints.forEach((joint, index) => jointIndexByPath.set(joint, index));
+        remappedJointIndices = aligned.jointIndices.map((value, flatIndex) => {
+            const jointPath = bindingJoints[Math.max(0, Math.trunc(value))];
+            const skeletonJointIndex = jointPath === undefined ? undefined : jointIndexByPath.get(jointPath);
+            if (skeletonJointIndex === undefined) {
+                // Drop the influence (zero its weight) rather than silently binding the vertex to the
+                // root joint, which would move geometry to an unrelated joint.
+                hasUnresolvedJoint = true;
+                remappedJointWeights[flatIndex] = 0;
+                return 0;
+            }
+            return skeletonJointIndex;
+        });
+    }
+    if (hasUnresolvedJoint) {
+        context.diagnostics.push({
+            severity: "warning",
+            path: meshPrim.path,
+            message: "Skinned Mesh references joints not present in the bound Skeleton; the unresolved influences were dropped.",
+        });
+    }
     const skinning: IResolvedSkinning = {
         skeletonIndex,
         influencesPerVertex,
         jointIndices: new Uint32Array(remappedJointIndices.map((value) => Math.max(0, Math.trunc(value)))),
-        jointWeights: new Float32Array(aligned.jointWeights),
+        jointWeights: remappedJointWeights,
     };
 
     const geomBindTransform = AsMat4(GetAttributeValue(GetAttribute(meshPrim, "primvars:skel:geomBindTransform")));

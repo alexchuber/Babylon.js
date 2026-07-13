@@ -192,10 +192,18 @@ function BuildPrimIndex(rootPrims: ISdfPrimSpec[]): ReadonlyMap<string, ISdfPrim
 function ApplyUnsupportedSchemaDiagnostics(primSpec: ISdfPrimSpec, context: IStageMappingContext): void {
     if (IsUnsupportedLightSchema(primSpec.typeName)) {
         context.diagnostics.push({ severity: "info", path: primSpec.path, message: `Schema ${primSpec.typeName} mapping is not supported.` });
+    } else if (IsUnsupportedRenderableSchema(primSpec.typeName)) {
+        context.diagnostics.push({ severity: "info", path: primSpec.path, message: `${primSpec.typeName} prims are not supported by the USD loader and were skipped.` });
     }
     if (primSpec.instanceable) {
         context.diagnostics.push({ severity: "info", path: primSpec.path, message: "Instanceable non-Mesh prim mapping is deferred." });
     }
+}
+
+// Renderable UsdGeom gprim types this loader cannot yet import. They are skipped, so surface a
+// diagnostic rather than dropping them silently.
+function IsUnsupportedRenderableSchema(typeName: string | undefined): boolean {
+    return typeName !== undefined && ["BasisCurves", "NurbsCurves", "Points", "NurbsPatch", "Volume"].includes(typeName);
 }
 
 function IsUnsupportedLightSchema(typeName: string | undefined): boolean {

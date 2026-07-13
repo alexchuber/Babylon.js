@@ -29,7 +29,7 @@ export function ResolvePrimAnimation(prim: ISdfPrimSpec, layer: ISdfLayer, metad
             continue;
         }
         if (name === "visibility") {
-            tracks.push(BuildVisibilityTrack(property, metadata.timeCodesPerSecond, interpolation));
+            tracks.push(BuildVisibilityTrack(property, metadata.timeCodesPerSecond));
         } else if (name === "xformOp:translate") {
             tracks.push(BuildVec3Track("translation", property, metadata.timeCodesPerSecond, interpolation));
         } else if (name === "xformOp:scale") {
@@ -39,7 +39,7 @@ export function ResolvePrimAnimation(prim: ISdfPrimSpec, layer: ISdfLayer, metad
         } else if (name === "xformOp:rotateXYZ" || name === "xformOp:rotateX" || name === "xformOp:rotateY" || name === "xformOp:rotateZ") {
             tracks.push(BuildRotationTrack(name, property, metadata.timeCodesPerSecond, interpolation));
         } else if (name === "xformOp:transform") {
-            tracks.push(...BuildMatrixTracks(property, metadata.timeCodesPerSecond, interpolation));
+            tracks.push(...BuildMatrixTracks(property, metadata.timeCodesPerSecond, interpolation, diagnostics, property.path ?? prim.path));
         } else if (name.startsWith("xformOp:")) {
             diagnostics.push({ severity: "info", path: property.path ?? prim.path, message: `Animation for '${name}' is deferred.` });
         }
@@ -94,17 +94,34 @@ function BuildRotationTrack(name: string, attribute: ISdfAttributeSpec, timeCode
     };
 }
 
-function BuildVisibilityTrack(attribute: ISdfAttributeSpec, timeCodesPerSecond: number, interpolation: ResolvedInterpolation): IResolvedAnimationTrack {
+function BuildVisibilityTrack(attribute: ISdfAttributeSpec, timeCodesPerSecond: number): IResolvedAnimationTrack {
     const values = (attribute.timeSamples?.values ?? []).map((sample) => (AsToken(sample) === "invisible" ? 0 : 1));
     return {
         target: "visibility",
         times: BuildTimes(attribute, timeCodesPerSecond),
         values: new Float32Array(values),
-        interpolation,
+        // USD visibility is a non-interpolatable token, so it always steps (held) between samples
+        // regardless of the layer's default interpolation.
+        interpolation: "held",
     };
 }
 
-function BuildMatrixTracks(attribute: ISdfAttributeSpec, timeCodesPerSecond: number, interpolation: ResolvedInterpolation): IResolvedAnimationTrack[] {
+function BuildMatrixTracks(
+    attribute: ISdfAttributeSpec,
+    timeCodesPerSecond: number,
+    interpolation: ResolvedInterpolation,
+    diagnostics: IResolvedDiagnostic[],
+    path: string
+): IResolvedAnimationTrack[] {
+    // Babylon animates nodes through TRS channels, so a matrix-valued xformOp is decomposed per sample
+    // and its translation/rotation/scale interpolated independently. This is an approximation of USD's
+    // element-wise matrix interpolation, so record it as an honest, non-fatal diagnostic.
+    diagnostics.push({
+        severity: "info",
+        path,
+        message:
+            "Matrix-valued animation (xformOp:transform) is approximated by decomposing each sample into interpolated translation, rotation, and scale; USD element-wise matrix interpolation is not preserved.",
+    });
     const translations: number[] = [];
     const rotations: number[] = [];
     const scales: number[] = [];

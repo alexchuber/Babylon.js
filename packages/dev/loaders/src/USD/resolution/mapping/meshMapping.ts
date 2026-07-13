@@ -71,13 +71,16 @@ export function ResolveMesh(prim: ISdfPrimSpec, context: IStageMappingContext): 
         faceVertexResolvedIndices[corner.faceVertexOffset] = vertexIndex;
     }
 
+    const subdivisionScheme = ResolveSubdivisionScheme(prim);
+    EmitSubdivisionDiagnostic(prim, subdivisionScheme, context);
+
     return {
         positions: BuildPositionBuffer(vertices, points),
         indices: new Uint32Array(indices),
         normals: normalSource ? BuildVec3Buffer(vertices, normalSource) : undefined,
         uvSets: uvSources.length > 0 ? uvSources.map((source) => BuildVec2Buffer(vertices, source)) : undefined,
         colors: displayColorSource ? BuildColorBuffer(vertices, displayColorSource, displayOpacitySource) : undefined,
-        subdivisionScheme: ResolveSubdivisionScheme(prim),
+        subdivisionScheme,
         faceVertexCounts: new Uint32Array(faceVertexCounts),
         faceVertexIndices: new Uint32Array(faceVertexIndices),
         sourcePointIndices: new Uint32Array(vertices.map((vertex) => vertex.pointIndex)),
@@ -313,6 +316,24 @@ function BuildSubsetRanges(faceIndices: number[], faceRanges: IFaceIndexRange[])
 function ResolveSubdivisionScheme(prim: ISdfPrimSpec): IResolvedMesh["subdivisionScheme"] {
     const scheme = AsToken(GetAttributeValue(GetAttribute(prim, "subdivisionScheme")));
     return scheme === "none" || scheme === "loop" || scheme === "bilinear" ? scheme : "catmullClark";
+}
+
+// Subdivision is only ever approximated by this loader (a single Catmull-Clark refinement, or uniform
+// triangle splitting for loop/bilinear), and USD's default scheme for an unauthored Mesh is
+// catmullClark. Surface an honest, non-fatal diagnostic whenever a mesh is subdivided so the caller
+// knows the geometry is not the exact USD limit surface.
+function EmitSubdivisionDiagnostic(prim: ISdfPrimSpec, scheme: IResolvedMesh["subdivisionScheme"], context: IStageMappingContext): void {
+    if (scheme === "none") {
+        return;
+    }
+    const authored = AsToken(GetAttributeValue(GetAttribute(prim, "subdivisionScheme")));
+    const message =
+        authored === undefined
+            ? "Mesh has no authored subdivisionScheme; USD's default 'catmullClark' subdivision is applied as an approximation. Set subdivisionScheme to 'none' to import it as a polygon mesh."
+            : scheme === "catmullClark"
+              ? "Mesh subdivisionScheme 'catmullClark' is approximated by a single Catmull-Clark refinement; the true limit surface is not produced."
+              : `Mesh subdivisionScheme '${scheme}' is approximated by uniform triangle subdivision; true '${scheme}' subdivision is not supported.`;
+    context.diagnostics.push({ severity: "info", path: prim.path, message });
 }
 
 function CompareUvPrimvarNames(left: string, right: string): number {
