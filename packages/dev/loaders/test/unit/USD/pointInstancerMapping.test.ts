@@ -1,4 +1,7 @@
 import { describe, expect, it } from "vitest";
+import { NullEngine } from "core/Engines/nullEngine";
+import { Scene } from "core/scene";
+import { AdaptResolvedStageToScene } from "loaders/USD/adapter/usdAdapter";
 import { MapLayerToResolvedStage } from "loaders/USD/resolution/mapping/stageMapper";
 import { type ISdfLayer, type ISdfPrimSpec } from "loaders/USD/resolution/sdf";
 
@@ -150,5 +153,78 @@ describe("USD point instancer mapping", () => {
         expect(instancer.orientations).toBeUndefined();
         expect(instancer.scales).toBeUndefined();
         expect(instancer.invisibleIds).toBeUndefined();
+    });
+
+    it("preserves authored prototype slots when an unsupported hierarchy is skipped", () => {
+        const supportedPrototype = { ...prototypeMesh, path: "/Instancer/Supported" };
+        const layer: ISdfLayer = {
+            identifier: "/Scenes/prototypeSlots.usda",
+            subLayers: [],
+            rootPrims: [
+                {
+                    name: "Instancer",
+                    path: "/Instancer",
+                    specifier: "def",
+                    typeName: "PointInstancer",
+                    properties: {
+                        prototypes: {
+                            kind: "relationship",
+                            targets: { isExplicit: true, explicit: ["/Instancer/Unsupported", "/Instancer/Supported"] },
+                        },
+                        protoIndices: { kind: "attribute", typeName: "int[]", default: { type: "int[]", value: [0, 1] } },
+                        positions: {
+                            kind: "attribute",
+                            typeName: "point3f[]",
+                            default: {
+                                type: "point3f[]",
+                                value: [
+                                    [0, 0, 0],
+                                    [2, 0, 0],
+                                ],
+                            },
+                        },
+                    },
+                    children: [
+                        {
+                            name: "Unsupported",
+                            path: "/Instancer/Unsupported",
+                            specifier: "def",
+                            typeName: "Xform",
+                            properties: {},
+                            children: [{ ...prototypeMesh, path: "/Instancer/Unsupported/Nested" }],
+                        },
+                        supportedPrototype,
+                    ],
+                },
+            ],
+        };
+
+        const stage = MapLayerToResolvedStage(layer);
+        const instancer = stage.root.children[0].instancer!;
+
+        expect(instancer.prototypeMeshIndices).toEqual([undefined, 0]);
+        expect(Array.from(instancer.protoIndices)).toEqual([0, 1]);
+        expect(stage.diagnostics).toEqual(
+            expect.arrayContaining([
+                expect.objectContaining({
+                    severity: "warning",
+                    path: "/Instancer/Unsupported",
+                    message: expect.stringContaining("prototype hierarchies"),
+                }),
+            ])
+        );
+
+        const engine = new NullEngine();
+        const scene = new Scene(engine);
+        try {
+            const result = AdaptResolvedStageToScene(stage, scene, null, {});
+            const supported = result.meshes.find((mesh) => mesh.name === "Instancer_proto1");
+            expect(result.meshes.some((mesh) => mesh.name === "Instancer_proto0")).toBe(false);
+            expect(supported?.thinInstanceCount).toBe(1);
+            expect(supported?._thinInstanceDataStorage.matrixData?.[12]).toBe(2);
+        } finally {
+            scene.dispose();
+            engine.dispose();
+        }
     });
 });

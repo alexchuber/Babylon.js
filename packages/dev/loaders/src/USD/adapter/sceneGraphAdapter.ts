@@ -166,6 +166,9 @@ function AdaptPointInstancerPrim(prim: IResolvedPrim, context: IUsdAdapterContex
     // prototypes are never shared across instancers). The instancer node carries the instancer's own
     // transform; the per-instance matrices stay in the instancer's local space.
     const prototypeMeshes = instancer.prototypeMeshIndices.map((meshIndex, prototypeOrder) => {
+        if (meshIndex === undefined) {
+            return undefined;
+        }
         const resolvedMesh = context.stage.meshes[meshIndex];
         const prototypeMesh = CreateMeshFromResolved(`${prim.name}_proto${prototypeOrder}`, resolvedMesh, context.scene);
         BindMaterial(prototypeMesh, instancer.prototypeMaterialBindings?.[prototypeOrder], resolvedMesh, context);
@@ -175,6 +178,9 @@ function AdaptPointInstancerPrim(prim: IResolvedPrim, context: IUsdAdapterContex
     const rendered = CreatePointInstancerThinInstances(instancer, prototypeMeshes, context.scene);
     const renderedSet = new Set(rendered);
     for (const prototypeMesh of prototypeMeshes) {
+        if (!prototypeMesh) {
+            continue;
+        }
         if (renderedSet.has(prototypeMesh)) {
             prototypeMesh.parent = node;
             context.meshes.push(prototypeMesh);

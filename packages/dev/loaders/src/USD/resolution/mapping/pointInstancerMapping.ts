@@ -29,8 +29,8 @@ export function ResolvePointInstancer(prim: ISdfPrimSpec, context: IStageMapping
     };
 }
 
-function ResolvePrototypes(prim: ISdfPrimSpec, context: IStageMappingContext): { meshIndex: number; materialBinding: IResolvedMaterialBinding | undefined }[] {
-    const prototypes: { meshIndex: number; materialBinding: IResolvedMaterialBinding | undefined }[] = [];
+function ResolvePrototypes(prim: ISdfPrimSpec, context: IStageMappingContext): { meshIndex: number | undefined; materialBinding: IResolvedMaterialBinding | undefined }[] {
+    const prototypes: { meshIndex: number | undefined; materialBinding: IResolvedMaterialBinding | undefined }[] = [];
     for (const targetPath of GetRelationshipTargets(GetRelationship(prim, "prototypes"))) {
         const prototypePrim = context.primByPath.get(NormalizePrimPath(targetPath));
         const meshPrim = prototypePrim ? FindPrototypeMesh(prototypePrim, context) : undefined;
@@ -40,6 +40,7 @@ function ResolvePrototypes(prim: ISdfPrimSpec, context: IStageMappingContext): {
                 path: targetPath,
                 message: "PointInstancer prototype target was not found or did not contain a Mesh and was skipped.",
             });
+            prototypes.push({ meshIndex: undefined, materialBinding: undefined });
             continue;
         }
 
@@ -49,6 +50,8 @@ function ResolvePrototypes(prim: ISdfPrimSpec, context: IStageMappingContext): {
                 meshIndex: PoolMesh(mesh, context),
                 materialBinding: ResolveMaterialBinding(meshPrim, context),
             });
+        } else {
+            prototypes.push({ meshIndex: undefined, materialBinding: undefined });
         }
     }
     return prototypes;

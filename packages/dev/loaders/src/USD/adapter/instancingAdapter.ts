@@ -39,7 +39,7 @@ export function CreateInstance(sourceMesh: Mesh, name: string): InstancedMesh {
  * @param scene the scene that owns the prototype meshes
  * @returns prototype meshes that received non-empty thin-instance matrix buffers
  */
-export function CreatePointInstancerThinInstances(instancer: IResolvedPointInstancer, prototypeMeshes: Mesh[], scene: Scene): Mesh[] {
+export function CreatePointInstancerThinInstances(instancer: IResolvedPointInstancer, prototypeMeshes: (Mesh | undefined)[], scene: Scene): Mesh[] {
     RegisterThinInstanceMesh();
 
     const prototypeCount = Math.min(instancer.prototypeMeshIndices.length, prototypeMeshes.length);
@@ -104,6 +104,9 @@ export function CreatePointInstancerThinInstances(instancer: IResolvedPointInsta
         const matrixBuffer = matrixBuffers[prototypeIndex];
         if (matrixBuffer) {
             const prototypeMesh = prototypeMeshes[prototypeIndex];
+            if (!prototypeMesh) {
+                continue;
+            }
             prototypeMesh.thinInstanceSetBuffer("matrix", matrixBuffer, 16);
             instancedMeshes.push(prototypeMesh);
         }
@@ -142,11 +145,12 @@ function IsVisiblePrototypeInstance(
     instanceIndex: number,
     prototypeIndex: number,
     prototypeCount: number,
-    prototypeMeshes: Mesh[],
+    prototypeMeshes: (Mesh | undefined)[],
     scene: Scene,
     ids: Int32Array | undefined,
     invisibleIds: Set<number> | undefined
 ): boolean {
     const instanceId = ids?.[instanceIndex] ?? instanceIndex;
-    return prototypeIndex >= 0 && prototypeIndex < prototypeCount && prototypeMeshes[prototypeIndex].getScene() === scene && !invisibleIds?.has(instanceId);
+    const prototypeMesh = prototypeMeshes[prototypeIndex];
+    return prototypeIndex >= 0 && prototypeIndex < prototypeCount && prototypeMesh !== undefined && prototypeMesh.getScene() === scene && !invisibleIds?.has(instanceId);
 }
