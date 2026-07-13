@@ -2,6 +2,8 @@ import { describe, expect, it } from "vitest";
 
 import {
     DemoCatalogSchemaVersion,
+    DemoCatalogDemoCount,
+    DemoCatalogRegistry,
     DemoAssetRole,
     DemoLossPolicy,
     DemoResourceKind,
@@ -11,6 +13,7 @@ import {
     IsEvaluateNodeGeometryNode,
     IsNodeGeometryResource,
     type DemoCatalog,
+    type DemoGraphNode,
     type DemoLossDiagnostic,
     type DemoNodeGeometryResource,
 } from "../../src/nodeAssets/demoCatalog";
@@ -368,5 +371,45 @@ describe("demo catalog schema", () => {
             status: "requires-adapter",
             proceduralUntil: "BakeNodeGeometry",
         });
+    });
+
+    it("exports the complete eight-demo teaching registry", () => {
+        expect(DemoCatalogRegistry.version).toBe(DemoCatalogSchemaVersion);
+        expect(DemoCatalogRegistry.demos).toHaveLength(DemoCatalogDemoCount);
+        expect(new Set(DemoCatalogRegistry.demos.map(({ id }) => id)).size).toBe(DemoCatalogDemoCount);
+        expect(DemoCatalogRegistry.demos.map(({ teaching }) => teaching.order)).toEqual([1, 2, 3, 4, 5, 6, 7, 8]);
+
+        for (const demo of DemoCatalogRegistry.demos) {
+            const lossIds = new Set(demo.expectedLosses.map(({ id }) => id));
+            const badgeIds = demo.editor.lossBadges.map(({ diagnosticId }) => diagnosticId);
+            const reviewIds = demo.preExportReview.accumulatedLosses.map(({ id }) => id);
+
+            expect(badgeIds.every((id) => lossIds.has(id))).toBe(true);
+            expect(new Set(reviewIds)).toEqual(lossIds);
+            expect(demo.teaching.concepts).toContain(DemoTeachingConcept.EXPECTED_LOSSES);
+            expect(demo.teaching.concepts).toContain(DemoTeachingConcept.PRE_EXPORT_REVIEW);
+            expect(demo.editor.frames.map(({ id }) => id)).toEqual(expect.arrayContaining([...demo.teaching.focus.frameIds]));
+        }
+
+        const usdDemo = DemoCatalogRegistry.demos.find(({ id }) => id === "usd-to-gltf")!;
+        expect(usdDemo.resources[0]).toMatchObject({
+            kind: DemoResourceKind.USD,
+            format: DemoUsdFixtureFormat.USDZ,
+            source: { kind: "bundled", origin: "same-origin", assetKey: "toycar-usdz" },
+            resolvedStage: { representation: "IResolvedStage" },
+        });
+
+        const nodeGeometryDemo = DemoCatalogRegistry.demos.find(({ id }) => id === "node-geometry-box-to-gltf")!;
+        const nodeGeometryGraph = nodeGeometryDemo.graph as readonly DemoGraphNode[];
+        expect(nodeGeometryGraph.map(({ kind }) => kind)).toEqual(["ImportNodeGeometry", "EvaluateNodeGeometry", "BakeNodeGeometry", "ExportScene"]);
+        expect(nodeGeometryDemo.nodeGeometry.status).toBe("requires-adapter");
+        expect(nodeGeometryDemo.nodeGeometry.proceduralUntil).toBe("BakeNodeGeometry");
+
+        const selectionStatuses = DemoCatalogRegistry.demos.flatMap((demo) => demo.selections.map(({ resolution }) => resolution.status));
+        expect(selectionStatuses).toEqual(expect.arrayContaining(["resolved", "stale", "dangling", "empty"]));
+
+        const imageRoles = DemoCatalogRegistry.demos.flatMap((demo) => demo.assets.filter(({ role }) => role !== DemoAssetRole.SOURCE_SCENE).map(({ role }) => role));
+        expect(imageRoles).toEqual(expect.arrayContaining([DemoAssetRole.BASE_COLOR, DemoAssetRole.NORMAL, DemoAssetRole.ROUGHNESS]));
+        expect("IMAGE" in DemoResourceKind).toBe(false);
     });
 });
