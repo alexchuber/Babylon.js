@@ -250,4 +250,52 @@ describe("typed representations", () => {
         evaluated.dispose();
         evaluated.dispose();
     });
+
+    it.each([
+        ["missing positions", new VertexData()],
+        [
+            "misaligned positions",
+            Object.assign(new VertexData(), {
+                positions: [0, 0],
+            }),
+        ],
+        [
+            "non-finite positions",
+            Object.assign(new VertexData(), {
+                positions: [0, Number.NaN, 0],
+            }),
+        ],
+        [
+            "mismatched normals",
+            Object.assign(new VertexData(), {
+                positions: [0, 0, 0],
+                normals: [0, 1, 0, 0, 1, 0],
+            }),
+        ],
+        [
+            "out-of-range indices",
+            Object.assign(new VertexData(), {
+                positions: [0, 0, 0],
+                indices: [1],
+            }),
+        ],
+    ])("rejects an invalid evaluated VertexData snapshot with %s", (_case, vertexData) => {
+        const nodeGeometry = new NodeGeometry("invalid snapshot");
+        try {
+            expect(
+                () =>
+                    new NodeGeometryAsset(
+                        nodeGeometry,
+                        {
+                            identity: "invalid-snapshot",
+                            revision: 0,
+                            manifest: {},
+                        },
+                        vertexData
+                    )
+            ).toThrow(/evaluated VertexData snapshot/);
+        } finally {
+            nodeGeometry.dispose();
+        }
+    });
 });

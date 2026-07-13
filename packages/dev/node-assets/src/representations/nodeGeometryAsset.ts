@@ -36,7 +36,7 @@ export class NodeGeometryAsset {
      * Creates a NodeGeometry resource payload.
      * @param nodeGeometry The parsed, unevaluated graph owned by this payload.
      * @param metadata Stable caller-supplied identity, revision, and manifest.
-     * @param evaluatedVertexData An optional evaluated snapshot to clone and freeze.
+     * @param evaluatedVertexData An optional evaluated snapshot to validate, clone, and freeze.
      */
     public constructor(nodeGeometry: NodeGeometry, metadata: INodeGeometryAssetMetadata, evaluatedVertexData?: VertexData) {
         const validatedMetadata = ValidateAndFreezeAssetMetadata(metadata);
@@ -44,7 +44,7 @@ export class NodeGeometryAsset {
         this.identity = validatedMetadata.identity;
         this.revision = validatedMetadata.revision;
         this.manifest = validatedMetadata.manifest;
-        this.evaluatedVertexData = evaluatedVertexData ? DeepFreeze(VertexData.Parse(evaluatedVertexData.serialize())) : undefined;
+        this.evaluatedVertexData = evaluatedVertexData ? CloneAndValidateVertexData(evaluatedVertexData) : undefined;
     }
 
     /** Whether this resource was disposed by its build scope. */
@@ -93,4 +93,63 @@ export class NodeGeometryAsset {
  */
 export function IsNodeGeometryAsset(value: unknown): value is NodeGeometryAsset {
     return value instanceof NodeGeometryAsset;
+}
+
+function CloneAndValidateVertexData(vertexData: VertexData): Readonly<VertexData> {
+    if (!(vertexData instanceof VertexData)) {
+        throw new TypeError("The evaluated VertexData snapshot must be a VertexData instance.");
+    }
+
+    const snapshot = VertexData.Parse(vertexData.serialize());
+    const positions = ValidateVertexAttribute("positions", snapshot.positions, 3);
+    const vertexCount = positions.length / 3;
+    const attributes: ReadonlyArray<readonly [string, ArrayLike<number> | null | undefined, number]> = [
+        ["normals", snapshot.normals, 3],
+        ["tangents", snapshot.tangents, 4],
+        ["uvs", snapshot.uvs, 2],
+        ["uvs2", snapshot.uvs2, 2],
+        ["uvs3", snapshot.uvs3, 2],
+        ["uvs4", snapshot.uvs4, 2],
+        ["uvs5", snapshot.uvs5, 2],
+        ["uvs6", snapshot.uvs6, 2],
+        ["colors", snapshot.colors, 4],
+        ["matricesIndices", snapshot.matricesIndices, 4],
+        ["matricesWeights", snapshot.matricesWeights, 4],
+        ["matricesIndicesExtra", snapshot.matricesIndicesExtra, 4],
+        ["matricesWeightsExtra", snapshot.matricesWeightsExtra, 4],
+    ];
+    for (const [name, values, stride] of attributes) {
+        if (values == null) {
+            continue;
+        }
+        const attribute = ValidateVertexAttribute(name, values, stride);
+        if (attribute.length / stride !== vertexCount) {
+            throw new TypeError(`The evaluated VertexData snapshot ${name} count must match its position count.`);
+        }
+    }
+
+    if (snapshot.indices) {
+        for (const index of snapshot.indices) {
+            if (!Number.isSafeInteger(index) || index < 0 || index >= vertexCount) {
+                throw new TypeError("The evaluated VertexData snapshot indices must reference existing vertices.");
+            }
+        }
+    }
+
+    return DeepFreeze(snapshot);
+}
+
+function ValidateVertexAttribute(name: string, values: ArrayLike<number> | null | undefined, stride: number): ArrayLike<number> {
+    if (values == null) {
+        throw new TypeError(`The evaluated VertexData snapshot requires ${name}.`);
+    }
+    if (values.length % stride !== 0) {
+        throw new TypeError(`The evaluated VertexData snapshot ${name} length must be a multiple of ${stride}.`);
+    }
+    for (let index = 0; index < values.length; index++) {
+        if (!Number.isFinite(values[index])) {
+            throw new TypeError(`The evaluated VertexData snapshot ${name} must contain only finite numbers.`);
+        }
+    }
+    return values;
 }
