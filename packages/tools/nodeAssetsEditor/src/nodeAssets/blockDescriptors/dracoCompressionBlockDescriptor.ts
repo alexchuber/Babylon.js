@@ -45,10 +45,10 @@ function ParseQuantizationBits(value: string): Record<string, number> | null {
 
 RegisterBlockDescriptor({
     paletteItemId: "draco-compression",
-    label: "Draco Compression",
+    label: "Apply Draco",
     headerColor: DracoHeaderColor,
     className: DracoCompressionBlock.ClassName,
-    create: (nodeAsset) => new DracoCompressionBlock("Draco Compression", nodeAsset),
+    create: (nodeAsset) => new DracoCompressionBlock("Apply Draco", nodeAsset),
     getPropertySection: (block, { refresh }) => {
         const dracoBlock = block as DracoCompressionBlock;
         return {

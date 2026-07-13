@@ -4,19 +4,30 @@ import { describe, expect, it, vi } from "vitest";
 // every block, so this test observes the exact set the published package registers. The coverage below
 // therefore fails if any block is dropped from the barrel or stops self-registering.
 import {
+    Babylon2GLTFBlock,
+    BabylonSelectorBlock,
     BuildPBRMaterial,
     CenterBlock,
+    ComposeGLTFMaterialBlock,
     CompositeImageBlock,
     ConvertImageFormatBlock,
+    DecomposeGLTFMaterialBlock,
     DedupBlock,
     DracoCompressionBlock,
+    EvaluateNodeGeometryBlock,
     ExportGLTFBlock,
     ExportImageBlock,
     ExtractTexture,
     FlattenBlock,
     FlipImageBlock,
+    GetBabylonMeshBlock,
     GetProperty,
+    GetUSDPrimBlock,
+    GLTF2BabylonBlock,
+    GLTFSelectorBlock,
+    ImportBabylonBlock,
     ImportGLTFBlock,
+    ImportNodeGeometryBlock,
     ImportUSDBlock,
     ImportImageBlock,
     JoinBlock,
@@ -30,10 +41,14 @@ import {
     QuantizeBlock,
     ResizeImageBlock,
     Selector,
+    SetBabylonPropertyBlock,
     SetProperty,
     SetTexture,
     SimplifyBlock,
     StringLiteral,
+    USD2BabylonBlock,
+    USD2GLTFBlock,
+    USDSelectorBlock,
     WeldBlock,
     // eslint-disable-next-line import/no-internal-modules
 } from "../../src/index";
@@ -172,9 +187,24 @@ describe("block self-registration", () => {
                     FlipImageBlock.ClassName,
                     ExtractTexture.ClassName,
                     CompositeImageBlock.ClassName,
+                    ImportBabylonBlock.ClassName,
+                    ImportNodeGeometryBlock.ClassName,
+                    USD2GLTFBlock.ClassName,
+                    USD2BabylonBlock.ClassName,
+                    GLTF2BabylonBlock.ClassName,
+                    Babylon2GLTFBlock.ClassName,
+                    EvaluateNodeGeometryBlock.ClassName,
+                    DecomposeGLTFMaterialBlock.ClassName,
+                    ComposeGLTFMaterialBlock.ClassName,
+                    GetBabylonMeshBlock.ClassName,
+                    SetBabylonPropertyBlock.ClassName,
+                    GetUSDPrimBlock.ClassName,
+                    GLTFSelectorBlock.ClassName,
+                    USDSelectorBlock.ClassName,
+                    BabylonSelectorBlock.ClassName,
                 ])
             );
-            expect(registeredClassNames).toHaveLength(30);
+            expect(registeredClassNames).toHaveLength(45);
         });
 
         it.each(registeredClassNames)("round-trips %s through serialize/Parse", (className) => {

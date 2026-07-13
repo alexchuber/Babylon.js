@@ -7,10 +7,10 @@ const CompressionHeaderColor = "#7d5aa8";
 
 RegisterBlockDescriptor({
     paletteItemId: "ktx2-compression",
-    label: "KTX2 Compress",
+    label: "Apply BasisU",
     headerColor: CompressionHeaderColor,
     className: KTX2CompressionBlock.ClassName,
-    create: (nodeAsset) => ConfigureBlockForEditor(new KTX2CompressionBlock("KTX2 Compress", nodeAsset)),
+    create: (nodeAsset) => ConfigureBlockForEditor(new KTX2CompressionBlock("Apply BasisU", nodeAsset)),
     getPropertySection: (block, { refresh }) => {
         const ktx2Block = block as KTX2CompressionBlock;
         return {
