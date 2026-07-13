@@ -103,15 +103,6 @@ interface ICrateContext {
 }
 
 /**
- * Converts a crate-native quaternion from `[w, x, y, z]` to the resolved-stage `[x, y, z, w]` contract.
- * @param components crate quaternion components
- * @returns reordered resolved quaternion components
- */
-export function ReorderCrateQuaternion(components: number[]): number[] {
-    return [components[1] ?? 0, components[2] ?? 0, components[3] ?? 0, components[0] ?? 1];
-}
-
-/**
  * Parses a PXR-USDC crate buffer into the same read-only Sdf layer shape produced by the USDA parser.
  * @param data The complete binary crate file data.
  * @param identifier Layer identifier to store on the returned Sdf layer.
@@ -569,9 +560,9 @@ function DecodeInlinedScalar(context: ICrateContext, rep: ICrateValueRep): SdfVa
             return AsSdfValue("vec4d", InlinedComponents(payload, 4));
         case CrateValueType.Quatf:
         case CrateValueType.Quath:
-            return AsSdfValue("quatf", ReorderCrateQuaternion(InlinedComponents(payload, 4)));
+            return AsSdfValue("quatf", InlinedComponents(payload, 4));
         case CrateValueType.Quatd:
-            return AsSdfValue("quatd", ReorderCrateQuaternion(InlinedComponents(payload, 4)));
+            return AsSdfValue("quatd", InlinedComponents(payload, 4));
         case CrateValueType.Matrix4d:
             return AsSdfValue("matrix4d", DiagonalMatrix(InlinedComponents(payload, 4)));
         default:
@@ -617,9 +608,9 @@ function DecodeNonInlinedScalar(context: ICrateContext, rep: ICrateValueRep): Sd
             return AsSdfValue("vec4d", ReadDoubles(reader, 4));
         case CrateValueType.Quatf:
         case CrateValueType.Quath:
-            return AsSdfValue("quatf", ReorderCrateQuaternion(ReadVector(reader, rep.type, 4)));
+            return AsSdfValue("quatf", ReadVector(reader, rep.type, 4));
         case CrateValueType.Quatd:
-            return AsSdfValue("quatd", ReorderCrateQuaternion(ReadDoubles(reader, 4)));
+            return AsSdfValue("quatd", ReadDoubles(reader, 4));
         case CrateValueType.Matrix4d:
             return AsSdfValue("matrix4d", ReadDoubles(reader, 16));
         case CrateValueType.DoubleVector:
@@ -689,9 +680,9 @@ function DecodeArrayValue(context: ICrateContext, rep: ICrateValueRep): SdfValue
             return AsSdfValue("vec4d[]", ReadDoubleVectorArray(reader, count, 4));
         case CrateValueType.Quatf:
         case CrateValueType.Quath:
-            return AsSdfValue("quatf[]", ReadVectorArray(reader, rep.type, count, 4).map(ReorderCrateQuaternion));
+            return AsSdfValue("quatf[]", ReadVectorArray(reader, rep.type, count, 4));
         case CrateValueType.Quatd:
-            return AsSdfValue("quatd[]", ReadDoubleVectorArray(reader, count, 4).map(ReorderCrateQuaternion));
+            return AsSdfValue("quatd[]", ReadDoubleVectorArray(reader, count, 4));
         case CrateValueType.Matrix4d:
             return AsSdfValue("matrix4d[]", ReadDoubleVectorArray(reader, count, 16));
         case CrateValueType.Token:

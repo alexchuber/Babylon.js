@@ -1,15 +1,37 @@
 import { describe, expect, it } from "vitest";
-import { BuildCompressedPaths, ParseCrate, ReorderCrateQuaternion } from "loaders/USD/resolution/parser/crate/crateReader";
+import { BuildCompressedPaths, ParseCrate } from "loaders/USD/resolution/parser/crate/crateReader";
+import { ParseUsda } from "loaders/USD/resolution/parser/usda/usdaParser";
 
 const BootstrapSize = 88;
 const SpecTypePrim = 6;
 const SpecTypeAttribute = 1;
 const ValueTypeInt = 3;
 const ValueTypeToken = 11;
+const ValueTypeQuatf = 17;
 
 describe("USDC crate reader POC", () => {
-    it("converts crate-native wxyz quaternions to the resolved xyzw contract", () => {
-        expect(ReorderCrateQuaternion([1, 2, 3, 4])).toEqual([2, 3, 4, 1]);
+    it("matches USDA quaternion semantics for raw crate scalar and array POD values", () => {
+        const crateLayer = ParseCrate(CreateQuaternionCrate().buffer, "memory:quaternions.usdc");
+        const usdaLayer = ParseUsda(
+            `#usda 1.0
+def Xform "root"
+{
+    quatf orient = (1, 0.125, 0.25, 0.5)
+    quatf[] orientations = [(1, 0, 0, 0), (1, 0.125, 0.25, 0.5)]
+}`,
+            "memory:quaternions.usda"
+        );
+
+        expect(crateLayer.rootPrims[0].properties.orient.default).toEqual(usdaLayer.rootPrims[0].properties.orient.default);
+        expect(crateLayer.rootPrims[0].properties.orientations.default).toEqual(usdaLayer.rootPrims[0].properties.orientations.default);
+        expect(crateLayer.rootPrims[0].properties.orient.default).toEqual({ type: "quatf", value: [0.125, 0.25, 0.5, 1] });
+        expect(crateLayer.rootPrims[0].properties.orientations.default).toEqual({
+            type: "quatf[]",
+            value: [
+                [0, 0, 0, 1],
+                [0.125, 0.25, 0.5, 1],
+            ],
+        });
     });
 
     it("rejects buffers without the PXR-USDC magic", () => {
@@ -133,9 +155,68 @@ function CreateAttributeCrate(): Uint8Array {
     return AssembleCrate(sectionRecords);
 }
 
+function CreateQuaternionCrate(): Uint8Array {
+    const scalarOffset = BootstrapSize;
+    const arrayOffset = scalarOffset + 16;
+    const payload = Bytes([
+        ...Float32Bytes([0.125, 0.25, 0.5, 1]),
+        ...Uint32Bytes(0),
+        ...Uint32Bytes(2),
+        ...Float32Bytes([0, 0, 0, 1, 0.125, 0.25, 0.5, 1]),
+    ]);
+    const tokenBlob = AsciiBytes("root\0orient\0orientations\0typeName\0default\0quatf\0quatf[]\0");
+    const sections = [
+        ["TOKENS", Bytes([...Uint64Bytes(7), ...Uint64Bytes(tokenBlob.length), ...tokenBlob])],
+        ["STRINGS", Bytes(Uint64Bytes(0))],
+        [
+            "FIELDS",
+            Bytes([
+                ...Uint64Bytes(4),
+                ...FieldRecordBytes(3, InlinedValueRep(ValueTypeToken, 5)),
+                ...FieldRecordBytes(4, ValueRep(ValueTypeQuatf, scalarOffset)),
+                ...FieldRecordBytes(3, InlinedValueRep(ValueTypeToken, 6)),
+                ...FieldRecordBytes(4, ValueRep(ValueTypeQuatf, arrayOffset, true)),
+            ]),
+        ],
+        ["FIELDSETS", Bytes([...Uint64Bytes(7), ...Uint32Bytes(0xffffffff), ...Uint32Bytes(0), ...Uint32Bytes(1), ...Uint32Bytes(0xffffffff), ...Uint32Bytes(2), ...Uint32Bytes(3), ...Uint32Bytes(0xffffffff)])],
+        [
+            "PATHS",
+            Bytes([
+                ...Uint64Bytes(4),
+                ...PathHeaderBytes(0, 0, 1),
+                ...PathHeaderBytes(1, 0, 1),
+                ...PathHeaderBytes(2, 1, 6),
+                ...PathHeaderBytes(3, 2, 4),
+            ]),
+        ],
+        [
+            "SPECS",
+            Bytes([
+                ...Uint64Bytes(3),
+                ...Uint32Bytes(1),
+                ...Uint32Bytes(0),
+                ...Int32Bytes(SpecTypePrim),
+                ...Uint32Bytes(2),
+                ...Uint32Bytes(1),
+                ...Int32Bytes(SpecTypeAttribute),
+                ...Uint32Bytes(3),
+                ...Uint32Bytes(4),
+                ...Int32Bytes(SpecTypeAttribute),
+            ]),
+        ],
+    ] as const;
+    let nextSectionOffset = BootstrapSize + payload.length;
+    const sectionRecords: Array<{ name: string; start: number; bytes: Uint8Array }> = [];
+    for (const [name, bytes] of sections) {
+        sectionRecords.push({ name, start: nextSectionOffset, bytes });
+        nextSectionOffset += bytes.length;
+    }
+    return AssembleCrate(sectionRecords, payload);
+}
+
 // Writes the bootstrap, section payloads, and table of contents around the provided section records.
-function AssembleCrate(sectionRecords: Array<{ name: string; start: number; bytes: Uint8Array }>): Uint8Array {
-    const tocOffset = sectionRecords.reduce((offset, section) => offset + section.bytes.length, BootstrapSize);
+function AssembleCrate(sectionRecords: Array<{ name: string; start: number; bytes: Uint8Array }>, payload?: Uint8Array): Uint8Array {
+    const tocOffset = Math.max(BootstrapSize, ...sectionRecords.map((section) => section.start + section.bytes.length));
     const tocBytes = Bytes([
         ...Uint64Bytes(sectionRecords.length),
         ...sectionRecords.flatMap((section) => [...SectionNameBytes(section.name), ...Int64Bytes(BigInt(section.start)), ...Int64Bytes(BigInt(section.bytes.length))]),
@@ -146,6 +227,9 @@ function AssembleCrate(sectionRecords: Array<{ name: string; start: number; byte
     output[9] = 1;
     output[10] = 0;
     output.set(Int64Bytes(BigInt(tocOffset)), 16);
+    if (payload) {
+        output.set(payload, BootstrapSize);
+    }
 
     for (const section of sectionRecords) {
         output.set(section.bytes, section.start);
@@ -168,6 +252,10 @@ function InlinedValueRep(type: number, payload: number): bigint {
     return (1n << 62n) | (BigInt(type) << 48n) | (BigInt(payload) & 0xffffffffn);
 }
 
+function ValueRep(type: number, payload: number, isArray = false): bigint {
+    return (isArray ? 1n << 63n : 0n) | (BigInt(type) << 48n) | BigInt(payload);
+}
+
 function SectionNameBytes(name: string): number[] {
     const bytes = new Uint8Array(16);
     bytes.set(AsciiBytes(name));
@@ -180,6 +268,13 @@ function AsciiBytes(value: string): number[] {
 
 function Bytes(values: number[]): Uint8Array {
     return new Uint8Array(values);
+}
+
+function Float32Bytes(values: number[]): number[] {
+    const bytes = new Uint8Array(values.length * 4);
+    const view = new DataView(bytes.buffer);
+    values.forEach((value, index) => view.setFloat32(index * 4, value, true));
+    return Array.from(bytes);
 }
 
 function Uint32Bytes(value: number): number[] {
