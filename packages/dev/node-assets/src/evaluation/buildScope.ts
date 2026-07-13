@@ -391,7 +391,26 @@ export class BuildScope {
 
     private async _disposeResourcesAsync(): Promise<void> {
         try {
-            await this._disposeResourceAtAsync(this._resources.length - 1);
+            for (let index = this._resources.length - 1; index >= 0; index--) {
+                const entry = this._resources[index];
+                const ownership = ResourceOwnership.get(entry.resource);
+                if (ownership) {
+                    ownership.disposed = true;
+                }
+                if (entry.resource.isDisposed) {
+                    continue;
+                }
+                try {
+                    await entry.resource.dispose();
+                } catch (error) {
+                    this.addDiagnostic({
+                        code: "NODE_ASSET_CLEANUP_FAILED",
+                        severity: "warning",
+                        message: GetErrorMessage(error),
+                        producer: entry.producer,
+                    });
+                }
+            }
         } finally {
             if (this._callerSignal && this._onCallerAbort) {
                 this._callerSignal.removeEventListener("abort", this._onCallerAbort);
@@ -402,33 +421,6 @@ export class BuildScope {
             }
             this._resources.length = 0;
         }
-    }
-
-    private async _disposeResourceAtAsync(index: number): Promise<void> {
-        if (index < 0) {
-            return;
-        }
-
-        const entry = this._resources[index];
-        const ownership = ResourceOwnership.get(entry.resource);
-        if (ownership) {
-            ownership.disposed = true;
-        }
-        if (entry.resource.isDisposed) {
-            await this._disposeResourceAtAsync(index - 1);
-            return;
-        }
-        try {
-            await entry.resource.dispose();
-        } catch (error) {
-            this.addDiagnostic({
-                code: "NODE_ASSET_CLEANUP_FAILED",
-                severity: "warning",
-                message: GetErrorMessage(error),
-                producer: entry.producer,
-            });
-        }
-        await this._disposeResourceAtAsync(index - 1);
     }
 
     private _cancel(reason?: unknown): void {
