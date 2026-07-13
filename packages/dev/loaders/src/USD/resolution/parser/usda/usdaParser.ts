@@ -19,6 +19,7 @@ const DiagnosticMetadataKey = "parser:diagnostics";
 type TokenKind = "identifier" | "number" | "string" | "asset" | "path" | "symbol" | "eof";
 type ListOperation = "prepend" | "append" | "add" | "delete" | "reorder";
 type RawValue = boolean | number | string | IRawNumber | IRawAsset | IRawPath | IRawDictionary | RawValue[];
+const MaxUsdaDiagnostics = 256;
 
 interface IToken {
     kind: TokenKind;
@@ -846,11 +847,15 @@ class UsdaParser {
         const items: T[] = [];
         if (this._matchSymbol("[")) {
             while (!this._isAtEnd() && this._peek().value !== "]") {
+                const positionBeforeItem = this._position;
                 const item = this._parseSingleReferenceLike(factory);
                 if (item) {
                     items.push(item);
                 }
                 this._matchSymbol(",");
+                if (this._position === positionBeforeItem) {
+                    this._consume();
+                }
             }
             this._expectSymbol("]");
         } else {
@@ -1077,6 +1082,9 @@ class UsdaParser {
     }
 
     private _diagnose(message: string): void {
+        if (this._diagnostics.length >= MaxUsdaDiagnostics) {
+            return;
+        }
         const token = this._peek();
         this._diagnostics.push({ message, line: token.line, column: token.column });
     }

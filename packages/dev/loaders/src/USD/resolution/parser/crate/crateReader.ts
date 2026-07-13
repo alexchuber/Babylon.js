@@ -1115,7 +1115,19 @@ function ReadPathHeader(
 }
 
 // Builds paths from the 0.4.0 compressed path arrays.
-function BuildCompressedPaths(
+/**
+ * Builds resolved paths from crate 0.4+ compressed path arrays.
+ * @param pathIndexes output path indexes
+ * @param elementTokenIndexes token indexes for path elements
+ * @param jumps encoded child/sibling traversal jumps
+ * @param currentIndex first encoded entry
+ * @param parentPath parent path for the first entry
+ * @param tokens crate token table
+ * @param paths output path table
+ * @param visitedIndexes traversal cycle guard
+ * @param depth current child depth
+ */
+export function BuildCompressedPaths(
     pathIndexes: number[],
     elementTokenIndexes: number[],
     jumps: number[],
@@ -1126,39 +1138,45 @@ function BuildCompressedPaths(
     visitedIndexes = new Set<number>(),
     depth = 0
 ): void {
-    if (depth > 1024) {
-        throw new Error("USD crate: compressed path tree exceeds the nesting limit.");
-    }
-    let index = currentIndex;
-    let currentParentPath = parentPath;
-    while (true) {
-        if (!Number.isInteger(index) || index < 0 || index >= pathIndexes.length || visitedIndexes.has(index)) {
-            throw new Error("USD crate: invalid or cyclic compressed path tree.");
-        }
-        visitedIndexes.add(index);
-        const pathIndex = pathIndexes[index];
-        const rawTokenIndex = elementTokenIndexes[index];
-        const isPrimPropertyPath = rawTokenIndex < 0;
-        const tokenIndex = Math.abs(rawTokenIndex);
-        const path = currentParentPath === "" ? "/" : AppendPath(currentParentPath, tokens[tokenIndex] ?? "", isPrimPropertyPath);
-        paths[pathIndex] = path;
-
-        const jump = jumps[index];
-        const hasChild = jump > 0 || jump === -1;
-        const hasSibling = jump >= 0;
-        if (hasChild) {
-            if (hasSibling) {
-                const siblingIndex = index + jump;
-                if (jump <= 0 || siblingIndex <= index || siblingIndex >= pathIndexes.length) {
-                    throw new Error("USD crate: invalid compressed path sibling jump.");
-                }
-                BuildCompressedPaths(pathIndexes, elementTokenIndexes, jumps, siblingIndex, currentParentPath, tokens, paths, visitedIndexes, depth + 1);
+    const pending: Array<{ index: number; parentPath: string; depth: number }> = [{ index: currentIndex, parentPath, depth }];
+    while (pending.length > 0) {
+        const task = pending.pop()!;
+        let index = task.index;
+        let currentParentPath = task.parentPath;
+        let currentDepth = task.depth;
+        while (true) {
+            if (currentDepth > 1024) {
+                throw new Error("USD crate: compressed path tree exceeds the nesting limit.");
             }
-            currentParentPath = path;
-        } else if (!hasSibling) {
-            break;
+            if (!Number.isInteger(index) || index < 0 || index >= pathIndexes.length || visitedIndexes.has(index)) {
+                throw new Error("USD crate: invalid or cyclic compressed path tree.");
+            }
+            visitedIndexes.add(index);
+            const pathIndex = pathIndexes[index];
+            const rawTokenIndex = elementTokenIndexes[index];
+            const isPrimPropertyPath = rawTokenIndex < 0;
+            const tokenIndex = Math.abs(rawTokenIndex);
+            const path = currentParentPath === "" ? "/" : AppendPath(currentParentPath, tokens[tokenIndex] ?? "", isPrimPropertyPath);
+            paths[pathIndex] = path;
+
+            const jump = jumps[index];
+            const hasChild = jump > 0 || jump === -1;
+            const hasSibling = jump >= 0;
+            if (hasChild) {
+                if (hasSibling) {
+                    const siblingIndex = index + jump;
+                    if (jump <= 0 || siblingIndex <= index || siblingIndex >= pathIndexes.length) {
+                        throw new Error("USD crate: invalid compressed path sibling jump.");
+                    }
+                    pending.push({ index: siblingIndex, parentPath: currentParentPath, depth: currentDepth });
+                }
+                currentParentPath = path;
+                currentDepth++;
+            } else if (!hasSibling) {
+                break;
+            }
+            index++;
         }
-        index++;
     }
 }
 

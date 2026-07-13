@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { ParseCrate, ReorderCrateQuaternion } from "loaders/USD/resolution/parser/crate/crateReader";
+import { BuildCompressedPaths, ParseCrate, ReorderCrateQuaternion } from "loaders/USD/resolution/parser/crate/crateReader";
 
 const BootstrapSize = 88;
 const SpecTypePrim = 6;
@@ -38,6 +38,22 @@ describe("USDC crate reader POC", () => {
         new DataView(data.buffer).setBigUint64(tocOffset, 65_537n, true);
 
         expect(() => ParseCrate(data.buffer, "memory:oversized.usdc")).toThrow("section count exceeds");
+    });
+
+    it("does not count wide sibling chains as child nesting", () => {
+        const siblingCount = 1026;
+        const pathIndexes = [0];
+        const elementTokenIndexes = [0];
+        const jumps = [-1];
+        for (let siblingIndex = 0; siblingIndex < siblingCount; siblingIndex++) {
+            pathIndexes.push(pathIndexes.length, pathIndexes.length + 1);
+            elementTokenIndexes.push(1, 2);
+            jumps.push(siblingIndex < siblingCount - 1 ? 2 : -1, -2);
+        }
+        const paths = new Array<string>(pathIndexes.length).fill("");
+
+        expect(() => BuildCompressedPaths(pathIndexes, elementTokenIndexes, jumps, 0, "", ["root", "node", "leaf"], paths)).not.toThrow();
+        expect(paths.at(-1)).toBe("/node/leaf");
     });
 
     it("decodes a synthetic minimal crate with one empty prim", () => {

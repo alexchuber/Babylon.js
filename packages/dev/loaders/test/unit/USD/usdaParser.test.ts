@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { ParseUsda } from "loaders/USD/resolution/parser/usda/usdaParser";
+import { ParseUsda, ParseUsdaWithDiagnostics } from "loaders/USD/resolution/parser/usda/usdaParser";
 
 const representativeUsda = `#usda 1.0
 (
@@ -129,5 +129,24 @@ def Xform "Root"
         const source = `#usda 1.0\n${Array.from({ length: depth }, (_, index) => `def Xform "P${index}" {`).join("\n")}\n${"}\n".repeat(depth)}`;
 
         expect(() => ParseUsda(source, "memory:deep.usda")).toThrow("nesting depth exceeds");
+    });
+
+    it("recovers from malformed reference-list items with bounded diagnostics", () => {
+        const result = ParseUsdaWithDiagnostics(
+            `#usda 1.0
+def Xform "Root" (
+    references = [ bogus ]
+)
+{
+}`,
+            "memory:malformed-reference.usda"
+        );
+
+        expect(result.layer.rootPrims[0].references?.explicit).toEqual([]);
+        expect(result.diagnostics).toEqual([
+            expect.objectContaining({
+                message: "Expected reference or payload target.",
+            }),
+        ]);
     });
 });
