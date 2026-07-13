@@ -67,10 +67,37 @@ export interface IBuildResource {
     dispose(): void | Promise<void>;
 }
 
+/** Machine-readable resource ownership failures. */
+export type BuildResourceOwnershipErrorCode = "NODE_ASSET_RESOURCE_OWNED" | "NODE_ASSET_RESOURCE_STALE";
+
+/** Raised when a disposable value crosses build-scope ownership rules. */
+export class BuildResourceOwnershipError extends Error {
+    /** Machine-readable ownership failure code. */
+    public readonly code: BuildResourceOwnershipErrorCode;
+
+    /**
+     * Creates a resource ownership error.
+     * @param code The machine-readable ownership failure code.
+     * @param message The human-readable failure message.
+     */
+    public constructor(code: BuildResourceOwnershipErrorCode, message: string) {
+        super(message);
+        this.name = "BuildResourceOwnershipError";
+        this.code = code;
+    }
+}
+
+interface IResourceOwnership {
+    readonly scope: BuildScope;
+    disposed: boolean;
+}
+
 interface IBuildResourceEntry {
     readonly resource: IBuildResource & object;
     readonly producer?: IBuildDiagnosticProducer;
 }
+
+const ResourceOwnership = new WeakMap<object, IResourceOwnership>();
 
 /** Owns diagnostics and other per-build state for one {@link NodeAsset.buildAsync} call. */
 export class BuildScope {
@@ -126,7 +153,7 @@ export class BuildScope {
 
     /**
      * Registers a non-null block output or fan-out copy with this build. Disposable object identity is
-     * deduplicated within the build.
+     * deduplicated and cannot be shared with another build or reused after disposal.
      * @param value The produced value to register.
      * @param producer The block or transcoder that produced the value.
      */
@@ -138,8 +165,19 @@ export class BuildScope {
         if (this._registeredResources.has(value)) {
             return;
         }
+        const ownership = ResourceOwnership.get(value);
+        if (ownership || value.isDisposed) {
+            const code = ownership?.disposed || value.isDisposed ? "NODE_ASSET_RESOURCE_STALE" : "NODE_ASSET_RESOURCE_OWNED";
+            throw new BuildResourceOwnershipError(
+                code,
+                code === "NODE_ASSET_RESOURCE_STALE"
+                    ? "A disposed build resource cannot be reused by a later build."
+                    : "A build resource cannot be shared by concurrent build scopes."
+            );
+        }
 
         this._registeredResources.add(value);
+        ResourceOwnership.set(value, { scope: this, disposed: false });
         this._resources.push({ resource: value, producer });
     }
 
@@ -163,6 +201,10 @@ export class BuildScope {
         }
 
         const entry = this._resources[index];
+        const ownership = ResourceOwnership.get(entry.resource);
+        if (ownership) {
+            ownership.disposed = true;
+        }
         try {
             await entry.resource.dispose();
         } catch (error) {

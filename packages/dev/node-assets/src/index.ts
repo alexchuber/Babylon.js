@@ -3,6 +3,8 @@ export {
     BuildScope,
     type BuildDiagnosticProducerKind,
     type BuildRepresentationKind,
+    type BuildResourceOwnershipErrorCode,
+    BuildResourceOwnershipError,
     type IBuildDiagnostic,
     type IBuildDiagnosticProducer,
     type IBuildResource,

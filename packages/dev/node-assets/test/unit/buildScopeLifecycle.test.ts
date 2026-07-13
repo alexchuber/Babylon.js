@@ -3,6 +3,7 @@ import { describe, expect, it } from "vitest";
 import { NodeAssetBlock } from "../../src/blockFoundation/nodeAssetBlock";
 import { type NodeAssetConnectionPoint } from "../../src/connection/nodeAssetConnectionPoint";
 import { NodeAssetConnectionPointType } from "../../src/connection/nodeAssetConnectionPointType";
+import { BuildResourceOwnershipError } from "../../src/evaluation/buildScope";
 import { NodeAsset } from "../../src/nodeAsset";
 
 class TrackedResource {
@@ -68,6 +69,33 @@ class FailingResourceConsumerBlock extends NodeAssetBlock {
 
     public override async _buildBlockAsync(): Promise<void> {
         throw this.error;
+    }
+}
+
+class BlockingResourceExportBlock extends ResourceExportBlock {
+    public readonly entered: Promise<void>;
+    public release: () => void = () => {};
+
+    public constructor(name: string, nodeAsset: NodeAsset) {
+        super(name, nodeAsset);
+        let markEntered = () => {};
+        this.entered = new Promise<void>((resolve) => {
+            markEntered = resolve;
+        });
+        this._markEntered = markEntered;
+    }
+
+    private readonly _markEntered: () => void;
+
+    public override async _buildBlockAsync(): Promise<void> {
+        const resource = this.inputA.value as TrackedResource;
+        expect(resource.isDisposed).toBe(false);
+        this._markEntered();
+        await new Promise<void>((resolve) => {
+            this.release = resolve;
+        });
+        resource.events.push("export");
+        this.result = new Uint8Array([9]);
     }
 }
 
@@ -144,5 +172,38 @@ describe("build scope resource lifecycle", () => {
 
         await expect(asset.buildAsync()).rejects.toBe(primary);
         expect(fatalResource.disposeCalls).toBe(1);
+    });
+
+    it("rejects a resource shared by concurrent build scopes without disposing the owner's resource", async () => {
+        const resource = new TrackedResource([]);
+        const firstAsset = new NodeAsset("first owner");
+        const firstSource = new ResourceSourceBlock("first source", firstAsset);
+        firstSource.resource = resource;
+        const firstExporter = new BlockingResourceExportBlock("first export", firstAsset);
+        firstSource.outputA.connectTo(firstExporter.inputA);
+        firstSource.outputB.connectTo(firstExporter.inputB);
+
+        const firstBuild = firstAsset.buildAsync();
+        await firstExporter.entered;
+
+        const secondBuild = CreateSuccessfulResourceBuild(resource).buildAsync();
+        await expect(secondBuild).rejects.toMatchObject<BuildResourceOwnershipError>({
+            code: "NODE_ASSET_RESOURCE_OWNED",
+        });
+        expect(resource.disposeCalls).toBe(0);
+
+        firstExporter.release();
+        await expect(firstBuild).resolves.toBeInstanceOf(Uint8Array);
+        expect(resource.disposeCalls).toBe(1);
+    });
+
+    it("rejects a disposed resource reused by a later build", async () => {
+        const resource = new TrackedResource([]);
+        await CreateSuccessfulResourceBuild(resource).buildAsync();
+
+        await expect(CreateSuccessfulResourceBuild(resource).buildAsync()).rejects.toMatchObject<BuildResourceOwnershipError>({
+            code: "NODE_ASSET_RESOURCE_STALE",
+        });
+        expect(resource.disposeCalls).toBe(1);
     });
 });
