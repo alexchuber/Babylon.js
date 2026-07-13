@@ -190,12 +190,10 @@ function ResolveCompositionLimit(value: number | undefined, fallback: number, op
 function ComposeLayer(layer: ISdfLayer, context: ICompositionContext): ISdfLayer {
     const cachedLayer = context.composedLayers.get(layer.identifier);
     if (cachedLayer) {
-        // A cache hit still contributes its prims to the output stage, so charge nodes and work for the
-        // clone. This bounds repeated-reference amplification, where many arcs graft copies of the same
-        // already-composed layer without re-entering ComposePrim.
-        const cachedPrimCount = CountLayerPrims(cachedLayer);
-        ChargeWork(context, cachedPrimCount);
-        ChargeNodes(context, cachedPrimCount);
+        // A cache hit clones the whole cached layer (work), but only the subtree the caller grafts
+        // becomes output nodes; those are charged at the graft site via ChargeGraft. Charging the whole
+        // cached layer here would over-count references that pull one small prim from a large library.
+        ChargeWork(context, CountLayerPrims(cachedLayer));
         return Clone(cachedLayer);
     }
 
@@ -376,7 +374,7 @@ function ComposePathArcs(
             continue;
         }
 
-        ChargeWork(context, CountPrimSubtree(arcPrim));
+        ChargeGraft(context, arcPrim);
         result = MergePrimOpinions(context, result, RebasePrimTree(arcPrim, arcPrim.path, composedPrim.path));
     }
 
@@ -431,7 +429,7 @@ function ComposeAssetArc(
             return undefined;
         }
 
-        ChargeWork(context, CountPrimSubtree(internalPrim));
+        ChargeGraft(context, internalPrim);
         return ApplyLayerOffsetToPrim(RebasePrimTree(internalPrim, internalPrim.path, targetPrim.path), arc.layerOffset);
     }
 
@@ -456,7 +454,7 @@ function ComposeAssetArc(
         return undefined;
     }
 
-    ChargeWork(context, CountPrimSubtree(sourcePrim));
+    ChargeGraft(context, sourcePrim);
     return ApplyLayerOffsetToPrim(RebasePrimTree(sourcePrim, sourcePrim.path, targetPrim.path), arc.layerOffset);
 }
 
@@ -506,7 +504,7 @@ function SelectReferencedPrim(
             specifier: "over",
             properties: {},
             children: layer.rootPrims.map((prim) => {
-                ChargeWork(context, CountPrimSubtree(prim));
+                ChargeGraft(context, prim);
                 return RebasePrimAsChild(prim, targetPrimPath);
             }),
         };
@@ -1207,6 +1205,15 @@ function EnterCompositionDepth(context: ICompositionContext): void {
 
 function ExitCompositionDepth(context: ICompositionContext): void {
     context.budget.depth--;
+}
+
+// Charges a grafted subtree against both budgets: cloning it is work, and its prims become part of the
+// output stage (nodes). Used at every arc-graft site so node accounting reflects the grafted output
+// rather than any larger cached layer the subtree was selected from.
+function ChargeGraft(context: ICompositionContext, prim: ISdfPrimSpec): void {
+    const count = CountPrimSubtree(prim);
+    ChargeWork(context, count);
+    ChargeNodes(context, count);
 }
 
 // Counts the prim specs (including descendants) in a composed layer. Used to charge the budget when a

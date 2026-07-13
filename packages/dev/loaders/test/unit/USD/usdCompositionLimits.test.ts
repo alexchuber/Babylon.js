@@ -91,6 +91,34 @@ function buildMergeHeavyStage(sublayerCount: number, childCount: number): { root
     return { root: createLayer("root.usd", [], subLayers), resolve: (assetPath) => layers.get(assetPath) };
 }
 
+// Builds a stage that references prims out of a single large shared library layer many times. When
+// primPath selects one small prim, the real output is tiny; when it is omitted, each reference grafts
+// the whole library subtree.
+function buildLibraryReferenceStage(libraryChildCount: number, referenceCount: number, primPath?: string): { root: ISdfLayer; resolve: Resolve } {
+    const children = Array.from({ length: libraryChildCount }, (_, index) => createPrim(`/Lib/C${index}`));
+    const library = createLayer("lib.usd", [createPrim("/Lib", { children })]);
+    const roots = Array.from({ length: referenceCount }, (_, index) =>
+        createPrim(`/R${index}`, {
+            references: { isExplicit: true, explicit: [primPath ? { assetPath: "lib.usd", primPath } : { assetPath: "lib.usd" }] },
+        })
+    );
+    return { root: createLayer("root.usd", roots), resolve: (assetPath) => (assetPath === "lib.usd" ? library : undefined) };
+}
+
+describe("USD composition node budget accounts for grafted output, not cloned scratch", () => {
+    it("does not over-count the node budget when referencing a small prim from a large shared library many times", () => {
+        const { root, resolve } = buildLibraryReferenceStage(50, 10, "/Lib/C0");
+        // The real output is tiny (10 referencing prims + 10 one-prim grafts), so a 100-node budget is ample.
+        expect(() => ComposeLayerStack(root, resolve, { maxCompositionNodes: 100 })).not.toThrow();
+    });
+
+    it("still rejects whole-library reference amplification on the node budget", () => {
+        const { root, resolve } = buildLibraryReferenceStage(50, 10);
+        const error = expectResourceLimitError(() => ComposeLayerStack(root, resolve, { maxCompositionNodes: 100 }), "composition-nodes");
+        expect(error.limit).toBe(100);
+    });
+});
+
 describe("USD composition depth budget", () => {
     it.each(["reference", "payload"] as const)("bounds a deep external %s chain with a typed depth error, below the node cap", (kind) => {
         const { root, resolve } = buildExternalChain(kind, 40);
