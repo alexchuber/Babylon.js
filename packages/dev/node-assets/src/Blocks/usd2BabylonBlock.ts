@@ -52,25 +52,30 @@ export class USD2BabylonBlock extends NodeAssetBlock {
         const stage = usdAsset.stage;
 
         const engine = new NullEngine();
-        const scene = new Scene(engine);
+        try {
+            const scene = new Scene(engine);
 
-        AdaptResolvedStageToScene(stage, scene, null, {});
+            AdaptResolvedStageToScene(stage, scene, null, {});
 
-        const diagnostics = stage.diagnostics.map((d) => ({
-            severity: d.severity,
-            message: d.message,
-            ...(d.path ? { path: d.path } : {}),
-        }));
+            const diagnostics = stage.diagnostics.map((d) => ({
+                severity: d.severity,
+                message: d.message,
+                ...(d.path ? { path: d.path } : {}),
+            }));
 
-        this.output.value = new BabylonAsset(engine, scene, {
-            identity: usdAsset.identity,
-            revision: usdAsset.revision,
-            manifest: {
-                format: "babylon",
-                importedFrom: "usd",
-                diagnostics,
-            } as NodeAssetJsonObject,
-        });
+            this.output.value = new BabylonAsset(engine, scene, {
+                identity: usdAsset.identity,
+                revision: usdAsset.revision,
+                manifest: {
+                    format: "babylon",
+                    importedFrom: "usd",
+                    diagnostics,
+                } as NodeAssetJsonObject,
+            });
+        } catch (error) {
+            engine.dispose();
+            throw new Error(`The "${this.name}" block failed to transcode USD to Babylon: ${error instanceof Error ? error.message : String(error)}`, { cause: error });
+        }
     }
 }
 

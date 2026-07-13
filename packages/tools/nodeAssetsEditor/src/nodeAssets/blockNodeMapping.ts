@@ -12,7 +12,7 @@ import { type NodeAssetBlock } from "node-assets/blockFoundation/nodeAssetBlock"
 import { type NodeAssetConnectionPoint } from "node-assets/connection/nodeAssetConnectionPoint";
 
 import { type IGraphNode, type IGraphPort, type Vec2 } from "../nodeGraph/graphModel";
-import { ImagePortColor, JsonPortColor, NumberPortColor, ScenePortColor, StringPortColor, type IBlockDescriptor } from "./blockCatalog";
+import { BabylonScenePortColor, ImagePortColor, JsonPortColor, NodeGeometryPortColor, NumberPortColor, ScenePortColor, StringPortColor, UsdStagePortColor, type IBlockDescriptor } from "./blockCatalog";
 
 /**
  * The visual node id for a block, stable across reconciles for a given block instance.
@@ -41,9 +41,9 @@ const PortStyleByType: Record<NodeAssetConnectionPointType, { readonly name: str
     [NodeAssetConnectionPointType.STRING]: { name: "String", color: StringPortColor },
     [NodeAssetConnectionPointType.JSON]: { name: "Json", color: JsonPortColor },
     [NodeAssetConnectionPointType.IMAGE]: { name: "Image", color: ImagePortColor },
-    [NodeAssetConnectionPointType.USD_STAGE]: { name: "USD Stage", color: ScenePortColor },
-    [NodeAssetConnectionPointType.BABYLON_SCENE]: { name: "Babylon Scene", color: ScenePortColor },
-    [NodeAssetConnectionPointType.NODE_GEOMETRY]: { name: "Node Geometry", color: ScenePortColor },
+    [NodeAssetConnectionPointType.USD_STAGE]: { name: "USD Stage", color: UsdStagePortColor },
+    [NodeAssetConnectionPointType.BABYLON_SCENE]: { name: "Babylon Scene", color: BabylonScenePortColor },
+    [NodeAssetConnectionPointType.NODE_GEOMETRY]: { name: "Node Geometry", color: NodeGeometryPortColor },
 };
 
 /**
