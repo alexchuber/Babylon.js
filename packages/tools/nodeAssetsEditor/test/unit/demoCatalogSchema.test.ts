@@ -9,6 +9,7 @@ import {
     DemoResourceKind,
     DemoTeachingConcept,
     DemoUsdFixtureFormat,
+    BuildDemoCatalogViewModels,
     IsBakeNodeGeometryNode,
     IsEvaluateNodeGeometryNode,
     IsNodeGeometryResource,
@@ -96,6 +97,26 @@ const expectedLosses: readonly DemoLossDiagnostic[] = [
 
 const catalog: DemoCatalog = {
     version: DemoCatalogSchemaVersion,
+    selectionParity: [
+        {
+            ownerRepresentation: "gltf",
+            status: "supported",
+            targetTypes: ["scene", "node", "mesh", "primitive", "material", "texture", "animation", "skin", "camera", "light", "variant"],
+            why: "The glTF adapter owns exact JSON-pointer selections.",
+        },
+        {
+            ownerRepresentation: "usd",
+            status: "supported",
+            targetTypes: ["stage", "prim", "property", "material", "texture", "animation", "camera", "light", "variant"],
+            why: "The USD adapter owns exact stage selections.",
+        },
+        {
+            ownerRepresentation: "babylon",
+            status: "requires-adapter",
+            targetTypes: ["scene", "node", "mesh", "material", "texture", "animation", "camera", "light"],
+            why: "Babylon needs an owned selection adapter.",
+        },
+    ],
     demos: [
         {
             id: "usd-to-gltf",
@@ -103,6 +124,23 @@ const catalog: DemoCatalog = {
             summary: "Transcode a USD scene to the glTF scene spine.",
             description: "Transcode a USD scene to the glTF scene spine.",
             tags: ["usd", "gltf", "transcoding"],
+            availability: { status: "available" },
+            resourceLanes: [
+                {
+                    id: "source-lane",
+                    label: "Source scene",
+                    resourceIds: ["source"],
+                    assetBindingIds: ["orb-metal-image"],
+                    textureBindingIds: [],
+                },
+                {
+                    id: "procedural-lane",
+                    label: "Procedural geometry",
+                    resourceIds: ["geometry", "inline-geometry"],
+                    assetBindingIds: [],
+                    textureBindingIds: [],
+                },
+            ],
             resources: [
                 {
                     id: "source",
@@ -181,6 +219,7 @@ const catalog: DemoCatalog = {
             },
             assets: [
                 {
+                    id: "orb-metal-image",
                     blockId: 3,
                     input: "baseColor",
                     bundledAssetKey: "orb-metal",
@@ -202,6 +241,12 @@ const catalog: DemoCatalog = {
                             value: "/Root/Orb",
                         },
                     },
+                    pill: {
+                        ownerRepresentation: "usd",
+                        targetType: "prim",
+                        cardinality: "one",
+                        status: "resolved",
+                    },
                 },
                 {
                     id: "usd-variant",
@@ -217,6 +262,12 @@ const catalog: DemoCatalog = {
                             status: "stale",
                             why: "The fixture changed after the selection was authored.",
                         },
+                    },
+                    pill: {
+                        ownerRepresentation: "usd",
+                        targetType: "variant",
+                        cardinality: "one",
+                        status: "stale",
                     },
                 },
                 {
@@ -234,6 +285,12 @@ const catalog: DemoCatalog = {
                             why: "The property does not exist in this stage.",
                         },
                     },
+                    pill: {
+                        ownerRepresentation: "usd",
+                        targetType: "property",
+                        cardinality: "one",
+                        status: "dangling",
+                    },
                 },
                 {
                     id: "optional-camera",
@@ -244,8 +301,16 @@ const catalog: DemoCatalog = {
                             why: "This demo intentionally leaves camera selection unset.",
                         },
                     },
+                    pill: {
+                        ownerRepresentation: "usd",
+                        targetType: "camera",
+                        cardinality: "one",
+                        status: "empty",
+                    },
                 },
             ],
+            textureBindings: [],
+            selectionOwners: ["usd"],
             terminal: {
                 kind: "gltf",
                 expectedMimeType: "model/gltf-binary",
@@ -389,6 +454,27 @@ describe("demo catalog schema", () => {
             expect(demo.teaching.concepts).toContain(DemoTeachingConcept.EXPECTED_LOSSES);
             expect(demo.teaching.concepts).toContain(DemoTeachingConcept.PRE_EXPORT_REVIEW);
             expect(demo.editor.frames.map(({ id }) => id)).toEqual(expect.arrayContaining([...demo.teaching.focus.frameIds]));
+            expect(demo.selections.every(({ resolution, pill }) => resolution.status === pill.status)).toBe(true);
+            expect(demo.selections.every(({ pill }) => demo.selectionOwners.includes(pill.ownerRepresentation))).toBe(true);
+            if (demo.selectionOwners.includes("babylon")) {
+                expect(demo.availability.status).toBe("requires-selection-adapter");
+            }
+
+            const resourceIds = new Set(demo.resources.map(({ id }) => id));
+            const assetBindingIds = new Set(demo.assets.map(({ id }) => id));
+            const textureBindingIds = new Set(demo.textureBindings.map(({ id }) => id));
+            const selectionIds = new Set(demo.selections.map(({ id }) => id));
+            for (const lane of demo.resourceLanes) {
+                expect(lane.resourceIds.every((id) => resourceIds.has(id))).toBe(true);
+                expect(lane.assetBindingIds.every((id) => assetBindingIds.has(id))).toBe(true);
+                expect(lane.textureBindingIds.every((id) => textureBindingIds.has(id))).toBe(true);
+            }
+            expect(
+                demo.textureBindings.every(({ source, target }) => {
+                    const sourceExists = source.kind === "assetBinding" ? assetBindingIds.has(source.assetBindingId) : true;
+                    return sourceExists && selectionIds.has(target.selectionId);
+                })
+            ).toBe(true);
         }
 
         const usdDemo = DemoCatalogRegistry.demos.find(({ id }) => id === "usd-to-gltf")!;
@@ -408,8 +494,47 @@ describe("demo catalog schema", () => {
         const selectionStatuses = DemoCatalogRegistry.demos.flatMap((demo) => demo.selections.map(({ resolution }) => resolution.status));
         expect(selectionStatuses).toEqual(expect.arrayContaining(["resolved", "stale", "dangling", "empty"]));
 
-        const imageRoles = DemoCatalogRegistry.demos.flatMap((demo) => demo.assets.filter(({ role }) => role !== DemoAssetRole.SOURCE_SCENE).map(({ role }) => role));
+        const imageRoles = DemoCatalogRegistry.demos.flatMap((demo) => [
+            ...demo.assets.filter(({ role }) => role !== DemoAssetRole.SOURCE_SCENE).map(({ role }) => role),
+            ...demo.textureBindings.map(({ role }) => role),
+        ]);
         expect(imageRoles).toEqual(expect.arrayContaining([DemoAssetRole.BASE_COLOR, DemoAssetRole.NORMAL, DemoAssetRole.ROUGHNESS]));
         expect("IMAGE" in DemoResourceKind).toBe(false);
+    });
+
+    it("keeps selection parity, lanes, packed texture views, and catalog view models explicit", () => {
+        expect(DemoCatalogRegistry.selectionParity).toEqual(
+            expect.arrayContaining([
+                expect.objectContaining({ ownerRepresentation: "gltf", status: "supported" }),
+                expect.objectContaining({ ownerRepresentation: "usd", status: "supported" }),
+                expect.objectContaining({ ownerRepresentation: "babylon", status: "requires-adapter" }),
+            ])
+        );
+
+        const materialDemo = DemoCatalogRegistry.demos.find(({ id }) => id === "multi-domain-material-construction")!;
+        expect(materialDemo.availability.status).toBe("available");
+        expect(materialDemo.resourceLanes.flatMap(({ textureBindingIds }) => textureBindingIds)).toEqual(expect.arrayContaining(["metallic-texture", "roughness-texture"]));
+        expect(materialDemo.textureBindings).toEqual(
+            expect.arrayContaining([
+                expect.objectContaining({
+                    role: DemoAssetRole.METALLIC,
+                    channelView: { channel: "b", colorSpace: "linear", packedGroupId: "metallic-roughness" },
+                }),
+                expect.objectContaining({
+                    role: DemoAssetRole.ROUGHNESS,
+                    channelView: { channel: "g", colorSpace: "linear", packedGroupId: "metallic-roughness" },
+                }),
+            ])
+        );
+
+        const babylonDemo = DemoCatalogRegistry.demos.find(({ id }) => id === "babylon-mutation-to-gltf")!;
+        expect(babylonDemo.availability).toEqual(expect.objectContaining({ status: "requires-selection-adapter" }));
+        expect(babylonDemo.selections.every(({ pill }) => pill.ownerRepresentation === "babylon")).toBe(true);
+
+        const viewModels = BuildDemoCatalogViewModels(DemoCatalogRegistry);
+        expect(viewModels).toHaveLength(DemoCatalogDemoCount);
+        expect(viewModels.map(({ id }) => id)).toEqual(DemoCatalogRegistry.demos.map(({ id }) => id));
+        expect(viewModels[0].selectionPills).toEqual(DemoCatalogRegistry.demos[0].selections.map(({ pill }) => pill));
+        expect(viewModels.find(({ id }) => id === materialDemo.id)?.textureBindings).toEqual(materialDemo.textureBindings);
     });
 });

@@ -197,11 +197,46 @@ export type DemoEmptySelection = {
 /** The resolution state of one exact-granularity selection. */
 export type DemoSelectionResolution = DemoResolvedSelection | DemoStaleSelection | DemoDanglingSelection | DemoEmptySelection;
 
+/** Target types that can be shown on a selection pill. */
+export type DemoSelectionTargetType = DemoDomainSelection["granularity"];
+
+/** Cardinality shown on a selection pill. */
+export type DemoSelectionCardinality = "one" | "many";
+
+/** Explicit selection-pill metadata used by catalog views. */
+export type DemoSelectionPill = {
+    /** Domain representation that owns the selected value. */
+    readonly ownerRepresentation: DemoSceneRepresentation;
+    /** Exact target type selected within that representation. */
+    readonly targetType: DemoSelectionTargetType;
+    /** Whether the operation accepts one value or a collection. */
+    readonly cardinality: DemoSelectionCardinality;
+    /** Current resolution state shown by the pill. */
+    readonly status: DemoSelectionResolution["status"];
+};
+
 /** A named selection used by a demo and its diagnostic state. */
 export type DemoSelectionExpectation = {
     readonly id: string;
     readonly label?: string;
     readonly resolution: DemoSelectionResolution;
+    /** Render-ready owner, target, cardinality, and resolution metadata. */
+    readonly pill: DemoSelectionPill;
+};
+
+/** Availability of an owned source-domain selection resolver. */
+export type DemoSelectionOwnerStatus = "supported" | "requires-adapter" | "not-supported";
+
+/** Selection capability metadata for one domain owner. */
+export type DemoSelectionOwnerParity = {
+    /** Domain representation that owns the selection values. */
+    readonly ownerRepresentation: DemoSceneRepresentation;
+    /** Whether the editor can resolve this owner's exact selections. */
+    readonly status: DemoSelectionOwnerStatus;
+    /** Exact target types covered by the owner adapter. */
+    readonly targetTypes: readonly DemoSelectionTargetType[];
+    /** Why this owner is or is not available as a peer. */
+    readonly why: string;
 };
 
 /** A URL-backed resource source. */
@@ -252,6 +287,25 @@ export type DemoFileSource = {
 
 /** Ways a demo resource can be loaded. */
 export type DemoResourceSource = DemoUrlSource | DemoSnippetSource | DemoBundledSource | DemoInlineSource | DemoInlineJsonSource | DemoFileSource;
+
+/**
+ * UI-only grouping metadata for resources and asset bindings.
+ *
+ * A lane is not a resource kind and must not be used to infer domain or runtime
+ * behavior. Its ids point back into the definition's resources and bindings.
+ */
+export type DemoResourceLane = {
+    /** Stable identifier used by diagrams and catalog views. */
+    readonly id: string;
+    /** Human-readable lane label. */
+    readonly label: string;
+    /** Resources displayed in this lane. */
+    readonly resourceIds: readonly string[];
+    /** Asset bindings displayed in this lane. */
+    readonly assetBindingIds: readonly string[];
+    /** Semantic texture bindings displayed in this lane. */
+    readonly textureBindingIds: readonly string[];
+};
 
 /** Common metadata for a demo resource. */
 export type DemoResourceBase = {
@@ -470,6 +524,7 @@ export const DemoAssetRole = {
     NORMAL: "normal",
     ROUGHNESS: "roughness",
     METALLIC: "metallic",
+    METALLIC_ROUGHNESS: "metallic-roughness",
     EMISSIVE: "emissive",
     MASK: "mask",
     WATERMARK: "watermark",
@@ -481,6 +536,8 @@ export type DemoAssetRole = (typeof DemoAssetRole)[keyof typeof DemoAssetRole];
 
 /** A bundled asset binding used to hydrate a graph input. */
 export type DemoAssetBinding = {
+    /** Stable identifier referenced by lanes and texture bindings. */
+    readonly id: string;
     /** Runtime block id whose input receives the asset. */
     readonly blockId: number;
     /** Domain/block-owned input slot receiving the binding. */
@@ -493,6 +550,58 @@ export type DemoAssetBinding = {
     readonly mimeType?: string;
     /** Human-readable source label shown in the editor. */
     readonly sourceLabel?: string;
+};
+
+/** Semantic roles that can address a texture slot. */
+export type DemoTextureBindingRole =
+    | typeof DemoAssetRole.BASE_COLOR
+    | typeof DemoAssetRole.NORMAL
+    | typeof DemoAssetRole.ROUGHNESS
+    | typeof DemoAssetRole.METALLIC
+    | typeof DemoAssetRole.METALLIC_ROUGHNESS
+    | typeof DemoAssetRole.EMISSIVE
+    | typeof DemoAssetRole.MASK;
+
+/** Channels available through a packed texture view. */
+export type DemoTextureChannel = "r" | "g" | "b" | "a";
+
+/** A view into one channel of a source image, optionally part of a packed group. */
+export type ChannelView = {
+    /** Channel read from the source image. */
+    readonly channel: DemoTextureChannel;
+    /** Color space of the channel data. */
+    readonly colorSpace: "srgb" | "linear";
+    /** Shared id when several semantic roles read one packed image. */
+    readonly packedGroupId?: string;
+};
+
+/** Where a semantic texture binding obtains its image payload. */
+export type DemoTextureBindingSource =
+    | {
+          readonly kind: "assetBinding";
+          readonly assetBindingId: string;
+      }
+    | {
+          readonly kind: "graphOutput";
+          readonly blockId: number;
+          readonly output: string;
+      };
+
+/** A semantic texture-slot binding, including packed-channel interpretation. */
+export type TextureBinding<Role extends DemoTextureBindingRole = DemoTextureBindingRole> = {
+    /** Stable identifier used by catalog views and validation. */
+    readonly id: string;
+    /** Semantic texture role represented by this binding. */
+    readonly role: Role;
+    /** Image payload source, independent of the target slot. */
+    readonly source: DemoTextureBindingSource;
+    /** Exact selection and slot that consume this payload. */
+    readonly target: {
+        readonly selectionId: string;
+        readonly slot: string;
+    };
+    /** Optional channel interpretation for packed or data textures. */
+    readonly channelView?: ChannelView;
 };
 
 /** Terminal preview/output metadata for a demo. */
@@ -559,6 +668,16 @@ export type DemoTeachingMetadata = {
     };
 };
 
+/** Whether a demo can be presented as an immediately runnable peer. */
+export type DemoAvailability =
+    | {
+          readonly status: "available";
+      }
+    | {
+          readonly status: "requires-selection-adapter";
+          readonly why: string;
+      };
+
 /** Base fields shared by all expected loss diagnostics. */
 type DemoLossDiagnosticBase = {
     /** Stable identifier referenced by badges and pre-export review. */
@@ -598,6 +717,10 @@ export type DemoDefinition = {
     readonly description?: string;
     /** Search and filter labels shown by the demo gallery. */
     readonly tags: readonly string[];
+    /** Whether this demo is runnable with the currently owned selection adapters. */
+    readonly availability: DemoAvailability;
+    /** UI-only grouping of resources and semantic asset bindings. */
+    readonly resourceLanes: readonly DemoResourceLane[];
     /** Resources required to construct the demo graph. */
     readonly resources: readonly DemoResource[];
     /** Serialized runtime graph or declarative graph nodes for a non-NodeAsset adapter. */
@@ -606,8 +729,12 @@ export type DemoDefinition = {
     readonly editor: DemoEditorMetadata;
     /** Bundled assets bound to runtime import blocks. */
     readonly assets: readonly DemoAssetBinding[];
+    /** Semantic texture-slot bindings, including packed-channel views. */
+    readonly textureBindings: readonly TextureBinding[];
     /** Exact source-domain selections and their explicit resolution diagnostics. */
     readonly selections: readonly DemoSelectionExpectation[];
+    /** Domain owners used by this demo's selections. */
+    readonly selectionOwners: readonly DemoSceneRepresentation[];
     /** Terminal preview/output contract. */
     readonly terminal: DemoTerminal;
     /** Conventions for the demo's active source and target domains. */
@@ -630,9 +757,57 @@ export type DemoDefinition = {
 export type DemoCatalog = {
     /** Schema version used to interpret this catalog. */
     readonly version: typeof DemoCatalogSchemaVersion;
+    /** Owned selection capabilities; unavailable owners must not be shown as peers. */
+    readonly selectionParity: readonly DemoSelectionOwnerParity[];
     /** Demo entries in gallery order. */
     readonly demos: readonly DemoDefinition[];
 };
+
+/** Data consumed by a catalog card, diagram, or resource-lane view. */
+export type DemoCatalogViewModel = {
+    readonly id: string;
+    readonly title: string;
+    readonly summary: string;
+    readonly tags: readonly string[];
+    readonly availability: DemoAvailability;
+    readonly resourceLanes: readonly DemoResourceLane[];
+    readonly selectionOwners: readonly DemoSceneRepresentation[];
+    readonly selectionPills: readonly DemoSelectionPill[];
+    readonly textureBindings: readonly TextureBinding[];
+    readonly lossBadges: readonly DemoLossBadge[];
+    readonly graph: DemoGraphPayload;
+    readonly editor: DemoEditorMetadata;
+    readonly preExportReview: DemoPreExportReview;
+};
+
+/**
+ * Builds presentation data directly from the registry contract.
+ *
+ * Callers can feed this result to a gallery or diagram renderer without
+ * maintaining a second hand-authored id-to-view map.
+ *
+ * @param catalog - Catalog registry data used to derive the presentation entries.
+ * @returns View models ordered by the registry's teaching order.
+ */
+export function BuildDemoCatalogViewModels(catalog: DemoCatalog): readonly DemoCatalogViewModel[] {
+    return [...catalog.demos]
+        .sort((left, right) => left.teaching.order - right.teaching.order)
+        .map((demo) => ({
+            id: demo.id,
+            title: demo.title,
+            summary: demo.summary,
+            tags: demo.tags,
+            availability: demo.availability,
+            resourceLanes: demo.resourceLanes,
+            selectionOwners: demo.selectionOwners,
+            selectionPills: demo.selections.map(({ pill }) => pill),
+            textureBindings: demo.textureBindings,
+            lossBadges: demo.editor.lossBadges,
+            graph: demo.graph,
+            editor: demo.editor,
+            preExportReview: demo.preExportReview,
+        }));
+}
 
 /**
  * Narrows a resource to NodeGeometry. The resource is serialized data only;
@@ -739,20 +914,77 @@ function CreateNodeGeometryResource(id: string, label: string, source: DemoResou
     };
 }
 
-function CreateResolvedSelection(id: string, selection: DemoDomainSelection, label?: string): DemoSelectionExpectation {
-    return { id, ...(label ? { label } : {}), resolution: { status: "resolved", selection } };
+function CreateResourceLane(
+    id: string,
+    label: string,
+    resourceIds: readonly string[],
+    assetBindingIds: readonly string[],
+    textureBindingIds: readonly string[] = []
+): DemoResourceLane {
+    return { id, label, resourceIds, assetBindingIds, textureBindingIds };
 }
 
-function CreateStaleSelection(id: string, selection: DemoDomainSelection, why: string, label?: string): DemoSelectionExpectation {
-    return { id, ...(label ? { label } : {}), resolution: { status: "stale", selection, diagnostic: { status: "stale", why } } };
+const DemoCatalogSelectionParity: readonly DemoSelectionOwnerParity[] = [
+    {
+        ownerRepresentation: DemoSceneRepresentation.GLTF,
+        status: "supported",
+        targetTypes: ["scene", "node", "mesh", "primitive", "material", "texture", "animation", "skin", "camera", "light", "variant"],
+        why: "glTF selections use exact JSON pointers owned by the glTF representation.",
+    },
+    {
+        ownerRepresentation: DemoSceneRepresentation.USD,
+        status: "supported",
+        targetTypes: ["stage", "prim", "property", "material", "texture", "animation", "camera", "light", "variant"],
+        why: "USD selections use exact prim and property paths owned by the resolved stage representation.",
+    },
+    {
+        ownerRepresentation: DemoSceneRepresentation.BABYLON,
+        status: "requires-adapter",
+        targetTypes: ["scene", "node", "mesh", "material", "texture", "animation", "camera", "light"],
+        why: "Babylon selections need an owned resolver/adapter before Babylon can be presented as a peer domain.",
+    },
+];
+
+type DemoSelectionPillTarget = Omit<DemoSelectionPill, "status">;
+
+function CreateSelectionPill(target: DemoSelectionPillTarget, status: DemoSelectionResolution["status"]): DemoSelectionPill {
+    return { ...target, status };
 }
 
-function CreateDanglingSelection(id: string, selection: DemoDomainSelection, why: string, label?: string): DemoSelectionExpectation {
-    return { id, ...(label ? { label } : {}), resolution: { status: "dangling", selection, diagnostic: { status: "dangling", why } } };
+function CreateResolvedSelection(id: string, selection: DemoDomainSelection, label?: string, cardinality: DemoSelectionCardinality = "one"): DemoSelectionExpectation {
+    return {
+        id,
+        ...(label ? { label } : {}),
+        resolution: { status: "resolved", selection },
+        pill: CreateSelectionPill({ ownerRepresentation: selection.domain, targetType: selection.granularity, cardinality }, "resolved"),
+    };
 }
 
-function CreateEmptySelection(id: string, why: string, label?: string): DemoSelectionExpectation {
-    return { id, ...(label ? { label } : {}), resolution: { status: "empty", diagnostic: { status: "empty", why } } };
+function CreateStaleSelection(id: string, selection: DemoDomainSelection, why: string, label?: string, cardinality: DemoSelectionCardinality = "one"): DemoSelectionExpectation {
+    return {
+        id,
+        ...(label ? { label } : {}),
+        resolution: { status: "stale", selection, diagnostic: { status: "stale", why } },
+        pill: CreateSelectionPill({ ownerRepresentation: selection.domain, targetType: selection.granularity, cardinality }, "stale"),
+    };
+}
+
+function CreateDanglingSelection(id: string, selection: DemoDomainSelection, why: string, label?: string, cardinality: DemoSelectionCardinality = "one"): DemoSelectionExpectation {
+    return {
+        id,
+        ...(label ? { label } : {}),
+        resolution: { status: "dangling", selection, diagnostic: { status: "dangling", why } },
+        pill: CreateSelectionPill({ ownerRepresentation: selection.domain, targetType: selection.granularity, cardinality }, "dangling"),
+    };
+}
+
+function CreateEmptySelection(id: string, target: DemoSelectionPillTarget, why: string, label?: string): DemoSelectionExpectation {
+    return {
+        id,
+        ...(label ? { label } : {}),
+        resolution: { status: "empty", diagnostic: { status: "empty", why } },
+        pill: CreateSelectionPill(target, "empty"),
+    };
 }
 
 function CreateEditorBlock(id: number, title: string, x: number, y: number, fileName?: string): DemoEditorBlockMetadata {
@@ -1038,6 +1270,7 @@ const DemoMaterialConstructionGraph = CreateSerializedNodeAssetGraph(
  */
 export const DemoCatalogRegistry: DemoCatalog = {
     version: DemoCatalogSchemaVersion,
+    selectionParity: DemoCatalogSelectionParity,
     demos: [
         {
             id: "gltf-optimize-draco-basisu",
@@ -1045,6 +1278,8 @@ export const DemoCatalogRegistry: DemoCatalog = {
             summary: "Reduce geometry and texture payloads while making extension-backed preservation visible.",
             description: "Reduce geometry and texture payloads while making extension-backed preservation visible.",
             tags: ["gltf", "optimization", "draco", "basisu"],
+            availability: { status: "available" },
+            resourceLanes: [CreateResourceLane("source", "Source scene", ["orb-gltf"], ["source-orb"])],
             resources: [OrbGltfResource],
             graph: DemoGltfOptimizeGraph,
             editor: {
@@ -1065,6 +1300,7 @@ export const DemoCatalogRegistry: DemoCatalog = {
             },
             assets: [
                 {
+                    id: "source-orb",
                     blockId: 1,
                     input: "data",
                     bundledAssetKey: "orb-glb",
@@ -1073,11 +1309,18 @@ export const DemoCatalogRegistry: DemoCatalog = {
                     sourceLabel: "Bundled energy orb glTF",
                 },
             ],
+            textureBindings: [],
             selections: [
                 CreateResolvedSelection("source-mesh", { domain: "gltf", granularity: "mesh", valueKind: "jsonPointer", value: "/meshes/0" }, "Source mesh"),
                 CreateResolvedSelection("source-material", { domain: "gltf", granularity: "material", valueKind: "jsonPointer", value: "/materials/0" }, "Source material"),
-                CreateEmptySelection("optional-animation", "This optimization demo has no animation selection.", "Animation"),
+                CreateEmptySelection(
+                    "optional-animation",
+                    { ownerRepresentation: "gltf", targetType: "animation", cardinality: "one" },
+                    "This optimization demo has no animation selection.",
+                    "Animation"
+                ),
             ],
+            selectionOwners: ["gltf"],
             terminal: { kind: "gltf", expectedMimeType: "model/gltf-binary" },
             conventions: StandardGltfConventions,
             expectedLosses: [GltfSimplificationLoss, GltfBasisuLoss, GltfDracoLoss],
@@ -1101,6 +1344,8 @@ export const DemoCatalogRegistry: DemoCatalog = {
             summary: "Resolve a bundled USDZ ToyCar stage and inspect adaptation losses before the glTF terminal.",
             description: "Resolve a bundled USDZ ToyCar stage and inspect adaptation losses before the glTF terminal.",
             tags: ["usd", "usdz", "gltf", "losses"],
+            availability: { status: "available" },
+            resourceLanes: [CreateResourceLane("source", "Source stage", ["toycar-usdz"], ["source-toycar-usdz"])],
             resources: [ToyCarUsdzResource],
             graph: [
                 { kind: "ImportScene", id: "import-usdz", resourceId: "toycar-usdz", output: "resolvedStage" },
@@ -1122,6 +1367,7 @@ export const DemoCatalogRegistry: DemoCatalog = {
             },
             assets: [
                 {
+                    id: "source-toycar-usdz",
                     blockId: 1,
                     input: "data",
                     bundledAssetKey: "toycar-usdz",
@@ -1130,6 +1376,7 @@ export const DemoCatalogRegistry: DemoCatalog = {
                     sourceLabel: "Bundled ToyCar USDZ fixture",
                 },
             ],
+            textureBindings: [],
             selections: [
                 CreateResolvedSelection("toycar-prim", { domain: "usd", granularity: "prim", valueKind: "primPath", value: "/ToyCar/Body" }, "ToyCar body"),
                 CreateStaleSelection(
@@ -1144,8 +1391,14 @@ export const DemoCatalogRegistry: DemoCatalog = {
                     "The fixture contains no camera prim at this path.",
                     "Camera"
                 ),
-                CreateEmptySelection("optional-light", "This demo intentionally leaves a light selection empty.", "Light"),
+                CreateEmptySelection(
+                    "optional-light",
+                    { ownerRepresentation: "usd", targetType: "light", cardinality: "one" },
+                    "This demo intentionally leaves a light selection empty.",
+                    "Light"
+                ),
             ],
+            selectionOwners: ["usd"],
             terminal: { kind: "gltf", expectedMimeType: "model/gltf-binary" },
             conventions: ConvertedUsdConventions,
             expectedLosses: UsdToGltfLosses,
@@ -1176,6 +1429,11 @@ export const DemoCatalogRegistry: DemoCatalog = {
             summary: "Make the Babylon adaptation boundary explicit instead of hiding it inside a direct export.",
             description: "Make the Babylon adaptation boundary explicit instead of hiding it inside a direct export.",
             tags: ["usd", "babylon", "gltf", "adaptation"],
+            availability: {
+                status: "requires-selection-adapter",
+                why: "Babylon-owned exact selections are not yet backed by the editor's owned resolver.",
+            },
+            resourceLanes: [CreateResourceLane("source", "Source stage", ["toycar-usda"], ["source-toycar-usda"])],
             resources: [ToyCarUsdaResource],
             graph: [
                 { kind: "ImportScene", id: "import-usda", resourceId: "toycar-usda", output: "resolvedStage" },
@@ -1199,6 +1457,7 @@ export const DemoCatalogRegistry: DemoCatalog = {
             },
             assets: [
                 {
+                    id: "source-toycar-usda",
                     blockId: 1,
                     input: "data",
                     bundledAssetKey: "toycar-usda",
@@ -1207,6 +1466,7 @@ export const DemoCatalogRegistry: DemoCatalog = {
                     sourceLabel: "Bundled ToyCar USDA fixture",
                 },
             ],
+            textureBindings: [],
             selections: [
                 CreateResolvedSelection("usd-body", { domain: "usd", granularity: "prim", valueKind: "primPath", value: "/ToyCar/Body" }, "USD body"),
                 CreateResolvedSelection("babylon-body", { domain: "babylon", granularity: "mesh", valueKind: "name", value: "Body" }, "Babylon body"),
@@ -1217,6 +1477,7 @@ export const DemoCatalogRegistry: DemoCatalog = {
                     "Legacy material"
                 ),
             ],
+            selectionOwners: ["usd", "babylon"],
             terminal: { kind: "gltf", expectedMimeType: "model/gltf-binary" },
             conventions: ConvertedUsdConventions,
             expectedLosses: UsdToBabylonLosses,
@@ -1247,6 +1508,11 @@ export const DemoCatalogRegistry: DemoCatalog = {
             summary: "Use an exact Babylon selection to apply a mutation, then review what survives the glTF boundary.",
             description: "Use an exact Babylon selection to apply a mutation, then review what survives the glTF boundary.",
             tags: ["babylon", "mutation", "selection", "gltf"],
+            availability: {
+                status: "requires-selection-adapter",
+                why: "Babylon-owned exact selections are not yet backed by the editor's owned resolver.",
+            },
+            resourceLanes: [CreateResourceLane("source", "Source scene", ["source-babylon"], ["source-toycar-babylon"])],
             resources: [CreateBabylonResource("source-babylon", "Bundled Babylon scene", "toycar-babylon", "scenes/nodeAssets/toycar.babylon")],
             graph: [
                 { kind: "ImportScene", id: "import-babylon", resourceId: "source-babylon", output: "babylonScene" },
@@ -1270,6 +1536,7 @@ export const DemoCatalogRegistry: DemoCatalog = {
             },
             assets: [
                 {
+                    id: "source-toycar-babylon",
                     blockId: 1,
                     input: "data",
                     bundledAssetKey: "toycar-babylon",
@@ -1278,6 +1545,7 @@ export const DemoCatalogRegistry: DemoCatalog = {
                     sourceLabel: "Bundled Babylon scene fixture",
                 },
             ],
+            textureBindings: [],
             selections: [
                 CreateResolvedSelection("body-translation", { domain: "babylon", granularity: "node", valueKind: "name", value: "Body" }, "Body node"),
                 CreateResolvedSelection("body-material", { domain: "babylon", granularity: "material", valueKind: "name", value: "Paint" }, "Paint material"),
@@ -1288,6 +1556,7 @@ export const DemoCatalogRegistry: DemoCatalog = {
                     "Removed wheel"
                 ),
             ],
+            selectionOwners: ["babylon"],
             terminal: { kind: "gltf", expectedMimeType: "model/gltf-binary" },
             conventions: StandardGltfConventions,
             expectedLosses: [BabylonCustomMaterialLoss, BabylonPhysicsLoss, BabylonAnimationLoss],
@@ -1317,6 +1586,11 @@ export const DemoCatalogRegistry: DemoCatalog = {
             summary: "Keep a NodeGeometry resource procedural until an explicit Evaluate and Bake boundary makes a mesh.",
             description: "Keep a NodeGeometry resource procedural until an explicit Evaluate and Bake boundary makes a mesh.",
             tags: ["node-geometry", "procedural", "evaluate", "gltf"],
+            availability: {
+                status: "requires-selection-adapter",
+                why: "The realized Babylon mesh selection is gated until Babylon selection parity exists.",
+            },
+            resourceLanes: [CreateResourceLane("procedural", "Procedural geometry", ["box-geometry"], [])],
             resources: [NodeGeometryBoxResource],
             graph: [
                 { kind: "ImportNodeGeometry", id: "import-node-geometry", resourceId: "box-geometry", output: "proceduralGeometry" },
@@ -1349,10 +1623,17 @@ export const DemoCatalogRegistry: DemoCatalog = {
                 lossBadges: [CreateLossBadge(NodeGeometryBakeLoss, "Bake boundary", [3])],
             },
             assets: [],
+            textureBindings: [],
             selections: [
                 CreateResolvedSelection("box-output", { domain: "babylon", granularity: "mesh", valueKind: "name", value: "Box" }, "Realized box"),
-                CreateEmptySelection("optional-parent", "The box is realized at the scene root.", "Parent"),
+                CreateEmptySelection(
+                    "optional-parent",
+                    { ownerRepresentation: "babylon", targetType: "node", cardinality: "one" },
+                    "The box is realized at the scene root.",
+                    "Parent"
+                ),
             ],
+            selectionOwners: ["babylon"],
             terminal: { kind: "gltf", expectedMimeType: "model/gltf-binary" },
             conventions: StandardGltfConventions,
             expectedLosses: [NodeGeometryBakeLoss],
@@ -1387,6 +1668,11 @@ export const DemoCatalogRegistry: DemoCatalog = {
             summary: "Treat image data as a semantic binding while a texture slot stays an exact glTF selection.",
             description: "Treat image data as a semantic binding while a texture slot stays an exact glTF selection.",
             tags: ["gltf", "image", "texture", "bindings"],
+            availability: { status: "available" },
+            resourceLanes: [
+                CreateResourceLane("source", "Source scene", ["orb-gltf"], ["source-orb-textured"]),
+                CreateResourceLane("image", "Processed image", [], [], ["base-color-roundtrip"]),
+            ],
             resources: [OrbGltfResource],
             graph: DemoTextureRoundTripGraph,
             editor: {
@@ -1404,12 +1690,21 @@ export const DemoCatalogRegistry: DemoCatalog = {
             },
             assets: [
                 {
+                    id: "source-orb-textured",
                     blockId: 1,
                     input: "data",
                     bundledAssetKey: "orb-glb",
                     role: DemoAssetRole.SOURCE_SCENE,
                     mimeType: "model/gltf-binary",
                     sourceLabel: "Bundled textured orb glTF",
+                },
+            ],
+            textureBindings: [
+                {
+                    id: "base-color-roundtrip",
+                    role: DemoAssetRole.BASE_COLOR,
+                    source: { kind: "graphOutput", blockId: 3, output: "output" },
+                    target: { selectionId: "base-color-slot", slot: "baseColorTexture" },
                 },
             ],
             selections: [
@@ -1424,8 +1719,14 @@ export const DemoCatalogRegistry: DemoCatalog = {
                     "The source fixture does not contain the optional normal slot.",
                     "Old normal slot"
                 ),
-                CreateEmptySelection("optional-mask", "This round trip edits only the base-color slot.", "Mask"),
+                CreateEmptySelection(
+                    "optional-mask",
+                    { ownerRepresentation: "gltf", targetType: "texture", cardinality: "one" },
+                    "This round trip edits only the base-color slot.",
+                    "Mask"
+                ),
             ],
+            selectionOwners: ["gltf"],
             terminal: { kind: "gltf", expectedMimeType: "model/gltf-binary" },
             conventions: StandardGltfConventions,
             expectedLosses: [ImageResizeLoss, ImageReencodeLoss],
@@ -1456,6 +1757,14 @@ export const DemoCatalogRegistry: DemoCatalog = {
             summary: "Adapt a glTF scene to Babylon, explicitly realize procedural geometry, and compose the result.",
             description: "Adapt a glTF scene to Babylon, explicitly realize procedural geometry, and compose the result.",
             tags: ["gltf", "node-geometry", "composition", "babylon"],
+            availability: {
+                status: "requires-selection-adapter",
+                why: "The composed Babylon scene selections are gated until Babylon selection parity exists.",
+            },
+            resourceLanes: [
+                CreateResourceLane("source", "Source scene", ["orb-gltf"], ["source-orb-composition"]),
+                CreateResourceLane("procedural", "Procedural geometry", ["box-geometry"], []),
+            ],
             resources: [OrbGltfResource, NodeGeometryBoxResource],
             graph: [
                 { kind: "ImportScene", id: "import-composition-gltf", resourceId: "orb-gltf", output: "gltfScene" },
@@ -1496,6 +1805,7 @@ export const DemoCatalogRegistry: DemoCatalog = {
             },
             assets: [
                 {
+                    id: "source-orb-composition",
                     blockId: 1,
                     input: "data",
                     bundledAssetKey: "orb-glb",
@@ -1504,11 +1814,18 @@ export const DemoCatalogRegistry: DemoCatalog = {
                     sourceLabel: "Bundled energy orb glTF",
                 },
             ],
+            textureBindings: [],
             selections: [
                 CreateResolvedSelection("composition-parent", { domain: "babylon", granularity: "scene", valueKind: "name", value: "babylonScene" }, "Babylon scene"),
                 CreateResolvedSelection("composed-box", { domain: "babylon", granularity: "mesh", valueKind: "name", value: "ComposedBox" }, "Composed box"),
-                CreateEmptySelection("optional-placement", "The procedural box is created at the scene root.", "Placement"),
+                CreateEmptySelection(
+                    "optional-placement",
+                    { ownerRepresentation: "babylon", targetType: "node", cardinality: "one" },
+                    "The procedural box is created at the scene root.",
+                    "Placement"
+                ),
             ],
+            selectionOwners: ["babylon"],
             terminal: { kind: "gltf", expectedMimeType: "model/gltf-binary" },
             conventions: StandardGltfConventions,
             expectedLosses: [NodeGeometryBakeLoss],
@@ -1544,6 +1861,17 @@ export const DemoCatalogRegistry: DemoCatalog = {
             summary: "Build a portable PBR material from semantic image roles instead of inventing image resource subtypes.",
             description: "Build a portable PBR material from semantic image roles instead of inventing image resource subtypes.",
             tags: ["gltf", "materials", "pbr", "image-bindings"],
+            availability: { status: "available" },
+            resourceLanes: [
+                CreateResourceLane("source", "Source scene", ["orb-gltf"], ["source-orb-material"]),
+                CreateResourceLane(
+                    "images",
+                    "Semantic image bindings",
+                    [],
+                    ["base-color-image", "normal-image", "metallic-roughness-image"],
+                    ["base-color-texture", "normal-texture", "metallic-texture", "roughness-texture"]
+                ),
+            ],
             resources: [OrbGltfResource],
             graph: DemoMaterialConstructionGraph,
             editor: {
@@ -1560,6 +1888,7 @@ export const DemoCatalogRegistry: DemoCatalog = {
             },
             assets: [
                 {
+                    id: "source-orb-material",
                     blockId: 1,
                     input: "data",
                     bundledAssetKey: "orb-glb",
@@ -1568,6 +1897,7 @@ export const DemoCatalogRegistry: DemoCatalog = {
                     sourceLabel: "Bundled bare orb glTF",
                 },
                 {
+                    id: "base-color-image",
                     blockId: 2,
                     input: "data",
                     bundledAssetKey: "orb-metal",
@@ -1576,6 +1906,7 @@ export const DemoCatalogRegistry: DemoCatalog = {
                     sourceLabel: "Bundled metal base-color image",
                 },
                 {
+                    id: "normal-image",
                     blockId: 3,
                     input: "data",
                     bundledAssetKey: "orb-pattern",
@@ -1584,12 +1915,41 @@ export const DemoCatalogRegistry: DemoCatalog = {
                     sourceLabel: "Bundled pattern normal image",
                 },
                 {
+                    id: "metallic-roughness-image",
                     blockId: 4,
                     input: "data",
                     bundledAssetKey: "orb-pattern",
-                    role: DemoAssetRole.ROUGHNESS,
+                    role: DemoAssetRole.METALLIC_ROUGHNESS,
                     mimeType: "image/png",
                     sourceLabel: "Bundled pattern roughness image",
+                },
+            ],
+            textureBindings: [
+                {
+                    id: "base-color-texture",
+                    role: DemoAssetRole.BASE_COLOR,
+                    source: { kind: "assetBinding", assetBindingId: "base-color-image" },
+                    target: { selectionId: "base-color-role", slot: "baseColorTexture" },
+                },
+                {
+                    id: "normal-texture",
+                    role: DemoAssetRole.NORMAL,
+                    source: { kind: "assetBinding", assetBindingId: "normal-image" },
+                    target: { selectionId: "normal-role", slot: "normalTexture" },
+                },
+                {
+                    id: "metallic-texture",
+                    role: DemoAssetRole.METALLIC,
+                    source: { kind: "assetBinding", assetBindingId: "metallic-roughness-image" },
+                    target: { selectionId: "metallic-role", slot: "metallicRoughnessTexture" },
+                    channelView: { channel: "b", colorSpace: "linear", packedGroupId: "metallic-roughness" },
+                },
+                {
+                    id: "roughness-texture",
+                    role: DemoAssetRole.ROUGHNESS,
+                    source: { kind: "assetBinding", assetBindingId: "metallic-roughness-image" },
+                    target: { selectionId: "roughness-role", slot: "metallicRoughnessTexture" },
+                    channelView: { channel: "g", colorSpace: "linear", packedGroupId: "metallic-roughness" },
                 },
             ],
             selections: [
@@ -1599,8 +1959,25 @@ export const DemoCatalogRegistry: DemoCatalog = {
                     { domain: "gltf", granularity: "texture", valueKind: "jsonPointer", value: "/materials/0/pbrMetallicRoughness/baseColorTexture" },
                     "Base-color role"
                 ),
-                CreateEmptySelection("optional-emissive", "This material intentionally leaves the emissive role unbound.", "Emissive"),
+                CreateResolvedSelection("normal-role", { domain: "gltf", granularity: "texture", valueKind: "jsonPointer", value: "/materials/0/normalTexture" }, "Normal role"),
+                CreateResolvedSelection(
+                    "metallic-role",
+                    { domain: "gltf", granularity: "texture", valueKind: "jsonPointer", value: "/materials/0/pbrMetallicRoughness/metallicRoughnessTexture" },
+                    "Metallic role"
+                ),
+                CreateResolvedSelection(
+                    "roughness-role",
+                    { domain: "gltf", granularity: "texture", valueKind: "jsonPointer", value: "/materials/0/pbrMetallicRoughness/metallicRoughnessTexture" },
+                    "Roughness role"
+                ),
+                CreateEmptySelection(
+                    "optional-emissive",
+                    { ownerRepresentation: "gltf", targetType: "texture", cardinality: "one" },
+                    "This material intentionally leaves the emissive role unbound.",
+                    "Emissive"
+                ),
             ],
+            selectionOwners: ["gltf"],
             terminal: { kind: "gltf", expectedMimeType: "model/gltf-binary" },
             conventions: StandardGltfConventions,
             expectedLosses: [MaterialConstructionLoss],
