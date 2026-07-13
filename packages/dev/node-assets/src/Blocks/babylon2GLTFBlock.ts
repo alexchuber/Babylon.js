@@ -1,8 +1,12 @@
+import { GLTF2Export } from "serializers/glTF/2.0/glTFSerializer";
+
 import { RegisterBlock } from "../blockFoundation/blockRegistry";
 import { NodeAssetBlock } from "../blockFoundation/nodeAssetBlock";
 import { type NodeAssetConnectionPoint } from "../connection/nodeAssetConnectionPoint";
 import { NodeAssetConnectionPointType } from "../connection/nodeAssetConnectionPointType";
 import { type NodeAsset } from "../nodeAsset";
+import { IsBabylonAsset } from "../representations/babylonAsset";
+import { GltfAsset } from "../representations/gltfAsset";
 
 /**
  * Transcodes a {@link BabylonAsset} (BABYLON_SCENE) into a {@link GltfAsset} (GLTF_DOCUMENT).
@@ -30,11 +34,42 @@ export class Babylon2GLTFBlock extends NodeAssetBlock {
     }
 
     /**
-     * Not yet implemented.
-     * @throws Always throws — this is a husk block.
+     * Exports the input Babylon scene to GLB bytes via {@link GLTF2Export.GLBAsync}, then
+     * re-reads the bytes into a glTF-Transform Document wrapped in a {@link GltfAsset}.
      */
     public override async _buildBlockAsync(): Promise<void> {
-        throw new Error(`${this.getClassName()}._buildBlockAsync is not yet implemented.`);
+        if (this.input.value == null) {
+            throw new Error(`The "${this.name}" block has no input scene to transcode.`);
+        }
+        if (!IsBabylonAsset(this.input.value)) {
+            throw new Error(`The "${this.name}" block did not receive a BabylonAsset.`);
+        }
+        const babylonAsset = this.input.value;
+
+        const glbData = await GLTF2Export.GLBAsync(babylonAsset.scene, "export", {
+            exportWithoutWaitingForScene: true,
+        });
+
+        const glbBlob = glbData.files["export.glb"];
+        let glbBytes: Uint8Array;
+        if (glbBlob instanceof Blob) {
+            glbBytes = new Uint8Array(await glbBlob.arrayBuffer());
+        } else {
+            const encoder = new TextEncoder();
+            glbBytes = encoder.encode(glbBlob);
+        }
+
+        const { WebIO } = await import("@gltf-transform/core");
+        const { ALL_EXTENSIONS } = await import("@gltf-transform/extensions");
+
+        const io = new WebIO().registerExtensions(ALL_EXTENSIONS);
+        const document = await io.readBinary(glbBytes);
+
+        this.output.value = new GltfAsset(document, {
+            identity: babylonAsset.identity,
+            revision: babylonAsset.revision,
+            manifest: { format: "gltf", source: "babylon-transcode" },
+        });
     }
 }
 

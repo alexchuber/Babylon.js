@@ -1,8 +1,15 @@
+import { NullEngine } from "core/Engines/nullEngine";
+import { SceneLoader } from "core/Loading/sceneLoader";
+
+// Side-effect import: registers the .babylon file loader plugin.
+import "core/Loading/Plugins/babylonFileLoader";
+
 import { RegisterBlock } from "../blockFoundation/blockRegistry";
 import { NodeAssetBlock } from "../blockFoundation/nodeAssetBlock";
 import { type NodeAssetConnectionPoint } from "../connection/nodeAssetConnectionPoint";
 import { NodeAssetConnectionPointType } from "../connection/nodeAssetConnectionPointType";
 import { type NodeAsset } from "../nodeAsset";
+import { BabylonAsset } from "../representations/babylonAsset";
 
 /**
  * Imports a `.babylon` file from a URL and exposes it as a {@link BabylonAsset} on its output.
@@ -29,11 +36,27 @@ export class ImportBabylonBlock extends NodeAssetBlock {
     }
 
     /**
-     * Not yet implemented.
-     * @throws Always throws — this is a husk block.
+     * Loads a `.babylon` file from the URL on the {@link url} input and wraps the result
+     * in a {@link BabylonAsset} on the {@link output}.
      */
     public override async _buildBlockAsync(): Promise<void> {
-        throw new Error(`${this.getClassName()}._buildBlockAsync is not yet implemented.`);
+        const urlValue = this.url.value as string;
+        if (!urlValue) {
+            throw new Error(`The "${this.name}" import block has no URL to load.`);
+        }
+
+        const engine = new NullEngine();
+        try {
+            const scene = await SceneLoader.LoadAsync("", urlValue, engine);
+            this.output.value = new BabylonAsset(engine, scene, {
+                identity: urlValue,
+                revision: 0,
+                manifest: { format: "babylon", source: urlValue },
+            });
+        } catch (error) {
+            engine.dispose();
+            throw new Error(`The "${this.name}" import block failed to load "${urlValue}": ${error instanceof Error ? error.message : String(error)}`, { cause: error });
+        }
     }
 }
 

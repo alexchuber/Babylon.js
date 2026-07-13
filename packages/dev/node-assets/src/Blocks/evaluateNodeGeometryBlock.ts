@@ -1,8 +1,13 @@
+import { NullEngine } from "core/Engines/nullEngine";
+import { Scene } from "core/scene";
+
 import { RegisterBlock } from "../blockFoundation/blockRegistry";
 import { NodeAssetBlock } from "../blockFoundation/nodeAssetBlock";
 import { type NodeAssetConnectionPoint } from "../connection/nodeAssetConnectionPoint";
 import { NodeAssetConnectionPointType } from "../connection/nodeAssetConnectionPointType";
 import { type NodeAsset } from "../nodeAsset";
+import { BabylonAsset } from "../representations/babylonAsset";
+import { IsNodeGeometryAsset } from "../representations/nodeGeometryAsset";
 
 /**
  * Evaluates a {@link NodeGeometryAsset} (NODE_GEOMETRY) graph and produces a
@@ -30,11 +35,42 @@ export class EvaluateNodeGeometryBlock extends NodeAssetBlock {
     }
 
     /**
-     * Not yet implemented.
-     * @throws Always throws — this is a husk block.
+     * Clones the input graph to avoid mutating the upstream value, creates a NullEngine scene,
+     * evaluates the graph, creates a mesh from the resulting vertex data, and wraps the scene
+     * in a {@link BabylonAsset}.
      */
     public override async _buildBlockAsync(): Promise<void> {
-        throw new Error(`${this.getClassName()}._buildBlockAsync is not yet implemented.`);
+        if (this.input.value == null) {
+            throw new Error(`The "${this.name}" block has no input Node Geometry to evaluate.`);
+        }
+        if (!IsNodeGeometryAsset(this.input.value)) {
+            throw new Error(`The "${this.name}" block did not receive a NodeGeometryAsset.`);
+        }
+        const ngAsset = this.input.value;
+
+        const clone = ngAsset.cloneForFanOut();
+        const engine = new NullEngine();
+        try {
+            const scene = new Scene(engine);
+            const ng = clone.nodeGeometry;
+
+            ng.build();
+            const mesh = ng.createMesh("nodeGeometryOutput", scene);
+            if (!mesh) {
+                throw new Error("Node Geometry evaluation produced no vertex data.");
+            }
+
+            this.output.value = new BabylonAsset(engine, scene, {
+                identity: ngAsset.identity,
+                revision: ngAsset.revision,
+                manifest: { format: "babylon", source: "nodeGeometry-eval" },
+            });
+        } catch (error) {
+            engine.dispose();
+            throw error instanceof Error ? error : new Error(`The "${this.name}" block failed to evaluate Node Geometry: ${String(error)}`);
+        } finally {
+            clone.dispose();
+        }
     }
 }
 
