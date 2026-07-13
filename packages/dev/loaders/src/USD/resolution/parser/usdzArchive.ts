@@ -15,7 +15,7 @@ type ZipCentralDirectoryEntry = {
     centralDirectoryIndex: number;
 };
 
-const DefaultFflateUrl = "https://unpkg.com/fflate/umd/index.js";
+const DefaultFflateUrl = "https://unpkg.com/fflate@0.8.2/umd/index.js";
 const EndOfCentralDirectorySignature = 0x06054b50;
 const EndOfCentralDirectoryMinSize = 22;
 const MaxZipCommentLength = 0xffff;

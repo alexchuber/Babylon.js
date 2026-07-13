@@ -2,7 +2,7 @@ import { Animation } from "core/Animations/animation.pure";
 import { AnimationGroup } from "core/Animations/animationGroup.pure";
 import { AnimationKeyInterpolation, type IAnimationKey } from "core/Animations/animationKey";
 import { Quaternion, Vector3 } from "core/Maths/math.vector.pure";
-import { Mesh } from "core/Meshes/mesh.pure";
+import { AbstractMesh } from "core/Meshes/abstractMesh";
 import { type TransformNode } from "core/Meshes/transformNode.pure";
 import { type Scene } from "core/scene";
 import { type IResolvedAnimation, type IResolvedAnimationTrack, type ResolvedAnimationTargetKind } from "../resolution/resolvedStage";
@@ -30,7 +30,7 @@ const MaxSplineBakeSubdivisions = 32;
  * supplied tangents as an approximation; if tangents are unavailable, the resolved samples are used
  * as linear keys.
  *
- * Visibility tracks target `Mesh.visibility`. They are skipped for non-mesh transform nodes because
+ * Visibility tracks target `AbstractMesh.visibility`. They are skipped for non-mesh transform nodes because
  * `TransformNode` has no visibility property.
  * @param animation the resolved per-prim animation
  * @param node the Babylon node the animation will target
@@ -116,7 +116,7 @@ function GetTrackDescriptor(target: ResolvedAnimationTargetKind, node: Transform
                 createValue: (values, offset) => new Vector3(values[offset], values[offset + 1], values[offset + 2]),
             };
         case "visibility":
-            if (!(node instanceof Mesh)) {
+            if (!(node instanceof AbstractMesh)) {
                 return undefined;
             }
 

@@ -69,7 +69,7 @@ describe("USD composition", () => {
         expect(world.references).toBeUndefined();
     });
 
-    it("grafts selected variants and falls back to the first authored variant", () => {
+    it("grafts selected variants and leaves unselected variant sets unapplied", () => {
         const rootLayer = createLayer("root.usd", [
             createPrim("/Model", {
                 variantSelections: { shape: "high" },
@@ -123,8 +123,8 @@ describe("USD composition", () => {
         expect(diagnostics).toEqual([]);
         expectTokenValue(model.properties.detail, "high");
         expect(model.children.map((child) => child.path)).toEqual(["/Model/HighChild"]);
-        expectTokenValue(fallback.properties.detail, "first");
-        expect(fallback.children.map((child) => child.path)).toEqual(["/Fallback/FirstChild"]);
+        expect(fallback.properties.detail).toBeUndefined();
+        expect(fallback.children).toEqual([]);
     });
 
     it("resolves reference list operations with prepended and deleted items", () => {
@@ -216,6 +216,18 @@ describe("USD composition", () => {
 
         const property = layer.rootPrims[0].properties.value;
         expect(property.kind === "attribute" ? property.timeSamples?.times : undefined).toEqual([12]);
+    });
+
+    it("resolves an internal reference without a prim path through defaultPrim", () => {
+        const root = createLayer("root.usd", [
+            createPrim("/Source", { properties: { value: tokenAttribute("source") } }),
+            createPrim("/Target", { references: explicitReferences([{ assetPath: "" }]) }),
+        ]);
+        root.defaultPrim = "Source";
+
+        const { layer } = ComposeLayerStack(root, () => undefined);
+
+        expectTokenValue(layer.rootPrims.find((prim) => prim.path === "/Target")!.properties.value, "source");
     });
 });
 

@@ -1,11 +1,12 @@
 import { Logger } from "core/Misc/logger";
 import { type Scene } from "core/scene";
 import { type Nullable } from "core/types";
-import { type AbstractMesh } from "core/Meshes/abstractMesh";
+import { AbstractMesh } from "core/Meshes/abstractMesh";
 import { type Mesh } from "core/Meshes/mesh.pure";
 import { TransformNode } from "core/Meshes/transformNode.pure";
 import { type Material } from "core/Materials/material";
 import { MultiMaterial, RegisterMultiMaterial } from "core/Materials/multiMaterial.pure";
+import { SubMesh } from "core/Meshes/subMesh.pure";
 import { type Light } from "core/Lights/light";
 import { type Camera } from "core/Cameras/camera";
 import { type Skeleton } from "core/Bones/skeleton";
@@ -53,7 +54,7 @@ export interface IUsdAdapterContext {
     /** Materials by stage material index. */
     materialCache: Map<number, Material>;
     /** Instance source meshes by stage mesh index (the first `instanceable` prim becomes the source). */
-    sourceMeshCache: Map<number, Mesh>;
+    sourceMeshCache: Map<string, Mesh>;
     /** Skeletons by stage skeleton index. */
     skeletonCache: Map<number, Skeleton>;
 }
@@ -95,7 +96,9 @@ export function AdaptPrim(prim: IResolvedPrim, parent: TransformNode, context: I
 
     ApplyResolvedTransform(node, prim.transform);
     node.parent = parent;
-    if (!prim.visible) {
+    if (!prim.visible && node instanceof AbstractMesh && prim.animation?.tracks.some((track) => track.target === "visibility")) {
+        node.visibility = 0;
+    } else if (!prim.visible) {
         node.setEnabled(false);
     }
 
@@ -130,7 +133,8 @@ function AdaptMeshPrim(prim: IResolvedPrim, context: IUsdAdapterContext): Mesh {
 
 function AdaptInstancePrim(prim: IResolvedPrim, context: IUsdAdapterContext): TransformNode {
     const sourceIndex = prim.instanceSourceMeshIndex!;
-    const cachedSource = context.sourceMeshCache.get(sourceIndex);
+    const cacheKey = `${sourceIndex}:${prim.materialBinding?.materialIndex ?? -1}`;
+    const cachedSource = context.sourceMeshCache.get(cacheKey);
 
     // The first instanceable prim for a prototype becomes the rendered source mesh; later prims that
     // share the prototype become Babylon hardware instances of it. This matches USD instanceable
@@ -138,7 +142,7 @@ function AdaptInstancePrim(prim: IResolvedPrim, context: IUsdAdapterContext): Tr
     if (!cachedSource) {
         const resolvedMesh = context.stage.meshes[sourceIndex];
         const source = CreateMeshFromResolved(prim.name, resolvedMesh, context.scene);
-        context.sourceMeshCache.set(sourceIndex, source);
+        context.sourceMeshCache.set(cacheKey, source);
         context.meshes.push(source);
         BindMaterial(source, prim.materialBinding, resolvedMesh, context);
         return source;
@@ -215,15 +219,22 @@ function AdaptCameraPrim(prim: IResolvedPrim, context: IUsdAdapterContext): Tran
 function BindMaterial(mesh: Mesh, materialBinding: IResolvedPrim["materialBinding"], resolvedMesh: IResolvedMesh, context: IUsdAdapterContext): void {
     const subsets = resolvedMesh.geomSubsets;
     if (subsets && subsets.length > 0) {
+        addFallbackSubMeshes(mesh, subsets, materialBinding?.materialIndex);
         RegisterMultiMaterial();
         const multiMaterial = new MultiMaterial(`${mesh.name}_material`, context.scene);
         let maxIndex = -1;
         for (const subset of subsets) {
             maxIndex = Math.max(maxIndex, subset.materialIndex);
         }
+        if (materialBinding?.materialIndex !== undefined) {
+            maxIndex = Math.max(maxIndex, materialBinding.materialIndex);
+        }
         const subMaterials: Nullable<Material>[] = new Array<Nullable<Material>>(maxIndex + 1).fill(null);
         for (const subset of subsets) {
             subMaterials[subset.materialIndex] = GetOrCreateMaterial(subset.materialIndex, context);
+        }
+        if (materialBinding?.materialIndex !== undefined) {
+            subMaterials[materialBinding.materialIndex] = GetOrCreateMaterial(materialBinding.materialIndex, context);
         }
         multiMaterial.subMaterials = subMaterials;
         mesh.material = multiMaterial;
@@ -232,6 +243,23 @@ function BindMaterial(mesh: Mesh, materialBinding: IResolvedPrim["materialBindin
                 if (subMaterial) {
                     subMaterial.backFaceCulling = false;
                 }
+            }
+        }
+
+        function addFallbackSubMeshes(mesh: Mesh, subsets: NonNullable<IResolvedMesh["geomSubsets"]>, fallbackMaterialIndex: number | undefined): void {
+            const ranges = subsets.map((subset) => ({ start: subset.indexOffset, end: subset.indexOffset + subset.indexCount })).sort((left, right) => left.start - right.start);
+            const materialIndex = fallbackMaterialIndex ?? 0;
+            const verticesCount = mesh.getTotalVertices();
+            const indexCount = mesh.getTotalIndices();
+            let cursor = 0;
+            for (const range of ranges) {
+                if (range.start > cursor) {
+                    new SubMesh(materialIndex, 0, verticesCount, cursor, range.start - cursor, mesh);
+                }
+                cursor = Math.max(cursor, range.end);
+            }
+            if (cursor < indexCount) {
+                new SubMesh(materialIndex, 0, verticesCount, cursor, indexCount - cursor, mesh);
             }
         }
         return;

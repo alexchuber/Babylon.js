@@ -301,8 +301,14 @@ async function FetchLayerWaveAsync(
             continue;
         }
 
-        const childLayer =
-            detected.format === "usdc" ? ParseCrate(result.data as ArrayBuffer, result.request.identifier) : ParseUsda(detected.text ?? "", result.request.identifier);
+        let childLayer: ISdfLayer;
+        try {
+            childLayer = detected.format === "usdc" ? ParseCrate(result.data as ArrayBuffer, result.request.identifier) : ParseUsda(detected.text ?? "", result.request.identifier);
+        } catch (error) {
+            const message = error instanceof Error ? error.message : String(error);
+            diagnostics.push({ severity: "warning", message: `Could not parse external layer '${result.request.assetPath}': ${message}`, path: result.request.identifier });
+            continue;
+        }
         layers.set(result.request.identifier, childLayer);
         nextFrontier.push(childLayer);
     }

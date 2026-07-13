@@ -105,6 +105,7 @@ export function BuildMeshPoolKey(mesh: IResolvedMesh): string {
         mesh.faceVertexIndices ? Array.from(mesh.faceVertexIndices).join(",") : "",
         mesh.sourcePointIndices ? Array.from(mesh.sourcePointIndices).join(",") : "",
         mesh.faceVertexResolvedIndices ? Array.from(mesh.faceVertexResolvedIndices).join(",") : "",
+        mesh.geomSubsets?.map((subset) => `${subset.materialIndex}:${subset.indexOffset}:${subset.indexCount}`).join("|") ?? "",
         mesh.doubleSided ? "1" : "0",
         mesh.orientation,
     ].join(";");

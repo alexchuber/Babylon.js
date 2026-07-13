@@ -39,13 +39,10 @@ export function CreateStageRoot(metadata: IStageMetadata, scene: Scene): Transfo
  */
 export function ApplyResolvedTransform(node: TransformNode, transform: IResolvedTransform): void {
     if (transform.matrix && transform.matrix.length === 16) {
-        const position = new Vector3();
-        const rotation = new Quaternion();
-        const scaling = new Vector3();
-        Matrix.FromArray(transform.matrix).decompose(scaling, rotation, position);
-        node.position = position;
-        node.rotationQuaternion = rotation;
-        node.scaling = scaling;
+        node.position.setAll(0);
+        node.rotationQuaternion = Quaternion.Identity();
+        node.scaling.setAll(1);
+        node.setPreTransformMatrix(Matrix.FromArray(transform.matrix));
         return;
     }
 

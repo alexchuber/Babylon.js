@@ -62,7 +62,7 @@ export function AdaptResolvedStageToScene(
         animationGroups,
         animationEntries,
         materialCache: new Map<number, Material>(),
-        sourceMeshCache: new Map<number, Mesh>(),
+        sourceMeshCache: new Map<string, Mesh>(),
         skeletonCache: new Map<number, Skeleton>(),
     };
 

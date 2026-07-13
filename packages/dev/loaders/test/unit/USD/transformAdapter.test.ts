@@ -80,16 +80,13 @@ describe("USD transform adapter", () => {
         }
     });
 
-    it("decomposes a full local matrix in preference to the TRS fallback", () => {
+    it("preserves a full local matrix in preference to the TRS fallback", () => {
         const engine = new NullEngine();
         const scene = new Scene(engine);
 
         try {
             const node = new TransformNode("UsdMatrixNode", scene);
-            const expectedScaling = new Vector3(2, 3, 4);
-            const expectedRotation = Quaternion.RotationAxis(new Vector3(0, 1, 0), Math.PI / 3);
-            const expectedPosition = new Vector3(5, 6, 7);
-            const matrix = Matrix.Compose(expectedScaling, expectedRotation, expectedPosition);
+            const matrix = Matrix.FromValues(1, 0.5, 0, 0, 0, 1, 0.25, 0, 0, 0, 1, 0, 5, 6, 7, 1);
 
             ApplyResolvedTransform(node, {
                 translation: [100, 200, 300],
@@ -98,9 +95,7 @@ describe("USD transform adapter", () => {
                 matrix: matrix.asArray(),
             });
 
-            expect(node.position.equalsWithEpsilon(expectedPosition, Epsilon)).toBe(true);
-            expect(node.scaling.equalsWithEpsilon(expectedScaling, Epsilon)).toBe(true);
-            expect(areEquivalentQuaternions(node.rotationQuaternion!, expectedRotation)).toBe(true);
+            expect(node.computeWorldMatrix(true).equals(matrix)).toBe(true);
         } finally {
             scene.dispose();
             engine.dispose();

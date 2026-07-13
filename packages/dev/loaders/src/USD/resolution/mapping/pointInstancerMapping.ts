@@ -59,27 +59,12 @@ function FindPrototypeMesh(prim: ISdfPrimSpec, context: IStageMappingContext): I
         return prim;
     }
 
-    const meshDescendants = CollectMeshDescendants(prim);
-    if (meshDescendants.length > 1) {
-        context.diagnostics.push({
-            severity: "info",
-            path: prim.path,
-            message: "PointInstancer prototype hierarchy contains multiple Mesh prims; only the first mesh is represented by the resolved contract.",
-        });
-    }
-    return meshDescendants[0];
-}
-
-function CollectMeshDescendants(prim: ISdfPrimSpec): ISdfPrimSpec[] {
-    const meshes: ISdfPrimSpec[] = [];
-    for (const child of prim.children) {
-        if (child.typeName === "Mesh") {
-            meshes.push(child);
-        } else {
-            meshes.push(...CollectMeshDescendants(child));
-        }
-    }
-    return meshes;
+    context.diagnostics.push({
+        severity: "warning",
+        path: prim.path,
+        message: "PointInstancer prototype hierarchies are not represented by the resolved contract and were skipped.",
+    });
+    return undefined;
 }
 
 function PoolMesh(mesh: IResolvedMesh, context: IStageMappingContext): number {

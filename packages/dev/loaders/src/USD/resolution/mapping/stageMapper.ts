@@ -94,7 +94,13 @@ function MapPrim(primSpec: ISdfPrimSpec, parentVisible: boolean, metadata: IStag
     ApplySchemaPayload(prim, primSpec, metadata, context, effectiveMaterialPath);
     const animation = ResolvePrimAnimation(primSpec, context.layer, metadata, context.diagnostics);
     if (animation) {
-        prim.animation = animation;
+        const tracks = animation.tracks.filter((track) => track.target !== "visibility" || prim.kind === "mesh" || prim.kind === "instance");
+        if (tracks.length !== animation.tracks.length) {
+            context.diagnostics.push({ severity: "info", path: primSpec.path, message: "Animated visibility on non-mesh prims is not supported by the direct Babylon adapter." });
+        }
+        if (tracks.length > 0) {
+            prim.animation = { tracks };
+        }
     }
     prim.children = prim.kind === "pointInstancer" ? [] : primSpec.children.map((child) => MapPrim(child, visible, metadata, context, effectiveMaterialPath));
     return prim;

@@ -410,6 +410,7 @@ describe("USD loader integration", () => {
         expect(container.materials).toHaveLength(1);
         expect(container.multiMaterials).toHaveLength(1);
         expect(container.geometries).toHaveLength(1);
+        expect(container.meshes.find((mesh) => mesh.name === "Quad")!.subMeshes).toHaveLength(2);
         expect(scene.meshes.some((mesh) => mesh.name === "Quad")).toBe(false);
         expect(scene.materials).toHaveLength(0);
         expect(scene.multiMaterials).toHaveLength(0);
@@ -448,6 +449,20 @@ def "Ref" (
 
         expect(stage.root.children[0].children.some((prim) => prim.name === "Ref")).toBe(true);
         expect(requested).toContain("https://example.com/models/child.usda");
+    });
+
+    it("records malformed external layers without aborting the root stage", async () => {
+        const stage = await ResolveUsdStageWithFetcherAsync(rootUsda, "", "root.usda", {}, async () => "not a usd layer");
+
+        expect(stage.root.children.map((prim) => prim.name)).toEqual(["World"]);
+        expect(stage.diagnostics).toEqual(
+            expect.arrayContaining([
+                expect.objectContaining({
+                    severity: "warning",
+                    message: expect.stringContaining("Could not parse external layer"),
+                }),
+            ])
+        );
     });
 });
 

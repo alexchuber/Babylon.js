@@ -328,7 +328,13 @@ function ComposeAssetArc(
     arcName: "reference" | "payload"
 ): ISdfPrimSpec | undefined {
     if (!arc.assetPath) {
-        const internalPrim = arc.primPath ? ComposeLocalPrim(arc.primPath, state, context) : undefined;
+        const fallbackPrim = state.localLayer.defaultPrim
+            ? state.localLayer.rootPrims.find((prim) => prim.name === state.localLayer.defaultPrim)
+            : state.localLayer.rootPrims.length === 1
+              ? state.localLayer.rootPrims[0]
+              : undefined;
+        const internalPath = arc.primPath ?? fallbackPrim?.path;
+        const internalPrim = internalPath ? ComposeLocalPrim(internalPath, state, context) : undefined;
 
         if (!internalPrim) {
             AddDiagnostic(context, {
@@ -450,16 +456,9 @@ function ComposeVariantOpinions(composedPrim: ISdfPrimSpec, prim: ISdfPrimSpec, 
 }
 
 function SelectVariant(variantSet: ISdfVariantSetSpec, prim: ISdfPrimSpec, layerIdentifier: string, context: ICompositionContext): ISdfVariantSpec | undefined {
-    const selectedVariantName = prim.variantSelections?.[variantSet.name] ?? Object.keys(variantSet.variants)[0];
+    const selectedVariantName = prim.variantSelections?.[variantSet.name];
 
     if (!selectedVariantName) {
-        AddDiagnostic(context, {
-            code: "composition-empty-variant-set",
-            message: `Variant set '${variantSet.name}' on prim '${prim.path}' has no variants.`,
-            severity: "warning",
-            layerIdentifier,
-            primPath: prim.path,
-        });
         return undefined;
     }
 

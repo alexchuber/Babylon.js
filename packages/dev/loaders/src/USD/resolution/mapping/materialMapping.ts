@@ -27,7 +27,7 @@ interface IPreviewInputMapping {
 const PreviewInputMappings: IPreviewInputMapping[] = [
     { inputName: "diffuseColor", scalarSlot: "baseColor", textureSlot: "baseColor" },
     { inputName: "metallic", scalarSlot: "metallic", textureSlot: "metallic", defaultChannel: "b" },
-    { inputName: "roughness", scalarSlot: "roughness", textureSlot: "roughness", defaultChannel: "g" },
+    { inputName: "roughness", scalarSlot: "roughness", textureSlot: "roughness", defaultChannel: "r" },
     { inputName: "opacity", scalarSlot: "opacity", textureSlot: "opacity", defaultChannel: "a" },
     { inputName: "emissiveColor", scalarSlot: "emissiveColor", textureSlot: "emissive" },
     { inputName: "ior", scalarSlot: "ior" },

@@ -638,6 +638,7 @@ function DecodeArrayValue(context: ICrateContext, rep: ICrateValueRep): SdfValue
     const reader = context.reader.clone();
     reader.seek(rep.payload);
     const count = ReadArrayCount(reader, context.version);
+    ValidateTableCount(count, "value array");
 
     switch (rep.type) {
         case CrateValueType.Bool:
@@ -749,6 +750,7 @@ function DecodeTimeSamples(context: ICrateContext, valueRep: bigint): ISdfTimeSa
     const valuesStart = timesEnd + 8 + reader.readInt64();
     reader.seek(valuesStart);
     const sampleCount = reader.readUint64();
+    ValidateTableCount(sampleCount, "time sample");
     const valueReps: bigint[] = [];
     for (let i = 0; i < sampleCount; i++) {
         valueReps.push(reader.readBigUint64());
