@@ -60,10 +60,11 @@ should not block feature slices from landing their focused unit tests.
 - Editor tests under `packages/tools/nodeAssetsEditor/`
   - Diagnostics/LossRecord surfacing remains visible for gallery demo failures.
   - **Gallery E2E: no skipped/shell Playwright tests.** Enable the gallery specs and prove, against real
-    `data-testid` hooks (e.g. `[data-testid=demo-gallery]`): query-param / catalog injection, selectors,
-    card selection, graph loading, and pipeline execution. (Baseline on the abandoned branch was 4
-    passed / 8 skipped and a forced-on shell failed at the missing `[data-testid=demo-gallery]` — this
-    issue replaces that with real passing coverage.)
+    `data-testid` hooks (choose your own; e.g. a `demo-gallery` testid — **example, not a required name**):
+    query-param / catalog injection, selectors, card selection, graph loading, and pipeline execution.
+    (Historical, non-binding: the abandoned branch had a ~4-passed / 8-skipped baseline and a forced-on
+    shell failed at a missing gallery testid — this issue replaces that with real passing coverage; the
+    exact counts/names are illustrative, not targets.)
 - Visualization:
   - Add entries to `packages/tools/tests/test/visualization/config.json` for the eight demos.
   - Use Playground snippets (`playgroundId`) created with the repo visual-testing snippet workflow.

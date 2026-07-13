@@ -31,9 +31,10 @@ works end to end without expanding the runtime surface.
 - Visual snippets/reference images are issue 11; this issue prepares buildable graphs.
 - **One canonical production `DemoCatalog` source** drives the gallery, with a typed view-model adapter
   for the UI. Tests and UI derive from the same catalog — no independent UI/schema/Playwright catalogs.
-- **Do not revive the abandoned editor/gallery branch** as a foundation; it is reference-only and failed
-  its own forced-on E2E at a missing `[data-testid=demo-gallery]` (baseline 4 passed / 8 skipped). Build
-  the gallery fresh against landed runtime block contracts.
+- **Do not revive the abandoned editor/gallery branch** as a foundation; it is reference-only. (Historical,
+  non-binding context: it failed its own forced-on E2E at a missing gallery testid, with a ~4-passed /
+  8-skipped baseline — illustrative of *why* it's abandoned, not a target to reproduce.) Build the gallery
+  fresh against landed runtime block contracts; choose your own testids/selectors.
 - Gallery card / graph-preview UI uses **list / diagram accessibility semantics** and **hides decorative
   glyphs** from the a11y tree.
 
@@ -59,7 +60,8 @@ works end to end without expanding the runtime surface.
   - A single canonical `DemoCatalog` source (e.g. `demoCatalog.ts`) + a typed view-model adapter; the
     gallery UI and all tests consume it — no parallel catalogs.
   - Add gallery entries that open these example graphs in Node Assets Editor, behind real `data-testid`
-    hooks (e.g. `[data-testid=demo-gallery]`) so E2E in issue 11 can drive them.
+    hooks (choose your own; e.g. a `demo-gallery` testid — **example, not a required name**) so E2E in
+    issue 11 can drive them.
   - Ensure preview uses the existing glTF terminal output or Babylon preview metadata where
     applicable.
 - Keep each example's declared expected diagnostics/LossRecords near the example definition so

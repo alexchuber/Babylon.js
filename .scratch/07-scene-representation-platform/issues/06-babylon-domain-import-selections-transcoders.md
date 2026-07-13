@@ -97,6 +97,9 @@ Tests first under `packages/dev/node-assets/test/unit/`:
 - [ ] `LossyFork` is the only way to duplicate a Babylon representation.
 - [ ] Babylon selections are domain-owned/versioned and stale selections do not silently resolve.
 - [ ] Handedness is preserved and exposed through `scene.useRightHandedSystem`.
+- [ ] Physical metadata carries **four separate fields** — source convention, target convention,
+      conversion location/mechanism, and policy — never conflated; the `BabylonAsset.scene` representation
+      handedness is distinct from the terminal Viewer render-scene boundary.
 - [ ] No Babylon export terminal, generic conversion wire, or path planner is introduced.
 - [ ] test:unit passes
 - [ ] format:check + lint:check pass
