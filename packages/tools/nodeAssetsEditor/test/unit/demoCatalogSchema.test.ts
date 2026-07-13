@@ -5,6 +5,7 @@ import {
     DemoLossPolicy,
     DemoResourceKind,
     IsNodeGeometryResource,
+    IsRealizeNodeGeometryNode,
     type DemoCatalog,
     type DemoNodeGeometryResource,
 } from "../../src/nodeAssets/demoCatalogSchema";
@@ -13,12 +14,8 @@ const nodeGeometryResource: DemoNodeGeometryResource = {
     id: "geometry",
     label: "Generated geometry",
     kind: DemoResourceKind.NODE_GEOMETRY,
+    format: "babylon-node-geometry",
     source: { kind: "snippet", snippetId: "PYY6XE#69" },
-    evaluation: {
-        required: true,
-        mode: "explicit",
-        operation: "build",
-    },
 };
 
 const catalog: DemoCatalog = {
@@ -42,6 +39,20 @@ const catalog: DemoCatalog = {
                     },
                 },
                 nodeGeometryResource,
+            ],
+            graph: [
+                {
+                    kind: "ImportNodeGeometry",
+                    resourceId: "geometry",
+                    output: "geometry",
+                },
+                {
+                    kind: "RealizeNodeGeometry",
+                    scene: "babylonScene",
+                    geometry: "geometry",
+                    meshName: "Box",
+                    evaluation: { mode: "explicit" },
+                },
             ],
             expectedLosses: [
                 {
@@ -83,12 +94,14 @@ describe("demo catalog schema", () => {
         });
     });
 
-    it("marks NodeGeometry resources for explicit build evaluation", () => {
+    it("treats NodeGeometry as a resource and marks evaluation on realization", () => {
         expect(IsNodeGeometryResource(nodeGeometryResource)).toBe(true);
-        expect(nodeGeometryResource.evaluation).toEqual({
-            required: true,
+        expect("evaluation" in nodeGeometryResource).toBe(false);
+
+        const realization = catalog.demos[0].graph[1];
+        expect(IsRealizeNodeGeometryNode(realization)).toBe(true);
+        expect(realization.evaluation).toEqual({
             mode: "explicit",
-            operation: "build",
         });
     });
 });

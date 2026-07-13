@@ -1,9 +1,9 @@
 /**
  * Shared metadata contract for Node Assets Editor demos.
  *
- * The graph payload is intentionally not part of this contract. A demo can
- * describe a graph built by the editor or by another authoring tool while
- * keeping its resource, domain, and transcoding expectations inspectable.
+ * The graph is represented as declarative node descriptors so resource
+ * realization steps remain inspectable alongside domain and transcoding
+ * expectations.
  */
 
 /** Current version of the demo catalog metadata contract. */
@@ -99,8 +99,21 @@ export type DemoInlineSource = {
     readonly value: string;
 };
 
+/** An inline JSON resource source, used by serialized graph resources. */
+export type DemoInlineJsonSource = {
+    readonly kind: "inlineJson";
+    readonly json: string;
+};
+
+/** A file-backed resource source. */
+export type DemoFileSource = {
+    readonly kind: "file";
+    readonly path: string;
+    readonly name?: string;
+};
+
 /** Ways a demo resource can be loaded. */
-export type DemoResourceSource = DemoUrlSource | DemoSnippetSource | DemoInlineSource;
+export type DemoResourceSource = DemoUrlSource | DemoSnippetSource | DemoInlineSource | DemoInlineJsonSource | DemoFileSource;
 
 /** Common metadata for a demo resource. */
 export type DemoResourceBase = {
@@ -110,6 +123,12 @@ export type DemoResourceBase = {
     readonly label: string;
     /** Location or serialized value used to load the resource. */
     readonly source: DemoResourceSource;
+    /** Source format identifier when it is more specific than the resource kind. */
+    readonly format?: string;
+    /** Display label for the authored source. */
+    readonly sourceLabel?: string;
+    /** Optional snippet identifier retained as catalog metadata. */
+    readonly snippetId?: string;
     /** Conventions for this resource, when they differ from the demo defaults. */
     readonly domainTags?: DemoDomainTags;
     /** Loss diagnostics scoped to the conversion that produces this resource. */
@@ -127,25 +146,51 @@ export type DemoImageResource = DemoResourceBase & {
 };
 
 /**
- * Explicit evaluation required to materialize a NodeGeometry resource.
+ * A serialized NodeGeometry graph resource.
  *
- * NodeGeometry is not a passive serialized asset: its graph must be built
- * before the resulting geometry can be consumed by a demo pipeline.
+ * Evaluation is deliberately not stored on the resource. The graph's
+ * `RealizeNodeGeometry` node owns the explicit build-and-attach boundary.
  */
-export type DemoNodeGeometryEvaluation = {
-    readonly required: true;
-    readonly mode: "explicit";
-    readonly operation: "build";
-};
-
-/** A NodeGeometry resource, including its required build step. */
 export type DemoNodeGeometryResource = DemoResourceBase & {
     readonly kind: typeof DemoResourceKind.NODE_GEOMETRY;
-    readonly evaluation: DemoNodeGeometryEvaluation;
+    readonly format: "babylon-node-geometry";
 };
 
 /** Any resource that may be listed by a demo. */
 export type DemoResource = DemoSceneResource | DemoImageResource | DemoNodeGeometryResource;
+
+/** An import node that exposes a NodeGeometry resource as geometry data. */
+export type DemoImportNodeGeometryNode = {
+    readonly kind: "ImportNodeGeometry";
+    readonly resourceId: string;
+    readonly output: string;
+};
+
+/**
+ * An explicit NodeGeometry realization node.
+ *
+ * Importing a serialized NodeGeometry graph does not attach a mesh to a
+ * Babylon scene. This node represents the required `build()` and
+ * `createMesh()` boundary.
+ */
+export type DemoRealizeNodeGeometryNode = {
+    readonly kind: "RealizeNodeGeometry";
+    readonly scene: string;
+    readonly geometry: string;
+    readonly meshName: string;
+    readonly evaluation: {
+        readonly mode: "explicit";
+    };
+};
+
+/** A graph node supplied by another editor or a future Node Assets block. */
+export type DemoGenericGraphNode = {
+    readonly kind: string;
+    readonly [property: string]: unknown;
+};
+
+/** Declarative node descriptor accepted by a demo graph. */
+export type DemoGraphNode = DemoImportNodeGeometryNode | DemoRealizeNodeGeometryNode | DemoGenericGraphNode;
 
 /** Base fields shared by all expected loss diagnostics. */
 type DemoLossDiagnosticBase = {
@@ -184,6 +229,8 @@ export type DemoDefinition = {
     readonly tags: readonly string[];
     /** Resources required to construct the demo graph. */
     readonly resources: readonly DemoResource[];
+    /** Declarative graph nodes and their resource references. */
+    readonly graph: readonly DemoGraphNode[];
     /** Conversion expectations for the demo as a whole. */
     readonly expectedLosses: readonly DemoLossDiagnostic[];
     /** Default conventions for the demo's active domain. */
@@ -199,12 +246,23 @@ export type DemoCatalog = {
 };
 
 /**
- * Narrows a resource to NodeGeometry and therefore exposes its required build
- * evaluation metadata.
+ * Narrows a resource to NodeGeometry. The resource is serialized data only;
+ * use {@link IsRealizeNodeGeometryNode} to inspect its explicit evaluation
+ * boundary.
  *
  * @param resource - Resource to inspect.
  * @returns `true` when the resource is NodeGeometry.
  */
 export function IsNodeGeometryResource(resource: DemoResource): resource is DemoNodeGeometryResource {
     return resource.kind === DemoResourceKind.NODE_GEOMETRY;
+}
+
+/**
+ * Narrows a graph node to the explicit NodeGeometry realization boundary.
+ *
+ * @param node - Graph node to inspect.
+ * @returns `true` when the node realizes NodeGeometry into a Babylon scene.
+ */
+export function IsRealizeNodeGeometryNode(node: DemoGraphNode): node is DemoRealizeNodeGeometryNode {
+    return node.kind === "RealizeNodeGeometry";
 }
