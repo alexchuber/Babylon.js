@@ -294,6 +294,14 @@ adds the following load-bearing decisions and findings, now reflected in the ADR
   `useRightHandedSystem`), exactly as USD→Babylon reuses `AdaptResolvedStageToScene` — **NAE performs no
   per-vertex winding/normal mutation** for either pair; tests are invocation / scene-mode /
   side-orientation / round-trip only. (Issue 06.)
+- **Three distinct handedness boundaries** (repo fact, gallery review): (a) the `BabylonAsset.scene`
+  representation contract; (b) loader/root behavior; (c) the terminal GLB **Viewer preview** boundary —
+  NAE's `previewController` sends the GLB to `CreateViewerForCanvas` **without** right-handed config, so
+  the Viewer defaults **left-handed** and the glTF loader's AUTO mode applies a root rotation /
+  negative-Z scale. The preview conversion is a boundary concern, **not** the representation payload and
+  **not** per-vertex mutation. PRD R9 / AG9 assert all three **independently**; representation handedness
+  is never inferred from preview. Physical metadata therefore carries four fields: source value, target
+  value, conversion location/mechanism, and policy.
 - **The one remaining open design question** is the concrete shape of a capturable `Selection` type; the
   selection *semantics* (owner/version/cardinality/remap-or-invalidate) are decided. (ADR 0006; issues
   04/05/06.)

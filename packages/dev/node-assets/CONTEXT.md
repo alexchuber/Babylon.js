@@ -132,8 +132,11 @@ only resolve after Evaluate. _Avoid_: run, compile, generate (informally fine), 
 Babylon's coordinate mode is dynamic and **preserved**, exposed via `scene.useRightHandedSystem`. USD
 and glTF adapters may create **right-handed** Babylon scenes without per-vertex/index flips (matching the
 USD loader, which sets `scene.useRightHandedSystem = true` and rotates only for up-axis); a `.babylon`
-representation preserves its authored mode; the editor/manifest surface the mode rather than forcing one.
-_Avoid_: chirality, winding (that is a mesh-level detail), flip (as the whole concept).
+representation preserves its authored mode. Three boundaries are kept **distinct**: the `BabylonAsset.scene`
+representation contract, the loader/root behavior, and the terminal GLB **Viewer preview** boundary (where
+the preview may convert coordinates independently of the payload). Representation handedness is never
+inferred from preview rendering; the editor/manifest surface each boundary's mode. _Avoid_: chirality,
+winding (a mesh-level detail), flip (as the whole concept).
 
 ## Blocks
 

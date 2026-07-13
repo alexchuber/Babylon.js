@@ -156,12 +156,27 @@ path planner in v1.
 - R8.1 The build scope defines the worker/transferable protocol; large inputs cross the worker boundary
   as transferables, not copies. Representation payloads have a single, testable serialization boundary.
 
-### R9 — Handedness
+### R9 — Handedness (three separate boundaries)
 
-- R9.1 Babylon coordinate mode is dynamic and preserved via `scene.useRightHandedSystem`. USD/glTF →
-  Babylon adapters may create right-handed scenes without per-vertex/index flips (matching the USD
-  loader). A `.babylon` representation preserves its authored mode.
-- R9.2 The editor/manifest **exposes** the handedness mode.
+Handedness is modeled and asserted at **three independent boundaries** — never conflated, and
+representation handedness is **never inferred from preview rendering**:
+
+- R9.1 **Representation contract (`BabylonAsset.scene`).** `USD→Babylon` and `glTF→Babylon` create/
+  configure **right-handed** `BabylonAsset` scenes **without per-vertex winding/normal mutation**;
+  `ImportBabylon` preserves the authored dynamic mode. The contract is asserted directly on
+  `BabylonAsset.scene.useRightHandedSystem` (and side-orientation), independent of any preview.
+- R9.2 **Loader / root behavior.** Where a transcoder relies on the mature loader's render-flag /
+  root-node mechanism (root rotation / scene-mode), that behavior is asserted at the loader boundary —
+  invocation and resulting scene mode — not by re-deriving geometry math in NAE.
+- R9.3 **Terminal GLB Viewer preview boundary.** The preview is a **separate coordinate-conversion
+  boundary**, not the representation payload: NAE's `previewController` sends the terminal GLB to
+  `CreateViewerForCanvas` **without** right-handed configuration, so the Viewer defaults **left-handed**
+  and the glTF loader's AUTO mode applies a root rotation / negative-Z scale. This is a preview-boundary
+  conversion (not per-vertex mutation, not the `BabylonAsset` payload) and is asserted **independently**
+  of the representation contract.
+- R9.4 The editor/manifest **exposes** each boundary's mode separately; a `.babylon` representation
+  preserves its authored mode. **Demo copy must not claim "native right-handed Babylon" unless the
+  actual runtime path that produces a right-handed `BabylonAsset` is exercised.**
 
 ### R10 — Editor
 
@@ -176,9 +191,10 @@ path planner in v1.
 - R10.5 The serialized NodeAsset graph has an **explicit, named type**. The editor never types graph data
   as `ReturnType<NodeAsset['serialize']>` while `serialize()` returns `any`; the serialized shape is
   modeled explicitly (and `serialize()` is tightened to it).
-- R10.6 **Physical metadata models source and target convention values separately from conversion policy**
-  (e.g. source up-axis/handedness/units vs target convention vs the policy that maps between them are three
-  distinct fields, not one conflated value).
+- R10.6 **Physical metadata models four separate fields**: **source value**, **target value**,
+  **conversion location/mechanism** (where and how the conversion happens — e.g. loader root node, Viewer
+  preview boundary), and **policy** (the rule that maps source→target). These are never conflated into
+  one value.
 - R10.7 Selection and JSON typing are precise: selections are a **correlated (owner-discriminated) union**
   (not a widened struct), and JSON payloads use a **recursive JSON value type**, never `any`.
 - R10.8 **No skipped/shell Playwright tests.** Gallery E2E is enabled and proves query-param / catalog
@@ -323,8 +339,13 @@ Each demo is a ready-made graph in the gallery, builds headlessly, and has visua
   the legacy glTF path still passes its milestone-06 tests. Tests-first (unit).
 - **AG8 — Diagnostics/loss.** Each transcoder emits the documented LossRecords on a lossy fixture; fatals
   throw; the editor renders diagnostics on the offending node. Tests-first (unit + editor test).
-- **AG9 — Handedness.** USD→Babylon and glTF→Babylon produce right-handed scenes with no per-vertex flips;
-  `.babylon` preserves authored mode; manifest exposes the mode. Golden/visual coverage.
+- **AG9 — Handedness (three boundaries).** (a) `USD→Babylon` and `glTF→Babylon` produce right-handed
+  `BabylonAsset` scenes with **no per-vertex flips**, asserted on `scene.useRightHandedSystem`; (b)
+  loader/root behavior is asserted at the loader boundary where applicable; (c) the terminal GLB **Viewer
+  preview** mode is asserted **independently** (Viewer default LH + glTF loader AUTO root conversion) and
+  representation handedness is **never inferred from preview**; `.babylon` preserves authored mode; the
+  manifest exposes each boundary's mode. Demo copy never claims "native right-handed Babylon" unless the
+  runtime path is exercised. Golden/visual + unit coverage.
 - **AG10 — Workers/transferables.** Large-input builds move buffers as transferables (no copy) across the
   worker boundary; a protocol round-trip test passes. Tests-first (unit).
 - **AG11 — Editor & gallery.** All new descriptors appear; the eight demos open, build, and preview; the

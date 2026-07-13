@@ -49,7 +49,9 @@ metadata and surfacing, not runtime transcoder behavior.
 - `packages/tools/nodeAssetsEditor/src/nodeAssets/blockNodeMapping.ts`
   - Map runtime connection point kinds to distinct port colors for `GLTF_DOCUMENT`, `USD_STAGE`,
     `BABYLON_SCENE`, and `NODE_GEOMETRY`.
-  - Surface handedness metadata for Babylon preview/manifest.
+  - Surface handedness metadata for the **three boundaries separately** — the `BabylonAsset.scene`
+    representation mode, loader/root behavior, and the terminal GLB **Viewer preview** mode — so the UI
+    never presents preview handedness as the representation's handedness.
 - `packages/tools/nodeAssetsEditor/src/nodeAssets/nodeAssetGraphController.ts`
   - Consume build-scope diagnostics and associate them with offending nodes.
 - `packages/tools/nodeAssetsEditor/src/nodeAssets/nodeAssetBuildWorkerCore.ts`

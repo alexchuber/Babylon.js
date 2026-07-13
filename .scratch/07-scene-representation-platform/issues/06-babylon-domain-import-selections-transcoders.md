@@ -31,15 +31,23 @@ schema/build-scope work and before NodeGeometry bakes into Babylon.
 - `BabylonAsset` is affine: no implicit clone on fan-out. Duplication must be the explicit
   `LossyFork` block.
 - Preserve `scene.useRightHandedSystem`; do not normalize everything to one coordinate mode.
+- **Three separate handedness boundaries — never conflate them.** (a) the `BabylonAsset.scene`
+  representation contract (RH, no per-vertex mutation; assert `scene.useRightHandedSystem`); (b) the
+  loader/root behavior at the loader boundary; (c) the terminal GLB **Viewer preview** boundary
+  (separate; owned by the preview slice, not this representation). **Never infer representation handedness
+  from preview rendering**, and don't let demo copy claim "native right-handed Babylon" unless the runtime
+  path producing an RH `BabylonAsset` is exercised.
 - v1 has no Babylon export terminal; Babylon2glTF is the path to the sole glTF terminal.
 
 ## What to build
 
 - `packages/dev/node-assets/src/representations/babylonAsset.ts`
   - Own a `NullEngine` + `Scene`, revision, handedness metadata, and build-scope disposal hook.
-  - **Model physical convention metadata with source and target convention values kept separate from
-    conversion policy** — e.g. source up-axis / handedness / units, target convention, and the policy that
-    maps between them are three distinct fields, never one conflated value.
+  - **Model physical convention metadata as four separate fields**: **source value**, **target value**,
+    **conversion location/mechanism** (e.g. loader root node vs Viewer preview boundary), and **policy** —
+    never conflated into one value.
+  - The `BabylonAsset.scene` handedness contract is **distinct from the terminal GLB Viewer preview**
+    boundary; do not derive one from the other.
 - New transcoders:
   - `packages/dev/node-assets/src/Blocks/gltf2babylon.ts` (`GLTF_DOCUMENT` → `BABYLON_SCENE`)
   - `packages/dev/node-assets/src/Blocks/babylon2gltf.ts` (`BABYLON_SCENE` → `GLTF_DOCUMENT`)

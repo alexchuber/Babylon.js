@@ -90,6 +90,8 @@ Tests first:
       catalogs); gallery exposes real `data-testid` hooks.
 - [ ] Gallery cards / graph preview use list/diagram a11y semantics and hide decorative glyphs.
 - [ ] The abandoned editor/gallery branch is not used as an implemented foundation.
+- [ ] Demo copy/labels never claim "native right-handed Babylon" unless the demo actually exercises the
+      runtime path that produces a right-handed `BabylonAsset` (preview rendering alone is not proof).
 - [ ] No extra runtime transcoders, export terminals, hub, path planner, or generic wire are added.
 - [ ] test:unit passes
 - [ ] format:check + lint:check pass

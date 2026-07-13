@@ -50,6 +50,10 @@ should not block feature slices from landing their focused unit tests.
   - Golden expected `LossRecord` snapshots for known lossy fixtures.
   - Fuzz/malformed-input tests for USD parser inputs, glTF inputs, images, and transcoder boundaries.
   - Disposal-under-failure tests for BabylonAsset and large buffers.
+  - **Handedness-boundary tests** that assert the three boundaries **independently**: the `BabylonAsset.
+    scene` contract (`useRightHandedSystem`), the loader/root behavior where applicable, and the terminal
+    GLB **Viewer preview** mode (Viewer default LH + glTF loader AUTO root conversion) — proving
+    representation handedness is **never inferred from the preview** and vice versa.
 - Loader fuzz/security tests under `packages/dev/loaders/test/unit/USD/`
   - Malformed crate/usda/usdz cases fail fast and do not hang.
 - Editor tests under `packages/tools/nodeAssetsEditor/`
