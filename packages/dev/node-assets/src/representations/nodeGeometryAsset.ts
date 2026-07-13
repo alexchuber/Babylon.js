@@ -2,7 +2,7 @@ import { RegisterAllNodeGeometryBlocks } from "core/Meshes/Node/Blocks/allBlocks
 import { NodeGeometry } from "core/Meshes/Node/nodeGeometry";
 import { VertexData, VertexDataMaterialInfo } from "core/Meshes/mesh.vertexData";
 
-import { type NodeAssetJsonObject } from "../connection/nodeAssetValueMap";
+import { IsNodeAssetJsonValue, type NodeAssetJsonObject, type NodeAssetJsonValue } from "../connection/nodeAssetValueMap";
 import { DeepFreeze, ValidateAndFreezeAssetMetadata } from "./immutableMetadata";
 
 RegisterAllNodeGeometryBlocks();
@@ -105,60 +105,82 @@ function CloneAndValidateVertexData(vertexData: VertexData): Readonly<VertexData
 
     const snapshot = new VertexData();
     snapshot.positions = Array.from(positions);
-    snapshot.normals = CloneOptionalVertexAttribute("normals", vertexData.normals, 3, vertexCount);
-    snapshot.tangents = CloneOptionalVertexAttribute("tangents", vertexData.tangents, 4, vertexCount);
-    snapshot.uvs = CloneOptionalVertexAttribute("uvs", vertexData.uvs, 2, vertexCount);
-    snapshot.uvs2 = CloneOptionalVertexAttribute("uvs2", vertexData.uvs2, 2, vertexCount);
-    snapshot.uvs3 = CloneOptionalVertexAttribute("uvs3", vertexData.uvs3, 2, vertexCount);
-    snapshot.uvs4 = CloneOptionalVertexAttribute("uvs4", vertexData.uvs4, 2, vertexCount);
-    snapshot.uvs5 = CloneOptionalVertexAttribute("uvs5", vertexData.uvs5, 2, vertexCount);
-    snapshot.uvs6 = CloneOptionalVertexAttribute("uvs6", vertexData.uvs6, 2, vertexCount);
-    snapshot.colors = CloneOptionalVertexAttribute("colors", vertexData.colors, 4, vertexCount);
-    snapshot.matricesIndices = CloneOptionalVertexAttribute("matricesIndices", vertexData.matricesIndices, 4, vertexCount);
-    snapshot.matricesWeights = CloneOptionalVertexAttribute("matricesWeights", vertexData.matricesWeights, 4, vertexCount);
-    snapshot.matricesIndicesExtra = CloneOptionalVertexAttribute("matricesIndicesExtra", vertexData.matricesIndicesExtra, 4, vertexCount);
-    snapshot.matricesWeightsExtra = CloneOptionalVertexAttribute("matricesWeightsExtra", vertexData.matricesWeightsExtra, 4, vertexCount);
+    CloneOptionalVertexAttribute("normals", vertexData.normals, [3], vertexCount, (value) => (snapshot.normals = value));
+    CloneOptionalVertexAttribute("tangents", vertexData.tangents, [4], vertexCount, (value) => (snapshot.tangents = value));
+    CloneOptionalVertexAttribute("uvs", vertexData.uvs, [2], vertexCount, (value) => (snapshot.uvs = value));
+    CloneOptionalVertexAttribute("uvs2", vertexData.uvs2, [2], vertexCount, (value) => (snapshot.uvs2 = value));
+    CloneOptionalVertexAttribute("uvs3", vertexData.uvs3, [2], vertexCount, (value) => (snapshot.uvs3 = value));
+    CloneOptionalVertexAttribute("uvs4", vertexData.uvs4, [2], vertexCount, (value) => (snapshot.uvs4 = value));
+    CloneOptionalVertexAttribute("uvs5", vertexData.uvs5, [2], vertexCount, (value) => (snapshot.uvs5 = value));
+    CloneOptionalVertexAttribute("uvs6", vertexData.uvs6, [2], vertexCount, (value) => (snapshot.uvs6 = value));
+    CloneOptionalVertexAttribute("colors", vertexData.colors, [3, 4], vertexCount, (value) => (snapshot.colors = value));
+    CloneOptionalVertexAttribute("matricesIndices", vertexData.matricesIndices, [4], vertexCount, (value) => (snapshot.matricesIndices = value));
+    CloneOptionalVertexAttribute("matricesWeights", vertexData.matricesWeights, [4], vertexCount, (value) => (snapshot.matricesWeights = value));
+    CloneOptionalVertexAttribute("matricesIndicesExtra", vertexData.matricesIndicesExtra, [4], vertexCount, (value) => (snapshot.matricesIndicesExtra = value));
+    CloneOptionalVertexAttribute("matricesWeightsExtra", vertexData.matricesWeightsExtra, [4], vertexCount, (value) => (snapshot.matricesWeightsExtra = value));
 
-    if (vertexData.indices) {
+    if (vertexData.indices === null) {
+        snapshot.indices = null;
+    } else if (vertexData.indices !== undefined) {
         for (const index of vertexData.indices) {
             if (!Number.isSafeInteger(index) || index < 0 || index >= vertexCount) {
                 throw new TypeError("The evaluated VertexData snapshot indices must reference existing vertices.");
             }
         }
         snapshot.indices = Array.from(vertexData.indices);
-    } else {
-        snapshot.indices = null;
     }
-    snapshot.materialInfos = vertexData.materialInfos
-        ? vertexData.materialInfos.map((info) =>
-              Object.assign(new VertexDataMaterialInfo(), {
-                  materialIndex: info.materialIndex,
-                  verticesStart: info.verticesStart,
-                  verticesCount: info.verticesCount,
-                  indexStart: info.indexStart,
-                  indexCount: info.indexCount,
-              })
-          )
-        : null;
+    if (vertexData.materialInfos === null) {
+        snapshot.materialInfos = null;
+    } else if (vertexData.materialInfos !== undefined) {
+        snapshot.materialInfos = vertexData.materialInfos.map((info) =>
+            Object.assign(new VertexDataMaterialInfo(), {
+                materialIndex: info.materialIndex,
+                verticesStart: info.verticesStart,
+                verticesCount: info.verticesCount,
+                indexStart: info.indexStart,
+                indexCount: info.indexCount,
+            })
+        );
+    }
     snapshot.hasVertexAlpha = vertexData.hasVertexAlpha;
-    try {
-        snapshot.metadata = structuredClone(vertexData.metadata);
-    } catch {
-        throw new TypeError("The evaluated VertexData snapshot metadata must be structured-cloneable.");
-    }
+    snapshot.metadata = CloneVertexDataMetadata(vertexData.metadata);
 
     return DeepFreeze(snapshot);
 }
 
-function CloneOptionalVertexAttribute(name: string, values: ArrayLike<number> | null | undefined, stride: number, vertexCount: number): number[] | null {
-    if (values == null) {
-        return null;
+function CloneOptionalVertexAttribute(
+    name: string,
+    values: ArrayLike<number> | null | undefined,
+    allowedStrides: ReadonlyArray<number>,
+    vertexCount: number,
+    assign: (value: number[] | null) => void
+): void {
+    if (values === undefined) {
+        return;
     }
-    const attribute = ValidateVertexAttribute(name, values, stride);
-    if (attribute.length / stride !== vertexCount) {
+    if (values === null) {
+        assign(null);
+        return;
+    }
+    for (let index = 0; index < values.length; index++) {
+        if (!Number.isFinite(values[index])) {
+            throw new TypeError(`The evaluated VertexData snapshot ${name} must contain only finite numbers.`);
+        }
+    }
+    if (!allowedStrides.some((stride) => values.length === vertexCount * stride)) {
         throw new TypeError(`The evaluated VertexData snapshot ${name} count must match its position count.`);
     }
-    return Array.from(attribute);
+    assign(Array.from(values));
+}
+
+function CloneVertexDataMetadata(metadata: unknown): NodeAssetJsonValue | undefined {
+    if (metadata === undefined) {
+        return undefined;
+    }
+    if (!IsNodeAssetJsonValue(metadata)) {
+        throw new TypeError("The evaluated VertexData snapshot metadata must contain only finite, acyclic JSON values.");
+    }
+    return structuredClone(metadata);
 }
 
 function ValidateVertexAttribute(name: string, values: ArrayLike<number> | null | undefined, stride: number): ArrayLike<number> {

@@ -221,6 +221,7 @@ describe("typed representations", () => {
         const vertexData = new VertexData();
         vertexData.positions = [0, 0, 0, 1, 0, 0, 0, 1, 0];
         vertexData.indices = [0, 1, 2];
+        vertexData.colors = [1, 0, 0, 0, 1, 0, 0, 0, 1];
         vertexData.matricesIndicesExtra = [4, 5, 6, 7, 4, 5, 6, 7, 4, 5, 6, 7];
         vertexData.matricesWeightsExtra = [0.25, 0.25, 0.25, 0.25, 0.25, 0.25, 0.25, 0.25, 0.25, 0.25, 0.25, 0.25];
         vertexData.metadata = { source: { kind: "evaluated" } };
@@ -245,6 +246,7 @@ describe("typed representations", () => {
         expect(evaluated.nodeGeometry).toBe(nodeGeometry);
         expect(evaluated.evaluatedVertexData).not.toBe(vertexData);
         expect(evaluated.evaluatedVertexData?.positions).toEqual(vertexData.positions);
+        expect(evaluated.evaluatedVertexData?.colors).toEqual(vertexData.colors);
         expect(evaluated.evaluatedVertexData?.matricesIndicesExtra).toEqual(vertexData.matricesIndicesExtra);
         expect(evaluated.evaluatedVertexData?.matricesWeightsExtra).toEqual(vertexData.matricesWeightsExtra);
         expect(evaluated.evaluatedVertexData?.metadata).toEqual(vertexData.metadata);
@@ -293,6 +295,13 @@ describe("typed representations", () => {
                 matricesWeightsExtra: [0.25, 0.25, 0.25, 0.25, 0.25, 0.25, 0.25, 0.25],
             }),
         ],
+        [
+            "mutable metadata containers",
+            Object.assign(new VertexData(), {
+                positions: [0, 0, 0],
+                metadata: { values: new Uint8Array([1]) },
+            }),
+        ],
     ])("rejects an invalid evaluated VertexData snapshot with %s", (_case, vertexData) => {
         const nodeGeometry = new NodeGeometry("invalid snapshot");
         try {
@@ -311,6 +320,29 @@ describe("typed representations", () => {
         } finally {
             nodeGeometry.dispose();
         }
+    });
+
+    it("preserves absent and explicitly null snapshot fields distinctly", () => {
+        const nodeGeometry = new NodeGeometry("optional snapshot fields");
+        const vertexData = new VertexData();
+        vertexData.positions = [0, 0, 0];
+        vertexData.normals = null;
+
+        const asset = new NodeGeometryAsset(
+            nodeGeometry,
+            {
+                identity: "optional-snapshot-fields",
+                revision: 0,
+                manifest: {},
+            },
+            vertexData
+        );
+
+        expect(asset.evaluatedVertexData?.normals).toBeNull();
+        expect(asset.evaluatedVertexData?.uvs).toBeUndefined();
+        expect(asset.evaluatedVertexData?.indices).toBeUndefined();
+        expect(asset.evaluatedVertexData?.materialInfos).toBeUndefined();
+        asset.dispose();
     });
 
     it.each([null, false, 0, ""])("rejects a non-undefined runtime snapshot value: %j", (invalidSnapshot) => {
