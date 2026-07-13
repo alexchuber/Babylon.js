@@ -340,10 +340,12 @@ function EmitSubdivisionDiagnostic(prim: ISdfPrimSpec, scheme: IResolvedMesh["su
         }
         return;
     }
-    const message =
-        scheme === "catmullClark"
-            ? "Mesh subdivisionScheme 'catmullClark' is approximated by a single Catmull-Clark refinement; the true limit surface is not produced."
-            : `Mesh subdivisionScheme '${scheme}' is approximated by uniform triangle subdivision; true '${scheme}' subdivision is not supported.`;
+    const known = authored === "catmullClark" || authored === "loop" || authored === "bilinear";
+    const message = !known
+        ? `Mesh has an unknown subdivisionScheme '${authored}'; it was treated as the default 'catmullClark' approximation.`
+        : authored === "catmullClark"
+          ? "Mesh subdivisionScheme 'catmullClark' is approximated by a single Catmull-Clark refinement; the true limit surface is not produced."
+          : `Mesh subdivisionScheme '${authored}' is approximated by uniform triangle subdivision; true '${authored}' subdivision is not supported.`;
     context.diagnostics.push({ severity: "info", path: prim.path, message });
 }
 

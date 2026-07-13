@@ -61,6 +61,17 @@ describe("USD fidelity diagnostics", () => {
         expect(stage.diagnostics.find((diagnostic) => /subdivision/i.test(diagnostic.message))?.message).toMatch(/loop/i);
     });
 
+    it("reports an unknown authored subdivisionScheme token without relabeling it catmullClark", () => {
+        const stage = MapLayerToResolvedStage(layerOf([meshPrim("M", { subdivisionScheme: tokenAttribute("token", "frobnicate") })]));
+        const diagnostic = stage.diagnostics.find((entry) => /subdivision/i.test(entry.message) && entry.path === "/M");
+        expect(diagnostic?.message).toContain("frobnicate");
+    });
+
+    it("reports the unauthored-default subdivision advisory exactly once per stage", () => {
+        const stage = MapLayerToResolvedStage(layerOf([meshPrim("A"), meshPrim("B"), meshPrim("C")]));
+        expect(stage.diagnostics.filter((entry) => /subdivision/i.test(entry.message))).toHaveLength(1);
+    });
+
     it("flags area lights approximated as point lights", () => {
         const stage = MapLayerToResolvedStage(
             layerOf([
@@ -72,7 +83,7 @@ describe("USD fidelity diagnostics", () => {
         expect(stage.diagnostics.find((diagnostic) => diagnostic.path === "/Sphere")?.message).toMatch(/point light/i);
     });
 
-    it("flags dome lights approximated as hemispheric lights with a dropped environment texture", () => {
+    it("flags a textured dome light as approximated with a dropped environment texture", () => {
         const dome: ISdfPrimSpec = {
             name: "Sky",
             path: "/Sky",
@@ -86,11 +97,26 @@ describe("USD fidelity diagnostics", () => {
         expect(diagnostic?.message).toMatch(/texture/i);
     });
 
-    it("emits a diagnostic for unsupported renderable prim types", () => {
-        const curves: ISdfPrimSpec = { name: "Curves", path: "/Curves", specifier: "def", typeName: "BasisCurves", properties: {}, children: [] };
-        const diagnostic = MapLayerToResolvedStage(layerOf([curves])).diagnostics.find((entry) => entry.path === "/Curves");
-        expect(diagnostic).toBeDefined();
-        expect(diagnostic!.message).toMatch(/BasisCurves/);
+    it("flags a textureless dome light as approximated without mentioning a dropped texture", () => {
+        const dome: ISdfPrimSpec = { name: "Sky", path: "/Sky", specifier: "def", typeName: "DomeLight", properties: {}, children: [] };
+        const diagnostic = MapLayerToResolvedStage(layerOf([dome])).diagnostics.find((entry) => entry.path === "/Sky");
+        expect(diagnostic?.message).toMatch(/hemispheric/i);
+        expect(diagnostic?.message).not.toMatch(/texture/i);
+    });
+
+    it.each(["Capsule", "Cone", "Cube", "Cylinder", "Sphere", "Plane", "BasisCurves", "NurbsCurves", "HermiteCurves", "Points", "NurbsPatch", "TetMesh", "Volume"])(
+        "emits exactly one diagnostic naming an unsupported %s prim",
+        (typeName) => {
+            const prim: ISdfPrimSpec = { name: typeName, path: `/${typeName}`, specifier: "def", typeName, properties: {}, children: [] };
+            const diagnostics = MapLayerToResolvedStage(layerOf([prim])).diagnostics.filter((entry) => entry.path === `/${typeName}`);
+            expect(diagnostics).toHaveLength(1);
+            expect(diagnostics[0].message).toContain(typeName);
+        }
+    );
+
+    it("does not flag a supported Mesh as unsupported", () => {
+        const stage = MapLayerToResolvedStage(layerOf([meshPrim("M")]));
+        expect(stage.diagnostics.some((entry) => /not supported/i.test(entry.message) && entry.path === "/M")).toBe(false);
     });
 });
 

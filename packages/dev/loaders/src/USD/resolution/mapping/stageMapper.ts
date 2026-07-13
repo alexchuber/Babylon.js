@@ -202,8 +202,26 @@ function ApplyUnsupportedSchemaDiagnostics(primSpec: ISdfPrimSpec, context: ISta
 
 // Renderable UsdGeom gprim types this loader cannot yet import. They are skipped, so surface a
 // diagnostic rather than dropping them silently.
+// Renderable UsdGeom gprim/curve/volume types this loader cannot yet import. They are skipped, so
+// surface a diagnostic rather than dropping them silently. The supported Mesh is intentionally absent.
+const UnsupportedRenderableSchemas = [
+    "Capsule",
+    "Cone",
+    "Cube",
+    "Cylinder",
+    "Sphere",
+    "Plane",
+    "BasisCurves",
+    "NurbsCurves",
+    "HermiteCurves",
+    "Points",
+    "NurbsPatch",
+    "TetMesh",
+    "Volume",
+];
+
 function IsUnsupportedRenderableSchema(typeName: string | undefined): boolean {
-    return typeName !== undefined && ["BasisCurves", "NurbsCurves", "Points", "NurbsPatch", "Volume"].includes(typeName);
+    return typeName !== undefined && UnsupportedRenderableSchemas.includes(typeName);
 }
 
 function IsUnsupportedLightSchema(typeName: string | undefined): boolean {

@@ -38,11 +38,12 @@ function EmitLightFidelityDiagnostic(light: IResolvedLight, prim: ISdfPrimSpec, 
             message: `${prim.typeName ?? "Area light"} is approximated as a point light; its area shape and orientation are not represented.`,
         });
     } else if (light.kind === "dome") {
-        context.diagnostics.push({
-            severity: "info",
-            path: prim.path,
-            message: "DomeLight is approximated as a hemispheric light; its dome/environment texture is not applied by the direct Babylon adapter.",
-        });
+        // Only claim the environment texture was dropped when one was actually authored; a textureless
+        // dome light is simply approximated as a hemispheric light.
+        const message = light.domeTexture
+            ? "DomeLight is approximated as a hemispheric light; its dome/environment texture is not applied by the direct Babylon adapter."
+            : "DomeLight is approximated as a hemispheric light.";
+        context.diagnostics.push({ severity: "info", path: prim.path, message });
     }
 }
 
