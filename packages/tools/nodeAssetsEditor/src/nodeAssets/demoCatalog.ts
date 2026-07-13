@@ -123,6 +123,16 @@ export type DemoAssetConventions = {
     readonly unitScale?: number;
 };
 
+/** USD container/text formats accepted by bundled catalog fixtures. */
+export const DemoUsdFixtureFormat = {
+    USDA: "usda",
+    USDC: "usdc",
+    USDZ: "usdz",
+} as const;
+
+/** A USDA, USDC, or USDZ fixture format. */
+export type DemoUsdFixtureFormat = (typeof DemoUsdFixtureFormat)[keyof typeof DemoUsdFixtureFormat];
+
 /**
  * An exact, domain-owned selection value.
  *
@@ -206,6 +216,20 @@ export type DemoSnippetSource = {
     readonly snippetId: string;
 };
 
+/** A same-origin fixture bundled with the editor application. */
+export type DemoBundledSource = {
+    readonly kind: "bundled";
+    /** Stable key used by the editor's bundled-asset registry. */
+    readonly assetKey: string;
+    /** Same-origin path served by the editor application. */
+    readonly path: string;
+    /** MIME type used when fetching or handing the fixture to a parser. */
+    readonly mimeType: string;
+    /** Human-readable fixture provenance. */
+    readonly sourceLabel: string;
+    readonly origin: "same-origin";
+};
+
 /** An inline serialized resource source. */
 export type DemoInlineSource = {
     readonly kind: "inline";
@@ -227,7 +251,7 @@ export type DemoFileSource = {
 };
 
 /** Ways a demo resource can be loaded. */
-export type DemoResourceSource = DemoUrlSource | DemoSnippetSource | DemoInlineSource | DemoInlineJsonSource | DemoFileSource;
+export type DemoResourceSource = DemoUrlSource | DemoSnippetSource | DemoBundledSource | DemoInlineSource | DemoInlineJsonSource | DemoFileSource;
 
 /** Common metadata for a demo resource. */
 export type DemoResourceBase = {
@@ -249,10 +273,39 @@ export type DemoResourceBase = {
     readonly expectedLosses?: readonly DemoLossDiagnostic[];
 };
 
-/** A glTF, USD, or Babylon scene resource. */
-export type DemoSceneResource = DemoResourceBase & {
-    readonly kind: DemoSceneRepresentation;
+/** A glTF or Babylon scene resource. */
+export type DemoNonUsdSceneResource = DemoResourceBase & {
+    readonly kind: typeof DemoSceneRepresentation.GLTF | typeof DemoSceneRepresentation.BABYLON;
 };
+
+/**
+ * A USD fixture plus the platform representation and Babylon adaptation
+ * boundary. `IResolvedStage` is metadata here, never a live stage object.
+ */
+export type DemoResolvedUsdStage = {
+    readonly representation: "IResolvedStage";
+    readonly sourceFormat: DemoUsdFixtureFormat;
+};
+
+/** Losses produced while adapting an `IResolvedStage` to Babylon. */
+export type DemoUsdAdaptation = {
+    readonly target: typeof DemoSceneRepresentation.BABYLON;
+    readonly losses: readonly DemoLossDiagnostic[];
+};
+
+/** A USD fixture plus its resolved-stage and Babylon adaptation metadata. */
+export type DemoUsdResource = DemoResourceBase & {
+    readonly kind: typeof DemoSceneRepresentation.USD;
+    readonly format: DemoUsdFixtureFormat;
+    readonly resolvedStage: DemoResolvedUsdStage;
+    readonly adaptation: DemoUsdAdaptation;
+};
+
+/** Any scene resource supported by the catalog. */
+export type DemoSceneResource = DemoNonUsdSceneResource | DemoUsdResource;
+
+/** A scene representation supported by a typed scene resource. */
+export type DemoSceneResourceKind = DemoSceneResource["kind"];
 
 /**
  * A serialized NodeGeometry graph resource.

@@ -6,6 +6,7 @@ import {
     DemoLossPolicy,
     DemoResourceKind,
     DemoTeachingConcept,
+    DemoUsdFixtureFormat,
     IsBakeNodeGeometryNode,
     IsEvaluateNodeGeometryNode,
     IsNodeGeometryResource,
@@ -33,7 +34,42 @@ const inlineNodeGeometryResource: DemoNodeGeometryResource = {
     },
 };
 
-const expectedLosses: readonly DemoLossDiagnostic[] = [
+const usdAdaptationLosses: readonly DemoLossDiagnostic[] = [
+    {
+        id: "usd-texture-graphs",
+        feature: "USD texture graphs",
+        policy: DemoLossPolicy.DROP,
+        severity: "warning",
+        why: "The Babylon adaptation does not preserve arbitrary USD shader graphs.",
+    },
+    {
+        id: "usd-lights",
+        feature: "USD lights",
+        policy: DemoLossPolicy.DROP,
+        severity: "warning",
+        why: "The resolved-stage adapter prunes unsupported USD light representations.",
+    },
+    {
+        id: "usd-cameras",
+        feature: "USD cameras",
+        policy: DemoLossPolicy.DROP,
+        severity: "warning",
+        why: "The resolved-stage adapter does not carry USD camera prims into this target.",
+    },
+    {
+        id: "usd-skinning-animation",
+        feature: "USD skinning and animation",
+        policy: DemoLossPolicy.DROP,
+        severity: "warning",
+        why: "The current Babylon adaptation does not preserve the source animation model.",
+    },
+    {
+        id: "usd-point-instancing",
+        feature: "USD point instancing",
+        policy: DemoLossPolicy.DROP,
+        severity: "warning",
+        why: "Point instancing is recorded as a loss when the target scene is adapted.",
+    },
     {
         id: "usd-variants",
         feature: "USD variants",
@@ -41,6 +77,10 @@ const expectedLosses: readonly DemoLossDiagnostic[] = [
         severity: "warning",
         why: "The glTF scene spine has no equivalent variant-set model.",
     },
+];
+
+const expectedLosses: readonly DemoLossDiagnostic[] = [
+    ...usdAdaptationLosses,
     {
         id: "custom-material-metadata",
         feature: "Custom material metadata",
@@ -65,7 +105,24 @@ const catalog: DemoCatalog = {
                     id: "source",
                     label: "Source scene",
                     kind: DemoResourceKind.USD,
-                    source: { kind: "url", url: "https://example.test/source.usd" },
+                    format: DemoUsdFixtureFormat.USDZ,
+                    source: {
+                        kind: "bundled",
+                        assetKey: "toy-car-usdz",
+                        path: "scenes/nodeAssets/toy-car.usdz",
+                        mimeType: "model/vnd.usdz+zip",
+                        sourceLabel: "Bundled ToyCar USDZ fixture",
+                        origin: "same-origin",
+                    },
+                    resolvedStage: {
+                        representation: "IResolvedStage",
+                        sourceFormat: DemoUsdFixtureFormat.USDZ,
+                    },
+                    adaptation: {
+                        target: "babylon",
+                        losses: usdAdaptationLosses,
+                    },
+                    expectedLosses: usdAdaptationLosses,
                     domainTags: {
                         handedness: "right",
                         unit: "meters",
@@ -246,10 +303,25 @@ describe("demo catalog schema", () => {
     it("supports structured expected-loss diagnostics and domain tags", () => {
         const demo = catalog.demos[0];
 
-        expect(demo.expectedLosses).toHaveLength(2);
+        expect(demo.expectedLosses).toHaveLength(7);
         expect(demo.expectedLosses[0]).toMatchObject({
             policy: "drop",
             severity: "warning",
+        });
+        const usdResource = demo.resources[0];
+        expect(usdResource).toMatchObject({
+            format: "usdz",
+            source: {
+                kind: "bundled",
+                origin: "same-origin",
+            },
+            resolvedStage: {
+                representation: "IResolvedStage",
+            },
+            adaptation: {
+                target: "babylon",
+                losses: usdAdaptationLosses,
+            },
         });
         expect(demo.domainTags).toEqual({
             handedness: "right",
