@@ -9,4 +9,9 @@ describe("USD asset path resolution", () => {
     it("resolves root-relative URL assets against the URL authority", () => {
         expect(ResolveAssetIdentifier("/shared/material.usda", "https://example.com/models/root.usda")).toBe("https://example.com/shared/material.usda");
     });
+
+    it("preserves data URIs without path normalization", () => {
+        const uri = "data:application/octet-stream;base64,AA//BB==";
+        expect(ResolveAssetIdentifier(uri, "https://example.com/models/root.usda")).toBe(uri);
+    });
 });

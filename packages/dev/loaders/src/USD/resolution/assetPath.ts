@@ -13,7 +13,7 @@
  * @returns the resolved identifier the prefetch/archive maps are keyed under
  */
 export function ResolveAssetIdentifier(assetPath: string, fromIdentifier: string): string {
-    if (/^[a-z][a-z0-9+.-]*:\/\//i.test(assetPath)) {
+    if (/^[a-z][a-z0-9+.-]*:/i.test(assetPath)) {
         return assetPath;
     }
 

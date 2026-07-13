@@ -108,10 +108,20 @@ export function ResolveSkinning(meshPrim: ISdfPrimSpec, context: ISkeletonMappin
     }
 
     const aligned = AlignSkinningBuffers(meshPrim, resolvedMesh, jointIndices, jointWeights, influencesPerVertex);
+    const skeleton = context.skeletons[skeletonIndex];
+    const bindingJoints = GetTokenArrayAttribute(meshPrim, "skel:joints") ?? GetRelationshipTargets(GetRelationship(meshPrim, "skel:joints"));
+    const remappedJointIndices =
+        bindingJoints.length > 0 && skeleton
+            ? aligned.jointIndices.map((value) => {
+                  const jointPath = bindingJoints[Math.max(0, Math.trunc(value))];
+                  const skeletonJointIndex = jointPath === undefined ? -1 : skeleton.joints.indexOf(jointPath);
+                  return skeletonJointIndex >= 0 ? skeletonJointIndex : 0;
+              })
+            : aligned.jointIndices;
     const skinning: IResolvedSkinning = {
         skeletonIndex,
         influencesPerVertex,
-        jointIndices: new Uint32Array(aligned.jointIndices.map((value) => Math.max(0, Math.trunc(value)))),
+        jointIndices: new Uint32Array(remappedJointIndices.map((value) => Math.max(0, Math.trunc(value)))),
         jointWeights: new Float32Array(aligned.jointWeights),
     };
 

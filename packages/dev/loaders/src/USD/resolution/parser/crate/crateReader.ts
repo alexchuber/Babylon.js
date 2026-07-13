@@ -103,6 +103,15 @@ interface ICrateContext {
 }
 
 /**
+ * Converts a crate-native quaternion from `[w, x, y, z]` to the resolved-stage `[x, y, z, w]` contract.
+ * @param components crate quaternion components
+ * @returns reordered resolved quaternion components
+ */
+export function ReorderCrateQuaternion(components: number[]): number[] {
+    return [components[1] ?? 0, components[2] ?? 0, components[3] ?? 0, components[0] ?? 1];
+}
+
+/**
  * Parses a PXR-USDC crate buffer into the same read-only Sdf layer shape produced by the USDA parser.
  * @param data The complete binary crate file data.
  * @param identifier Layer identifier to store on the returned Sdf layer.
@@ -560,9 +569,9 @@ function DecodeInlinedScalar(context: ICrateContext, rep: ICrateValueRep): SdfVa
             return AsSdfValue("vec4d", InlinedComponents(payload, 4));
         case CrateValueType.Quatf:
         case CrateValueType.Quath:
-            return AsSdfValue("quatf", InlinedComponents(payload, 4));
+            return AsSdfValue("quatf", ReorderCrateQuaternion(InlinedComponents(payload, 4)));
         case CrateValueType.Quatd:
-            return AsSdfValue("quatd", InlinedComponents(payload, 4));
+            return AsSdfValue("quatd", ReorderCrateQuaternion(InlinedComponents(payload, 4)));
         case CrateValueType.Matrix4d:
             return AsSdfValue("matrix4d", DiagonalMatrix(InlinedComponents(payload, 4)));
         default:
@@ -608,9 +617,9 @@ function DecodeNonInlinedScalar(context: ICrateContext, rep: ICrateValueRep): Sd
             return AsSdfValue("vec4d", ReadDoubles(reader, 4));
         case CrateValueType.Quatf:
         case CrateValueType.Quath:
-            return AsSdfValue("quatf", ReadVector(reader, rep.type, 4));
+            return AsSdfValue("quatf", ReorderCrateQuaternion(ReadVector(reader, rep.type, 4)));
         case CrateValueType.Quatd:
-            return AsSdfValue("quatd", ReadDoubles(reader, 4));
+            return AsSdfValue("quatd", ReorderCrateQuaternion(ReadDoubles(reader, 4)));
         case CrateValueType.Matrix4d:
             return AsSdfValue("matrix4d", ReadDoubles(reader, 16));
         case CrateValueType.DoubleVector:
@@ -680,9 +689,9 @@ function DecodeArrayValue(context: ICrateContext, rep: ICrateValueRep): SdfValue
             return AsSdfValue("vec4d[]", ReadDoubleVectorArray(reader, count, 4));
         case CrateValueType.Quatf:
         case CrateValueType.Quath:
-            return AsSdfValue("quatf[]", ReadVectorArray(reader, rep.type, count, 4));
+            return AsSdfValue("quatf[]", ReadVectorArray(reader, rep.type, count, 4).map(ReorderCrateQuaternion));
         case CrateValueType.Quatd:
-            return AsSdfValue("quatd[]", ReadDoubleVectorArray(reader, count, 4));
+            return AsSdfValue("quatd[]", ReadDoubleVectorArray(reader, count, 4).map(ReorderCrateQuaternion));
         case CrateValueType.Matrix4d:
             return AsSdfValue("matrix4d[]", ReadDoubleVectorArray(reader, count, 16));
         case CrateValueType.Token:
@@ -1042,9 +1051,25 @@ function ReadCompressedInt32FromReader(reader: BinaryReader, count: number): num
 }
 
 // Builds paths from the pre-0.4.0 path header stream.
-function ReadPathHeaderTree(reader: BinaryReader, version: ICrateVersion, tokens: string[], paths: string[], parentPath: string): void {
+function ReadPathHeaderTree(
+    reader: BinaryReader,
+    version: ICrateVersion,
+    tokens: string[],
+    paths: string[],
+    parentPath: string,
+    visitedOffsets = new Set<number>(),
+    depth = 0
+): void {
+    if (depth > 1024) {
+        throw new Error("USD crate: legacy path tree exceeds the nesting limit.");
+    }
     let currentParentPath = parentPath;
     while (true) {
+        const headerOffset = reader.offset;
+        if (visitedOffsets.has(headerOffset)) {
+            throw new Error("USD crate: legacy path tree contains a cycle.");
+        }
+        visitedOffsets.add(headerOffset);
         const header = ReadPathHeader(reader, version);
         const path = currentParentPath === "" ? "/" : AppendPath(currentParentPath, tokens[header.elementTokenIndex] ?? "", header.isPrimPropertyPath);
         paths[header.pathIndex] = path;
@@ -1052,10 +1077,13 @@ function ReadPathHeaderTree(reader: BinaryReader, version: ICrateVersion, tokens
         if (header.hasChild) {
             if (header.hasSibling) {
                 const siblingOffset = reader.readInt64();
-                ReadPathHeaderTree(reader, version, tokens, paths, path);
+                if (siblingOffset <= headerOffset || siblingOffset >= reader.length) {
+                    throw new Error("USD crate: invalid legacy path sibling offset.");
+                }
+                ReadPathHeaderTree(reader, version, tokens, paths, path, visitedOffsets, depth + 1);
                 const siblingReader = reader.clone();
                 siblingReader.seek(siblingOffset);
-                ReadPathHeaderTree(siblingReader, version, tokens, paths, currentParentPath);
+                ReadPathHeaderTree(siblingReader, version, tokens, paths, currentParentPath, visitedOffsets, depth + 1);
                 return;
             }
             currentParentPath = path;
@@ -1094,11 +1122,20 @@ function BuildCompressedPaths(
     currentIndex: number,
     parentPath: string,
     tokens: string[],
-    paths: string[]
+    paths: string[],
+    visitedIndexes = new Set<number>(),
+    depth = 0
 ): void {
+    if (depth > 1024) {
+        throw new Error("USD crate: compressed path tree exceeds the nesting limit.");
+    }
     let index = currentIndex;
     let currentParentPath = parentPath;
     while (true) {
+        if (!Number.isInteger(index) || index < 0 || index >= pathIndexes.length || visitedIndexes.has(index)) {
+            throw new Error("USD crate: invalid or cyclic compressed path tree.");
+        }
+        visitedIndexes.add(index);
         const pathIndex = pathIndexes[index];
         const rawTokenIndex = elementTokenIndexes[index];
         const isPrimPropertyPath = rawTokenIndex < 0;
@@ -1111,7 +1148,11 @@ function BuildCompressedPaths(
         const hasSibling = jump >= 0;
         if (hasChild) {
             if (hasSibling) {
-                BuildCompressedPaths(pathIndexes, elementTokenIndexes, jumps, index + jump, currentParentPath, tokens, paths);
+                const siblingIndex = index + jump;
+                if (jump <= 0 || siblingIndex <= index || siblingIndex >= pathIndexes.length) {
+                    throw new Error("USD crate: invalid compressed path sibling jump.");
+                }
+                BuildCompressedPaths(pathIndexes, elementTokenIndexes, jumps, siblingIndex, currentParentPath, tokens, paths, visitedIndexes, depth + 1);
             }
             currentParentPath = path;
         } else if (!hasSibling) {

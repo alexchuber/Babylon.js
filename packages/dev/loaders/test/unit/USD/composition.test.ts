@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { ComposeLayerStack } from "loaders/USD/resolution/composition/composeLayerStack";
+import { ComposeLayerStack, ResolveSdfListOp } from "loaders/USD/resolution/composition/composeLayerStack";
 import { type ISdfLayer, type ISdfPrimSpec, type ISdfPropertySpec, type ISdfReference } from "loaders/USD/resolution/sdf";
 
 describe("USD composition", () => {
@@ -164,6 +164,18 @@ describe("USD composition", () => {
 
         expect(diagnostics).toEqual([]);
         expect(world.children.map((child) => child.name)).toEqual(["C", "B"]);
+    });
+
+    it("applies list-op deletion before appended items", () => {
+        expect(
+            ResolveSdfListOp<string>([
+                {
+                    isExplicit: false,
+                    appended: ["X"],
+                    deleted: ["X"],
+                },
+            ])
+        ).toEqual(["X"]);
     });
 
     it("produces the same composed structure and diagnostics on every run", () => {

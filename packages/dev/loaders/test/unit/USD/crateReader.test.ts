@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { ParseCrate } from "loaders/USD/resolution/parser/crate/crateReader";
+import { ParseCrate, ReorderCrateQuaternion } from "loaders/USD/resolution/parser/crate/crateReader";
 
 const BootstrapSize = 88;
 const SpecTypePrim = 6;
@@ -8,6 +8,10 @@ const ValueTypeInt = 3;
 const ValueTypeToken = 11;
 
 describe("USDC crate reader POC", () => {
+    it("converts crate-native wxyz quaternions to the resolved xyzw contract", () => {
+        expect(ReorderCrateQuaternion([1, 2, 3, 4])).toEqual([2, 3, 4, 1]);
+    });
+
     it("rejects buffers without the PXR-USDC magic", () => {
         const data = new Uint8Array(BootstrapSize);
 

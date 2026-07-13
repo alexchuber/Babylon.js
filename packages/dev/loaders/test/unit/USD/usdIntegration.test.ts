@@ -464,6 +464,30 @@ def "Ref" (
             ])
         );
     });
+
+    it("keeps concurrent asset-container loads isolated on one loader instance", async () => {
+        const engine = new NullEngine();
+        const scene = new Scene(engine);
+        const loader = new USDFileLoader();
+        const cameraUsda = (name: string) => `#usda 1.0
+def Camera "${name}"
+{
+    token projection = "perspective"
+}`;
+
+        const [first, second] = await Promise.all([
+            loader.loadAssetContainerAsync(scene, cameraUsda("First"), ""),
+            loader.loadAssetContainerAsync(scene, cameraUsda("Second"), ""),
+        ]);
+
+        expect(first.cameras.map((camera) => camera.name)).toEqual(["First"]);
+        expect(second.cameras.map((camera) => camera.name)).toEqual(["Second"]);
+
+        first.dispose();
+        second.dispose();
+        scene.dispose();
+        engine.dispose();
+    });
 });
 
 function CreateMinimalUsdc(): Uint8Array {

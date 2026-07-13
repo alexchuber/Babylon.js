@@ -70,6 +70,7 @@ describe("USD skeleton mapping", () => {
                                 faceVertexCounts: { kind: "attribute", typeName: "int[]", default: { type: "int[]", value: [3] } },
                                 faceVertexIndices: { kind: "attribute", typeName: "int[]", default: { type: "int[]", value: [2, 0, 1] } },
                                 "skel:skeleton": { kind: "relationship", targets: { isExplicit: true, explicit: ["/World/Rig"] } },
+                                "skel:joints": { kind: "attribute", typeName: "token[]", default: { type: "token[]", value: ["Root/Joint", "Root"] } },
                                 "primvars:skel:jointIndices": {
                                     kind: "attribute",
                                     typeName: "int[]",
@@ -141,7 +142,7 @@ describe("USD skeleton mapping", () => {
         expect(mesh.kind).toBe("mesh");
         expect(mesh.skinning?.skeletonIndex).toBe(0);
         expect(mesh.skinning?.influencesPerVertex).toBe(2);
-        expect(Array.from(mesh.skinning!.jointIndices)).toEqual([1, 0, 0, 1, 0, 1]);
+        expect(Array.from(mesh.skinning!.jointIndices)).toEqual([0, 1, 1, 0, 1, 0]);
         expect(Array.from(mesh.skinning!.jointWeights)).toEqual([1, 0, 0.75, 0.25, 0.5, 0.5]);
         expect(mesh.skinning?.geomBindTransform).toEqual(identityMatrix);
         expect(stage.diagnostics).toEqual([]);

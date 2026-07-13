@@ -723,10 +723,10 @@ function MergeRelocates(weakerRelocates: ISdfRelocate[] | undefined, strongerRel
 function ApplyListOp<T>(baseItems: readonly T[], listOp: ISdfListOp<T>, getKey: ListItemKey<T>): T[] {
     let result: T[] = [...(listOp.isExplicit ? Clone(listOp.explicit ?? []) : Clone(baseItems))];
 
+    result = RemoveItems(result, listOp.deleted, getKey);
     result = PrependItems(result, listOp.prepended, getKey);
     result = AppendItems(result, listOp.appended, getKey);
     result = AppendItems(result, listOp.added, getKey);
-    result = RemoveItems(result, listOp.deleted, getKey);
     result = ApplyOrderedItems(result, listOp.ordered, getKey);
 
     return result;

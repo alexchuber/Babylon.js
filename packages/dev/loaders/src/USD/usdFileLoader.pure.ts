@@ -38,7 +38,7 @@ export class USDFileLoader implements ISceneLoaderPluginAsync, ISceneLoaderPlugi
     public readonly extensions = USDFileLoaderMetadata.extensions;
 
     private readonly _loadingOptions: Readonly<USDLoadingOptions>;
-    private _assetContainer: Nullable<AssetContainer> = null;
+    private _loadQueue: Promise<void> = Promise.resolve();
 
     /**
      * Creates a loader for OpenUSD files.
@@ -73,6 +73,16 @@ export class USDFileLoader implements ISceneLoaderPluginAsync, ISceneLoaderPlugi
         _onProgress?: (event: ISceneLoaderProgressEvent) => void,
         fileName?: string
     ): Promise<ISceneLoaderAsyncResult> {
+        return await this._RunExclusiveAsync(async () => await this._ImportMeshAsync(scene, data, rootUrl, fileName, null));
+    }
+
+    private async _ImportMeshAsync(
+        scene: Scene,
+        data: unknown,
+        rootUrl: string,
+        fileName: string | undefined,
+        assetContainer: Nullable<AssetContainer>
+    ): Promise<ISceneLoaderAsyncResult> {
         const stage = await ResolveUsdStageAsync(USDFileLoader._NormalizeData(data), rootUrl, fileName, this._loadingOptions);
 
         for (const diagnostic of stage.diagnostics) {
@@ -86,7 +96,7 @@ export class USDFileLoader implements ISceneLoaderPluginAsync, ISceneLoaderPlugi
             }
         }
 
-        return AdaptResolvedStageToScene(stage, scene, this._assetContainer, this._loadingOptions);
+        return AdaptResolvedStageToScene(stage, scene, assetContainer, this._loadingOptions);
     }
 
     /**
@@ -106,7 +116,7 @@ export class USDFileLoader implements ISceneLoaderPluginAsync, ISceneLoaderPlugi
      * @param scene the scene to load into
      * @param data the USD data to load
      * @param rootUrl root url to resolve external assets against
-     * @param onProgress callback called while the file is loading
+     * @param _onProgress callback called while the file is loading
      * @param fileName name of the file being loaded
      * @returns a promise containing the loaded asset container
      */
@@ -114,9 +124,13 @@ export class USDFileLoader implements ISceneLoaderPluginAsync, ISceneLoaderPlugi
         scene: Scene,
         data: unknown,
         rootUrl: string,
-        onProgress?: (event: ISceneLoaderProgressEvent) => void,
+        _onProgress?: (event: ISceneLoaderProgressEvent) => void,
         fileName?: string
     ): Promise<AssetContainer> {
+        return await this._RunExclusiveAsync(async () => await this._LoadAssetContainerAsync(scene, data, rootUrl, fileName));
+    }
+
+    private async _LoadAssetContainerAsync(scene: Scene, data: unknown, rootUrl: string, fileName: string | undefined): Promise<AssetContainer> {
         const container = new AssetContainer(scene);
         const existingMeshes = new Set(scene.meshes);
         const existingTransformNodes = new Set(scene.transformNodes);
@@ -128,9 +142,8 @@ export class USDFileLoader implements ISceneLoaderPluginAsync, ISceneLoaderPlugi
         const existingMaterials = new Set(scene.materials);
         const existingMultiMaterials = new Set(scene.multiMaterials);
         const existingTextures = new Set(scene.textures);
-        this._assetContainer = container;
         try {
-            await this.importMeshAsync(null, scene, data, rootUrl, onProgress, fileName);
+            await this._ImportMeshAsync(scene, data, rootUrl, fileName, container);
             AppendNewEntities(container.meshes, scene.meshes, existingMeshes);
             AppendNewEntities(container.transformNodes, scene.transformNodes, existingTransformNodes);
             AppendNewEntities(container.skeletons, scene.skeletons, existingSkeletons);
@@ -155,10 +168,22 @@ export class USDFileLoader implements ISceneLoaderPluginAsync, ISceneLoaderPlugi
             AppendNewEntities(container.textures, scene.textures, existingTextures);
             container.dispose();
             throw error;
-        } finally {
-            this._assetContainer = null;
         }
         return container;
+    }
+
+    private async _RunExclusiveAsync<T>(operation: () => Promise<T>): Promise<T> {
+        const previous = this._loadQueue;
+        let release: () => void;
+        this._loadQueue = new Promise<void>((resolve) => {
+            release = resolve;
+        });
+        await previous;
+        try {
+            return await operation();
+        } finally {
+            release!();
+        }
     }
 
     private static _NormalizeData(data: unknown): ArrayBuffer | string {
