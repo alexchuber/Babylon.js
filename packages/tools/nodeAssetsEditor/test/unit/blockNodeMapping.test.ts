@@ -4,7 +4,7 @@ import { NodeAsset } from "node-assets/nodeAsset";
 import { NodeAssetBlock } from "node-assets/blockFoundation/nodeAssetBlock";
 import { NodeAssetConnectionPointType } from "node-assets/connection/nodeAssetConnectionPointType";
 
-import { NumberPortColor, ScenePortColor, type IBlockDescriptor } from "../../src/nodeAssets/blockCatalog";
+import { NumberPortColor, ScenePortColor, UsdStagePortColor, BabylonScenePortColor, NodeGeometryPortColor, type IBlockDescriptor } from "../../src/nodeAssets/blockCatalog";
 import { BlockToNode, NodeIdForBlock, PointToPort, PortIdForPoint } from "../../src/nodeAssets/blockNodeMapping";
 
 class MappingTestBlock extends NodeAssetBlock {
@@ -65,13 +65,13 @@ describe("blockNodeMapping", () => {
         expect(PointToPort(block, block.output).direction).toBe("output");
     });
 
-    it("rejects representation kinds whose editor descriptors are deferred", () => {
+    it("maps representation kinds to their dedicated port styles", () => {
         const asset = new NodeAsset("representations");
         const block = new RepresentationMappingTestBlock("block", asset);
 
-        expect(() => PointToPort(block, block.usd)).toThrow(/not supported by the Node Assets Editor/);
-        expect(() => PointToPort(block, block.babylon)).toThrow(/not supported by the Node Assets Editor/);
-        expect(() => PointToPort(block, block.nodeGeometry)).toThrow(/not supported by the Node Assets Editor/);
+        expect(PointToPort(block, block.usd).color).toBe(UsdStagePortColor);
+        expect(PointToPort(block, block.babylon).color).toBe(BabylonScenePortColor);
+        expect(PointToPort(block, block.nodeGeometry).color).toBe(NodeGeometryPortColor);
     });
 
     it("builds a node with input ports before output ports", () => {
