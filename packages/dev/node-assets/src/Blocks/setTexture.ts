@@ -9,7 +9,7 @@ import { ResolvePointerToImageAccessor } from "../selector/pointerToAccessor";
 
 /**
  * Writes an IMAGE into the material texture slot addressed by a glTF Object Model JSON Pointer within a
- * SCENE and passes the (same, in-place-mutated) SCENE through. It resolves the texture-slot pointer to
+ * glTF representation and passes that same in-place-mutated representation through. It resolves the texture-slot pointer to
  * an image accessor via NAE's path→accessor converter and calls `accessor.set(image)`, which replaces
  * the slot texture's image bytes and mime type, creating the `Texture` and wiring it into the slot when
  * the slot is empty. Together with `ExtractTexture` it closes the extract → process → set round-trip:
@@ -24,7 +24,7 @@ export class SetTexture extends NodeAssetBlock {
     /** The class name, used for identification and safe under minification. */
     public static override ClassName = "SetTexture";
 
-    /** The SCENE `Document` to write the texture into. */
+    /** The glTF representation to write the texture into. */
     public readonly scene: NodeAssetConnectionPoint;
 
     /** The glTF Object Model JSON Pointer naming the material texture slot to write. */
@@ -33,7 +33,7 @@ export class SetTexture extends NodeAssetBlock {
     /** The IMAGE payload to write into the texture slot. */
     public readonly image: NodeAssetConnectionPoint;
 
-    /** The same SCENE `Document`, mutated in place. */
+    /** The same glTF representation, mutated in place. */
     public readonly output: NodeAssetConnectionPoint;
 
     /**

@@ -7,20 +7,20 @@ import { GetGltfAsset } from "../representations/gltfAsset";
 import { ResolvePointerToImageAccessor } from "../selector/pointerToAccessor";
 
 /**
- * Reads the texture addressed by a glTF Object Model JSON Pointer out of a SCENE and emits it as an
+ * Reads the texture addressed by a glTF Object Model JSON Pointer out of a glTF representation and emits it as an
  * IMAGE. It resolves the texture-slot pointer to an image accessor via NAE's path→accessor converter
  * and returns `accessor.get()` (the slot texture's encoded bytes plus mime type), letting a pipeline
  * pull a texture out of a model and feed it into the 2D image lane — without a bespoke per-slot block.
  *
  * It is the IMAGE-typed sibling of `GetProperty`: same pointer, same converter, different terminating
- * port kind. It **reads**: it neither mutates nor outputs the SCENE, and owns no pointer/mapping logic
+ * port kind. It **reads**: it neither mutates nor outputs the representation, and owns no pointer/mapping logic
  * of its own.
  */
 export class ExtractTexture extends NodeAssetBlock {
     /** The class name, used for identification and safe under minification. */
     public static override ClassName = "ExtractTexture";
 
-    /** The SCENE `Document` to read the texture from. */
+    /** The glTF representation to read the texture from. */
     public readonly scene: NodeAssetConnectionPoint;
 
     /** The glTF Object Model JSON Pointer naming the material texture slot to read. */

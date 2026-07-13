@@ -5,6 +5,7 @@ import { NodeAssetBlock } from "../blockFoundation/nodeAssetBlock";
 import { type NodeAssetConnectionPoint } from "../connection/nodeAssetConnectionPoint";
 import { NodeAssetConnectionPointType } from "../connection/nodeAssetConnectionPointType";
 import { type NodeAsset } from "../nodeAsset";
+import { GetSerializedNumber, GetSerializedStringUnion, type NodeAssetBlockSerialization } from "../serialization/nodeAssetSerialization";
 import { type ImagePayload } from "./imagePayload";
 
 /** The encoded formats an image can be converted to. Each maps to the `image/<format>` mime type. */
@@ -60,7 +61,7 @@ export class ConvertImageFormatBlock extends NodeAssetBlock {
      * Serializes this block's target format and quality.
      * @returns The serialization object.
      */
-    public override serialize(): any {
+    public override serialize(): NodeAssetBlockSerialization {
         const serializationObject = super.serialize();
         serializationObject.format = this.format;
         serializationObject.quality = this.quality;
@@ -71,10 +72,10 @@ export class ConvertImageFormatBlock extends NodeAssetBlock {
      * Restores this block's target format and quality.
      * @param serializationObject - The serialization object.
      */
-    public override _deserialize(serializationObject: any): void {
+    public override _deserialize(serializationObject: NodeAssetBlockSerialization): void {
         super._deserialize(serializationObject);
-        this.format = serializationObject.format ?? "png";
-        this.quality = serializationObject.quality ?? 0.9;
+        this.format = GetSerializedStringUnion(serializationObject, "format", ["png", "jpeg", "webp"], "png");
+        this.quality = GetSerializedNumber(serializationObject, "quality", 0.9);
     }
 }
 

@@ -3,6 +3,7 @@ import { IsExportBlock } from "./blockFoundation/exportBlock";
 import { type NodeAssetBlock } from "./blockFoundation/nodeAssetBlock";
 import { type NodeAssetConnectionPoint } from "./connection/nodeAssetConnectionPoint";
 import { CloneForFanOutAsync } from "./evaluation/fanOutCopy";
+import { IsNodeAssetSerializedGraph, type NodeAssetConnectionSerialization, type NodeAssetSerializedGraph } from "./serialization/nodeAssetSerialization";
 import { UniqueIdGenerator } from "./utils/uniqueIdGenerator";
 
 /**
@@ -65,10 +66,10 @@ export class NodeAsset {
      * Serializes the graph (blocks and connections) to a plain, JSON-friendly object.
      * @returns The serialization object.
      */
-    public serialize(): any {
+    public serialize(): NodeAssetSerializedGraph {
         const blocks = this._attachedBlocks.map((block) => block.serialize());
 
-        const connections: any[] = [];
+        const connections: NodeAssetConnectionSerialization[] = [];
         for (const block of this._attachedBlocks) {
             for (const output of block.outputs) {
                 // An output can fan out to several inputs; emit one connection per fanned-out edge.
@@ -93,7 +94,11 @@ export class NodeAsset {
      * @param serializationObject - The serialization object.
      * @returns The reconstructed node asset.
      */
-    public static Parse(serializationObject: any): NodeAsset {
+    public static Parse(serializationObject: unknown): NodeAsset {
+        if (!IsNodeAssetSerializedGraph(serializationObject)) {
+            throw new TypeError("Invalid NodeAsset serialized graph.");
+        }
+
         const asset = new NodeAsset(serializationObject.name ?? "nodeAsset");
 
         const blocksById = new Map<number, NodeAssetBlock>();
@@ -198,7 +203,7 @@ export class NodeAsset {
             })
         );
         // When an upstream output fans out to more than one input, each consumer receives its own
-        // clone of a mutable (SCENE) payload so an in-place edit on one branch cannot stomp another;
+        // clone of a mutable representation payload so an in-place edit on one branch cannot stomp another;
         // a sole consumer — and every immutable scalar payload — shares the value by reference.
         await Promise.all(
             connections.map(async ({ input, upstream }) => {

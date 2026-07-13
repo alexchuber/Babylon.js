@@ -3,6 +3,7 @@ import { NodeAssetBlock } from "../blockFoundation/nodeAssetBlock";
 import { type NodeAssetConnectionPoint } from "../connection/nodeAssetConnectionPoint";
 import { NodeAssetConnectionPointType } from "../connection/nodeAssetConnectionPointType";
 import { type NodeAsset } from "../nodeAsset";
+import { GetSerializedNumber, type NodeAssetBlockSerialization } from "../serialization/nodeAssetSerialization";
 import { ApplyOperatorTransformsAsync } from "./operatorSupport";
 
 /**
@@ -59,7 +60,7 @@ export class QuantizeBlock extends NodeAssetBlock {
      * Serializes this block's build-affecting options.
      * @returns The serialization object.
      */
-    public override serialize(): any {
+    public override serialize(): NodeAssetBlockSerialization {
         const serializationObject = super.serialize();
         serializationObject.quantizePosition = this.quantizePosition;
         serializationObject.quantizeNormal = this.quantizeNormal;
@@ -71,11 +72,11 @@ export class QuantizeBlock extends NodeAssetBlock {
      * Restores this block's build-affecting options.
      * @param serializationObject - The serialization object.
      */
-    public override _deserialize(serializationObject: any): void {
+    public override _deserialize(serializationObject: NodeAssetBlockSerialization): void {
         super._deserialize(serializationObject);
-        this.quantizePosition = serializationObject.quantizePosition ?? 14;
-        this.quantizeNormal = serializationObject.quantizeNormal ?? 10;
-        this.quantizeTexcoord = serializationObject.quantizeTexcoord ?? 12;
+        this.quantizePosition = GetSerializedNumber(serializationObject, "quantizePosition", 14);
+        this.quantizeNormal = GetSerializedNumber(serializationObject, "quantizeNormal", 10);
+        this.quantizeTexcoord = GetSerializedNumber(serializationObject, "quantizeTexcoord", 12);
     }
 }
 

@@ -6,6 +6,7 @@ import { type NodeAssetConnectionPoint } from "../connection/nodeAssetConnection
 import { NodeAssetConnectionPointType } from "../connection/nodeAssetConnectionPointType";
 import { type NodeAsset } from "../nodeAsset";
 import { GetGltfAsset } from "../representations/gltfAsset";
+import { GetSerializedNullableNumberRecord, GetSerializedNumber, GetSerializedNumberUnion, type NodeAssetBlockSerialization } from "../serialization/nodeAssetSerialization";
 
 /**
  * The Draco geometry-compression method.
@@ -84,7 +85,7 @@ export class DracoCompressionBlock extends NodeAssetBlock {
      * Serializes this block's build-affecting compression options.
      * @returns The serialization object.
      */
-    public override serialize(): any {
+    public override serialize(): NodeAssetBlockSerialization {
         const serializationObject = super.serialize();
         serializationObject.method = this.method;
         serializationObject.encodeSpeed = this.encodeSpeed;
@@ -97,12 +98,12 @@ export class DracoCompressionBlock extends NodeAssetBlock {
      * Restores this block's build-affecting compression options.
      * @param serializationObject - The serialization object.
      */
-    public override _deserialize(serializationObject: any): void {
+    public override _deserialize(serializationObject: NodeAssetBlockSerialization): void {
         super._deserialize(serializationObject);
-        this.method = serializationObject.method ?? DracoEncoderMethod.Edgebreaker;
-        this.encodeSpeed = serializationObject.encodeSpeed ?? 5;
-        this.decodeSpeed = serializationObject.decodeSpeed ?? 5;
-        this.quantizationBits = serializationObject.quantizationBits ?? null;
+        this.method = GetSerializedNumberUnion(serializationObject, "method", [DracoEncoderMethod.Sequential, DracoEncoderMethod.Edgebreaker], DracoEncoderMethod.Edgebreaker);
+        this.encodeSpeed = GetSerializedNumber(serializationObject, "encodeSpeed", 5);
+        this.decodeSpeed = GetSerializedNumber(serializationObject, "decodeSpeed", 5);
+        this.quantizationBits = GetSerializedNullableNumberRecord(serializationObject, "quantizationBits");
     }
 }
 

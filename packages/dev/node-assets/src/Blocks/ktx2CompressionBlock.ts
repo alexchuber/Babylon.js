@@ -5,6 +5,7 @@ import { NodeAssetBlock } from "../blockFoundation/nodeAssetBlock";
 import { type NodeAssetConnectionPoint } from "../connection/nodeAssetConnectionPoint";
 import { NodeAssetConnectionPointType } from "../connection/nodeAssetConnectionPointType";
 import { type NodeAsset } from "../nodeAsset";
+import { GetSerializedBoolean, type NodeAssetBlockSerialization } from "../serialization/nodeAssetSerialization";
 import { GetGltfAsset } from "../representations/gltfAsset";
 
 /**
@@ -123,7 +124,7 @@ export class KTX2CompressionBlock extends NodeAssetBlock {
      * Serializes this block's build-affecting options.
      * @returns The serialization object.
      */
-    public override serialize(): any {
+    public override serialize(): NodeAssetBlockSerialization {
         const serializationObject = super.serialize();
         serializationObject.generateMipmaps = this.generateMipmaps;
         return serializationObject;
@@ -133,9 +134,9 @@ export class KTX2CompressionBlock extends NodeAssetBlock {
      * Restores this block's build-affecting options.
      * @param serializationObject - The serialization object.
      */
-    public override _deserialize(serializationObject: any): void {
+    public override _deserialize(serializationObject: NodeAssetBlockSerialization): void {
         super._deserialize(serializationObject);
-        this.generateMipmaps = serializationObject.generateMipmaps ?? false;
+        this.generateMipmaps = GetSerializedBoolean(serializationObject, "generateMipmaps", false);
     }
 }
 

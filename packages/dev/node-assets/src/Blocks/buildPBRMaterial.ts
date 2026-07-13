@@ -8,11 +8,12 @@ import { type NodeAssetConnectionPoint } from "../connection/nodeAssetConnection
 import { NodeAssetConnectionPointType } from "../connection/nodeAssetConnectionPointType";
 import { type NodeAsset } from "../nodeAsset";
 import { GetGltfAsset } from "../representations/gltfAsset";
+import { GetSerializedNumber, GetSerializedNumberTuple, type NodeAssetBlockSerialization } from "../serialization/nodeAssetSerialization";
 import { type ImagePayload } from "./imagePayload";
 
 /**
  * Assembles a PBR **metallic-roughness** material from optional IMAGE inputs and factor params and
- * creates it on the incoming SCENE `Document`, then passes the same `Document` through. This is the
+ * creates it on the incoming glTF `Document`, then passes the same representation through. This is the
  * "compose up the funnel" primitive: it lets a graph turn a bare scene plus loose images into a
  * finished, textured asset.
  *
@@ -26,7 +27,7 @@ import { type ImagePayload } from "./imagePayload";
  * material are left untouched. This is what lets the compose-up showcase light up a bare glb.
  *
  * In-place mutation is retained: the incoming `Document` is mutated and the same reference is emitted
- * (copy-on-fan-out, when the SCENE fans out, is handled by the evaluator, not here).
+ * (copy-on-fan-out, when the glTF representation fans out, is handled by the evaluator, not here).
  */
 export class BuildPBRMaterial extends NodeAssetBlock {
     /** The class name, used for identification and safe under minification. */
@@ -44,7 +45,7 @@ export class BuildPBRMaterial extends NodeAssetBlock {
     /** The linear emissive colour (RGB), applied as the material's `emissiveFactor`. */
     public emissiveFactor: [number, number, number] = [0, 0, 0];
 
-    /** The SCENE `Document` the material is created in. */
+    /** The glTF representation whose `Document` receives the material. */
     public readonly scene: NodeAssetConnectionPoint;
 
     /** Optional base-colour (albedo) texture image; wired to the material's base-colour slot. */
@@ -62,7 +63,7 @@ export class BuildPBRMaterial extends NodeAssetBlock {
     /** Optional emissive texture image. */
     public readonly emissive: NodeAssetConnectionPoint;
 
-    /** The same SCENE `Document`, now carrying the created material. */
+    /** The same glTF representation, now carrying the created material. */
     public readonly output: NodeAssetConnectionPoint;
 
     /**
@@ -164,7 +165,7 @@ export class BuildPBRMaterial extends NodeAssetBlock {
      * Serializes this block's build-affecting factor params.
      * @returns The serialization object.
      */
-    public override serialize(): any {
+    public override serialize(): NodeAssetBlockSerialization {
         const serializationObject = super.serialize();
         serializationObject.baseColorFactor = this.baseColorFactor;
         serializationObject.metallicFactor = this.metallicFactor;
@@ -177,12 +178,12 @@ export class BuildPBRMaterial extends NodeAssetBlock {
      * Restores this block's build-affecting factor params.
      * @param serializationObject - The serialization object.
      */
-    public override _deserialize(serializationObject: any): void {
+    public override _deserialize(serializationObject: NodeAssetBlockSerialization): void {
         super._deserialize(serializationObject);
-        this.baseColorFactor = serializationObject.baseColorFactor ?? [1, 1, 1, 1];
-        this.metallicFactor = serializationObject.metallicFactor ?? 1;
-        this.roughnessFactor = serializationObject.roughnessFactor ?? 1;
-        this.emissiveFactor = serializationObject.emissiveFactor ?? [0, 0, 0];
+        this.baseColorFactor = GetSerializedNumberTuple(serializationObject, "baseColorFactor", 4, [1, 1, 1, 1]);
+        this.metallicFactor = GetSerializedNumber(serializationObject, "metallicFactor", 1);
+        this.roughnessFactor = GetSerializedNumber(serializationObject, "roughnessFactor", 1);
+        this.emissiveFactor = GetSerializedNumberTuple(serializationObject, "emissiveFactor", 3, [0, 0, 0]);
     }
 }
 

@@ -8,6 +8,12 @@ export { GetGltfAsset, GltfAsset, type IGltfAssetMetadata, IsGltfAsset } from ".
 export { type IUsdAssetMetadata, IsUsdAsset, UsdAsset } from "./representations/usdAsset";
 export { BabylonAsset, type IBabylonAssetMetadata, IsBabylonAsset } from "./representations/babylonAsset";
 export { type INodeGeometryAssetMetadata, IsNodeGeometryAsset, NodeGeometryAsset } from "./representations/nodeGeometryAsset";
+export {
+    IsNodeAssetSerializedGraph,
+    type NodeAssetBlockSerialization,
+    type NodeAssetConnectionSerialization,
+    type NodeAssetSerializedGraph,
+} from "./serialization/nodeAssetSerialization";
 export { ImportGLTFBlock } from "./Blocks/importGLTFBlock";
 export { ExportGLTFBlock } from "./Blocks/exportGLTFBlock";
 export { DracoCompressionBlock, DracoEncoderMethod } from "./Blocks/dracoCompressionBlock";

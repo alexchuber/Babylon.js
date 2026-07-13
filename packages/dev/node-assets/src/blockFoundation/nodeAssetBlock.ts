@@ -2,6 +2,7 @@ import { NodeAssetConnectionPoint } from "../connection/nodeAssetConnectionPoint
 import { NodeAssetConnectionPointDirection } from "../connection/nodeAssetConnectionPointDirection";
 import { type NodeAssetConnectionPointType } from "../connection/nodeAssetConnectionPointType";
 import { type NodeAsset } from "../nodeAsset";
+import { type NodeAssetBlockSerialization } from "../serialization/nodeAssetSerialization";
 import { UniqueIdGenerator } from "../utils/uniqueIdGenerator";
 
 /**
@@ -86,7 +87,7 @@ export abstract class NodeAssetBlock {
      * calling `super.serialize()` first.
      * @returns The serialization object.
      */
-    public serialize(): any {
+    public serialize(): NodeAssetBlockSerialization {
         return {
             customType: this.getClassName(),
             id: this.uniqueId,
@@ -98,8 +99,7 @@ export abstract class NodeAssetBlock {
      * Restores block-specific state from a serialization object produced by {@link serialize}.
      * The base implementation does nothing; subclasses override to read their own state. Identity
      * (id/name) and connections are restored by {@link NodeAsset.Parse}.
-     * @param serializationObject - The serialization object.
+     * @param _serializationObject - The serialization object.
      */
-    // eslint-disable-next-line @typescript-eslint/no-unused-vars
-    public _deserialize(serializationObject: any): void {}
+    public _deserialize(_serializationObject: NodeAssetBlockSerialization): void {}
 }

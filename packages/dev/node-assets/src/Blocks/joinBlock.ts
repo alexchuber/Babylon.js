@@ -3,6 +3,7 @@ import { NodeAssetBlock } from "../blockFoundation/nodeAssetBlock";
 import { type NodeAssetConnectionPoint } from "../connection/nodeAssetConnectionPoint";
 import { NodeAssetConnectionPointType } from "../connection/nodeAssetConnectionPointType";
 import { type NodeAsset } from "../nodeAsset";
+import { GetSerializedBoolean, type NodeAssetBlockSerialization } from "../serialization/nodeAssetSerialization";
 import { ApplyOperatorTransformsAsync } from "./operatorSupport";
 
 /**
@@ -48,7 +49,7 @@ export class JoinBlock extends NodeAssetBlock {
      * Serializes this block's build-affecting options.
      * @returns The serialization object.
      */
-    public override serialize(): any {
+    public override serialize(): NodeAssetBlockSerialization {
         const serializationObject = super.serialize();
         serializationObject.keepMeshes = this.keepMeshes;
         serializationObject.keepNamed = this.keepNamed;
@@ -59,10 +60,10 @@ export class JoinBlock extends NodeAssetBlock {
      * Restores this block's build-affecting options.
      * @param serializationObject - The serialization object.
      */
-    public override _deserialize(serializationObject: any): void {
+    public override _deserialize(serializationObject: NodeAssetBlockSerialization): void {
         super._deserialize(serializationObject);
-        this.keepMeshes = serializationObject.keepMeshes ?? false;
-        this.keepNamed = serializationObject.keepNamed ?? false;
+        this.keepMeshes = GetSerializedBoolean(serializationObject, "keepMeshes", false);
+        this.keepNamed = GetSerializedBoolean(serializationObject, "keepNamed", false);
     }
 }
 

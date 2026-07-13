@@ -7,18 +7,18 @@ import { GetGltfAsset } from "../representations/gltfAsset";
 import { ResolvePointerToAccessor } from "../selector/pointerToAccessor";
 
 /**
- * Reads the property addressed by a glTF Object Model JSON Pointer out of a SCENE and emits its value
+ * Reads the property addressed by a glTF Object Model JSON Pointer out of a glTF representation and emits its value
  * as JSON. It resolves the pointer to a property accessor via NAE's path→accessor converter and
  * returns `accessor.get()`, letting a pipeline extract any mapped property — a material factor, a node
  * transform, an `extras` value — without a bespoke per-property block.
  *
- * It **reads**: it neither mutates nor outputs the SCENE, and owns no pointer/mapping logic of its own.
+ * It **reads**: it neither mutates nor outputs the representation, and owns no pointer/mapping logic of its own.
  */
 export class GetProperty extends NodeAssetBlock {
     /** The class name, used for identification and safe under minification. */
     public static override ClassName = "GetProperty";
 
-    /** The SCENE `Document` to read from. */
+    /** The glTF representation to read from. */
     public readonly scene: NodeAssetConnectionPoint;
 
     /** The glTF Object Model JSON Pointer naming the property to read. */

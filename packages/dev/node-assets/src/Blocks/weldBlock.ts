@@ -3,6 +3,7 @@ import { NodeAssetBlock } from "../blockFoundation/nodeAssetBlock";
 import { type NodeAssetConnectionPoint } from "../connection/nodeAssetConnectionPoint";
 import { NodeAssetConnectionPointType } from "../connection/nodeAssetConnectionPointType";
 import { type NodeAsset } from "../nodeAsset";
+import { GetSerializedBoolean, type NodeAssetBlockSerialization } from "../serialization/nodeAssetSerialization";
 import { ApplyOperatorTransformsAsync } from "./operatorSupport";
 
 /**
@@ -45,7 +46,7 @@ export class WeldBlock extends NodeAssetBlock {
      * Serializes this block's build-affecting options.
      * @returns The serialization object.
      */
-    public override serialize(): any {
+    public override serialize(): NodeAssetBlockSerialization {
         const serializationObject = super.serialize();
         serializationObject.overwrite = this.overwrite;
         return serializationObject;
@@ -55,9 +56,9 @@ export class WeldBlock extends NodeAssetBlock {
      * Restores this block's build-affecting options.
      * @param serializationObject - The serialization object.
      */
-    public override _deserialize(serializationObject: any): void {
+    public override _deserialize(serializationObject: NodeAssetBlockSerialization): void {
         super._deserialize(serializationObject);
-        this.overwrite = serializationObject.overwrite ?? true;
+        this.overwrite = GetSerializedBoolean(serializationObject, "overwrite", true);
     }
 }
 

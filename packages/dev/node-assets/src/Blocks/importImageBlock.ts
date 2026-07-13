@@ -6,6 +6,7 @@ import { NodeAssetBlock } from "../blockFoundation/nodeAssetBlock";
 import { type NodeAssetConnectionPoint } from "../connection/nodeAssetConnectionPoint";
 import { NodeAssetConnectionPointType } from "../connection/nodeAssetConnectionPointType";
 import { type NodeAsset } from "../nodeAsset";
+import { GetSerializedNullableString, GetSerializedString, type NodeAssetBlockSerialization } from "../serialization/nodeAssetSerialization";
 import { type ImagePayload } from "./imagePayload";
 
 /**
@@ -60,7 +61,7 @@ export class ImportImageBlock extends NodeAssetBlock {
      * through save/load, alongside its {@link mimeType} and {@link source} label.
      * @returns The serialization object.
      */
-    public override serialize(): any {
+    public override serialize(): NodeAssetBlockSerialization {
         const serializationObject = super.serialize();
         serializationObject.data = this.data ? EncodeArrayBufferToBase64(this.data) : null;
         serializationObject.mimeType = this.mimeType;
@@ -72,11 +73,12 @@ export class ImportImageBlock extends NodeAssetBlock {
      * Restores this block's {@link data} bytes (from base64) and {@link mimeType}.
      * @param serializationObject - The serialization object.
      */
-    public override _deserialize(serializationObject: any): void {
+    public override _deserialize(serializationObject: NodeAssetBlockSerialization): void {
         super._deserialize(serializationObject);
-        this.data = serializationObject.data ? new Uint8Array(DecodeBase64ToBinary(serializationObject.data)) : null;
-        this.mimeType = serializationObject.mimeType ?? "image/png";
-        this.source = serializationObject.source ?? null;
+        const data = GetSerializedNullableString(serializationObject, "data");
+        this.data = data ? new Uint8Array(DecodeBase64ToBinary(data)) : null;
+        this.mimeType = GetSerializedString(serializationObject, "mimeType", "image/png");
+        this.source = GetSerializedNullableString(serializationObject, "source");
     }
 }
 

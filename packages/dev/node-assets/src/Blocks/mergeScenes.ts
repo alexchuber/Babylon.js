@@ -4,12 +4,13 @@ import { type NodeAssetConnectionPoint } from "../connection/nodeAssetConnection
 import { NodeAssetConnectionPointType } from "../connection/nodeAssetConnectionPointType";
 import { type NodeAsset } from "../nodeAsset";
 import { GetGltfAsset, GltfAsset } from "../representations/gltfAsset";
+import { GetSerializedNumber, type NodeAssetBlockSerialization } from "../serialization/nodeAssetSerialization";
 
-/** The number of SCENE inputs a freshly created MergeScenes block starts with. */
+/** The number of glTF representation inputs a freshly created MergeScenes block starts with. */
 const DefaultInputCount = 2;
 
 /**
- * A composition block that folds several SCENE inputs into one combined SCENE, wrapping
+ * A composition block that folds several glTF representation inputs into one combined representation, wrapping
  * `@gltf-transform/functions`' `mergeDocuments`. Each connected input `Document` is folded, in port
  * order, into a fresh target `Document`; the sources are copied, never mutated. The merged scenes are
  * then combined under a single scene (`/scenes/0`) so every source's node hierarchy stays addressable
@@ -28,7 +29,7 @@ export class MergeScenes extends NodeAssetBlock {
     public readonly output: NodeAssetConnectionPoint;
 
     /**
-     * Creates a new merge-scenes block with {@link DefaultInputCount} SCENE inputs and one SCENE output.
+     * Creates a new merge-scenes block with {@link DefaultInputCount} glTF inputs and one glTF output.
      * @param name - The display name of the block.
      * @param nodeAsset - The node asset that owns this block.
      */
@@ -41,7 +42,7 @@ export class MergeScenes extends NodeAssetBlock {
     }
 
     /**
-     * Appends one more SCENE input to the variadic input set. Inputs are named `input0`, `input1`, …
+     * Appends one more glTF representation input to the variadic input set. Inputs are named `input0`, `input1`, …
      * so their wiring survives {@link serialize}/{@link NodeAsset.Parse} by point name.
      * @returns The newly created input connection point.
      */
@@ -109,7 +110,7 @@ export class MergeScenes extends NodeAssetBlock {
      * Serializes this block's variadic input count so a saved N-input merge reloads with N inputs.
      * @returns The serialization object.
      */
-    public override serialize(): any {
+    public override serialize(): NodeAssetBlockSerialization {
         const serializationObject = super.serialize();
         serializationObject.inputCount = this.inputs.length;
         return serializationObject;
@@ -120,9 +121,9 @@ export class MergeScenes extends NodeAssetBlock {
      * its wiring reconnects by point name.
      * @param serializationObject - The serialization object.
      */
-    public override _deserialize(serializationObject: any): void {
+    public override _deserialize(serializationObject: NodeAssetBlockSerialization): void {
         super._deserialize(serializationObject);
-        const inputCount = serializationObject.inputCount ?? DefaultInputCount;
+        const inputCount = GetSerializedNumber(serializationObject, "inputCount", DefaultInputCount);
         while (this.inputs.length < inputCount) {
             this.addInput();
         }
