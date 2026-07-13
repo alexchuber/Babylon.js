@@ -1,8 +1,11 @@
-import { type NodeGeometry } from "core/Meshes/Node/nodeGeometry";
+import { RegisterAllNodeGeometryBlocks } from "core/Meshes/Node/Blocks/allBlocks.pure";
+import { NodeGeometry } from "core/Meshes/Node/nodeGeometry";
 import { VertexData } from "core/Meshes/mesh.vertexData";
 
 import { type NodeAssetJsonObject } from "../connection/nodeAssetValueMap";
 import { DeepFreeze, ValidateAndFreezeAssetMetadata } from "./immutableMetadata";
+
+RegisterAllNodeGeometryBlocks();
 
 /** Immutable caller-supplied metadata for a {@link NodeGeometryAsset}. */
 export interface INodeGeometryAssetMetadata {
@@ -42,6 +45,35 @@ export class NodeGeometryAsset {
         this.revision = validatedMetadata.revision;
         this.manifest = validatedMetadata.manifest;
         this.evaluatedVertexData = evaluatedVertexData ? DeepFreeze(VertexData.Parse(evaluatedVertexData.serialize())) : undefined;
+    }
+
+    /** Whether this resource was disposed by its build scope. */
+    public get isDisposed(): boolean {
+        return this._isDisposed;
+    }
+
+    /**
+     * Clones the unevaluated graph through serialization without invoking `build`.
+     * @returns A full-fidelity independent resource with a copied optional snapshot.
+     */
+    public cloneForFanOut(): NodeGeometryAsset {
+        const sourceSerialization = this.nodeGeometry.serialize();
+        const parseInput = structuredClone(sourceSerialization);
+        const clone = new NodeGeometry(parseInput.name);
+        clone.parseSerializedObject(parseInput);
+        for (let index = 0; index < clone.attachedBlocks.length; index++) {
+            clone.attachedBlocks[index].uniqueId = sourceSerialization.blocks[index].id;
+        }
+        clone.editorData = structuredClone(sourceSerialization.editorData);
+        return new NodeGeometryAsset(
+            clone,
+            {
+                identity: this.identity,
+                revision: this.revision,
+                manifest: this.manifest,
+            },
+            this.evaluatedVertexData as VertexData | undefined
+        );
     }
 
     /** Disposes the owned graph once. */

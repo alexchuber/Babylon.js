@@ -1,4 +1,25 @@
 export { NodeAsset } from "./nodeAsset";
+export { BuildFanOutError } from "./evaluation/fanOutCopy";
+export {
+    BuildCancelledError,
+    BuildConfigurationError,
+    BuildLimitError,
+    type BuildLimitErrorCode,
+    BuildScope,
+    type BuildDiagnosticProducerKind,
+    type BuildRepresentationKind,
+    type BuildResourceOwnershipErrorCode,
+    BuildResourceOwnershipError,
+    type IBuildDiagnostic,
+    type IBuildDiagnosticProducer,
+    type IBuildResource,
+    type INodeAssetBuildLimits,
+    type INodeAssetBuildOptions,
+    type IResolvedDiagnosticLossContext,
+    type LossDisposition,
+    type LossRecord,
+    type NodeAssetBuildResult,
+} from "./evaluation/buildScope";
 export { NodeAssetBlock } from "./blockFoundation/nodeAssetBlock";
 export { NodeAssetConnectionPoint } from "./connection/nodeAssetConnectionPoint";
 export { NodeAssetConnectionPointDirection } from "./connection/nodeAssetConnectionPointDirection";

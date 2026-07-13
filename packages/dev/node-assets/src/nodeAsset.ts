@@ -2,6 +2,7 @@ import { CreateBlockByClassName } from "./blockFoundation/blockRegistry";
 import { IsExportBlock } from "./blockFoundation/exportBlock";
 import { type NodeAssetBlock } from "./blockFoundation/nodeAssetBlock";
 import { type NodeAssetConnectionPoint } from "./connection/nodeAssetConnectionPoint";
+import { BuildScope, CreateNodeAssetBuildResult, type INodeAssetBuildOptions, type NodeAssetBuildResult } from "./evaluation/buildScope";
 import { CloneForFanOutAsync } from "./evaluation/fanOutCopy";
 import { IsNodeAssetSerializedGraph, type NodeAssetConnectionSerialization, type NodeAssetSerializedGraph } from "./serialization/nodeAssetSerialization";
 import { UniqueIdGenerator } from "./utils/uniqueIdGenerator";
@@ -141,23 +142,54 @@ export class NodeAsset {
      * Runs the graph by pulling from the terminal export block (located via its
      * {@link IExportBlock} marker, not by concrete type) and returns the built bytes. Pull-based,
      * no caching; a required input left unconnected is an error.
+     * @param signalOrOptions - A direct caller signal or cancellation and partial limit options.
      * @returns The built bytes produced by the terminal export block.
      */
-    public async buildAsync(): Promise<Uint8Array> {
+    // eslint-disable-next-line no-restricted-syntax
+    public buildAsync(): Promise<NodeAssetBuildResult>;
+    // eslint-disable-next-line no-restricted-syntax
+    public buildAsync(signal: AbortSignal): Promise<NodeAssetBuildResult>;
+    // eslint-disable-next-line no-restricted-syntax
+    public buildAsync(options: INodeAssetBuildOptions): Promise<NodeAssetBuildResult>;
+    public async buildAsync(signalOrOptions?: AbortSignal | INodeAssetBuildOptions): Promise<NodeAssetBuildResult> {
         const exportBlock = this._attachedBlocks.find(IsExportBlock);
         if (!exportBlock) {
             throw new Error(`The "${this.name}" node asset has no export block to build.`);
         }
 
-        // A per-build memo so each block is evaluated exactly once even when its output fans out to
-        // several consumers. Scoped to this call: a fresh build starts with a fresh memo.
-        const evaluated = new Map<NodeAssetBlock, Promise<void>>();
-        await this._evaluateBlockAsync(exportBlock, evaluated);
-
-        if (!exportBlock.result) {
-            throw new Error(`The "${this.name}" node asset produced no result.`);
+        const options = IsAbortSignal(signalOrOptions) ? { signal: signalOrOptions } : (signalOrOptions ?? {});
+        const scope = new BuildScope(options);
+        let result: Uint8Array | null = null;
+        let primaryError: unknown;
+        let failed = false;
+        try {
+            scope.throwIfAborted();
+            // A per-build memo so each block is evaluated exactly once even when its output fans out to
+            // several consumers. Scoped to this call: a fresh build starts with a fresh memo.
+            const evaluated = new Map<NodeAssetBlock, Promise<void>>();
+            await this._evaluateBlockAsync(exportBlock, evaluated, scope);
+            result = exportBlock.result;
+            if (!result) {
+                throw new Error(`The "${this.name}" node asset produced no result.`);
+            }
+        } catch (error) {
+            failed = true;
+            primaryError = error;
+        } finally {
+            await scope.disposeAsync();
         }
-        return exportBlock.result;
+
+        if (failed) {
+            if (scope.hasPrimaryError && scope.isCancellationError(primaryError)) {
+                throw scope.primaryError;
+            }
+            throw primaryError;
+        }
+        if (scope.hasPrimaryError) {
+            throw scope.primaryError;
+        }
+        scope.throwIfAborted();
+        return CreateNodeAssetBuildResult(result!, scope.diagnostics, scope.lossRecords);
     }
 
     /**
@@ -167,18 +199,26 @@ export class NodeAsset {
      * dedupe onto the same evaluation.
      * @param block - The block to evaluate.
      * @param evaluated - The per-build memo of block evaluations.
+     * @param scope - The per-build owner of diagnostics and lifecycle state.
      * @returns The block's single evaluation promise, shared across all of its consumers.
      */
-    private async _evaluateBlockAsync(block: NodeAssetBlock, evaluated: Map<NodeAssetBlock, Promise<void>>): Promise<void> {
+    private async _evaluateBlockAsync(block: NodeAssetBlock, evaluated: Map<NodeAssetBlock, Promise<void>>, scope: BuildScope): Promise<void> {
         const existing = evaluated.get(block);
         if (existing) {
             return await existing;
         }
+        scope.throwIfAborted();
+        scope.beginEvaluation();
         // Populate the memo synchronously (before the await below) so a sibling branch reaching this
         // same block dedupes onto this promise instead of starting a second evaluation.
-        const promise = this._doEvaluateBlockAsync(block, evaluated);
+        const promise = this._doEvaluateBlockAsync(block, evaluated, scope);
         evaluated.set(block, promise);
-        return await promise;
+        try {
+            return await promise;
+        } catch (error) {
+            scope.abortForFailure(error);
+            throw error;
+        }
     }
 
     /**
@@ -187,8 +227,9 @@ export class NodeAsset {
      * builds this block.
      * @param block - The block to evaluate.
      * @param evaluated - The per-build memo of block evaluations.
+     * @param scope - The per-build owner of diagnostics and lifecycle state.
      */
-    private async _doEvaluateBlockAsync(block: NodeAssetBlock, evaluated: Map<NodeAssetBlock, Promise<void>>): Promise<void> {
+    private async _doEvaluateBlockAsync(block: NodeAssetBlock, evaluated: Map<NodeAssetBlock, Promise<void>>, scope: BuildScope): Promise<void> {
         const connections: Array<{ input: NodeAssetConnectionPoint; upstream: NodeAssetConnectionPoint }> = [];
         for (const input of block.inputs) {
             const upstream = input.connectedPoint;
@@ -204,20 +245,88 @@ export class NodeAsset {
         }
 
         // Build all upstream blocks first, then propagate their resolved values.
-        await Promise.all(
+        await this._settleInOrderAsync(
             connections.map(async (connection) => {
-                await this._evaluateBlockAsync(connection.upstream.ownerBlock, evaluated);
-            })
+                await this._evaluateBlockAsync(connection.upstream.ownerBlock, evaluated, scope);
+            }),
+            scope
         );
         // When an upstream output fans out to more than one input, each consumer receives its own
         // clone of a mutable representation payload so an in-place edit on one branch cannot stomp another;
         // a sole consumer — and every immutable scalar payload — shares the value by reference.
-        await Promise.all(
+        await this._settleInOrderAsync(
             connections.map(async ({ input, upstream }) => {
-                input.value = upstream.connectedPoints.length > 1 ? await CloneForFanOutAsync(upstream.type, upstream.value) : upstream.value;
-            })
+                try {
+                    const producer = {
+                        kind: "block" as const,
+                        blockId: upstream.ownerBlock.uniqueId,
+                        blockName: upstream.ownerBlock.name,
+                    };
+                    input.value = upstream.connectedPoints.length > 1 ? await CloneForFanOutAsync(upstream.type, upstream.value, scope, producer) : upstream.value;
+                    if (input.value != null) {
+                        scope.registerValue(input.value, producer);
+                    }
+                } catch (error) {
+                    scope.abortForFailure(error);
+                    throw error;
+                }
+            }),
+            scope
         );
 
-        await block._buildBlockAsync();
+        scope.throwIfAborted();
+        let primaryError: unknown;
+        let failed = false;
+        try {
+            await block._buildBlockAsync(scope);
+        } catch (error) {
+            failed = true;
+            primaryError = error;
+            scope.abortForFailure(error);
+        }
+
+        const producer = { kind: "block" as const, blockId: block.uniqueId, blockName: block.name };
+        for (const output of block.outputs) {
+            if (output.value == null) {
+                continue;
+            }
+            try {
+                scope.registerValue(output.value, producer);
+            } catch (error) {
+                if (!failed) {
+                    failed = true;
+                    primaryError = error;
+                    scope.abortForFailure(error);
+                }
+            }
+        }
+        if (failed) {
+            throw primaryError;
+        }
+        if (scope.hasPrimaryError) {
+            throw scope.primaryError;
+        }
+        scope.throwIfAborted();
     }
+
+    private async _settleInOrderAsync(tasks: ReadonlyArray<Promise<void>>, scope: BuildScope): Promise<void> {
+        const results = await Promise.allSettled(tasks);
+        for (const result of results) {
+            if (result.status === "rejected" && !scope.isCancellationError(result.reason)) {
+                throw result.reason;
+            }
+        }
+        if (scope.hasPrimaryError) {
+            throw scope.primaryError;
+        }
+        for (const result of results) {
+            if (result.status === "rejected") {
+                throw result.reason;
+            }
+        }
+    }
+}
+
+function IsAbortSignal(value: AbortSignal | INodeAssetBuildOptions | undefined): value is AbortSignal {
+    return typeof value === "object" && value !== null && "aborted" in value && "addEventListener" in value;
 }

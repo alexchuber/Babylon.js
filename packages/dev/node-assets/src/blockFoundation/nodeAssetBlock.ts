@@ -1,6 +1,7 @@
 import { NodeAssetConnectionPoint } from "../connection/nodeAssetConnectionPoint";
 import { NodeAssetConnectionPointDirection } from "../connection/nodeAssetConnectionPointDirection";
 import { type NodeAssetConnectionPointType } from "../connection/nodeAssetConnectionPointType";
+import { type BuildScope } from "../evaluation/buildScope";
 import { type NodeAsset } from "../nodeAsset";
 import { type NodeAssetBlockSerialization } from "../serialization/nodeAssetSerialization";
 import { UniqueIdGenerator } from "../utils/uniqueIdGenerator";
@@ -79,8 +80,9 @@ export abstract class NodeAssetBlock {
     /**
      * Runtime hook invoked by {@link NodeAsset.buildAsync}. This block's inputs' values are
      * already resolved; read them and set this block's outputs' values.
+     * @param scope The build scope. Existing direct callers may omit it.
      */
-    public abstract _buildBlockAsync(): Promise<void>;
+    public abstract _buildBlockAsync(scope?: BuildScope): Promise<void>;
 
     /**
      * Serializes this block to a plain object. Subclasses override to add their own state,

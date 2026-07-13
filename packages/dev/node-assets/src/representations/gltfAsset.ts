@@ -25,6 +25,8 @@ export class GltfAsset {
     /** Deeply frozen representation facts. */
     public readonly manifest: Readonly<NodeAssetJsonObject>;
 
+    private _isDisposed = false;
+
     /**
      * Creates a glTF representation payload.
      * @param document The live document owned by this payload.
@@ -38,6 +40,11 @@ export class GltfAsset {
         this.manifest = validatedMetadata.manifest;
     }
 
+    /** Whether this representation was released by its build scope. */
+    public get isDisposed(): boolean {
+        return this._isDisposed;
+    }
+
     /**
      * Structurally clones the document while preserving immutable metadata.
      * @returns A value-like copy suitable for an independent consumer.
@@ -48,6 +55,11 @@ export class GltfAsset {
             revision: this.revision,
             manifest: this.manifest,
         });
+    }
+
+    /** Releases this wrapper's build ownership once. */
+    public dispose(): void {
+        this._isDisposed = true;
     }
 }
 
