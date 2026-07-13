@@ -244,9 +244,12 @@ consistent with established practice; it is deliberately **not** the assimp-styl
 - **`ResolveUsdStageAsync` Babylon coupling (repo):** the resolution core is Babylon-free, but the public
   convenience entry defaults to Babylon's `Tools.LoadFileAsync` fetcher. "Dependency-free" is accurate for
   the algorithm; the default fetcher is a coupling to keep in mind for worker/transferable design (R8).
-- **USD2glTF path (design choice):** it can either map the resolved stage → glTF directly, or compose
-  `USD2Babylon` + `Babylon2glTF` internally. Either is presented as one named transcoder (PRD R3.2); the
-  choice and its loss profile are settled in the relevant issue, not here.
+- **USD2glTF is genuinely direct (decided, no longer an open choice).** It maps the frozen
+  `IResolvedStage` **straight to a glTF `Document`** via a dedicated `AdaptResolvedStageToScene`-sibling
+  mapper (e.g. `AdaptResolvedStageToDocument` / `gltfStageMapper.ts`) consuming the same `IResolvedStage`.
+  It does **not** route through `BABYLON_SCENE` and does **not** call `AdaptResolvedStageToScene`. This
+  matches §6, ADR 0004, PRD R3.2, and issue 05; the earlier "may compose USD2Babylon + Babylon2glTF"
+  option is retired.
 - **`KHR_interactivity` status (external):** draft/PR at research time — verify current ratification before
   relying on it.
 - **Babylon docs deep-links (external):** several `doc.babylonjs.com` deep links 404'd during research;

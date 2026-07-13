@@ -32,9 +32,12 @@ migration without waiting for USD/Babylon transcoders.
 ## What to build
 
 - New `packages/dev/node-assets/src/selection/selection.ts`
-  - Define `Selection` as a **correlated (owner-discriminated) union** — owner is the discriminant that
-    correlates `targetKind` and `addresses` (glTF pointers vs USD paths vs Babylon refs), not a widened
-    struct with optional fields — plus version, cardinality, and validity state.
+  - Define `Selection` as a **first-class, capturable wire value** in the typed value map and a
+    **correlated (owner-discriminated) union** — owner is the discriminant correlating `targetKind` and
+    `addresses` (glTF pointers vs USD paths vs Babylon refs) — plus version, cardinality, validity state.
+  - Selections **route / fan-out within their owner domain** and are **rejected cross-domain**. Only the
+    TypeScript encoding (interface/class, discriminated union vs boxing) is implementation-owned; the
+    observable behavior is fixed acceptance (ADR 0006).
   - Add glTF helpers for JSON-Pointer-addressed selections.
 - `packages/dev/node-assets/src/selector/pointerToAccessor.ts`
   - Keep existing pointer resolution.
@@ -60,8 +63,9 @@ migration without waiting for USD/Babylon transcoders.
 
 Tests first under `packages/dev/node-assets/test/unit/`:
 
-- `gltfSelection.test.ts` — glTF selections carry owner/version/targetKind/cardinality/addresses and
-  reject stale or wrong-owner use.
+- `gltfSelection.test.ts` — glTF selections carry owner/version/targetKind/cardinality/addresses, are
+  **capturable first-class wire values**, route/fan-out within the glTF domain, and **reject stale,
+  wrong-owner, or cross-domain use** (a glTF selection is rejected by a USD/Babylon consumer).
 - `gltfSelectionRemap.test.ts` — a restructuring mutator remaps one live selection and invalidates
   another with a diagnostic.
 - `selector.test.ts`, `getProperty.test.ts`, `setProperty.test.ts`, `extractTexture.test.ts`,
@@ -75,7 +79,8 @@ Tests first under `packages/dev/node-assets/test/unit/`:
 
 ## Acceptance criteria
 
-- [ ] glTF selections are domain-owned/versioned and wrap the existing JSON Pointer address scheme.
+- [ ] glTF selections are domain-owned/versioned, first-class capturable wire values that route within
+      the glTF domain and are rejected cross-domain; only the TS encoding is implementation-owned.
 - [ ] Existing pointer strings still work for milestone 01–06 graphs.
 - [ ] Mutating glTF blocks remap or invalidate affected selections with diagnostics.
 - [ ] glTF operator blocks and MergeScenes are unchanged except for `GLTF_DOCUMENT` typing.

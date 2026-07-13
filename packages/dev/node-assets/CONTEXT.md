@@ -96,12 +96,14 @@ refinement of the USD loader's `IResolvedDiagnostic` shape (`severity` / `messag
 Surfaced to the user rather than hidden. _Avoid_: warning list, error (fatals throw instead).
 
 **selection** _(milestone 07; supersedes the bare pointer)_:
-A **domain-owned, versioned** address into one representation, carrying **owner** (glTF / USD /
-Babylon), **version** (payload revision), **target kind**, **cardinality** (single vs multi), and
-**addresses**. A mutator that restructures a representation **remaps or invalidates** the selections it
-affects. The glTF domain's addresses are glTF Object Model JSON Pointers (below); USD's are prim /
-property paths resolved as immutable overlay selectors. _Avoid_: pointer (that is only glTF's address
-form), query (until multi-target), binding.
+A **domain-owned, versioned**, **first-class capturable wire value** addressing one representation,
+carrying **owner** (glTF / USD / Babylon), **version** (payload revision), **target kind**,
+**cardinality** (single vs multi), and **addresses**. It **routes / fans out within its owner domain** and
+is **rejected cross-domain**. A mutator that restructures a representation **remaps or invalidates** the
+selections it affects. The glTF domain's addresses are glTF Object Model JSON Pointers (below); USD's are
+prim / property paths resolved as immutable overlay selectors. Only the TypeScript encoding is
+implementation-owned. _Avoid_: pointer (that is only glTF's address form), query (until multi-target),
+binding.
 
 **selector / pointer**:
 A **glTF Object Model JSON Pointer** (the Khronos standard used by `KHR_animation_pointer` /

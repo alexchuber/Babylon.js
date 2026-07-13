@@ -150,6 +150,10 @@ path planner in v1.
   prim/property paths as **immutable overlay selectors**. Babylon selections use scene-object references.
 - R5.3 Mutators **remap or invalidate**: a block that restructures a representation updates the versions
   and addresses of live selections it affects, or marks them invalid with a diagnostic.
+- R5.4 A selection is a **first-class, capturable wire value** in the typed value map: a graph can capture
+  it and flow it on a wire. It is **routable / fan-out within its own owner domain** and **rejected
+  cross-domain**. Only the non-observable **TypeScript encoding** (interface/class, discriminated
+  union/boxing) is implementation-owned; the observable behavior above is fixed acceptance (ADR 0006).
 
 ### R6 — NodeGeometry
 
@@ -350,9 +354,10 @@ Each demo is a ready-made graph in the gallery, builds headlessly, and has visua
 - **AG4 — Fan-out policy (four-way).** `GltfAsset` clones (`cloneDocument`); `UsdAsset` shares the frozen
   stage and overlays don't stomp across branches; `BabylonAsset` requires an explicit LossyFork (no
   implicit clone); `NodeGeometryAsset` clones via serialize / no-build parse. Tests-first (unit).
-- **AG5 — Selections.** A mutator remaps a live selection across a restructure, and invalidates one it
-  cannot remap (with a diagnostic); a stale-version selection is caught, not silently mis-resolved.
-  Tests-first (unit).
+- **AG5 — Selections.** A selection is a first-class capturable wire value; it routes/fans-out within its
+  owner domain and is **rejected cross-domain**. A mutator remaps a live selection across a restructure,
+  and invalidates one it cannot remap (with a diagnostic); a stale-version selection is caught, not
+  silently mis-resolved. Only the TypeScript encoding is implementation-owned. Tests-first (unit).
 - **AG6 — NodeGeometry.** Import builds no geometry; Evaluate produces a result; Bake yields a BabylonAsset;
   selections resolve only post-Evaluate. Tests-first (unit).
 - **AG7 — Materials.** The decomposed glTF and Babylon material builders each produce the expected material;

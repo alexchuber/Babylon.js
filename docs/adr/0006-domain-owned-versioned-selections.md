@@ -42,10 +42,18 @@ mutator **remap or explicitly invalidate** the selections it affects.
 - **Resource lanes are editor grouping/metadata only**, not a selection or type-system axis; a lane
   never changes which domain owns a selection.
 
-## Open design question
+## Decided behavior vs. implementation-owned encoding
 
-The **semantics** above (owner / version / target kind / cardinality / addresses; remap-or-invalidate;
-USD immutable overlays) are decided. The one thing left open is the **concrete shape of a capturable
-`Selection` type** — whether a graph captures a first-class `Selection` value that flows on a wire, or
-selections stay implicit inside Get/Set blocks as today. That is settled in the glTF/USD/Babylon domain
-issues (tests-first) rather than pre-committed here.
+All **observable** selection behavior is **decided and first-class**, not an open product question:
+
+- A **domain-owned, owner/versioned exact `Selection` value is a first-class, capturable wire value** in
+  the concrete typed value map — a graph can capture it and flow it on a wire.
+- A selection is **routable / fan-out within its own owner domain** and **rejected cross-domain** (a glTF
+  selection cannot be consumed by a USD/Babylon block, and vice versa).
+- **Remap / invalidate semantics are fixed**: a mutator that restructures a representation remaps the
+  live selections it affects, or invalidates them with a diagnostic; a stale-version selection never
+  silently mis-resolves.
+
+The **only** thing left implementation-owned is the **non-observable TypeScript encoding** — e.g.
+interface vs class, discriminated union vs boxing — chosen in the domain issues (tests-first) as long as
+the observable acceptance behavior above holds. This is not a product-level open question.
