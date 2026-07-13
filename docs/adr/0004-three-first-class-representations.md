@@ -35,6 +35,12 @@ authoring interchange — a poor universal working representation but the correc
   loader's `AdaptResolvedStageToScene`), **glTF2Babylon** (via the mature glTF 2.0 loader), and
   **Babylon2glTF** (via the glTF serializer). There is **no** implicit conversion, generic
   representation wire, union/`Switch`, mandatory neutral hub, or multi-hop path planner in v1.
+- **Every transcoder is genuinely direct — no representation is a hidden hub.** In particular
+  **USD2glTF maps the resolved stage straight to a glTF `Document`** (a dedicated
+  `AdaptResolvedStageToScene`-sibling mapper, e.g. `AdaptResolvedStageToDocument` /
+  `gltfStageMapper.ts`, consuming the same `IResolvedStage`); it does **not** route through
+  `BABYLON_SCENE`. `Babylon2glTF` is likewise direct. Tests assert the other representation's adapter
+  entry point is never called.
 - Because glTF is the only terminal, every graph that must export a 3D deliverable ends at a glTF
   representation; USD- and Babylon-native middle work must transcode to glTF before export, and that
   transcode is where loss is surfaced (see ADR 0005's LossRecord).

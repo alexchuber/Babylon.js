@@ -41,3 +41,11 @@ mutator **remap or explicitly invalidate** the selections it affects.
   representation. Selections over NodeGeometry only become resolvable after `Evaluate`.
 - **Resource lanes are editor grouping/metadata only**, not a selection or type-system axis; a lane
   never changes which domain owns a selection.
+
+## Open design question
+
+The **semantics** above (owner / version / target kind / cardinality / addresses; remap-or-invalidate;
+USD immutable overlays) are decided. The one thing left open is the **concrete shape of a capturable
+`Selection` type** — whether a graph captures a first-class `Selection` value that flows on a wire, or
+selections stay implicit inside Get/Set blocks as today. That is settled in the glTF/USD/Babylon domain
+issues (tests-first) rather than pre-committed here.

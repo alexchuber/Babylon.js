@@ -40,6 +40,9 @@ their own cleanup rules.
   - Create one build scope per `buildAsync()`.
   - Pass the scope through pull-evaluation.
   - Abort siblings on first fatal error and dispose all registered resources exactly once.
+  - **Fix the pre-existing `Promise.all` sibling-race in `_doEvaluateBlockAsync`** so a failed branch
+    cannot orphan a sibling promise that holds a live `BabylonAsset` engine/scene; use all-settled
+    sibling handling tied to the build scope's disposal ledger.
 - `packages/dev/node-assets/src/blockFoundation/nodeAssetBlock.ts`
   - Thread build-scope access into `_buildBlockAsync` without breaking existing blocks.
 - `packages/dev/node-assets/src/blockFoundation/exportBlock.ts`
@@ -59,8 +62,11 @@ Tests first under `packages/dev/node-assets/test/unit/`:
   cancellation, and limit abort.
 - `buildScopeCancellation.test.ts` — first fatal error aborts in-flight siblings and awaited
   all-settled cleanup still disposes already-produced outputs.
-- `fanOutPolicy.test.ts` — `GltfAsset` fan-out clones, `UsdAsset` fan-out shares immutable stage and
-  copies overlays, `BabylonAsset` fan-out throws a clear affine-policy diagnostic.
+- `fanOutPolicy.test.ts` — three-way dispatch: `GltfAsset` fan-out structural-clones, `UsdAsset` fan-out
+  shares the frozen immutable stage and copies overlays, `BabylonAsset` fan-out throws a clear
+  affine-policy diagnostic (no implicit clone).
+- `siblingRace.test.ts` — a failing branch does not orphan a sibling that holds a live engine/scene;
+  the sibling is disposed via all-settled cleanup (regression for the `_doEvaluateBlockAsync` race).
 - `nodeAsset.test.ts` update — evaluate-once memo still dedupes concurrent fan-in.
 - `lossRecordDiagnostics.test.ts` — non-fatal diagnostics collect on the scope; fatal errors still
   fail the build.

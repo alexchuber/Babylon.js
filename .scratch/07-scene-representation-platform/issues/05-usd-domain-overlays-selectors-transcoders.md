@@ -50,8 +50,10 @@ be mixed with Babylon-domain selection work or editor descriptors.
   - Use `AdaptResolvedStageToScene` from `packages/dev/loaders/src/USD/adapter/usdAdapter.ts`.
   - Preserve right-handed mode and no per-vertex/index flips.
 - `usd2gltf.ts`
-  - Choose and document direct stage→glTF mapping or internal USD2Babylon+Babylon2glTF composition,
-    but expose one named transcoder node.
+  - **Genuinely direct**: map the frozen `IResolvedStage` straight to a glTF `Document` via a dedicated
+    `AdaptResolvedStageToScene`-sibling mapper (e.g. `AdaptResolvedStageToDocument` / `gltfStageMapper.ts`)
+    that consumes the **same** `IResolvedStage`. Do **not** route through `BABYLON_SCENE`. Emit
+    `LossRecord`s (disposition `preserve | bake | drop | extension`) for dropped USD semantics.
 - Register/export new blocks in `packages/dev/node-assets/src/index.ts` and
   `blockFoundation/blockRegistry.ts`.
 
@@ -64,7 +66,9 @@ Tests first under `packages/dev/node-assets/test/unit/`:
 - `usdSelectionOverlay.test.ts` — prim/property selections apply immutable overlays, leave the
   resolved stage untouched, and invalidate stale selections with diagnostics.
 - `usd2gltf.test.ts` — USD fixture transcodes to a valid `GltfAsset`/glb through ExportGLTF and
-  emits expected `LossRecord`s for dropped USD semantics.
+  emits expected `LossRecord`s for dropped USD semantics; a **spy test asserts the Babylon adapter
+  (`AdaptResolvedStageToScene`) is never called** — the path is genuinely direct, not routed through
+  Babylon.
 - `usd2babylon.test.ts` — USD fixture transcodes to `BabylonAsset`; scene is right-handed with
   root-only up-axis/unit correction.
 - `usdFanOut.test.ts` — fan-out shares the frozen stage and copies overlays without branch

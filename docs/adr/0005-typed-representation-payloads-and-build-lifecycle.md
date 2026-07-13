@@ -28,16 +28,22 @@ lifecycle-managed.
 - **Large-input transferables**: big buffers move across the worker boundary as transferables rather
   than being copied.
 - **Diagnostics and `LossRecord`**: a build-scoped diagnostics channel; `LossRecord` is a refinement of
-  the USD loader's `IResolvedDiagnostic` shape used to report what a transcoder dropped/approximated.
+  the USD loader's `IResolvedDiagnostic` shape (`severity` / `message` / optional `path`) with a fixed
+  disposition enum **`preserve | bake | drop | extension`** plus tag refinement, used to report what a
+  transcoder dropped/approximated. It aligns with `IResolvedStage.diagnostics` where the USD resolver is
+  the source.
 - **Affine Babylon fan-out**: a `BabylonAsset` is *affine* — it is not silently cloned on fan-out;
   duplicating a live scene is an **explicit lossy fork**, distinct from the value-like copy-on-fan-out
   used for glTF Documents.
 
 ## Consequences
 
-- Copy-on-fan-out is now per-representation policy, not one rule: `GltfAsset` copies like a value
-  (clone the `Document`); `UsdAsset` is immutable (share the frozen stage; overlays are additive and
-  cheap to copy); `BabylonAsset` is affine (no implicit copy — an explicit fork block, marked lossy).
+- Copy-on-fan-out is now per-representation policy, not one rule — a **three-way dispatch** replacing the
+  current SCENE-only clone: **(a) structural deep-copy** for plain-data kinds (`GltfAsset`'s `Document`;
+  `UsdAsset`'s resolved stage — which, being frozen and edited only via additive overlays, may instead be
+  **shared by reference** with the overlay copied); **(b) share-by-reference** for scalars and `IMAGE`;
+  **(c) affine reject-or-explicit-fork** for `BabylonAsset` — a live resource is **never** implicitly
+  cloned; fanning it to multiple consumers is either rejected or requires an explicit **lossy fork** block.
 - Blocks stop owning disposal. A block produces a typed payload registered with the build scope; the
   scope disposes it. This is what makes cancellation, limits, and sibling cleanup enforceable centrally.
 - `BuildPBRMaterial` and similar assembly blocks are **decomposed per representation** for new graphs

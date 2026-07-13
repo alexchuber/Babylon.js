@@ -110,9 +110,11 @@ path planner in v1.
 - R3.1 Exactly four v1 transcoders: **USD2glTF**, **USD2Babylon**, **glTF2Babylon**, **Babylon2glTF**.
   Each is an explicit palette node under a **Transcoders** category.
 - R3.2 `USD2Babylon` uses `AdaptResolvedStageToScene`; `glTF2Babylon` uses the glTF 2.0 `GLTFLoader`;
-  `Babylon2glTF` uses `GLTFExporter`. `USD2glTF` is a named path (may compose the resolved stage → glTF
-  mapping directly, or `USD2Babylon` + `Babylon2glTF` internally — an implementation choice recorded in
-  the issue, but presented as one named transcoder).
+  `Babylon2glTF` uses `GLTFExporter`. **`USD2glTF` is genuinely direct**: a dedicated resolved-stage →
+  glTF `Document` mapper (an `AdaptResolvedStageToScene`-sibling, e.g. `AdaptResolvedStageToDocument` /
+  `gltfStageMapper.ts`) consuming the **same** `IResolvedStage` as the Babylon adapter — it does **not**
+  route through `BABYLON_SCENE`. No representation is a hidden hub; spy tests assert the other adapter is
+  never called.
 - R3.3 Every transcoder emits `LossRecord`s for approximated/dropped semantics. **No implicit
   conversion, generic wire, mandatory hub, or path planner.**
 - R3.4 glTF is the **only** export terminal; there is no USD or Babylon export block in v1.
@@ -201,8 +203,9 @@ path planner in v1.
 ## Diagnostics & Loss semantics
 
 - **LossRecord** refines the USD loader's `IResolvedDiagnostic` (`severity: "info" | "warning" | "error"`,
-  `message`, optional `path`) with the producing block/transcoder and the representation-specific address
-  of the dropped/approximated feature.
+  `message`, optional `path`) with a fixed disposition enum **`preserve | bake | drop | extension`**, the
+  producing block/transcoder, and the representation-specific address of the dropped/approximated feature.
+  Tags propagate across fan-out / merge / multi-hop.
 - **Fatal vs non-fatal.** Fatal problems (invalid grammar, unsupported document version, missing required
   input) **throw** and fail the build (fail-fast abort). Non-fatal loss (unsupported USD xformOp/light
   schema, glTF-inexpressible USD composition, Babylon-inexpressible construct) is collected as a

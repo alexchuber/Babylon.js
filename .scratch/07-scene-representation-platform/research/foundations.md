@@ -269,3 +269,43 @@ Two formerly-open items are now settled and reflected in ADR 0005, the PRD (R4/R
 Security acceptance additionally **pins the exact existing `tinyusdz` 0.9.9**, and any CI workflow to run
 the milestone-07 suites is **deferred/proposed only** — no `.github` workflow files without explicit user
 approval (issue 11).
+
+## 6. TDD / security synthesis — incorporated (session f47d5dcb)
+
+The extreme-TDD / security / release-validation synthesis (Deliverables 1–8) confirms the architecture and
+adds the following load-bearing decisions and findings, now reflected in the ADRs, PRD, and issues:
+
+- **USD2glTF is genuinely direct.** A dedicated resolved-stage → glTF `Document` mapper (an
+  `AdaptResolvedStageToScene` sibling, e.g. `AdaptResolvedStageToDocument` / `gltfStageMapper.ts`)
+  consumes the **same** `IResolvedStage` as the Babylon adapter; USD2glTF does **not** route through
+  `BABYLON_SCENE`. No representation is a hidden hub; spy tests assert the other adapter is never called.
+  (ADR 0004; PRD R3.2; issue 05.)
+- **Three-way fan-out dispatch.** Generalize `CloneForFanOutAsync`'s current two-branch logic into: (a)
+  structural deep-copy for plain-data kinds (`GltfAsset`; `UsdAsset`'s stage — or share-by-ref since it is
+  frozen + overlay-edited); (b) share-by-ref for scalars/`IMAGE`; (c) **affine reject-or-explicit-fork**
+  for `BabylonAsset`. (ADR 0005; issue 03.)
+- **LossRecord schema.** Fixed disposition enum `preserve | bake | drop | extension` + tag refinement,
+  aligned with `IResolvedDiagnostic`; tags propagate across fan-out/merge/multi-hop. (ADR 0005; PRD
+  diagnostics; issues 05/06.)
+- **BabylonAsset disposal** tests are modeled on Babylon's own `@tools/memory-leak-tests` harness (not
+  NAE's lightweight plain-object style): dispose-on-teardown, idempotent second-dispose, no leaked
+  engine/scene on an unconsumed/rejected fork, and affine-fan-out enforcement. (Issues 06/11.)
+- **glTF→Babylon reuses the loader's render-flag / scene-mode handedness** (`sideOrientation` /
+  `useRightHandedSystem`), exactly as USD→Babylon reuses `AdaptResolvedStageToScene` — **NAE performs no
+  per-vertex winding/normal mutation** for either pair; tests are invocation / scene-mode /
+  side-orientation / round-trip only. (Issue 06.)
+- **The one remaining open design question** is the concrete shape of a capturable `Selection` type; the
+  selection *semantics* (owner/version/cardinality/remap-or-invalidate) are decided. (ADR 0006; issues
+  04/05/06.)
+
+### Real pre-existing findings surfaced by the synthesis
+
+- **`Promise.all` sibling-race** in `nodeAsset.ts` `_doEvaluateBlockAsync`: an orphaned sibling promise can
+  outlive a failed branch — cheap today (plain data), but becomes a **leak** once a sibling can hold a live
+  `NullEngine`/`Scene`. Motivates issue 03's build scope + `allSettled` sibling cleanup.
+- **No cancellation API and no import size/time/memory caps exist today** on any path — the gaps issue 03
+  (cancellation/limits) and issue 11 (fuzz/limits) close.
+- **`fast-check` is not in the repo** — proposed as a **new dev dependency** for fuzz work; it must go
+  through the dependency-vetting process and is not added without approval (issue 11).
+- **tinyusdz 0.9.9 pin is proven correct** via API diff (both older and newer versions break the shipped
+  transcoder); do not bump. (PRD security; issue 11.)

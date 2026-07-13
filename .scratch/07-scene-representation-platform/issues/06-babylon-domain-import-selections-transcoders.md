@@ -74,7 +74,9 @@ Tests first under `packages/dev/node-assets/test/unit/`:
 - `lossyFork.test.ts` — implicit fan-out of `BabylonAsset` fails; explicit LossyFork permits two
   independent Babylon edit branches and reports loss.
 - `buildScopeLifecycle.test.ts` update — `NullEngine`/`Scene` dispose exactly once on success and
-  abort.
+  abort. Model the leak/disposal coverage on Babylon's own `@tools/memory-leak-tests` harness (not NAE's
+  lightweight plain-object style): dispose-on-teardown, idempotent second-dispose, and no leaked
+  engine/scene on an unconsumed or rejected fork.
 
 ## Acceptance criteria
 

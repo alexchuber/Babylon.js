@@ -30,8 +30,15 @@ should not block feature slices from landing their focused unit tests.
 - Every visual config entry needs a `dependsOn` array.
 - Treat malformed assets as untrusted: fail-fast, no hang, no unbounded allocation, no leaked engine
   or scene.
-- **Security acceptance pins the exact existing `tinyusdz` version (0.9.9).** Do not bump, replace, or
-  add a USD dependency as part of this coverage work.
+- **Security acceptance pins the exact existing `tinyusdz` version (0.9.9)** (proven correct via API
+  diff — both older and newer versions break the shipped transcoder). Do not bump, replace, or add a USD
+  dependency as part of this coverage work.
+- **`fast-check` is not in the repo.** If used for property/fuzz coverage it is a **new dev dependency**
+  that must pass the dependency-vetting process first and is not added without explicit approval. Seed
+  fuzz cases by *mutating* existing hand-built fixtures (byte-flip / truncation / field-drop), with a low
+  fixed `numRuns` (25–50) in CI, higher/seeded locally. Fuzz the hand-rolled USD crate decoder + custom
+  LZ4 path too.
+- Model live-resource leak/disposal tests on Babylon's `@tools/memory-leak-tests` harness.
 - **Do NOT add any `.github` CI workflow files** (or edit `.github`) without explicit user approval.
   Any CI wiring for these golden/fuzz/visual suites is recorded here as **deferred / proposed
   acceptance work only** — describe the intended workflow, do not create it.
