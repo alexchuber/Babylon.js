@@ -193,6 +193,7 @@ describe("USD stage mapper", () => {
         expect(Array.from(mesh.indices)).toEqual([0, 1, 2, 0, 2, 3]);
         expect(Array.from(mesh.faceVertexCounts!)).toEqual([4]);
         expect(Array.from(mesh.faceVertexIndices!)).toEqual([0, 1, 2, 3]);
+        expect(mesh.subdivisionScheme).toBe("catmullClark");
         expect(mesh.uvSets).toHaveLength(1);
         expect(Array.from(mesh.uvSets![0])).toEqual([0, 0, 1, 0, 1, 1, 0, 1]);
 

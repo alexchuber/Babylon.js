@@ -57,6 +57,7 @@ export function ResolveMesh(prim: ISdfPrimSpec, context: IStageMappingContext): 
     const vertices: IResolvedVertex[] = [];
     const vertexByKey = new Map<string, number>();
     const indices: number[] = [];
+    const faceVertexResolvedIndices = new Uint32Array(faceVertexIndices.length);
 
     for (const corner of topology.corners) {
         const key = BuildVertexKey(corner, normalSource, uvSources, displayColorSource, displayOpacitySource);
@@ -67,6 +68,7 @@ export function ResolveMesh(prim: ISdfPrimSpec, context: IStageMappingContext): 
             vertices.push({ pointIndex: corner.pointIndex, corner });
         }
         indices.push(vertexIndex);
+        faceVertexResolvedIndices[corner.faceVertexOffset] = vertexIndex;
     }
 
     return {
@@ -78,6 +80,8 @@ export function ResolveMesh(prim: ISdfPrimSpec, context: IStageMappingContext): 
         subdivisionScheme: ResolveSubdivisionScheme(prim),
         faceVertexCounts: new Uint32Array(faceVertexCounts),
         faceVertexIndices: new Uint32Array(faceVertexIndices),
+        sourcePointIndices: new Uint32Array(vertices.map((vertex) => vertex.pointIndex)),
+        faceVertexResolvedIndices,
         doubleSided: AsNumber(GetAttributeValue(GetAttribute(prim, "doubleSided"))) === 1 || GetAttributeValue(GetAttribute(prim, "doubleSided"))?.value === true,
         orientation: AsToken(GetAttributeValue(GetAttribute(prim, "orientation"))) === "leftHanded" ? "leftHanded" : "rightHanded",
         geomSubsets: ResolveGeomSubsets(prim, topology.faceRanges, context),
@@ -99,6 +103,8 @@ export function BuildMeshPoolKey(mesh: IResolvedMesh): string {
         mesh.subdivisionScheme,
         mesh.faceVertexCounts ? Array.from(mesh.faceVertexCounts).join(",") : "",
         mesh.faceVertexIndices ? Array.from(mesh.faceVertexIndices).join(",") : "",
+        mesh.sourcePointIndices ? Array.from(mesh.sourcePointIndices).join(",") : "",
+        mesh.faceVertexResolvedIndices ? Array.from(mesh.faceVertexResolvedIndices).join(",") : "",
         mesh.doubleSided ? "1" : "0",
         mesh.orientation,
     ].join(";");
@@ -305,7 +311,7 @@ function BuildSubsetRanges(faceIndices: number[], faceRanges: IFaceIndexRange[])
 
 function ResolveSubdivisionScheme(prim: ISdfPrimSpec): IResolvedMesh["subdivisionScheme"] {
     const scheme = AsToken(GetAttributeValue(GetAttribute(prim, "subdivisionScheme")));
-    return scheme === "catmullClark" || scheme === "loop" || scheme === "bilinear" ? scheme : "none";
+    return scheme === "none" || scheme === "loop" || scheme === "bilinear" ? scheme : "catmullClark";
 }
 
 function CompareUvPrimvarNames(left: string, right: string): number {

@@ -116,4 +116,41 @@ describe("USD geometry adapter", () => {
         scene.dispose();
         engine.dispose();
     });
+
+    it("computes generated normals from left-handed authored orientation", () => {
+        const { engine, scene } = createScene();
+
+        const mesh = CreateMeshFromResolved("LeftHanded", createResolvedMesh({ orientation: "leftHanded" }), scene);
+        const normals = mesh.getVerticesData(VertexBuffer.NormalKind)!;
+
+        expect(normals[2]).toBeCloseTo(-1);
+        expect(normals[5]).toBeCloseTo(-1);
+
+        scene.dispose();
+        engine.dispose();
+    });
+
+    it("subdivides an authored pentagon without inventing internal faces", () => {
+        const { engine, scene } = createScene();
+        const positions = new Float32Array([0, 1, 0, 0.95, 0.31, 0, 0.59, -0.81, 0, -0.59, -0.81, 0, -0.95, 0.31, 0]);
+
+        const mesh = CreateMeshFromResolved(
+            "Pentagon",
+            createResolvedMesh({
+                positions,
+                indices: new Uint32Array([0, 1, 2, 0, 2, 3, 0, 3, 4]),
+                subdivisionScheme: "catmullClark",
+                faceVertexCounts: new Uint32Array([5]),
+                faceVertexIndices: new Uint32Array([0, 1, 2, 3, 4]),
+                faceVertexResolvedIndices: new Uint32Array([0, 1, 2, 3, 4]),
+            }),
+            scene
+        );
+
+        expect(mesh.getTotalVertices()).toBe(11);
+        expect(mesh.getIndices()!.length).toBe(30);
+
+        scene.dispose();
+        engine.dispose();
+    });
 });

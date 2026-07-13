@@ -585,9 +585,9 @@ function DecodeNonInlinedScalar(context: ICrateContext, rep: ICrateValueRep): Sd
         case CrateValueType.Double:
             return { type: "double", value: reader.readFloat64() };
         case CrateValueType.Int64:
-            return { type: "int64", value: reader.readInt64() };
+            return { type: "int64", value: reader.readBigInt64() };
         case CrateValueType.UInt64:
-            return { type: "uint64", value: reader.readUint64() };
+            return { type: "uint64", value: reader.readBigUint64() };
         case CrateValueType.Vec2f:
         case CrateValueType.Vec2h:
         case CrateValueType.Vec2i:
@@ -649,7 +649,10 @@ function DecodeArrayValue(context: ICrateContext, rep: ICrateValueRep): SdfValue
         case CrateValueType.Int64:
             return AsSdfValue("int64[]", ReadInt64Array(reader, count, rep.isCompressed));
         case CrateValueType.UInt64:
-            return AsSdfValue("uint64[]", ReadInt64Array(reader, count, rep.isCompressed));
+            return AsSdfValue(
+                "uint64[]",
+                ReadInt64Array(reader, count, rep.isCompressed).map((value) => BigInt.asUintN(64, value))
+            );
         case CrateValueType.Half:
             return { type: "half[]", value: ReadFloatingArray(reader, count, rep.isCompressed, ReadHalf) };
         case CrateValueType.Float:

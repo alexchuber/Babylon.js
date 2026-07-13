@@ -202,6 +202,10 @@ export interface IResolvedMesh {
     faceVertexCounts?: Uint32Array;
     /** Original pre-triangulation face vertex indices, aligned with `faceVertexCounts`. */
     faceVertexIndices?: Uint32Array;
+    /** Source point index for each resolved vertex, used to align point-domain payloads such as skinning after vertex splits. */
+    sourcePointIndices?: Uint32Array;
+    /** Resolved vertex index for each original face corner, aligned with `faceVertexIndices`. */
+    faceVertexResolvedIndices?: Uint32Array;
     /** Whether the mesh is double-sided (USD `doubleSided`). */
     doubleSided: boolean;
     /** Authored orientation; combined with triangulation winding so the adapter can set side orientation. */

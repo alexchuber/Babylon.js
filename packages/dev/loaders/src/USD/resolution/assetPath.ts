@@ -13,7 +13,7 @@
  * @returns the resolved identifier the prefetch/archive maps are keyed under
  */
 export function ResolveAssetIdentifier(assetPath: string, fromIdentifier: string): string {
-    if (/^[a-z][a-z0-9+.-]*:\/\//i.test(assetPath) || assetPath.startsWith("/")) {
+    if (/^[a-z][a-z0-9+.-]*:\/\//i.test(assetPath)) {
         return assetPath;
     }
 
@@ -23,6 +23,14 @@ export function ResolveAssetIdentifier(assetPath: string, fromIdentifier: string
     // loader resolves a .bin dropped alongside its .gltf.
     if (fromIdentifier.startsWith("file:")) {
         return `file:${(assetPath.split("/").pop() ?? assetPath).toLowerCase()}`;
+    }
+
+    if (/^[a-z][a-z0-9+.-]*:\/\//i.test(fromIdentifier)) {
+        return new URL(assetPath, fromIdentifier).href;
+    }
+
+    if (assetPath.startsWith("/")) {
+        return assetPath;
     }
 
     const lastSlash = fromIdentifier.lastIndexOf("/");

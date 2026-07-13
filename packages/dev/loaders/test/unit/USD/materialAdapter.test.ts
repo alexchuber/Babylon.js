@@ -58,4 +58,41 @@ describe("USD material adapter", () => {
         scene.dispose();
         engine.dispose();
     });
+
+    it("does not interpret a specular-workflow roughness texture as glossiness", () => {
+        const engine = new NullEngine();
+        const scene = new Scene(engine);
+        const resolvedMaterial: IResolvedMaterial = {
+            name: "SpecularWorkflow",
+            baseColor: [1, 1, 1],
+            opacity: 1,
+            metallic: 0,
+            roughness: 0.8,
+            emissiveColor: [0, 0, 0],
+            ior: 1.5,
+            occlusion: 1,
+            clearcoat: 0,
+            clearcoatRoughness: 0,
+            useSpecularWorkflow: true,
+            specularColor: [1, 1, 1],
+            textures: {
+                roughness: {
+                    uri: "roughness.png",
+                    data: OneByOnePng,
+                    uvSet: 0,
+                    wrapU: "repeat",
+                    wrapV: "repeat",
+                    colorSpace: "raw",
+                },
+            },
+        };
+
+        const material = CreateMaterialFromResolved(resolvedMaterial, scene, {});
+
+        expect(material.microSurface).toBeCloseTo(0.2);
+        expect(material.microSurfaceTexture).toBeNull();
+
+        scene.dispose();
+        engine.dispose();
+    });
 });

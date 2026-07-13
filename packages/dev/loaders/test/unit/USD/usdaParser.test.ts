@@ -101,4 +101,33 @@ describe("USDA parser", () => {
         expect(lod?.variants.high.children[0].path).toBe("/World/M/HighGeom");
         expect(lod?.variants.low.properties.purpose.kind).toBe("attribute");
     });
+
+    it("preserves unsafe int64 and uint64 values as bigint", () => {
+        const layer = ParseUsda(
+            `#usda 1.0
+def Xform "Root"
+{
+    int64 signedValue = -9007199254740993
+    uint64 unsignedValue = 18446744073709551615
+}`,
+            "memory:integers.usda"
+        );
+
+        const properties = layer.rootPrims[0].properties;
+        expect(properties.signedValue.kind === "attribute" ? properties.signedValue.default : undefined).toEqual({
+            type: "int64",
+            value: -9007199254740993n,
+        });
+        expect(properties.unsignedValue.kind === "attribute" ? properties.unsignedValue.default : undefined).toEqual({
+            type: "uint64",
+            value: 18446744073709551615n,
+        });
+    });
+
+    it("rejects excessive prim nesting with a controlled parser error", () => {
+        const depth = 300;
+        const source = `#usda 1.0\n${Array.from({ length: depth }, (_, index) => `def Xform "P${index}" {`).join("\n")}\n${"}\n".repeat(depth)}`;
+
+        expect(() => ParseUsda(source, "memory:deep.usda")).toThrow("nesting depth exceeds");
+    });
 });

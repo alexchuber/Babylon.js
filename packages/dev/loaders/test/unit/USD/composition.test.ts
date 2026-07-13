@@ -163,7 +163,7 @@ describe("USD composition", () => {
         const world = layer.rootPrims[0];
 
         expect(diagnostics).toEqual([]);
-        expect(world.children.map((child) => child.name)).toEqual(["B", "C"]);
+        expect(world.children.map((child) => child.name)).toEqual(["C", "B"]);
     });
 
     it("produces the same composed structure and diagnostics on every run", () => {
@@ -179,6 +179,43 @@ describe("USD composition", () => {
         const second = ComposeLayerStack(root, resolve);
 
         expect(second).toEqual(first);
+    });
+
+    it("gives earlier same-kind references stronger opinions", () => {
+        const first = createLayer("first.usd", [createPrim("/Asset", { properties: { value: tokenAttribute("first") } })]);
+        const second = createLayer("second.usd", [createPrim("/Asset", { properties: { value: tokenAttribute("second") } })]);
+        const root = createLayer("root.usd", [
+            createPrim("/World", {
+                references: explicitReferences([
+                    { assetPath: "first.usd", primPath: "/Asset" },
+                    { assetPath: "second.usd", primPath: "/Asset" },
+                ]),
+            }),
+        ]);
+
+        const { layer } = ComposeLayerStack(root, (assetPath) => (assetPath === "first.usd" ? first : second));
+
+        expectTokenValue(layer.rootPrims[0].properties.value, "first");
+    });
+
+    it("applies layer offset after scaling sample times", () => {
+        const animated = createLayer("animated.usd", [
+            createPrim("/Animated", {
+                properties: {
+                    value: {
+                        kind: "attribute",
+                        typeName: "float",
+                        timeSamples: { times: [1], values: [{ type: "float", value: 1 }] },
+                    },
+                },
+            }),
+        ]);
+        const root = createLayer("root.usd", [], [{ assetPath: "animated.usd", layerOffset: { scale: 2, offset: 10 } }]);
+
+        const { layer } = ComposeLayerStack(root, () => animated);
+
+        const property = layer.rootPrims[0].properties.value;
+        expect(property.kind === "attribute" ? property.timeSamples?.times : undefined).toEqual([12]);
     });
 });
 

@@ -278,7 +278,8 @@ function ComposePathArcs(
 ): ISdfPrimSpec {
     let result = composedPrim;
 
-    for (const path of paths) {
+    for (let index = paths.length - 1; index >= 0; index--) {
+        const path = paths[index];
         const arcPrim = ComposeLocalPrim(path, state, context);
 
         if (!arcPrim) {
@@ -307,7 +308,8 @@ function ComposeAssetArcs(
 ): ISdfPrimSpec {
     let result = composedPrim;
 
-    for (const arc of arcs) {
+    for (let index = arcs.length - 1; index >= 0; index--) {
+        const arc = arcs[index];
         const arcPrim = ComposeAssetArc(composedPrim, arc, state, context, arcName);
 
         if (arcPrim) {
@@ -1023,7 +1025,7 @@ function ApplyLayerOffsetToProperties(properties: Record<string, ISdfPropertySpe
 
         const remappedSamples = property.timeSamples.times
             .map((time, index) => ({
-                time: (time + layerOffset.offset) * layerOffset.scale,
+                time: time * layerOffset.scale + layerOffset.offset,
                 value: Clone(property.timeSamples!.values[index]),
             }))
             .sort((left, right) => left.time - right.time);

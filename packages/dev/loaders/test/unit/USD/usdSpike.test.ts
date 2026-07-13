@@ -34,8 +34,8 @@ describe("USD loader (Phase 0 spike)", () => {
 
         const mesh = result.meshes.find((m) => m.name === "Quad");
         expect(mesh).toBeDefined();
-        expect(mesh!.getTotalVertices()).toBe(4);
-        expect(mesh!.getIndices()!.length).toBe(6); // quad fan-triangulates to 2 triangles
+        expect(mesh!.getTotalVertices()).toBe(9);
+        expect(mesh!.getIndices()!.length).toBe(24);
 
         scene.dispose();
         engine.dispose();

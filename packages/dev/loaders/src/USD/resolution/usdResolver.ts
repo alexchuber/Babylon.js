@@ -139,7 +139,7 @@ async function ResolveUsdzStageAsync(
     };
 
     const stage = await ComposeAndMapStageAsync(rootLayer, fetchArchiveAssetAsync, diagnostics);
-    await LoadEmbeddedTextureDataAsync(stage, fetchArchiveAssetAsync, diagnostics);
+    await LoadEmbeddedTextureDataAsync(stage, fetchArchiveAssetAsync, stage.diagnostics);
     return FreezeResolvedStage(stage);
 }
 
@@ -292,16 +292,17 @@ async function FetchLayerWaveAsync(
         }
 
         const detected = DetectUsdFormat(result.data);
-        if (detected.format !== "usda") {
+        if (detected.format === "usdz") {
             diagnostics.push({
                 severity: "warning",
-                message: `External ${detected.format.toUpperCase()} layer '${result.request.assetPath}' is not yet supported and was skipped.`,
+                message: `Nested USDZ layer '${result.request.assetPath}' is not supported and was skipped.`,
                 path: result.request.identifier,
             });
             continue;
         }
 
-        const childLayer = ParseUsda(detected.text ?? "", result.request.identifier);
+        const childLayer =
+            detected.format === "usdc" ? ParseCrate(result.data as ArrayBuffer, result.request.identifier) : ParseUsda(detected.text ?? "", result.request.identifier);
         layers.set(result.request.identifier, childLayer);
         nextFrontier.push(childLayer);
     }

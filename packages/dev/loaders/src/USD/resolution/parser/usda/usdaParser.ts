@@ -18,7 +18,7 @@ const DiagnosticMetadataKey = "parser:diagnostics";
 
 type TokenKind = "identifier" | "number" | "string" | "asset" | "path" | "symbol" | "eof";
 type ListOperation = "prepend" | "append" | "add" | "delete" | "reorder";
-type RawValue = boolean | number | string | IRawAsset | IRawPath | IRawDictionary | RawValue[];
+type RawValue = boolean | number | string | IRawNumber | IRawAsset | IRawPath | IRawDictionary | RawValue[];
 
 interface IToken {
     kind: TokenKind;
@@ -29,6 +29,11 @@ interface IToken {
 
 interface IRawAsset {
     kind: "asset";
+    value: string;
+}
+
+interface IRawNumber {
+    kind: "number";
     value: string;
 }
 
@@ -299,6 +304,7 @@ class UsdaLexer {
 }
 
 class UsdaParser {
+    private _primDepth = 0;
     private _position = 0;
     private readonly _diagnostics: IUsdaParseDiagnostic[] = [];
 
@@ -458,8 +464,16 @@ class UsdaParser {
         }
 
         if (this._matchSymbol("{")) {
-            this._parseBody(prim, path);
-            this._expectSymbol("}");
+            if (this._primDepth >= 256) {
+                throw new Error(`USDA parser: prim nesting depth exceeds 256 at '${path}'.`);
+            }
+            this._primDepth++;
+            try {
+                this._parseBody(prim, path);
+                this._expectSymbol("}");
+            } finally {
+                this._primDepth--;
+            }
         } else {
             this._diagnose(`Expected body for prim '${path}'.`);
         }
@@ -920,7 +934,7 @@ class UsdaParser {
         this._consume();
         switch (token.kind) {
             case "number":
-                return Number(token.value);
+                return { kind: "number", value: token.value };
             case "string":
                 return token.value;
             case "asset":
@@ -1106,6 +1120,7 @@ function NormalizeScalarTypeName(typeName: string): SdfScalarValueType | undefin
         case "half":
         case "float":
         case "double":
+            return typeName;
         case "string":
         case "token":
         case "asset":
@@ -1155,6 +1170,7 @@ function ConvertScalarPayload(tag: SdfScalarValueType, raw: RawValue | undefined
             return Math.trunc(RawToNumber(raw));
         case "int64":
         case "uint64":
+            return RawToBigInt(raw);
         case "half":
         case "float":
         case "double":
@@ -1194,8 +1210,8 @@ function InferSdfValue(raw: RawValue | undefined): SdfValue {
         return { type: "dictionary", value: RawToMetadata(raw) };
     }
     if (Array.isArray(raw)) {
-        if (raw.every((item) => typeof item === "number")) {
-            return { type: "double[]", value: raw as number[] };
+        if (raw.every((item) => typeof item === "number" || IsRawNumber(item))) {
+            return { type: "double[]", value: raw.map((item) => RawToNumber(item)) };
         }
         return { type: "token[]", value: raw.map((item) => RawToString(item)) };
     }
@@ -1204,6 +1220,10 @@ function InferSdfValue(raw: RawValue | undefined): SdfValue {
     }
     if (typeof raw === "number") {
         return Number.isInteger(raw) ? { type: "int", value: raw } : { type: "double", value: raw };
+    }
+    if (IsRawNumber(raw)) {
+        const value = Number(raw.value);
+        return Number.isInteger(value) ? { type: "int", value } : { type: "double", value };
     }
     if (IsRawAsset(raw)) {
         return { type: "asset", value: { authoredPath: raw.value } };
@@ -1322,8 +1342,18 @@ function RawToNumber(raw: RawValue | undefined): number {
     if (typeof raw === "number") {
         return raw;
     }
+    if (IsRawNumber(raw)) {
+        return Number(raw.value);
+    }
     const value = Number(RawToString(raw));
     return Number.isNaN(value) ? 0 : value;
+}
+
+function RawToBigInt(raw: RawValue | undefined): bigint {
+    if (IsRawNumber(raw)) {
+        return BigInt(raw.value);
+    }
+    return BigInt(Math.trunc(RawToNumber(raw)));
 }
 
 function RawToBoolean(raw: RawValue | undefined): boolean {
@@ -1343,13 +1373,21 @@ function RawToString(raw: RawValue | undefined): string {
     if (typeof raw === "string" || typeof raw === "number" || typeof raw === "boolean") {
         return String(raw);
     }
+    if (IsRawNumber(raw)) {
+        return raw.value;
+    }
     if (IsRawAsset(raw) || IsRawPath(raw)) {
         return raw.value;
     }
+
     if (Array.isArray(raw)) {
         return raw.map((item) => RawToString(item)).join(",");
     }
     return "";
+}
+
+function IsRawNumber(value: RawValue | undefined): value is IRawNumber {
+    return typeof value === "object" && value !== null && !Array.isArray(value) && "kind" in value && value.kind === "number";
 }
 
 function RawToAssetPath(raw: RawValue | undefined): string {

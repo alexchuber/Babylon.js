@@ -22,8 +22,8 @@ const DefaultEmbeddedTextureMimeType = "image/png";
  * represent it as one uniform multiplier; bias and non-uniform color scale need a shader-level swizzle
  * path that the frozen resolved-stage contract does not provide. The USD specular workflow is
  * approximated with PBRMaterial's specular/glossiness controls (`reflectivityColor` and
- * `microSurface = 1 - roughness`); per-texel roughness-to-glossiness inversion is not expressible by a
- * stock texture assignment.
+ * `microSurface = 1 - roughness`). A specular-workflow roughness texture is intentionally skipped
+ * because assigning it directly would reinterpret roughness as glossiness.
  *
  * @param material the resolved USD material data
  * @param scene the scene to create the Babylon material in
@@ -91,8 +91,6 @@ function ApplyTextureSlots(babylonMaterial: PBRMaterial, material: IResolvedMate
 
     if (!material.useSpecularWorkflow) {
         ApplyMetallicRoughnessTextures(babylonMaterial, textures.metallic, textures.roughness, scene);
-    } else if (textures.roughness) {
-        babylonMaterial.microSurfaceTexture = CreateTexture(textures.roughness, scene, "roughness");
     }
 
     ApplyClearCoatTextures(babylonMaterial, textures.clearcoat, textures.clearcoatRoughness, scene);

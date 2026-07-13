@@ -219,8 +219,8 @@ describe("USD loader integration", () => {
         // The "Ref" prim has no geometry of its own; its mesh comes entirely from the referenced child layer.
         const referenced = result.meshes.find((mesh) => mesh.name === "Ref");
         expect(referenced).toBeDefined();
-        expect(referenced!.getTotalVertices()).toBe(4);
-        expect(referenced!.getIndices()!.length).toBe(6);
+        expect(referenced!.getTotalVertices()).toBe(9);
+        expect(referenced!.getIndices()!.length).toBe(24);
 
         scene.dispose();
         engine.dispose();
@@ -271,7 +271,7 @@ describe("USD loader integration", () => {
         // "Ref" resolves only if the embedded child.usda was composed straight from the archive.
         const referenced = result.meshes.find((mesh) => mesh.name === "Ref");
         expect(referenced).toBeDefined();
-        expect(referenced!.getTotalVertices()).toBe(4);
+        expect(referenced!.getTotalVertices()).toBe(9);
 
         scene.dispose();
         engine.dispose();
@@ -312,7 +312,7 @@ describe("USD loader integration", () => {
         // "Ref" resolves only if the sibling layer was fetched and composed from the dropped set.
         const referenced = result.meshes.find((mesh) => mesh.name === "Ref");
         expect(referenced).toBeDefined();
-        expect(referenced!.getTotalVertices()).toBe(4);
+        expect(referenced!.getTotalVertices()).toBe(9);
         expect(requested).toContain("file:child.usda");
 
         scene.dispose();
@@ -353,4 +353,123 @@ describe("USD loader integration", () => {
         expect(new Uint8Array(baseColor!.data!)).toEqual(pngBytes);
         expect(baseColor?.mimeType).toBe("image/png");
     });
+
+    it("retains missing embedded texture failures in resolved-stage diagnostics", async () => {
+        const usdz = fflate.zipSync({ "scene.usda": new TextEncoder().encode(usdzTextureUsda) }, { level: 0 });
+
+        const stage = await ResolveUsdStageWithFetcherAsync(usdz.buffer, "", "scene.usdz", { fflate }, async () => {
+            throw new Error("missing texture");
+        });
+
+        expect(stage.diagnostics).toEqual(
+            expect.arrayContaining([
+                expect.objectContaining({
+                    severity: "warning",
+                    message: expect.stringContaining("Failed to load embedded texture"),
+                }),
+            ])
+        );
+    });
+
+    it("returns asset-container-owned materials and removes loaded entities from the scene", async () => {
+        const engine = new NullEngine();
+        const scene = new Scene(engine);
+        const loader = new USDFileLoader();
+
+        const container = await loader.loadAssetContainerAsync(scene, materialUsda, "");
+
+        expect(container.meshes.some((mesh) => mesh.name === "Quad")).toBe(true);
+        expect(container.materials).toHaveLength(1);
+        expect(scene.meshes.some((mesh) => mesh.name === "Quad")).toBe(false);
+        expect(scene.materials).toHaveLength(0);
+
+        container.dispose();
+        scene.dispose();
+        engine.dispose();
+    });
+
+    it("composes an external USDC layer", async () => {
+        const root = `#usda 1.0
+def "Ref" (
+    prepend references = @child.usdc@</root>
+)
+{
+}`;
+        const child = CreateMinimalUsdc();
+
+        const stage = await ResolveUsdStageWithFetcherAsync(root, "", "root.usda", {}, async (identifier) => {
+            expect(identifier).toBe("child.usdc");
+            return child.buffer;
+        });
+
+        expect(stage.root.children.map((prim) => prim.name)).toEqual(["Ref"]);
+        expect(stage.diagnostics.some((diagnostic) => diagnostic.message.includes("USDC") && diagnostic.message.includes("skipped"))).toBe(false);
+    });
 });
+
+function CreateMinimalUsdc(): Uint8Array {
+    const bootstrapSize = 88;
+    const sections = [
+        ["TOKENS", Bytes([...Uint64Bytes(1), ...Uint64Bytes(5), ...AsciiBytes("root\0")])],
+        ["STRINGS", Bytes(Uint64Bytes(0))],
+        ["FIELDS", Bytes(Uint64Bytes(0))],
+        ["FIELDSETS", Bytes([...Uint64Bytes(1), ...Uint32Bytes(0xffffffff)])],
+        ["PATHS", Bytes([...Uint64Bytes(2), ...Uint32Bytes(0), ...Uint32Bytes(0), 1, 0, 0, 0, ...Uint32Bytes(1), ...Uint32Bytes(0), 0, 0, 0, 0])],
+        ["SPECS", Bytes([...Uint64Bytes(1), ...Uint32Bytes(1), ...Uint32Bytes(0), ...Int32Bytes(6)])],
+    ] as const;
+    let offset = bootstrapSize;
+    const records = sections.map(([name, bytes]) => {
+        const record = { name, start: offset, bytes };
+        offset += bytes.length;
+        return record;
+    });
+    const toc = Bytes([
+        ...Uint64Bytes(records.length),
+        ...records.flatMap((record) => [...SectionNameBytes(record.name), ...Int64Bytes(BigInt(record.start)), ...Int64Bytes(BigInt(record.bytes.length))]),
+    ]);
+    const output = new Uint8Array(offset + toc.length);
+    output.set(AsciiBytes("PXR-USDC"), 0);
+    output[9] = 1;
+    output.set(Int64Bytes(BigInt(offset)), 16);
+    for (const record of records) {
+        output.set(record.bytes, record.start);
+    }
+    output.set(toc, offset);
+    return output;
+}
+
+function SectionNameBytes(name: string): number[] {
+    const bytes = new Uint8Array(16);
+    bytes.set(AsciiBytes(name));
+    return Array.from(bytes);
+}
+
+function AsciiBytes(value: string): number[] {
+    return Array.from(value, (character) => character.charCodeAt(0));
+}
+
+function Bytes(values: number[]): Uint8Array {
+    return new Uint8Array(values);
+}
+
+function Uint32Bytes(value: number): number[] {
+    const bytes = new Uint8Array(4);
+    new DataView(bytes.buffer).setUint32(0, value, true);
+    return Array.from(bytes);
+}
+
+function Int32Bytes(value: number): number[] {
+    const bytes = new Uint8Array(4);
+    new DataView(bytes.buffer).setInt32(0, value, true);
+    return Array.from(bytes);
+}
+
+function Uint64Bytes(value: number): number[] {
+    return Int64Bytes(BigInt(value));
+}
+
+function Int64Bytes(value: bigint): number[] {
+    const bytes = new Uint8Array(8);
+    new DataView(bytes.buffer).setBigInt64(0, value, true);
+    return Array.from(bytes);
+}

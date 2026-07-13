@@ -12,6 +12,8 @@ interface IGeometryBuffers {
     uvSets?: Float32Array[];
     colors?: Float32Array;
     geomSubsets?: IResolvedGeomSubset[];
+    faceVertexCounts?: Uint32Array;
+    faceVertexResolvedIndices?: Uint32Array;
 }
 
 interface ISubdivisionFace {
@@ -73,7 +75,7 @@ export function CreateMeshFromResolved(name: string, resolved: IResolvedMesh, sc
     const vertexData = new VertexData();
     vertexData.positions = geometry.positions as unknown as number[];
     vertexData.indices = geometry.indices as unknown as number[];
-    vertexData.normals = (geometry.normals ?? ComputeUsdWindingNormals(geometry.positions, geometry.indices)) as unknown as number[];
+    vertexData.normals = (geometry.normals ?? ComputeUsdWindingNormals(geometry.positions, geometry.indices, resolved.orientation)) as unknown as number[];
 
     if (geometry.uvSets && geometry.uvSets.length > 0) {
         vertexData.uvs = geometry.uvSets[0] as unknown as number[];
@@ -120,6 +122,8 @@ function TessellateResolvedMesh(resolved: IResolvedMesh, levels = 1): IGeometryB
         uvSets: resolved.uvSets,
         colors: resolved.colors,
         geomSubsets: resolved.geomSubsets ? resolved.geomSubsets.map(CloneGeomSubset) : undefined,
+        faceVertexCounts: resolved.faceVertexCounts,
+        faceVertexResolvedIndices: resolved.faceVertexResolvedIndices,
     };
 
     if (resolved.subdivisionScheme === "none" || levels < 1) {
@@ -158,7 +162,7 @@ function CloneGeomSubset(subset: IResolvedGeomSubset): IResolvedGeomSubset {
     };
 }
 
-function ComputeUsdWindingNormals(positions: Float32Array, indices: Uint32Array): Float32Array {
+function ComputeUsdWindingNormals(positions: Float32Array, indices: Uint32Array, orientation: IResolvedMesh["orientation"]): Float32Array {
     const normals = new Float32Array(positions.length);
 
     for (let index = 0; index < indices.length; index += 3) {
@@ -173,9 +177,10 @@ function ComputeUsdWindingNormals(positions: Float32Array, indices: Uint32Array)
         const acy = positions[c + 1] - positions[a + 1];
         const acz = positions[c + 2] - positions[a + 2];
 
-        const nx = aby * acz - abz * acy;
-        const ny = abz * acx - abx * acz;
-        const nz = abx * acy - aby * acx;
+        const orientationSign = orientation === "leftHanded" ? -1 : 1;
+        const nx = (aby * acz - abz * acy) * orientationSign;
+        const ny = (abz * acx - abx * acz) * orientationSign;
+        const nz = (abx * acy - aby * acx) * orientationSign;
 
         AddNormal(normals, a, nx, ny, nz);
         AddNormal(normals, b, nx, ny, nz);
@@ -267,7 +272,7 @@ function SplitTrianglesUniformly(source: IGeometryBuffers): IGeometryBuffers {
 }
 
 function SubdivideCatmullClarkOnce(source: IGeometryBuffers): IGeometryBuffers {
-    const faces = BuildSubdivisionFaces(source.indices);
+    const faces = BuildSubdivisionFaces(source);
     const edges = new Map<string, IEdgeInfo>();
     const edgeKeys: string[] = [];
     const vertexFaces: number[][] = CreateNestedIndexArray(source.positions.length / 3);
@@ -445,7 +450,25 @@ function CreateCatmullClarkFaceVertices(source: IGeometryBuffers, target: ISubdi
     }
 }
 
-function BuildSubdivisionFaces(indices: Uint32Array): ISubdivisionFace[] {
+function BuildSubdivisionFaces(source: IGeometryBuffers): ISubdivisionFace[] {
+    if (source.faceVertexCounts && source.faceVertexResolvedIndices) {
+        const faces: ISubdivisionFace[] = [];
+        let faceVertexOffset = 0;
+        let sourceIndexOffset = 0;
+        for (const count of source.faceVertexCounts) {
+            const sourceIndexCount = Math.max(0, count - 2) * 3;
+            faces.push({
+                vertices: Array.from(source.faceVertexResolvedIndices.subarray(faceVertexOffset, faceVertexOffset + count)),
+                sourceIndexOffset,
+                sourceIndexCount,
+            });
+            faceVertexOffset += count;
+            sourceIndexOffset += sourceIndexCount;
+        }
+        return faces;
+    }
+
+    const indices = source.indices;
     const faces: ISubdivisionFace[] = [];
     for (let indexOffset = 0; indexOffset < indices.length; indexOffset += 3) {
         const first = [indices[indexOffset], indices[indexOffset + 1], indices[indexOffset + 2]];

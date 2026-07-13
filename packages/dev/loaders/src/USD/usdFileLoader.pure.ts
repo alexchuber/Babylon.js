@@ -118,15 +118,40 @@ export class USDFileLoader implements ISceneLoaderPluginAsync, ISceneLoaderPlugi
         fileName?: string
     ): Promise<AssetContainer> {
         const container = new AssetContainer(scene);
+        const existingMeshes = new Set(scene.meshes);
+        const existingTransformNodes = new Set(scene.transformNodes);
+        const existingSkeletons = new Set(scene.skeletons);
+        const existingAnimationGroups = new Set(scene.animationGroups);
+        const existingLights = new Set(scene.lights);
+        const existingCameras = new Set(scene.cameras);
+        const existingGeometries = new Set(scene.geometries);
+        const existingMaterials = new Set(scene.materials);
+        const existingTextures = new Set(scene.textures);
         this._assetContainer = container;
         try {
-            const result = await this.importMeshAsync(null, scene, data, rootUrl, onProgress, fileName);
-            container.meshes.push(...result.meshes);
-            container.transformNodes.push(...result.transformNodes);
-            container.skeletons.push(...result.skeletons);
-            container.animationGroups.push(...result.animationGroups);
-            container.lights.push(...result.lights);
-            container.geometries.push(...result.geometries);
+            await this.importMeshAsync(null, scene, data, rootUrl, onProgress, fileName);
+            AppendNewEntities(container.meshes, scene.meshes, existingMeshes);
+            AppendNewEntities(container.transformNodes, scene.transformNodes, existingTransformNodes);
+            AppendNewEntities(container.skeletons, scene.skeletons, existingSkeletons);
+            AppendNewEntities(container.animationGroups, scene.animationGroups, existingAnimationGroups);
+            AppendNewEntities(container.lights, scene.lights, existingLights);
+            AppendNewEntities(container.cameras, scene.cameras, existingCameras);
+            AppendNewEntities(container.geometries, scene.geometries, existingGeometries);
+            AppendNewEntities(container.materials, scene.materials, existingMaterials);
+            AppendNewEntities(container.textures, scene.textures, existingTextures);
+            container.removeAllFromScene();
+        } catch (error) {
+            AppendNewEntities(container.meshes, scene.meshes, existingMeshes);
+            AppendNewEntities(container.transformNodes, scene.transformNodes, existingTransformNodes);
+            AppendNewEntities(container.skeletons, scene.skeletons, existingSkeletons);
+            AppendNewEntities(container.animationGroups, scene.animationGroups, existingAnimationGroups);
+            AppendNewEntities(container.lights, scene.lights, existingLights);
+            AppendNewEntities(container.cameras, scene.cameras, existingCameras);
+            AppendNewEntities(container.geometries, scene.geometries, existingGeometries);
+            AppendNewEntities(container.materials, scene.materials, existingMaterials);
+            AppendNewEntities(container.textures, scene.textures, existingTextures);
+            container.dispose();
+            throw error;
         } finally {
             this._assetContainer = null;
         }
@@ -146,6 +171,14 @@ export class USDFileLoader implements ISceneLoaderPluginAsync, ISceneLoaderPlugi
             return bytes.buffer;
         }
         throw new Error("USD: unsupported data type passed to the loader.");
+    }
+}
+
+function AppendNewEntities<T>(target: T[], sceneEntities: readonly T[], existing: ReadonlySet<T>): void {
+    for (const entity of sceneEntities) {
+        if (!existing.has(entity) && !target.includes(entity)) {
+            target.push(entity);
+        }
     }
 }
 

@@ -285,7 +285,7 @@ function ResolveInfluencesPerVertex(
 }
 
 function AlignSkinningBuffers(
-    meshPrim: ISdfPrimSpec,
+    _meshPrim: ISdfPrimSpec,
     resolvedMesh: IResolvedMesh,
     jointIndices: number[],
     jointWeights: number[],
@@ -293,25 +293,10 @@ function AlignSkinningBuffers(
 ): { jointIndices: number[]; jointWeights: number[] } {
     const resolvedVertexCount = Math.floor(resolvedMesh.positions.length / 3);
     const sourceVertexCount = Math.floor(Math.min(jointIndices.length, jointWeights.length) / influencesPerVertex);
-    if (sourceVertexCount === resolvedVertexCount) {
-        return {
-            jointIndices: jointIndices.slice(0, resolvedVertexCount * influencesPerVertex),
-            jointWeights: jointWeights.slice(0, resolvedVertexCount * influencesPerVertex),
-        };
-    }
-
-    const points = AsVec3Array(GetAttributeValue(GetAttribute(meshPrim, "points")));
-    if (!points || points.length !== sourceVertexCount) {
-        return {
-            jointIndices: jointIndices.slice(0, sourceVertexCount * influencesPerVertex),
-            jointWeights: jointWeights.slice(0, sourceVertexCount * influencesPerVertex),
-        };
-    }
-
     const alignedJointIndices: number[] = [];
     const alignedJointWeights: number[] = [];
     for (let vertexIndex = 0; vertexIndex < resolvedVertexCount; vertexIndex++) {
-        const sourceIndex = FindPointIndex(points, resolvedMesh.positions, vertexIndex);
+        const sourceIndex = resolvedMesh.sourcePointIndices?.[vertexIndex] ?? Math.min(vertexIndex, Math.max(0, sourceVertexCount - 1));
         const sourceOffset = sourceIndex * influencesPerVertex;
         for (let influenceIndex = 0; influenceIndex < influencesPerVertex; influenceIndex++) {
             alignedJointIndices.push(jointIndices[sourceOffset + influenceIndex] ?? 0);
@@ -319,15 +304,6 @@ function AlignSkinningBuffers(
         }
     }
     return { jointIndices: alignedJointIndices, jointWeights: alignedJointWeights };
-}
-
-function FindPointIndex(points: Vec3[], positions: Float32Array, vertexIndex: number): number {
-    const offset = vertexIndex * 3;
-    const x = positions[offset];
-    const y = positions[offset + 1];
-    const z = positions[offset + 2];
-    const index = points.findIndex((point) => point[0] === x && point[1] === y && point[2] === z);
-    return index >= 0 ? index : 0;
 }
 
 function AsQuatArray(value: SdfValue | undefined): Quat[] | undefined {
