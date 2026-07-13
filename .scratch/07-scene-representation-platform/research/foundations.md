@@ -280,10 +280,23 @@ adds the following load-bearing decisions and findings, now reflected in the ADR
   consumes the **same** `IResolvedStage` as the Babylon adapter; USD2glTF does **not** route through
   `BABYLON_SCENE`. No representation is a hidden hub; spy tests assert the other adapter is never called.
   (ADR 0004; PRD R3.2; issue 05.)
-- **Three-way fan-out dispatch.** Generalize `CloneForFanOutAsync`'s current two-branch logic into: (a)
-  structural deep-copy for plain-data kinds (`GltfAsset`; `UsdAsset`'s stage — or share-by-ref since it is
-  frozen + overlay-edited); (b) share-by-ref for scalars/`IMAGE`; (c) **affine reject-or-explicit-fork**
-  for `BabylonAsset`. (ADR 0005; issue 03.)
+- **Four-way fan-out dispatch.** Generalize `CloneForFanOutAsync`'s current two-branch logic into: (a)
+  structural deep-copy for plain-data (`GltfAsset`; `UsdAsset` shares the frozen stage + copies the
+  immutable overlay); (b) share-by-ref for scalars/`Image`; (c) **affine reject-or-explicit-fork** for
+  `BabylonAsset`; (d) **serialize / no-build parse** for `NodeGeometryAsset`. (ADR 0005; issue 03.)
+- **Precise payload shapes.** `GltfAsset` = live `Document`; `UsdAsset` = frozen plain `IResolvedStage` +
+  immutable overlay (no WASM handle); `BabylonAsset` = live `NullEngine`+`Scene` (affine);
+  `NodeGeometryAsset` = parsed unevaluated graph **plus** an optional frozen `VertexData` snapshot post-
+  `Evaluate` (both states; does not collapse into `BabylonAsset`); `Image` = plain. (ADR 0005; PRD R1.3/R6;
+  issues 05/07.)
+- **Cancellation is required foundation pre-work** (not a gated gap): `buildAsync(signal?: AbortSignal)`,
+  internal `AbortController`, cooperative abort, sibling-abort-on-first-failure, await-full-settlement/
+  cleanup, one deterministic primary error. Plus **four explicit configurable limits** (per-source bytes,
+  total-source bytes, block/evaluation count, wall-clock) with behavior-safe defaults and a
+  "every-current-fixture-still-builds" regression. (ADR 0005; PRD R4/security; issue 03.)
+- **Vocabulary (ADR 0004).** `import block` = bytes → one representation (0-in/1-out, e.g.
+  `ImportUSDBlock`); `transcoder` = mid-graph representation → representation (1-in/1-out, no bytes). Two
+  distinct terms.
 - **LossRecord schema.** Fixed disposition enum `preserve | bake | drop | extension` + tag refinement,
   aligned with `IResolvedDiagnostic`; tags propagate across fan-out/merge/multi-hop. (ADR 0005; PRD
   diagnostics; issues 05/06.)
@@ -313,8 +326,9 @@ adds the following load-bearing decisions and findings, now reflected in the ADR
   `NullEngine`/`Scene`. Motivates issue 03's build scope + `allSettled` sibling cleanup.
 - **No cancellation API and no import size/time/memory caps exist today** on any path — the gaps issue 03
   (cancellation/limits) and issue 11 (fuzz/limits) close.
-- **`fast-check` is not in the repo** — proposed as a **new dev dependency** for fuzz work; it must go
-  through the dependency-vetting process and is not added without approval (issue 11).
+- **`fast-check` is not assumed.** Deterministic **corpus mutation of existing fixtures** is the default
+  fuzz strategy; adopting `fast-check` is a new dev dependency gated behind the dependency gate's 7-step
+  vetting (independent Layer-0 prep) and not added without approval (issue 11).
 - **tinyusdz 0.9.9 pin is proven correct** via API diff (both older and newer versions break the shipped
   transcoder); do not bump. (PRD security; issue 11.)
 

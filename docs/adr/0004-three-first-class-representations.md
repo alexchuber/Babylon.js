@@ -44,6 +44,9 @@ authoring interchange — a poor universal working representation but the correc
 - Because glTF is the only terminal, every graph that must export a 3D deliverable ends at a glTF
   representation; USD- and Babylon-native middle work must transcode to glTF before export, and that
   transcode is where loss is surfaced (see ADR 0005's LossRecord).
+- **Vocabulary.** An **import block** is bytes → one representation (0 representation inputs, 1 output;
+  e.g. `ImportUSDBlock`). A **transcoder** is mid-graph representation → representation (1 input, 1
+  output, no bytes). These are two distinct terms, resolving the earlier naming collision.
 - `NODE_GEOMETRY` is a procedural resource, not a representation; `IMAGE` and scalars remain resources
   and values. Representations are the three 3D kinds only.
 - Transcoders are inherently lossy funnels in both directions (glTF cannot express USD composition;

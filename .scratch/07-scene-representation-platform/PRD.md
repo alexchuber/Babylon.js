@@ -94,7 +94,10 @@ path planner in v1.
 - R1.2 `SCENE` is retained **only** as a deprecated alias for `GLTF_DOCUMENT` (accepts existing wires;
   emits a deprecation diagnostic). Nothing new emits `SCENE`.
 - R1.3 Each representation flows as a typed payload wrapper: `GltfAsset` (wraps `Document`), `UsdAsset`
-  (wraps frozen `IResolvedStage` + overlay), `BabylonAsset` (owns `NullEngine` + `Scene`).
+  (wraps frozen `IResolvedStage` + immutable overlay, no WASM handle), `BabylonAsset` (owns `NullEngine`
+  + `Scene`). The `NODE_GEOMETRY` **resource** is a `NodeGeometryAsset` wrapper that owns a parsed,
+  **unevaluated** graph plus an **optional frozen `VertexData` snapshot once `Evaluate` runs** (it carries
+  both states; it does not collapse into a `BabylonAsset` on `Evaluate`). `Image` stays plain.
 - R1.4 Resource lanes are editor grouping/metadata only — never a type-system or selection axis.
 
 ### R2 — Import blocks (bytes → representation)
@@ -121,15 +124,23 @@ path planner in v1.
 
 ### R4 — Build scope, lifecycle, cancellation
 
-- R4.1 A per-`buildAsync()` **build scope** owns typed values, an internal abort signal
-  (cancellation/fail-fast), resource and wall-clock limits, `allSettled` sibling cleanup, a lifetime
-  ledger, and single-disposal of every representation resource (engines, scenes, frozen stages, large
-  buffers).
-- R4.2 Fan-out policy is per kind: `GltfAsset` cloned (`cloneDocument`), `UsdAsset` shared (immutable +
-  additive overlays), `BabylonAsset` **affine** — no implicit clone; an explicit **lossy fork** block
-  performs the copy and marks it lossy.
+- R4.1 A per-`buildAsync()` **build scope** owns typed values, cancellation, `allSettled` sibling cleanup,
+  a lifetime ledger, and single-disposal of every representation resource (engines, scenes, frozen stages,
+  large buffers). Cancellation is **required foundation pre-work**: `buildAsync(signal?: AbortSignal)` with
+  an internal `AbortController`, cooperative abort checks, **sibling-abort-on-first-failure**,
+  await-full-settlement and cleanup before resolving/rejecting, and **one deterministic primary error**
+  even under concurrent failures (this closes the `Promise.all` sibling-race).
+- R4.1a **Explicit configurable build limits** with behavior-safe defaults (existing graphs must not start
+  failing): per-source-asset bytes, total-source bytes, block/evaluation count, and wall-clock timeout.
+  Each raises a clear typed error on exceed with verified cleanup on the triggered abort; a regression
+  proves every current fixture still builds under the defaults.
+- R4.2 Fan-out policy is a **four-way dispatch**: `GltfAsset` structural-clone (`cloneDocument`);
+  `UsdAsset` shared frozen stage + copied immutable overlay; `BabylonAsset` **affine** — no implicit
+  clone, explicit **lossy fork** only; `NodeGeometryAsset` cloned via **serialize / no-build parse** (its
+  own category). Scalars and `Image` share by reference.
 - R4.3 On abort or fatal error, in-flight work is cancelled and already-produced siblings are disposed
-  (`allSettled`), never leaked.
+  (`allSettled`), never leaked — including any live `BabylonAsset`/`NodeGeometryAsset` an aborted sibling
+  was holding.
 
 ### R5 — Selections (domain-owned, versioned)
 
@@ -142,8 +153,10 @@ path planner in v1.
 
 ### R6 — NodeGeometry
 
-- R6.1 Import is unevaluated; explicit `Evaluate` runs the procedural graph; `Bake` produces a
-  `BabylonAsset`. Selections over NodeGeometry resolve only after `Evaluate`.
+- R6.1 Import produces a `NodeGeometryAsset` with a parsed, **unevaluated** graph. An explicit `Evaluate`
+  runs the procedural graph and adds a **frozen `VertexData` snapshot** to the asset (both states coexist;
+  no collapse into `BabylonAsset`). A separate `Bake` produces a `BabylonAsset`. Selections over
+  NodeGeometry resolve only after `Evaluate`. Fan-out clones the asset via **serialize / no-build parse**.
 
 ### R7 — Materials
 
@@ -270,8 +283,11 @@ representation handedness is **never inferred from preview rendering**:
 
 ## Security & Performance limits
 
-- **Resource limits.** The build scope enforces a configurable cap on peak allocation / live resource
-  count and a wall-clock time limit per build; exceeding either aborts with a diagnostic (not a crash).
+- **Resource limits.** The build scope enforces **explicit, configurable limits with behavior-safe
+  defaults**: per-source-asset bytes, total-source bytes, block/evaluation count, and a wall-clock timeout
+  per build. Exceeding any limit raises a clear typed error and aborts cleanly (not a crash), disposing
+  any live `BabylonAsset`/`NodeGeometryAsset` held; a regression proves every current fixture still builds
+  under the defaults.
 - **Untrusted input.** USD/glTF/image bytes are treated as untrusted: parsers must fail-fast on malformed
   input (the USD crate/usda/usdz readers already throw on invalid grammar/version), never hang, and never
   allocate unbounded from attacker-controlled counts. Fuzz coverage (see acceptance gates) exercises this.
@@ -325,11 +341,15 @@ Each demo is a ready-made graph in the gallery, builds headlessly, and has visua
 - **AG2 — Four transcoders, no more.** USD2glTF, USD2Babylon, glTF2Babylon, Babylon2glTF each build
   headlessly on a fixture; there is **no** generic conversion, union/`Switch`, hub, or path planner; glTF
   is the only export terminal. Tests-first (unit + integration).
-- **AG3 — Build scope.** Cancellation aborts an in-flight build; resource/time limits abort with a
-  diagnostic (not a crash); a lifetime-ledger test proves every representation resource is disposed exactly
-  once on success **and** on abort; `allSettled` sibling cleanup verified. Tests-first (unit).
-- **AG4 — Fan-out policy.** glTF fan-out clones; USD fan-out shares (immutable) and overlays don't stomp;
-  Babylon fan-out requires an explicit LossyFork (no implicit clone). Tests-first (unit).
+- **AG3 — Build scope.** `buildAsync(signal?)` cancellation aborts an in-flight build with
+  sibling-abort-on-first-failure and one deterministic primary error under concurrent failure; each of the
+  four explicit limits (per-source bytes, total-source bytes, block/evaluation count, wall-clock) raises a
+  clear typed error and aborts cleanly, and every current fixture still builds under the defaults; a
+  lifetime-ledger test proves every representation/resource is disposed exactly once on success **and** on
+  abort; `allSettled` sibling cleanup verified. Tests-first (unit).
+- **AG4 — Fan-out policy (four-way).** `GltfAsset` clones (`cloneDocument`); `UsdAsset` shares the frozen
+  stage and overlays don't stomp across branches; `BabylonAsset` requires an explicit LossyFork (no
+  implicit clone); `NodeGeometryAsset` clones via serialize / no-build parse. Tests-first (unit).
 - **AG5 — Selections.** A mutator remaps a live selection across a restructure, and invalidates one it
   cannot remap (with a diagnostic); a stale-version selection is caught, not silently mis-resolved.
   Tests-first (unit).

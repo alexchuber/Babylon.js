@@ -68,19 +68,21 @@ The word is kept only to explain older graphs and the deprecated `SCENE` alias. 
 new work: say **representation** (or the specific kind) instead.
 
 **import block** _(milestone 07 vocabulary)_:
-A source block that turns foreign **bytes → a representation** (e.g. `ImportGLTF` → GLTF_DOCUMENT,
-`ImportUSD` → USD_STAGE). The bytes→representation boundary; format lives only here and at export.
-_Avoid_: loader (reserve for the glTF boundary block), reader, decoder.
+A source block (**0 representation inputs, 1 representation output**) that turns foreign **bytes → one
+representation** (e.g. `ImportGLTF` → GLTF_DOCUMENT, `ImportUSD` → USD_STAGE). The bytes→representation
+boundary; format lives only here and at export. _Avoid_: loader (reserve for the glTF boundary block),
+reader, decoder, transcoder (that is mid-graph, no bytes).
 
 **transcoder** _(redefined in milestone 07)_:
-A block that converts **one representation → another representation**. v1 ships four explicit, named
-transcoders and no others: **USD2glTF** (USD_STAGE → GLTF_DOCUMENT), **USD2Babylon** (USD_STAGE →
-BABYLON_SCENE, via the USD loader's `AdaptResolvedStageToScene`), **glTF2Babylon** (GLTF_DOCUMENT →
-BABYLON_SCENE, via the mature glTF 2.0 loader), and **Babylon2glTF** (BABYLON_SCENE → GLTF_DOCUMENT, via
-the glTF serializer). Every transcoder is a lossy funnel and reports what it dropped as a **LossRecord**.
-There is no implicit conversion, generic representation wire, union/`Switch`, mandatory hub, or path
-planner in v1. _Avoid_: converter (too generic), adapter (that is the USD loader's internal step), the
-milestone 01–06 sense of "the import block's internal funnel" (that is now an **import block**).
+A **mid-graph** block (**1 representation input, 1 representation output, no bytes**) that converts **one
+representation → another representation**. v1 ships four explicit, named transcoders and no others:
+**USD2glTF** (USD_STAGE → GLTF_DOCUMENT, a direct resolved-stage→`Document` mapper, not routed through
+Babylon), **USD2Babylon** (USD_STAGE → BABYLON_SCENE, via the USD loader's `AdaptResolvedStageToScene`),
+**glTF2Babylon** (GLTF_DOCUMENT → BABYLON_SCENE, via the mature glTF 2.0 loader), and **Babylon2glTF**
+(BABYLON_SCENE → GLTF_DOCUMENT, via the glTF serializer). Every transcoder is a lossy funnel and reports
+what it dropped as a **LossRecord**. There is no implicit conversion, generic representation wire,
+union/`Switch`, mandatory hub, or path planner in v1. _Avoid_: converter (too generic), adapter (that is
+the USD loader's internal step), import block (that is bytes→representation, 0-in/1-out).
 
 **build scope** _(milestone 07)_:
 The per-`buildAsync()` owner of representation lifecycle: typed values, cancellation / fail-fast abort,
@@ -124,9 +126,12 @@ clone — an explicit lossy fork block); resources and scalars are shared. _Avoi
 a user term), COW.
 
 **Evaluate / Bake** _(milestone 07; NodeGeometry)_:
-`NODE_GEOMETRY` imports **unevaluated**. An explicit **Evaluate** runs the procedural graph to a
-concrete result; a **Bake** turns that result into a Babylon representation. Selections over NodeGeometry
-only resolve after Evaluate. _Avoid_: run, compile, generate (informally fine), realize.
+`NODE_GEOMETRY` imports **unevaluated** as a **NodeGeometryAsset** (a resource wrapper owning a parsed,
+unevaluated graph). An explicit **Evaluate** runs the procedural graph and adds a **frozen `VertexData`
+snapshot** to that same asset (both states coexist — it does **not** collapse into a `BabylonAsset`); a
+**Bake** is the separate step that turns the evaluated result into a Babylon representation. On fan-out a
+NodeGeometryAsset is cloned via **serialize / no-build parse** (its own copy category). Selections over
+NodeGeometry only resolve after Evaluate. _Avoid_: run, compile, generate (informally fine), realize.
 
 **handedness** _(milestone 07)_:
 Babylon's coordinate mode is dynamic and **preserved**, exposed via `scene.useRightHandedSystem`. USD

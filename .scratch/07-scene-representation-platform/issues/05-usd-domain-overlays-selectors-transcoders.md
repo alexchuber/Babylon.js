@@ -63,8 +63,11 @@ Tests first under `packages/dev/node-assets/test/unit/`:
 
 - `importUSD2.test.ts` — valid `.usda`/`.usdz` fixture imports to `UsdAsset`, frozen stage is
   mutation-safe, legacy tinyusdz block remains loadable but hidden/deprecated.
-- `usdSelectionOverlay.test.ts` — prim/property selections apply immutable overlays, leave the
-  resolved stage untouched, and invalidate stale selections with diagnostics.
+- `usdSelectionOverlay.test.ts` — overlay edits **never mutate the frozen base**; overlay edits are
+  **visible when resolving through the asset but invisible on the base directly**; prim/property selections
+  invalidate stale selections with diagnostics.
+- `usdOverlayFanOut.test.ts` — overlay state **survives fan-out/clone without leaking across branches**
+  (one branch's overlay edit is not visible on a sibling branch).
 - `usd2gltf.test.ts` — USD fixture transcodes to a valid `GltfAsset`/glb through ExportGLTF and
   emits expected `LossRecord`s for dropped USD semantics; a **spy test asserts the Babylon adapter
   (`AdaptResolvedStageToScene`) is never called** — the path is genuinely direct, not routed through

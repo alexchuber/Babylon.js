@@ -31,17 +31,23 @@ build scope, and BabylonAsset but should stay separate from USD/glTF/Babylon tra
 
 ## What to build
 
+- New `packages/dev/node-assets/src/representations/nodeGeometryAsset.ts` (a **resource** wrapper, not a
+  representation)
+  - Owns a **parsed, unevaluated graph** plus an **optional frozen `VertexData` snapshot once `Evaluate`
+    runs** — it carries **both** states and does **not** collapse into a `BabylonAsset` on `Evaluate`.
+  - Fan-out clone is **serialize / no-build parse** (its own build-scope fan-out category; see issue 03).
 - New blocks:
   - `packages/dev/node-assets/src/Blocks/importNodeGeometry.ts`
   - `packages/dev/node-assets/src/Blocks/evaluateNodeGeometry.ts`
   - `packages/dev/node-assets/src/Blocks/bakeNodeGeometry.ts`
 - `importNodeGeometry.ts`
-  - Bytes/JSON/source payload → `NODE_GEOMETRY` resource without evaluating.
+  - Bytes/JSON/source payload → `NodeGeometryAsset` (parsed, **unevaluated**) without evaluating.
 - `evaluateNodeGeometry.ts`
-  - `NODE_GEOMETRY` → evaluated resource payload, registered with build scope.
+  - Runs the procedural graph and adds the **frozen `VertexData` snapshot** to the same
+    `NodeGeometryAsset` (both states coexist); registered with build scope.
   - Resolve NodeGeometry selections only after evaluation.
 - `bakeNodeGeometry.ts`
-  - Evaluated NodeGeometry → `BABYLON_SCENE` / `BabylonAsset`.
+  - Evaluated `NodeGeometryAsset` → `BABYLON_SCENE` / `BabylonAsset` (the separate collapse step).
   - Reuse the Babylon domain lifecycle and handedness behavior from issue 06.
 - `packages/dev/node-assets/src/connection/nodeAssetConnectionPointType.ts`
   - Use the `NODE_GEOMETRY` kind added in issue 02; do not add a new representation kind.
@@ -49,16 +55,18 @@ build scope, and BabylonAsset but should stay separate from USD/glTF/Babylon tra
   - Add NodeGeometry selection validity state for pre/post-Evaluate behavior as a resource helper,
     not as a representation owner.
 - `packages/dev/node-assets/src/index.ts` and `blockFoundation/blockRegistry.ts`
-  - Export/register the three blocks.
+  - Export/register the wrapper and three blocks.
 
 ## Tests
 
 Tests first under `packages/dev/node-assets/test/unit/`:
 
-- `importNodeGeometry.test.ts` — ImportNodeGeometry produces a `NODE_GEOMETRY` resource and does
-  not build/evaluate geometry.
-- `evaluateNodeGeometry.test.ts` — Evaluate runs the procedural graph exactly once per build and
-  produces a deterministic evaluated payload.
+- `importNodeGeometry.test.ts` — ImportNodeGeometry produces a `NodeGeometryAsset` (parsed, unevaluated)
+  and does **not** build/evaluate geometry.
+- `evaluateNodeGeometry.test.ts` — Evaluate runs the procedural graph exactly once per build and adds a
+  frozen `VertexData` snapshot to the same asset (both states coexist; no collapse into `BabylonAsset`).
+- `nodeGeometryFanOut.test.ts` — fan-out clones the asset via serialize / no-build parse; branches do not
+  share mutable state and an unevaluated clone stays unevaluated.
 - `bakeNodeGeometry.test.ts` — Bake produces a `BabylonAsset` that is owned/disposed by build
   scope.
 - `nodeGeometrySelections.test.ts` — selections are unresolved before Evaluate, valid after
@@ -68,8 +76,11 @@ Tests first under `packages/dev/node-assets/test/unit/`:
 
 ## Acceptance criteria
 
-- [ ] `ImportNodeGeometry` outputs `NODE_GEOMETRY` and performs no geometry build.
-- [ ] `EvaluateNodeGeometry` is explicit and evaluate-once.
+- [ ] `ImportNodeGeometry` outputs a `NodeGeometryAsset` (parsed, unevaluated) and performs no geometry
+      build.
+- [ ] `EvaluateNodeGeometry` is explicit, evaluate-once, and adds a frozen `VertexData` snapshot without
+      collapsing into `BabylonAsset`.
+- [ ] `NodeGeometryAsset` fan-out clones via serialize / no-build parse (its own category).
 - [ ] `BakeNodeGeometry` produces `BABYLON_SCENE` / `BabylonAsset`.
 - [ ] NodeGeometry selection behavior is pre/post-Evaluate aware and never becomes a
       representation-domain selector.

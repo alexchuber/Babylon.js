@@ -33,11 +33,12 @@ should not block feature slices from landing their focused unit tests.
 - **Security acceptance pins the exact existing `tinyusdz` version (0.9.9)** (proven correct via API
   diff — both older and newer versions break the shipped transcoder). Do not bump, replace, or add a USD
   dependency as part of this coverage work.
-- **`fast-check` is not in the repo.** If used for property/fuzz coverage it is a **new dev dependency**
-  that must pass the dependency-vetting process first and is not added without explicit approval. Seed
-  fuzz cases by *mutating* existing hand-built fixtures (byte-flip / truncation / field-drop), with a low
-  fixed `numRuns` (25–50) in CI, higher/seeded locally. Fuzz the hand-rolled USD crate decoder + custom
-  LZ4 path too.
+- **`fast-check` is NOT assumed.** The **default** fuzz strategy is deterministic **corpus mutation of the
+  existing hand-built fixtures** (byte-flip / truncation / field-drop), seeded, with a low fixed `numRuns`
+  (25–50) in CI and higher locally. Adopting `fast-check` is a **new dev dependency** that must first clear
+  the dependency gate's **7-step vetting methodology** (independent, early / Layer-0 prep) and is not added
+  without explicit approval; if it doesn't clear cleanly, the deterministic corpus-mutation suite stands on
+  its own. Fuzz the hand-rolled USD crate decoder + custom LZ4 path too.
 - Model live-resource leak/disposal tests on Babylon's `@tools/memory-leak-tests` harness.
 - **Do NOT add any `.github` CI workflow files** (or edit `.github`) without explicit user approval.
   Any CI wiring for these golden/fuzz/visual suites is recorded here as **deferred / proposed
