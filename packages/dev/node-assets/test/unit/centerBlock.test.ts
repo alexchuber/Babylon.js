@@ -4,6 +4,7 @@ import { describe, expect, it } from "vitest";
 import { NodeAsset } from "../../src/nodeAsset";
 import { NodeAssetConnectionPointType } from "../../src/connection/nodeAssetConnectionPointType";
 import { CenterBlock } from "../../src/Blocks/centerBlock";
+import { CreateTestGltfAsset } from "./testGltfAsset";
 
 /**
  * Builds a triangle offset far from the origin so centering has a visible effect on the scene bounds.
@@ -32,14 +33,14 @@ async function GetSceneBoundsCenterAsync(document: Document): Promise<vec3> {
 }
 
 describe("CenterBlock", () => {
-    it("registers a SCENE input and output on construction", () => {
+    it("registers a GLTF_DOCUMENT input and output on construction", () => {
         const asset = new NodeAsset("center");
         const block = new CenterBlock("center", asset);
 
         expect(block.inputs).toHaveLength(1);
         expect(block.outputs).toHaveLength(1);
-        expect(block.input.type).toBe(NodeAssetConnectionPointType.SCENE);
-        expect(block.output.type).toBe(NodeAssetConnectionPointType.SCENE);
+        expect(block.input.type).toBe(NodeAssetConnectionPointType.GLTF_DOCUMENT);
+        expect(block.output.type).toBe(NodeAssetConnectionPointType.GLTF_DOCUMENT);
     });
 
     it("recenters the scene at the origin, passing the same document through", async () => {
@@ -49,11 +50,12 @@ describe("CenterBlock", () => {
 
         const asset = new NodeAsset("center");
         const block = new CenterBlock("center", asset);
-        block.input.value = document;
+        const gltf = CreateTestGltfAsset(document);
+        block.input.value = gltf;
 
         await block._buildBlockAsync();
 
-        expect(block.output.value).toBe(document);
+        expect(block.output.value).toBe(gltf);
         const after = await GetSceneBoundsCenterAsync(document);
         expect(Math.abs(after[0])).toBeLessThan(0.5);
     });

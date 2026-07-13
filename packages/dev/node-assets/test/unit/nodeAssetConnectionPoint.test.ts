@@ -13,8 +13,8 @@ import { NodeAssetConnectionPointType } from "../../src/connection/nodeAssetConn
 class TestBlock extends NodeAssetBlock {
     public static override ClassName = "TestBlock";
 
-    public readonly input = this._registerInput("input", NodeAssetConnectionPointType.SCENE);
-    public readonly output = this._registerOutput("output", NodeAssetConnectionPointType.SCENE);
+    public readonly input = this._registerInput("input", NodeAssetConnectionPointType.GLTF_DOCUMENT);
+    public readonly output = this._registerOutput("output", NodeAssetConnectionPointType.GLTF_DOCUMENT);
 
     public override async _buildBlockAsync(): Promise<void> {}
 }
@@ -103,14 +103,26 @@ describe("NodeAssetConnectionPoint", () => {
         expect(() => a.input.connectTo(b.input)).toThrow();
     });
 
-    it("rejects connecting incompatible types", () => {
+    it("rejects connecting different representation kinds under strict kind equality", () => {
         const asset = new NodeAsset("test");
         const owner = new TestBlock("owner", asset);
-        const output = new NodeAssetConnectionPoint("out", owner, NodeAssetConnectionPointType.SCENE, NodeAssetConnectionPointDirection.Output);
-        const incompatibleType = (NodeAssetConnectionPointType.SCENE + 1) as NodeAssetConnectionPointType;
-        const input = new NodeAssetConnectionPoint("in", owner, incompatibleType, NodeAssetConnectionPointDirection.Input);
+        const output = new NodeAssetConnectionPoint("out", owner, NodeAssetConnectionPointType.GLTF_DOCUMENT, NodeAssetConnectionPointDirection.Output);
+        const input = new NodeAssetConnectionPoint("in", owner, NodeAssetConnectionPointType.USD_STAGE, NodeAssetConnectionPointDirection.Input);
 
         expect(() => output.connectTo(input)).toThrow();
+    });
+
+    it("connects the legacy SCENE spelling to GLTF_DOCUMENT only because both are numeric zero", () => {
+        const asset = new NodeAsset("test");
+        const owner = new TestBlock("owner", asset);
+        const legacyOutput = new NodeAssetConnectionPoint("legacy", owner, NodeAssetConnectionPointType.SCENE, NodeAssetConnectionPointDirection.Output);
+        const gltfInput = new NodeAssetConnectionPoint("gltf", owner, NodeAssetConnectionPointType.GLTF_DOCUMENT, NodeAssetConnectionPointDirection.Input);
+
+        legacyOutput.connectTo(gltfInput);
+
+        expect(NodeAssetConnectionPointType.SCENE).toBe(0);
+        expect(NodeAssetConnectionPointType.GLTF_DOCUMENT).toBe(0);
+        expect(gltfInput.connectedPoint).toBe(legacyOutput);
     });
 
     it("reports isConnected as false before any connection", () => {

@@ -6,6 +6,7 @@ import { ExportGLTFBlock } from "../../src/Blocks/exportGLTFBlock";
 import { ImportGLTFBlock } from "../../src/Blocks/importGLTFBlock";
 import { MergeScenes } from "../../src/Blocks/mergeScenes";
 import { NodeAsset } from "../../src/nodeAsset";
+import { GetTestGltfDocument } from "./testGltfAsset";
 
 // The global vitest setup stubs draco3dgltf (it is optional for @dev/core). The import/export blocks
 // depend on it for real, so use the actual encoder/decoder here.
@@ -72,7 +73,7 @@ async function ReimportAsync(glb: Uint8Array): Promise<Document> {
     const importer = new ImportGLTFBlock("reimport", new NodeAsset("reimport"));
     importer.data = glb;
     await importer._buildBlockAsync();
-    return importer.output.value as Document;
+    return GetTestGltfDocument(importer.output.value);
 }
 
 /**
@@ -104,7 +105,7 @@ async function MergeGlbsAsync(glbs: Uint8Array[]): Promise<{ merged: Document; a
 }
 
 describe("MergeScenes", () => {
-    it("starts with two SCENE inputs and one SCENE output", () => {
+    it("starts with two GLTF_DOCUMENT inputs and one GLTF_DOCUMENT output", () => {
         const merge = new MergeScenes("merge", new NodeAsset("asset"));
         expect(merge.inputs).toHaveLength(2);
         expect(merge.inputs.map((input) => input.name)).toEqual(["input0", "input1"]);
@@ -172,7 +173,7 @@ describe("MergeScenes", () => {
         expect(reloaded.getRoot().listMaterials()).toHaveLength(3);
     }, 40000);
 
-    it("merges any SCENE source regardless of how it was produced", async () => {
+    it("merges any GLTF_DOCUMENT source regardless of how it was produced", async () => {
         const glbA = await CreateGlbAsync("a", [1, 0, 0, 1]);
         const glbB = await CreateGlbAsync("b", [0, 1, 0, 1]);
 
@@ -206,7 +207,7 @@ describe("MergeScenes", () => {
 
         // mergeDocuments copies each source into the target, so each source is left exactly as imported.
         for (const importer of imports) {
-            const source = importer.output.value as Document;
+            const source = GetTestGltfDocument(importer.output.value);
             expect(source.getRoot().listNodes()).toHaveLength(1);
             expect(source.getRoot().listMeshes()).toHaveLength(1);
             expect(source.getRoot().listMaterials()).toHaveLength(1);

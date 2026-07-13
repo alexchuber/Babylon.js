@@ -1,5 +1,3 @@
-import { type Document } from "@gltf-transform/core";
-
 import { type Nullable } from "core/types";
 
 import { RegisterBlock } from "../blockFoundation/blockRegistry";
@@ -7,6 +5,7 @@ import { NodeAssetBlock } from "../blockFoundation/nodeAssetBlock";
 import { type NodeAssetConnectionPoint } from "../connection/nodeAssetConnectionPoint";
 import { NodeAssetConnectionPointType } from "../connection/nodeAssetConnectionPointType";
 import { type NodeAsset } from "../nodeAsset";
+import { GetGltfAsset } from "../representations/gltfAsset";
 
 /**
  * The Draco geometry-compression method.
@@ -51,24 +50,24 @@ export class DracoCompressionBlock extends NodeAssetBlock {
      */
     public constructor(name: string, nodeAsset: NodeAsset) {
         super(name, nodeAsset);
-        this.input = this._registerInput("input", NodeAssetConnectionPointType.SCENE);
-        this.output = this._registerOutput("output", NodeAssetConnectionPointType.SCENE);
+        this.input = this._registerInput("input", NodeAssetConnectionPointType.GLTF_DOCUMENT);
+        this.output = this._registerOutput("output", NodeAssetConnectionPointType.GLTF_DOCUMENT);
     }
 
     /**
      * Enables `KHR_draco_mesh_compression` on the connected `Document` and passes it through.
      */
     public override async _buildBlockAsync(): Promise<void> {
-        const document = this.input.value as Nullable<Document>;
-        if (!document) {
+        if (this.input.value == null) {
             throw new Error(`The "${this.name}" Draco block has no input document to compress.`);
         }
+        const asset = GetGltfAsset(this.input.value, this.input.name);
 
         const { KHRDracoMeshCompression } = await import("@gltf-transform/extensions");
 
         const method = this.method === DracoEncoderMethod.Sequential ? KHRDracoMeshCompression.EncoderMethod.SEQUENTIAL : KHRDracoMeshCompression.EncoderMethod.EDGEBREAKER;
 
-        document
+        asset.document
             .createExtension(KHRDracoMeshCompression)
             .setRequired(true)
             .setEncoderOptions({
@@ -78,7 +77,7 @@ export class DracoCompressionBlock extends NodeAssetBlock {
                 ...(this.quantizationBits ? { quantizationBits: this.quantizationBits } : {}),
             });
 
-        this.output.value = document;
+        this.output.value = asset;
     }
 
     /**

@@ -7,6 +7,8 @@ import { ImportGLTFBlock } from "../../src/Blocks/importGLTFBlock";
 import { SetProperty } from "../../src/Blocks/setProperty";
 import { NodeAsset } from "../../src/nodeAsset";
 import { NodeAssetConnectionPointType } from "../../src/connection/nodeAssetConnectionPointType";
+import { type GltfAsset } from "../../src/representations/gltfAsset";
+import { GetTestGltfDocument } from "./testGltfAsset";
 
 // The import/export blocks register the Draco encoder/decoder, so use the real module rather than the
 // stub the global vitest setup installs for @dev/core.
@@ -58,51 +60,51 @@ async function ReparseAsync(glb: Uint8Array): Promise<Document> {
  * @param asset - The owning node asset.
  * @returns The imported document.
  */
-async function ImportFixtureAsync(asset: NodeAsset): Promise<Document> {
+async function ImportFixtureAsync(asset: NodeAsset): Promise<GltfAsset> {
     const importer = new ImportGLTFBlock("import", asset);
     importer.data = await CreateFixtureGlbAsync();
     await importer._buildBlockAsync();
-    return importer.output.value as Document;
+    return importer.output.value as GltfAsset;
 }
 
 describe("GetProperty", () => {
-    it("registers SCENE + STRING inputs and a JSON output", () => {
+    it("registers GLTF_DOCUMENT + STRING inputs and a JSON output", () => {
         const asset = new NodeAsset("shape");
         const getter = new GetProperty("get", asset);
 
         expect(getter.inputs).toHaveLength(2);
         expect(getter.outputs).toHaveLength(1);
-        expect(getter.scene.type).toBe(NodeAssetConnectionPointType.SCENE);
+        expect(getter.scene.type).toBe(NodeAssetConnectionPointType.GLTF_DOCUMENT);
         expect(getter.pointer.type).toBe(NodeAssetConnectionPointType.STRING);
         expect(getter.output.type).toBe(NodeAssetConnectionPointType.JSON);
     });
 
     it("reads the value at the pointer and neither mutates nor outputs the SCENE", async () => {
         const asset = new NodeAsset("read");
-        const document = await ImportFixtureAsync(asset);
+        const gltf = await ImportFixtureAsync(asset);
 
         const getter = new GetProperty("get", asset);
-        getter.scene.value = document;
+        getter.scene.value = gltf;
         getter.pointer.value = "/materials/0/emissiveFactor";
         await getter._buildBlockAsync();
 
         expect(getter.output.value).toEqual(FixtureEmissive);
         // It reads: the SCENE is untouched and is not re-emitted on the (JSON) output.
         expect(getter.output.type).toBe(NodeAssetConnectionPointType.JSON);
-        expect(document.getRoot().listMaterials()[0].getEmissiveFactor()).toEqual(FixtureEmissive);
+        expect(gltf.document.getRoot().listMaterials()[0].getEmissiveFactor()).toEqual(FixtureEmissive);
     });
 
     it("observes a material-factor read through the SCENE seam (get -> set-into-extras -> export -> reparse)", async () => {
         const asset = new NodeAsset("read-through-material");
-        const document = await ImportFixtureAsync(asset);
+        const gltf = await ImportFixtureAsync(asset);
 
         const getter = new GetProperty("get", asset);
-        getter.scene.value = document;
+        getter.scene.value = gltf;
         getter.pointer.value = "/materials/0/emissiveFactor";
         await getter._buildBlockAsync();
 
         const setter = new SetProperty("set", asset);
-        setter.scene.value = document;
+        setter.scene.value = gltf;
         setter.pointer.value = "/materials/0/extras/copiedEmissive";
         setter.value.value = getter.output.value;
         await setter._buildBlockAsync();
@@ -120,15 +122,15 @@ describe("GetProperty", () => {
 
     it("generalises the read past materials to a node transform", async () => {
         const asset = new NodeAsset("read-through-node");
-        const document = await ImportFixtureAsync(asset);
+        const gltf = await ImportFixtureAsync(asset);
 
         const getter = new GetProperty("get", asset);
-        getter.scene.value = document;
+        getter.scene.value = gltf;
         getter.pointer.value = "/nodes/0/translation";
         await getter._buildBlockAsync();
 
         const setter = new SetProperty("set", asset);
-        setter.scene.value = document;
+        setter.scene.value = gltf;
         setter.pointer.value = "/nodes/0/extras/copiedTranslation";
         setter.value.value = getter.output.value;
         await setter._buildBlockAsync();
@@ -143,10 +145,10 @@ describe("GetProperty", () => {
 
     it("fails the build with the converter's clear error on a bad pointer", async () => {
         const asset = new NodeAsset("bad-pointer");
-        const document = await ImportFixtureAsync(asset);
+        const gltf = await ImportFixtureAsync(asset);
 
         const getter = new GetProperty("get", asset);
-        getter.scene.value = document;
+        getter.scene.value = gltf;
         getter.pointer.value = "/nodes/99/translation";
 
         await expect(getter._buildBlockAsync()).rejects.toThrow("/nodes/99/translation");

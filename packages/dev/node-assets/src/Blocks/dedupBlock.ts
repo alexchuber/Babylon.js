@@ -29,8 +29,8 @@ export class DedupBlock extends NodeAssetBlock {
      */
     public constructor(name: string, nodeAsset: NodeAsset) {
         super(name, nodeAsset);
-        this.input = this._registerInput("input", NodeAssetConnectionPointType.SCENE);
-        this.output = this._registerOutput("output", NodeAssetConnectionPointType.SCENE);
+        this.input = this._registerInput("input", NodeAssetConnectionPointType.GLTF_DOCUMENT);
+        this.output = this._registerOutput("output", NodeAssetConnectionPointType.GLTF_DOCUMENT);
     }
 
     /**

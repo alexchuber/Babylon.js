@@ -1,12 +1,9 @@
-import { type Document } from "@gltf-transform/core";
-
-import { type Nullable } from "core/types";
-
 import { RegisterBlock } from "../blockFoundation/blockRegistry";
 import { NodeAssetBlock } from "../blockFoundation/nodeAssetBlock";
 import { type NodeAssetConnectionPoint } from "../connection/nodeAssetConnectionPoint";
 import { NodeAssetConnectionPointType } from "../connection/nodeAssetConnectionPointType";
 import { type NodeAsset } from "../nodeAsset";
+import { GetGltfAsset } from "../representations/gltfAsset";
 import { ResolvePointerToAccessor } from "../selector/pointerToAccessor";
 
 /**
@@ -42,10 +39,10 @@ export class SetProperty extends NodeAssetBlock {
      */
     public constructor(name: string, nodeAsset: NodeAsset) {
         super(name, nodeAsset);
-        this.scene = this._registerInput("scene", NodeAssetConnectionPointType.SCENE);
+        this.scene = this._registerInput("scene", NodeAssetConnectionPointType.GLTF_DOCUMENT);
         this.pointer = this._registerInput("pointer", NodeAssetConnectionPointType.STRING);
         this.value = this._registerInput("value", NodeAssetConnectionPointType.JSON);
-        this.output = this._registerOutput("output", NodeAssetConnectionPointType.SCENE);
+        this.output = this._registerOutput("output", NodeAssetConnectionPointType.GLTF_DOCUMENT);
     }
 
     /**
@@ -53,15 +50,15 @@ export class SetProperty extends NodeAssetBlock {
      * @throws If no input document is connected, or the converter cannot resolve the pointer.
      */
     public override async _buildBlockAsync(): Promise<void> {
-        const document = this.scene.value as Nullable<Document>;
-        if (!document) {
+        if (this.scene.value == null) {
             throw new Error(`The "${this.name}" SetProperty block has no input document to write.`);
         }
+        const asset = GetGltfAsset(this.scene.value, this.scene.name);
 
-        const accessor = ResolvePointerToAccessor(document, this.pointer.value as string);
+        const accessor = ResolvePointerToAccessor(asset.document, this.pointer.value as string);
         accessor.set(this.value.value);
         // In-place mutation: emit the same reference (copy-on-fan-out is deferred to a later slice).
-        this.output.value = document;
+        this.output.value = asset;
     }
 }
 

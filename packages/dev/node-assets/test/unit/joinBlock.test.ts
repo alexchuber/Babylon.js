@@ -4,6 +4,7 @@ import { describe, expect, it } from "vitest";
 import { NodeAsset } from "../../src/nodeAsset";
 import { NodeAssetConnectionPointType } from "../../src/connection/nodeAssetConnectionPointType";
 import { JoinBlock } from "../../src/Blocks/joinBlock";
+import { CreateTestGltfAsset } from "./testGltfAsset";
 
 /**
  * Builds a document with two separate mesh nodes that share a single material, so join can merge them
@@ -33,14 +34,14 @@ async function CreateTwoJoinableMeshesAsync(): Promise<Document> {
 }
 
 describe("JoinBlock", () => {
-    it("registers a SCENE input and output on construction", () => {
+    it("registers a GLTF_DOCUMENT input and output on construction", () => {
         const asset = new NodeAsset("join");
         const block = new JoinBlock("join", asset);
 
         expect(block.inputs).toHaveLength(1);
         expect(block.outputs).toHaveLength(1);
-        expect(block.input.type).toBe(NodeAssetConnectionPointType.SCENE);
-        expect(block.output.type).toBe(NodeAssetConnectionPointType.SCENE);
+        expect(block.input.type).toBe(NodeAssetConnectionPointType.GLTF_DOCUMENT);
+        expect(block.output.type).toBe(NodeAssetConnectionPointType.GLTF_DOCUMENT);
     });
 
     it("merges compatible meshes, passing the same document through", async () => {
@@ -49,11 +50,12 @@ describe("JoinBlock", () => {
 
         const asset = new NodeAsset("join");
         const block = new JoinBlock("join", asset);
-        block.input.value = document;
+        const gltf = CreateTestGltfAsset(document);
+        block.input.value = gltf;
 
         await block._buildBlockAsync();
 
-        expect(block.output.value).toBe(document);
+        expect(block.output.value).toBe(gltf);
         expect(document.getRoot().listMeshes()).toHaveLength(1);
     });
 
@@ -63,7 +65,7 @@ describe("JoinBlock", () => {
         const asset = new NodeAsset("join");
         const block = new JoinBlock("join", asset);
         block.keepMeshes = true;
-        block.input.value = document;
+        block.input.value = CreateTestGltfAsset(document);
 
         await block._buildBlockAsync();
 

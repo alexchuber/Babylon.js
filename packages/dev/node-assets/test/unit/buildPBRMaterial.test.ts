@@ -8,6 +8,7 @@ import { ImportGLTFBlock } from "../../src/Blocks/importGLTFBlock";
 import { ImportImageBlock } from "../../src/Blocks/importImageBlock";
 import { NodeAssetConnectionPointType } from "../../src/connection/nodeAssetConnectionPointType";
 import { NodeAsset } from "../../src/nodeAsset";
+import { CreateTestGltfAsset } from "./testGltfAsset";
 
 // The import/export blocks register the Draco encoder/decoder, so use the real module rather than the
 // stub the global vitest setup installs for @dev/core.
@@ -93,14 +94,14 @@ async function CreateBareDocumentWithPrimitiveAsync(): Promise<{ document: Docum
 }
 
 describe("BuildPBRMaterial", () => {
-    it("registers a SCENE input, five optional IMAGE inputs, and a SCENE output", () => {
+    it("registers a GLTF_DOCUMENT input, five optional IMAGE inputs, and a GLTF_DOCUMENT output", () => {
         const asset = new NodeAsset("shape");
         const build = new BuildPBRMaterial("build", asset);
 
         expect(build.inputs).toHaveLength(6);
         expect(build.outputs).toHaveLength(1);
-        expect(build.scene.type).toBe(NodeAssetConnectionPointType.SCENE);
-        expect(build.output.type).toBe(NodeAssetConnectionPointType.SCENE);
+        expect(build.scene.type).toBe(NodeAssetConnectionPointType.GLTF_DOCUMENT);
+        expect(build.output.type).toBe(NodeAssetConnectionPointType.GLTF_DOCUMENT);
 
         for (const image of [build.baseColor, build.metallicRoughness, build.normal, build.occlusion, build.emissive]) {
             expect(image.type).toBe(NodeAssetConnectionPointType.IMAGE);
@@ -115,7 +116,7 @@ describe("BuildPBRMaterial", () => {
         const document = new Document();
 
         const build = new BuildPBRMaterial("build", new NodeAsset("in-memory"));
-        build.scene.value = document;
+        build.scene.value = CreateTestGltfAsset(document);
         build.baseColor.value = { data: BaseColorBytes, mimeType: "image/png" } satisfies ImagePayload;
         build.baseColorFactor = [0.2, 0.4, 0.6, 1];
         build.metallicFactor = 0.25;
@@ -250,12 +251,13 @@ describe("BuildPBRMaterial", () => {
         const document = new Document();
 
         const build = new BuildPBRMaterial("build", new NodeAsset("passthrough"));
-        build.scene.value = document;
+        const gltf = CreateTestGltfAsset(document);
+        build.scene.value = gltf;
         await build._buildBlockAsync();
 
         // Same reference, mutated in place (no clone / copy-on-fan-out here).
-        expect(build.output.value).toBe(document);
-        expect(build.output.type).toBe(NodeAssetConnectionPointType.SCENE);
+        expect(build.output.value).toBe(gltf);
+        expect(build.output.type).toBe(NodeAssetConnectionPointType.GLTF_DOCUMENT);
         expect(document.getRoot().listMaterials()).toHaveLength(1);
     });
 
@@ -268,7 +270,7 @@ describe("BuildPBRMaterial", () => {
     it("assigns the built material to a bare primitive in the default scene", async () => {
         const { document, primitive } = await CreateBareDocumentWithPrimitiveAsync();
         const build = new BuildPBRMaterial("build", new NodeAsset("assign"));
-        build.scene.value = document;
+        build.scene.value = CreateTestGltfAsset(document);
         await build._buildBlockAsync();
 
         const material = document.getRoot().listMaterials()[0];
@@ -283,7 +285,7 @@ describe("BuildPBRMaterial", () => {
         primitive.setMaterial(existing);
 
         const build = new BuildPBRMaterial("build", new NodeAsset("non-destructive"));
-        build.scene.value = document;
+        build.scene.value = CreateTestGltfAsset(document);
         await build._buildBlockAsync();
 
         // The pre-materialed primitive keeps its original material; the built one is still created.
@@ -298,7 +300,7 @@ describe("BuildPBRMaterial", () => {
         document.getRoot().setDefaultScene(scene);
 
         const build = new BuildPBRMaterial("build", new NodeAsset("mesh-less"));
-        build.scene.value = document;
+        build.scene.value = CreateTestGltfAsset(document);
         await expect(build._buildBlockAsync()).resolves.toBeUndefined();
         expect(document.getRoot().listMaterials()).toHaveLength(1);
     });

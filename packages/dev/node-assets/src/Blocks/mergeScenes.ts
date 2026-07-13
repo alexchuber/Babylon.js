@@ -1,12 +1,9 @@
-import { type Document } from "@gltf-transform/core";
-
-import { type Nullable } from "core/types";
-
 import { RegisterBlock } from "../blockFoundation/blockRegistry";
 import { NodeAssetBlock } from "../blockFoundation/nodeAssetBlock";
 import { type NodeAssetConnectionPoint } from "../connection/nodeAssetConnectionPoint";
 import { NodeAssetConnectionPointType } from "../connection/nodeAssetConnectionPointType";
 import { type NodeAsset } from "../nodeAsset";
+import { GetGltfAsset, GltfAsset } from "../representations/gltfAsset";
 
 /** The number of SCENE inputs a freshly created MergeScenes block starts with. */
 const DefaultInputCount = 2;
@@ -37,7 +34,7 @@ export class MergeScenes extends NodeAssetBlock {
      */
     public constructor(name: string, nodeAsset: NodeAsset) {
         super(name, nodeAsset);
-        this.output = this._registerOutput("output", NodeAssetConnectionPointType.SCENE);
+        this.output = this._registerOutput("output", NodeAssetConnectionPointType.GLTF_DOCUMENT);
         for (let index = 0; index < DefaultInputCount; index++) {
             this.addInput();
         }
@@ -49,7 +46,7 @@ export class MergeScenes extends NodeAssetBlock {
      * @returns The newly created input connection point.
      */
     public addInput(): NodeAssetConnectionPoint {
-        return this._registerInput(`input${this.inputs.length}`, NodeAssetConnectionPointType.SCENE);
+        return this._registerInput(`input${this.inputs.length}`, NodeAssetConnectionPointType.GLTF_DOCUMENT);
     }
 
     /**
@@ -61,14 +58,16 @@ export class MergeScenes extends NodeAssetBlock {
         const { mergeDocuments, unpartition } = await import("@gltf-transform/functions");
 
         const target = new Document();
+        const sources: GltfAsset[] = [];
         for (const input of this.inputs) {
-            const source = input.value as Nullable<Document>;
             // Tolerate an unwired/empty input so partial graphs still produce a (possibly empty) scene.
-            if (!source) {
+            if (input.value == null) {
                 continue;
             }
+            const source = GetGltfAsset(input.value, input.name);
+            sources.push(source);
             // Folds source INTO target without mutating source, so fan-out isolation is not needed here.
-            mergeDocuments(target, source);
+            mergeDocuments(target, source.document);
         }
 
         const root = target.getRoot();
@@ -95,7 +94,15 @@ export class MergeScenes extends NodeAssetBlock {
             await target.transform(unpartition());
         }
 
-        this.output.value = target;
+        const sourceIdentities = sources.map((source) => source.identity);
+        this.output.value = new GltfAsset(target, {
+            identity: `merge:${sourceIdentities.join("|")}`,
+            revision: sources.reduce((revision, source) => Math.max(revision, source.revision), 0),
+            manifest: {
+                format: "gltf",
+                mergedSources: sourceIdentities,
+            },
+        });
     }
 
     /**

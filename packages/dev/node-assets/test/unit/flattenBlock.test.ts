@@ -4,6 +4,7 @@ import { describe, expect, it } from "vitest";
 import { NodeAsset } from "../../src/nodeAsset";
 import { NodeAssetConnectionPointType } from "../../src/connection/nodeAssetConnectionPointType";
 import { FlattenBlock } from "../../src/Blocks/flattenBlock";
+import { CreateTestGltfAsset } from "./testGltfAsset";
 
 /**
  * Builds a document whose mesh sits under an intermediate transformed parent node, so flatten has a
@@ -35,14 +36,14 @@ function SceneHasDirectMeshChild(document: Document): boolean {
 }
 
 describe("FlattenBlock", () => {
-    it("registers a SCENE input and output on construction", () => {
+    it("registers a GLTF_DOCUMENT input and output on construction", () => {
         const asset = new NodeAsset("flatten");
         const block = new FlattenBlock("flatten", asset);
 
         expect(block.inputs).toHaveLength(1);
         expect(block.outputs).toHaveLength(1);
-        expect(block.input.type).toBe(NodeAssetConnectionPointType.SCENE);
-        expect(block.output.type).toBe(NodeAssetConnectionPointType.SCENE);
+        expect(block.input.type).toBe(NodeAssetConnectionPointType.GLTF_DOCUMENT);
+        expect(block.output.type).toBe(NodeAssetConnectionPointType.GLTF_DOCUMENT);
     });
 
     it("lifts mesh nodes to the scene root, passing the same document through", async () => {
@@ -51,11 +52,12 @@ describe("FlattenBlock", () => {
 
         const asset = new NodeAsset("flatten");
         const block = new FlattenBlock("flatten", asset);
-        block.input.value = document;
+        const gltf = CreateTestGltfAsset(document);
+        block.input.value = gltf;
 
         await block._buildBlockAsync();
 
-        expect(block.output.value).toBe(document);
+        expect(block.output.value).toBe(gltf);
         expect(SceneHasDirectMeshChild(document)).toBe(true);
     });
 

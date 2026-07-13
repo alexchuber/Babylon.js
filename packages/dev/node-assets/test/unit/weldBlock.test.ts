@@ -4,6 +4,7 @@ import { describe, expect, it } from "vitest";
 import { NodeAsset } from "../../src/nodeAsset";
 import { NodeAssetConnectionPointType } from "../../src/connection/nodeAssetConnectionPointType";
 import { WeldBlock } from "../../src/Blocks/weldBlock";
+import { CreateTestGltfAsset } from "./testGltfAsset";
 
 /**
  * Builds a two-triangle quad whose six vertices include two bit-identical duplicate pairs, so welding
@@ -48,15 +49,15 @@ function GetPositionCount(document: Document): number {
 }
 
 describe("WeldBlock", () => {
-    it("registers a SCENE input and output on construction", () => {
+    it("registers a GLTF_DOCUMENT input and output on construction", () => {
         const asset = new NodeAsset("weld");
         const block = new WeldBlock("weld", asset);
 
         expect(asset.attachedBlocks).toContain(block);
         expect(block.inputs).toHaveLength(1);
         expect(block.outputs).toHaveLength(1);
-        expect(block.input.type).toBe(NodeAssetConnectionPointType.SCENE);
-        expect(block.output.type).toBe(NodeAssetConnectionPointType.SCENE);
+        expect(block.input.type).toBe(NodeAssetConnectionPointType.GLTF_DOCUMENT);
+        expect(block.output.type).toBe(NodeAssetConnectionPointType.GLTF_DOCUMENT);
     });
 
     it("merges bit-identical vertices and passes the same document through", async () => {
@@ -66,11 +67,12 @@ describe("WeldBlock", () => {
 
         const asset = new NodeAsset("weld");
         const block = new WeldBlock("weld", asset);
-        block.input.value = document;
+        const gltf = CreateTestGltfAsset(document);
+        block.input.value = gltf;
 
         await block._buildBlockAsync();
 
-        expect(block.output.value).toBe(document);
+        expect(block.output.value).toBe(gltf);
         expect(GetPositionCount(document)).toBe(4);
     });
 

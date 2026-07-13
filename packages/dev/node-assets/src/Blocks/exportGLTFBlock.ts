@@ -1,5 +1,3 @@
-import { type Document } from "@gltf-transform/core";
-
 import { type Nullable } from "core/types";
 
 import { RegisterBlock } from "../blockFoundation/blockRegistry";
@@ -8,10 +6,11 @@ import { NodeAssetBlock } from "../blockFoundation/nodeAssetBlock";
 import { type NodeAssetConnectionPoint } from "../connection/nodeAssetConnectionPoint";
 import { NodeAssetConnectionPointType } from "../connection/nodeAssetConnectionPointType";
 import { type NodeAsset } from "../nodeAsset";
+import { GetGltfAsset } from "../representations/gltfAsset";
 import { GetDracoModuleOptions, ResolveDraco3DGltfModule } from "./dracoWasm";
 
 /**
- * Exports the connected gltf-transform `Document` to glb bytes.
+ * Exports the connected glTF representation to glb bytes.
  */
 export class ExportGLTFBlock extends NodeAssetBlock implements IExportBlock {
     /** The class name, used for identification and safe under minification. */
@@ -20,7 +19,7 @@ export class ExportGLTFBlock extends NodeAssetBlock implements IExportBlock {
     /** Marks this as a terminal export block so {@link NodeAsset.buildAsync} can locate it generically. */
     public readonly isExportTerminal = true;
 
-    /** The gltf-transform `Document` to export. */
+    /** The glTF representation to export. */
     public readonly input: NodeAssetConnectionPoint;
 
     /**
@@ -46,17 +45,17 @@ export class ExportGLTFBlock extends NodeAssetBlock implements IExportBlock {
      */
     public constructor(name: string, nodeAsset: NodeAsset) {
         super(name, nodeAsset);
-        this.input = this._registerInput("input", NodeAssetConnectionPointType.SCENE);
+        this.input = this._registerInput("input", NodeAssetConnectionPointType.GLTF_DOCUMENT);
     }
 
     /**
-     * Writes the connected `Document` to glb bytes and stores them in {@link result}.
+     * Writes the connected glTF representation to glb bytes and stores them in {@link result}.
      */
     public override async _buildBlockAsync(): Promise<void> {
-        const document = this.input.value as Nullable<Document>;
-        if (!document) {
+        if (this.input.value == null) {
             throw new Error(`The "${this.name}" export block has no input document to export.`);
         }
+        const asset = GetGltfAsset(this.input.value, this.input.name);
 
         const { WebIO } = await import("@gltf-transform/core");
         const { ALL_EXTENSIONS } = await import("@gltf-transform/extensions");
@@ -67,7 +66,7 @@ export class ExportGLTFBlock extends NodeAssetBlock implements IExportBlock {
         // eslint-disable-next-line @typescript-eslint/naming-convention -- gltf-transform dependency key
         const dependencies = { "draco3d.encoder": dracoModuleOptions ? await draco3d.createEncoderModule(dracoModuleOptions) : await draco3d.createEncoderModule() };
         const io = new WebIO().registerExtensions(ALL_EXTENSIONS).registerDependencies(dependencies);
-        this.result = await io.writeBinary(document);
+        this.result = await io.writeBinary(asset.document);
     }
 }
 

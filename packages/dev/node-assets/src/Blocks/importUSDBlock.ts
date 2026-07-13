@@ -6,6 +6,7 @@ import { NodeAssetBlock } from "../blockFoundation/nodeAssetBlock";
 import { type NodeAssetConnectionPoint } from "../connection/nodeAssetConnectionPoint";
 import { NodeAssetConnectionPointType } from "../connection/nodeAssetConnectionPointType";
 import { type NodeAsset } from "../nodeAsset";
+import { GltfAsset } from "../representations/gltfAsset";
 import { SniffUsdFormat } from "./tinyUsdzTranscoder";
 
 /**
@@ -62,7 +63,7 @@ export class ImportUSDBlock extends NodeAssetBlock {
      */
     public constructor(name: string, nodeAsset: NodeAsset) {
         super(name, nodeAsset);
-        this.output = this._registerOutput("output", NodeAssetConnectionPointType.SCENE);
+        this.output = this._registerOutput("output", NodeAssetConnectionPointType.GLTF_DOCUMENT);
     }
 
     /**
@@ -75,7 +76,17 @@ export class ImportUSDBlock extends NodeAssetBlock {
         }
 
         const { TranscodeUsdToDocumentAsync } = await import("./tinyUsdzTranscoder");
-        this.output.value = await TranscodeUsdToDocumentAsync(this.data, { sourceFormat: SniffUsdFormat(this.data), wasmUrl: this.usdWasmUrl });
+        const sourceFormat = SniffUsdFormat(this.data);
+        const document = await TranscodeUsdToDocumentAsync(this.data, { sourceFormat, wasmUrl: this.usdWasmUrl });
+        this.output.value = new GltfAsset(document, {
+            identity: this.name,
+            revision: 0,
+            manifest: {
+                format: "gltf",
+                importedFrom: "usd",
+                sourceFormat,
+            },
+        });
     }
 
     /**

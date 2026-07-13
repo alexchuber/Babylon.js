@@ -73,14 +73,14 @@ async function CreateTexturedGlbAsync(colorMimeType = "image/png"): Promise<Uint
 }
 
 describe("KTX2CompressionBlock", () => {
-    it("exposes a SCENE input and output", () => {
+    it("exposes a GLTF_DOCUMENT input and output", () => {
         const asset = new NodeAsset("ktx2");
         const block = new KTX2CompressionBlock("ktx2", asset);
 
         expect(block.inputs).toHaveLength(1);
         expect(block.outputs).toHaveLength(1);
-        expect(block.input.type).toBe(NodeAssetConnectionPointType.SCENE);
-        expect(block.output.type).toBe(NodeAssetConnectionPointType.SCENE);
+        expect(block.input.type).toBe(NodeAssetConnectionPointType.GLTF_DOCUMENT);
+        expect(block.output.type).toBe(NodeAssetConnectionPointType.GLTF_DOCUMENT);
         expect(asset.attachedBlocks).toContain(block);
     });
 

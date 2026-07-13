@@ -1,5 +1,3 @@
-import { type Document } from "@gltf-transform/core";
-
 import { type Nullable } from "core/types";
 import { DecodeBase64ToBinary, EncodeArrayBufferToBase64 } from "core/Misc/stringTools";
 
@@ -8,10 +6,11 @@ import { NodeAssetBlock } from "../blockFoundation/nodeAssetBlock";
 import { type NodeAssetConnectionPoint } from "../connection/nodeAssetConnectionPoint";
 import { NodeAssetConnectionPointType } from "../connection/nodeAssetConnectionPointType";
 import { type NodeAsset } from "../nodeAsset";
+import { GltfAsset } from "../representations/gltfAsset";
 import { GetDracoModuleOptions, ResolveDraco3DGltfModule } from "./dracoWasm";
 
 /**
- * Imports glTF/glb bytes into a gltf-transform `Document` and exposes it on its output.
+ * Imports glTF/glb bytes into a {@link GltfAsset} and exposes it on its output.
  */
 export class ImportGLTFBlock extends NodeAssetBlock {
     /** The class name, used for identification and safe under minification. */
@@ -27,7 +26,7 @@ export class ImportGLTFBlock extends NodeAssetBlock {
      */
     public source: Nullable<string> = null;
 
-    /** The imported gltf-transform `Document`. */
+    /** The imported glTF representation. */
     public readonly output: NodeAssetConnectionPoint;
 
     /**
@@ -43,11 +42,11 @@ export class ImportGLTFBlock extends NodeAssetBlock {
      */
     public constructor(name: string, nodeAsset: NodeAsset) {
         super(name, nodeAsset);
-        this.output = this._registerOutput("output", NodeAssetConnectionPointType.SCENE);
+        this.output = this._registerOutput("output", NodeAssetConnectionPointType.GLTF_DOCUMENT);
     }
 
     /**
-     * Reads {@link data} into a gltf-transform `Document` and sets it as the output value.
+     * Reads {@link data} into a glTF representation and sets it as the output value.
      */
     public override async _buildBlockAsync(): Promise<void> {
         if (!this.data) {
@@ -63,8 +62,15 @@ export class ImportGLTFBlock extends NodeAssetBlock {
         // eslint-disable-next-line @typescript-eslint/naming-convention -- gltf-transform dependency key
         const dependencies = { "draco3d.decoder": dracoModuleOptions ? await draco3d.createDecoderModule(dracoModuleOptions) : await draco3d.createDecoderModule() };
         const io = new WebIO().registerExtensions(ALL_EXTENSIONS).registerDependencies(dependencies);
-        const document: Document = await io.readBinary(this.data);
-        this.output.value = document;
+        const document = await io.readBinary(this.data);
+        this.output.value = new GltfAsset(document, {
+            identity: this.source ?? this.name,
+            revision: 0,
+            manifest: {
+                format: "gltf",
+                source: this.source,
+            },
+        });
     }
 
     /**

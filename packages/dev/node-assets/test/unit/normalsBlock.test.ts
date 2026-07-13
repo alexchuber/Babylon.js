@@ -4,6 +4,7 @@ import { describe, expect, it } from "vitest";
 import { NodeAsset } from "../../src/nodeAsset";
 import { NodeAssetConnectionPointType } from "../../src/connection/nodeAssetConnectionPointType";
 import { NormalsBlock } from "../../src/Blocks/normalsBlock";
+import { CreateTestGltfAsset } from "./testGltfAsset";
 
 /**
  * Builds a triangle with POSITION data but no NORMAL attribute, so the normals operation has work to
@@ -31,14 +32,14 @@ function GetFirstPrimitiveHasNormals(document: Document): boolean {
 }
 
 describe("NormalsBlock", () => {
-    it("registers a SCENE input and output on construction", () => {
+    it("registers a GLTF_DOCUMENT input and output on construction", () => {
         const asset = new NodeAsset("normals");
         const block = new NormalsBlock("normals", asset);
 
         expect(block.inputs).toHaveLength(1);
         expect(block.outputs).toHaveLength(1);
-        expect(block.input.type).toBe(NodeAssetConnectionPointType.SCENE);
-        expect(block.output.type).toBe(NodeAssetConnectionPointType.SCENE);
+        expect(block.input.type).toBe(NodeAssetConnectionPointType.GLTF_DOCUMENT);
+        expect(block.output.type).toBe(NodeAssetConnectionPointType.GLTF_DOCUMENT);
     });
 
     it("generates missing vertex normals, passing the same document through", async () => {
@@ -47,11 +48,12 @@ describe("NormalsBlock", () => {
 
         const asset = new NodeAsset("normals");
         const block = new NormalsBlock("normals", asset);
-        block.input.value = document;
+        const gltf = CreateTestGltfAsset(document);
+        block.input.value = gltf;
 
         await block._buildBlockAsync();
 
-        expect(block.output.value).toBe(document);
+        expect(block.output.value).toBe(gltf);
         expect(GetFirstPrimitiveHasNormals(document)).toBe(true);
     });
 

@@ -1,12 +1,9 @@
-import { type Document } from "@gltf-transform/core";
-
-import { type Nullable } from "core/types";
-
 import { RegisterBlock } from "../blockFoundation/blockRegistry";
 import { NodeAssetBlock } from "../blockFoundation/nodeAssetBlock";
 import { type NodeAssetConnectionPoint } from "../connection/nodeAssetConnectionPoint";
 import { NodeAssetConnectionPointType } from "../connection/nodeAssetConnectionPointType";
 import { type NodeAsset } from "../nodeAsset";
+import { GetGltfAsset } from "../representations/gltfAsset";
 import { ResolvePointerToImageAccessor } from "../selector/pointerToAccessor";
 
 /**
@@ -39,7 +36,7 @@ export class ExtractTexture extends NodeAssetBlock {
      */
     public constructor(name: string, nodeAsset: NodeAsset) {
         super(name, nodeAsset);
-        this.scene = this._registerInput("scene", NodeAssetConnectionPointType.SCENE);
+        this.scene = this._registerInput("scene", NodeAssetConnectionPointType.GLTF_DOCUMENT);
         this.pointer = this._registerInput("pointer", NodeAssetConnectionPointType.STRING);
         this.output = this._registerOutput("output", NodeAssetConnectionPointType.IMAGE);
     }
@@ -51,12 +48,12 @@ export class ExtractTexture extends NodeAssetBlock {
      * texture slot with a readable image.
      */
     public override async _buildBlockAsync(): Promise<void> {
-        const document = this.scene.value as Nullable<Document>;
-        if (!document) {
+        if (this.scene.value == null) {
             throw new Error(`The "${this.name}" ExtractTexture block has no input document to read.`);
         }
+        const asset = GetGltfAsset(this.scene.value, this.scene.name);
 
-        const accessor = ResolvePointerToImageAccessor(document, this.pointer.value as string);
+        const accessor = ResolvePointerToImageAccessor(asset.document, this.pointer.value as string);
         this.output.value = accessor.get();
     }
 }

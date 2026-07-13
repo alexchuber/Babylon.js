@@ -7,6 +7,7 @@ import { NodeAssetBlock } from "../blockFoundation/nodeAssetBlock";
 import { type NodeAssetConnectionPoint } from "../connection/nodeAssetConnectionPoint";
 import { NodeAssetConnectionPointType } from "../connection/nodeAssetConnectionPointType";
 import { type NodeAsset } from "../nodeAsset";
+import { GetGltfAsset } from "../representations/gltfAsset";
 import { type ImagePayload } from "./imagePayload";
 
 /**
@@ -71,13 +72,13 @@ export class BuildPBRMaterial extends NodeAssetBlock {
      */
     public constructor(name: string, nodeAsset: NodeAsset) {
         super(name, nodeAsset);
-        this.scene = this._registerInput("scene", NodeAssetConnectionPointType.SCENE);
+        this.scene = this._registerInput("scene", NodeAssetConnectionPointType.GLTF_DOCUMENT);
         this.baseColor = this._registerInput("baseColor", NodeAssetConnectionPointType.IMAGE, true);
         this.metallicRoughness = this._registerInput("metallicRoughness", NodeAssetConnectionPointType.IMAGE, true);
         this.normal = this._registerInput("normal", NodeAssetConnectionPointType.IMAGE, true);
         this.occlusion = this._registerInput("occlusion", NodeAssetConnectionPointType.IMAGE, true);
         this.emissive = this._registerInput("emissive", NodeAssetConnectionPointType.IMAGE, true);
-        this.output = this._registerOutput("output", NodeAssetConnectionPointType.SCENE);
+        this.output = this._registerOutput("output", NodeAssetConnectionPointType.GLTF_DOCUMENT);
     }
 
     /**
@@ -87,10 +88,11 @@ export class BuildPBRMaterial extends NodeAssetBlock {
      * @throws If no input scene is connected.
      */
     public override async _buildBlockAsync(): Promise<void> {
-        const document = this.scene.value as Nullable<Document>;
-        if (!document) {
+        if (this.scene.value == null) {
             throw new Error(`The "${this.name}" BuildPBRMaterial block has no input scene to build into.`);
         }
+        const asset = GetGltfAsset(this.scene.value, this.scene.name);
+        const { document } = asset;
 
         const material = document
             .createMaterial(this.name)
@@ -111,7 +113,7 @@ export class BuildPBRMaterial extends NodeAssetBlock {
         this._assignToBarePrimitives(document, material);
 
         // In-place mutation: emit the same reference (copy-on-fan-out is the evaluator's job upstream).
-        this.output.value = document;
+        this.output.value = asset;
     }
 
     /**
