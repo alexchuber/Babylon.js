@@ -503,10 +503,9 @@ function SelectReferencedPrim(
             path: targetPrimPath,
             specifier: "over",
             properties: {},
-            children: layer.rootPrims.map((prim) => {
-                ChargeGraft(context, prim);
-                return RebasePrimAsChild(prim, targetPrimPath);
-            }),
+            // No budget charge here: the caller (ComposeAssetArc) charges the whole returned synthetic
+            // subtree once via ChargeGraft, so charging the children here too would double-count.
+            children: layer.rootPrims.map((prim) => RebasePrimAsChild(prim, targetPrimPath)),
         };
     }
 

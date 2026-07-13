@@ -117,6 +117,16 @@ describe("USD composition node budget accounts for grafted output, not cloned sc
         const error = expectResourceLimitError(() => ComposeLayerStack(root, resolve, { maxCompositionNodes: 100 }), "composition-nodes");
         expect(error.limit).toBe(100);
     });
+
+    it("does not double-count the ambiguous multi-root default-prim graft", () => {
+        const libraryRoots = [createPrim("/Lib0"), createPrim("/Lib1")];
+        const library: ISdfLayer = { identifier: "lib.usd", subLayers: [], rootPrims: libraryRoots };
+        const root = createLayer("root.usd", [createPrim("/R0", { references: { isExplicit: true, explicit: [{ assetPath: "lib.usd" }] } })]);
+        const resolve: Resolve = (assetPath) => (assetPath === "lib.usd" ? library : undefined);
+        // Output is 1 referencing prim + a synthetic wrapper + 2 grafted roots; the grafted children must
+        // be counted once, not once per graft site.
+        expect(() => ComposeLayerStack(root, resolve, { maxCompositionNodes: 7 })).not.toThrow();
+    });
 });
 
 describe("USD composition depth budget", () => {
