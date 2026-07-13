@@ -1,5 +1,12 @@
 # Generic property access uses glTF Object Model JSON Pointers
 
+> **Status: extended and scoped by [ADR 0006](./0006-domain-owned-versioned-selections.md).** The JSON
+> Pointer selector triad remains the mechanism for the glTF representation. Milestone 07 scopes it as
+> _one representation's_ addressing scheme (not a universal one), makes selections domain-owned and
+> versioned (owner / version / target kind / cardinality / addresses), and defines how mutators remap or
+> invalidate them. USD uses immutable overlay selectors instead. The reasoning below still holds for the
+> glTF domain.
+
 Instead of a bespoke block per editable property (SetExtras, Transform, ExtractTexture, …), a
 property is addressed by a **glTF Object Model JSON Pointer** — the Khronos standard string
 (e.g. `/nodes/0/translation`, `/materials/2/pbrMetallicRoughness/baseColorFactor`) already used by

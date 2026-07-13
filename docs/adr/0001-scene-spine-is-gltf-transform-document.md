@@ -1,5 +1,11 @@
 # The SCENE spine is the gltf-transform Document
 
+> **Status: superseded by [ADR 0004](./0004-three-first-class-representations.md).** The single-spine
+> model held through milestones 01–06. Milestone 07 replaces it with three first-class in-graph
+> representations (glTF, USD, Babylon) and no common scene supertype; `SCENE` survives only as a
+> deprecated source alias for the glTF representation. The reasoning below is retained as the record of
+> why the spine was chosen and what forced the change.
+
 Every 3D format we ingest (USD, FBX, OBJ, STL, CAD, …) is transcoded on import into a single
 normalized in-graph representation — the gltf-transform `Document` — and format only reappears at
 export. We chose glTF's data model as the spine because it is the web-delivery target anyway, has a
