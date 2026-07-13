@@ -42,6 +42,9 @@ be mixed with Babylon-domain selection work or editor descriptors.
     compatibility-only.
 - New selection/overlay support in `packages/dev/node-assets/src/selection/selection.ts`
   - USD owner, prim/property path addresses, version checking, remap/invalidate diagnostics.
+  - USD selections are **first-class capturable wire values** that **route/fan-out within the USD domain**
+    and are **rejected cross-domain** (a USD selection is not accepted by a glTF/Babylon consumer); only
+    the TypeScript encoding is implementation-owned (ADR 0006).
   - Overlay records for material retarget and transform override.
 - New transcoders:
   - `packages/dev/node-assets/src/Blocks/usd2gltf.ts` (`USD_STAGE` → `GLTF_DOCUMENT`)
@@ -83,8 +86,8 @@ Tests first under `packages/dev/node-assets/test/unit/`:
 
 - [ ] New USD import block outputs `USD_STAGE`/`UsdAsset` using the dependency-free loader.
 - [ ] Legacy tinyusdz `ImportUSDBlock` is retained, hidden/deprecated, and compatibility-only.
-- [ ] USD selections are domain-owned/versioned prim/property paths and edits are immutable
-      overlays.
+- [ ] USD selections are domain-owned/versioned prim/property paths, first-class capturable wire values
+      that route within the USD domain and are rejected cross-domain, and edits are immutable overlays.
 - [ ] `USD2glTF` and `USD2Babylon` are explicit named transcoders and no additional USD
       transcoders are added.
 - [ ] USD transcoders emit documented `LossRecord`s; fatal loader errors still fail the build.

@@ -63,6 +63,9 @@ schema/build-scope work and before NodeGeometry bakes into Babylon.
     copied.
 - `packages/dev/node-assets/src/selection/selection.ts`
   - Add Babylon owner, scene-object addresses, version checking, and remap/invalidate diagnostics.
+  - Babylon selections are **first-class capturable wire values** that **route/fan-out within the Babylon
+    domain** and are **rejected cross-domain**; only the TypeScript encoding is implementation-owned
+    (ADR 0006).
 - `packages/dev/node-assets/src/Blocks/buildPBRMaterial.ts`
   - Add the Babylon-targeting material builder path if issue 04 prepared the split.
 - `packages/dev/node-assets/src/index.ts` and `blockFoundation/blockRegistry.ts`
@@ -80,8 +83,9 @@ Tests first under `packages/dev/node-assets/test/unit/`:
   `LossRecord`s for unsupported Babylon constructs.
 - `babylonRoundTrip.test.ts` — ImportGLTF → glTF2Babylon → Babylon-native edit →
   Babylon2glTF preserves the edited property and handedness.
-- `babylonSelection.test.ts` — Babylon selections are owner/version checked and remapped or
-  invalidated on scene mutations.
+- `babylonSelection.test.ts` — Babylon selections are owner/version checked, capturable wire values that
+  route within the Babylon domain and are **rejected cross-domain**, and are remapped or invalidated on
+  scene mutations.
 - `lossyFork.test.ts` — implicit fan-out of `BabylonAsset` fails; explicit LossyFork permits two
   independent Babylon edit branches and reports loss.
 - `buildScopeLifecycle.test.ts` update — `NullEngine`/`Scene` dispose exactly once on success and
@@ -95,7 +99,8 @@ Tests first under `packages/dev/node-assets/test/unit/`:
 - [ ] `glTF2Babylon` and `Babylon2glTF` are explicit named transcoders using in-repo
       loader/serializer engines.
 - [ ] `LossyFork` is the only way to duplicate a Babylon representation.
-- [ ] Babylon selections are domain-owned/versioned and stale selections do not silently resolve.
+- [ ] Babylon selections are domain-owned/versioned, first-class capturable wire values that route within
+      the Babylon domain and are rejected cross-domain; stale selections do not silently resolve.
 - [ ] Handedness is preserved and exposed through `scene.useRightHandedSystem`.
 - [ ] Physical metadata carries **four separate fields** — source convention, target convention,
       conversion location/mechanism, and policy — never conflated; the `BabylonAsset.scene` representation
