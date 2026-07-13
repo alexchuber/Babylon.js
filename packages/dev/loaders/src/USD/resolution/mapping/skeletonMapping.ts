@@ -113,21 +113,20 @@ export function ResolveSkinning(meshPrim: ISdfPrimSpec, context: ISkeletonMappin
     // A relationship fallback would read absolute prim paths that never match the skeleton's joint
     // tokens and silently remap every influence onto joint 0, so only the attribute is read.
     const bindingJoints = GetTokenArrayAttribute(meshPrim, "skel:joints") ?? [];
-    const remappedJointWeights = Float32Array.from(aligned.jointWeights);
     let remappedJointIndices = aligned.jointIndices;
     let hasUnresolvedJoint = false;
     if (bindingJoints.length > 0 && skeleton) {
         // Index the skeleton joints once so remapping is O(V + J) rather than O(V * J) via indexOf.
         const jointIndexByPath = new Map<string, number>();
         skeleton.joints.forEach((joint, index) => jointIndexByPath.set(joint, index));
-        remappedJointIndices = aligned.jointIndices.map((value, flatIndex) => {
+        remappedJointIndices = aligned.jointIndices.map((value) => {
             const jointPath = bindingJoints[Math.max(0, Math.trunc(value))];
             const skeletonJointIndex = jointPath === undefined ? undefined : jointIndexByPath.get(jointPath);
             if (skeletonJointIndex === undefined) {
-                // Drop the influence (zero its weight) rather than silently binding the vertex to the
-                // root joint, which would move geometry to an unrelated joint.
+                // Bind the influence to the root joint (index 0) as an explicit, reported fallback
+                // rather than silently. The weight is preserved so the vertex is not left unweighted
+                // (which would collapse it to the skeleton origin).
                 hasUnresolvedJoint = true;
-                remappedJointWeights[flatIndex] = 0;
                 return 0;
             }
             return skeletonJointIndex;
@@ -137,14 +136,14 @@ export function ResolveSkinning(meshPrim: ISdfPrimSpec, context: ISkeletonMappin
         context.diagnostics.push({
             severity: "warning",
             path: meshPrim.path,
-            message: "Skinned Mesh references joints not present in the bound Skeleton; the unresolved influences were dropped.",
+            message: "Skinned Mesh references joints not present in the bound Skeleton; the unresolved influences were bound to the root joint.",
         });
     }
     const skinning: IResolvedSkinning = {
         skeletonIndex,
         influencesPerVertex,
         jointIndices: new Uint32Array(remappedJointIndices.map((value) => Math.max(0, Math.trunc(value)))),
-        jointWeights: remappedJointWeights,
+        jointWeights: new Float32Array(aligned.jointWeights),
     };
 
     const geomBindTransform = AsMat4(GetAttributeValue(GetAttribute(meshPrim, "primvars:skel:geomBindTransform")));

@@ -148,7 +148,7 @@ describe("USD animation correctness", () => {
 });
 
 describe("USD skel:joints binding", () => {
-    it("drops influences that reference joints missing from the bound skeleton and reports them", () => {
+    it("binds influences that reference joints missing from the bound skeleton to the root joint and reports them", () => {
         const layer: ISdfLayer = {
             identifier: "/Scenes/ghost-joint.usda",
             timeCodesPerSecond: 24,
@@ -202,7 +202,9 @@ describe("USD skel:joints binding", () => {
         const resolvedMesh = stage.root.children[0].children.find((child) => child.name === "Mesh")!;
 
         expect(Array.from(resolvedMesh.skinning!.jointIndices)).toEqual([0, 0, 0]);
-        expect(Array.from(resolvedMesh.skinning!.jointWeights)).toEqual([1, 0, 1]);
+        // The unresolved "Ghost" influence is bound to the root joint with its weight preserved
+        // (rather than dropped, which would collapse the vertex to the skeleton origin).
+        expect(Array.from(resolvedMesh.skinning!.jointWeights)).toEqual([1, 1, 1]);
         const warning = stage.diagnostics.find((diagnostic) => /joint/i.test(diagnostic.message) && /skeleton/i.test(diagnostic.message));
         expect(warning?.severity).toBe("warning");
     });

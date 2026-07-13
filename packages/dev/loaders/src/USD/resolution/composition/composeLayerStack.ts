@@ -54,7 +54,7 @@ export interface IComposeLayerStackOptions {
      * fanned-out references, payloads, inherits, and specializes that multiply a small input into an
      * enormous flattened stage. The cap counts prim specs only (not attribute array elements), so it
      * never penalizes an ordinary wide stage or a mesh with large vertex buffers. Defaults to
-     * {@link DefaultMaxCompositionNodes}.
+     * 1,000,000.
      */
     maxCompositionNodes?: number;
 }

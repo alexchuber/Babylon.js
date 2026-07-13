@@ -321,18 +321,26 @@ function ResolveSubdivisionScheme(prim: ISdfPrimSpec): IResolvedMesh["subdivisio
 // Subdivision is only ever approximated by this loader (a single Catmull-Clark refinement, or uniform
 // triangle splitting for loop/bilinear), and USD's default scheme for an unauthored Mesh is
 // catmullClark. Surface an honest, non-fatal diagnostic whenever a mesh is subdivided so the caller
-// knows the geometry is not the exact USD limit surface.
+// knows the geometry is not the exact USD limit surface. The unauthored default applies to most poly
+// meshes, so it is reported once per stage; explicitly authored schemes are reported per mesh.
+const UnauthoredSubdivisionMessage =
+    "Mesh has no authored subdivisionScheme; USD's default 'catmullClark' subdivision is applied as an approximation. Set subdivisionScheme to 'none' to import it as a polygon mesh.";
+
 function EmitSubdivisionDiagnostic(prim: ISdfPrimSpec, scheme: IResolvedMesh["subdivisionScheme"], context: IStageMappingContext): void {
     if (scheme === "none") {
         return;
     }
     const authored = AsToken(GetAttributeValue(GetAttribute(prim, "subdivisionScheme")));
+    if (authored === undefined) {
+        if (!context.diagnostics.some((diagnostic) => diagnostic.message === UnauthoredSubdivisionMessage)) {
+            context.diagnostics.push({ severity: "info", path: prim.path, message: UnauthoredSubdivisionMessage });
+        }
+        return;
+    }
     const message =
-        authored === undefined
-            ? "Mesh has no authored subdivisionScheme; USD's default 'catmullClark' subdivision is applied as an approximation. Set subdivisionScheme to 'none' to import it as a polygon mesh."
-            : scheme === "catmullClark"
-              ? "Mesh subdivisionScheme 'catmullClark' is approximated by a single Catmull-Clark refinement; the true limit surface is not produced."
-              : `Mesh subdivisionScheme '${scheme}' is approximated by uniform triangle subdivision; true '${scheme}' subdivision is not supported.`;
+        scheme === "catmullClark"
+            ? "Mesh subdivisionScheme 'catmullClark' is approximated by a single Catmull-Clark refinement; the true limit surface is not produced."
+            : `Mesh subdivisionScheme '${scheme}' is approximated by uniform triangle subdivision; true '${scheme}' subdivision is not supported.`;
     context.diagnostics.push({ severity: "info", path: prim.path, message });
 }
 
