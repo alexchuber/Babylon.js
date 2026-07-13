@@ -92,6 +92,11 @@ Tests first under `packages/dev/node-assets/test/unit/`:
   abort. Model the leak/disposal coverage on Babylon's own `@tools/memory-leak-tests` harness (not NAE's
   lightweight plain-object style): dispose-on-teardown, idempotent second-dispose, and no leaked
   engine/scene on an unconsumed or rejected fork.
+- `physicalMetadataFields.test.ts` — the `BabylonAsset` physical-convention metadata exposes **four
+  distinct, independently-readable fields** (source convention, target convention, conversion
+  location/mechanism, policy). Assert they are **not conflated**: setting/reading each is independent (a
+  change to one does not alter another), and the `BabylonAsset.scene` representation handedness value is
+  distinct from the terminal Viewer render-scene mode.
 
 ## Acceptance criteria
 
@@ -103,8 +108,10 @@ Tests first under `packages/dev/node-assets/test/unit/`:
       the Babylon domain and are rejected cross-domain; stale selections do not silently resolve.
 - [ ] Handedness is preserved and exposed through `scene.useRightHandedSystem`.
 - [ ] Physical metadata carries **four separate fields** — source convention, target convention,
-      conversion location/mechanism, and policy — never conflated; the `BabylonAsset.scene` representation
-      handedness is distinct from the terminal Viewer render-scene boundary.
+      conversion location/mechanism, and policy — and **`physicalMetadataFields.test.ts` proves they are
+      not conflated** (each field is independently set/read; changing one does not alter another). The
+      `BabylonAsset.scene` representation handedness is distinct from the terminal Viewer render-scene
+      boundary.
 - [ ] No Babylon export terminal, generic conversion wire, or path planner is introduced.
 - [ ] test:unit passes
 - [ ] format:check + lint:check pass
