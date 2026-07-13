@@ -117,8 +117,13 @@ export function ResolveSkinning(meshPrim: ISdfPrimSpec, context: ISkeletonMappin
     let hasUnresolvedJoint = false;
     if (bindingJoints.length > 0 && skeleton) {
         // Index the skeleton joints once so remapping is O(V + J) rather than O(V * J) via indexOf.
+        // First occurrence wins on duplicate joint tokens, matching the previous indexOf behavior.
         const jointIndexByPath = new Map<string, number>();
-        skeleton.joints.forEach((joint, index) => jointIndexByPath.set(joint, index));
+        skeleton.joints.forEach((joint, index) => {
+            if (!jointIndexByPath.has(joint)) {
+                jointIndexByPath.set(joint, index);
+            }
+        });
         remappedJointIndices = aligned.jointIndices.map((value) => {
             const jointPath = bindingJoints[Math.max(0, Math.trunc(value))];
             const skeletonJointIndex = jointPath === undefined ? undefined : jointIndexByPath.get(jointPath);

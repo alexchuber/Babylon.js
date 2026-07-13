@@ -17,4 +17,6 @@ export interface IStageMappingContext {
     materialIndexByPath: Map<string, number>;
     /** Non-fatal diagnostics collected during mapping. */
     diagnostics: IResolvedDiagnostic[];
+    /** Set once the stage-wide unauthored-default subdivision advisory has been emitted, so it is reported only once per stage. */
+    emittedUnauthoredSubdivisionDiagnostic?: boolean;
 }

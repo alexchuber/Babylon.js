@@ -332,7 +332,10 @@ function EmitSubdivisionDiagnostic(prim: ISdfPrimSpec, scheme: IResolvedMesh["su
     }
     const authored = AsToken(GetAttributeValue(GetAttribute(prim, "subdivisionScheme")));
     if (authored === undefined) {
-        if (!context.diagnostics.some((diagnostic) => diagnostic.message === UnauthoredSubdivisionMessage)) {
+        // O(1) once-per-stage guard so a large poly stage that omits subdivisionScheme does not log the
+        // same advisory per mesh.
+        if (!context.emittedUnauthoredSubdivisionDiagnostic) {
+            context.emittedUnauthoredSubdivisionDiagnostic = true;
             context.diagnostics.push({ severity: "info", path: prim.path, message: UnauthoredSubdivisionMessage });
         }
         return;
