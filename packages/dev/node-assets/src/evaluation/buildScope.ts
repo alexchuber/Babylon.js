@@ -59,10 +59,26 @@ export interface IResolvedDiagnosticLossContext {
     readonly producer: IBuildDiagnosticProducer;
 }
 
+/** A build-owned value that releases resources synchronously or asynchronously. */
+export interface IBuildResource {
+    /** Whether the resource was already disposed before registration. */
+    readonly isDisposed?: boolean;
+    /** Releases resources owned by this value. */
+    dispose(): void | Promise<void>;
+}
+
+interface IBuildResourceEntry {
+    readonly resource: IBuildResource & object;
+    readonly producer?: IBuildDiagnosticProducer;
+}
+
 /** Owns diagnostics and other per-build state for one {@link NodeAsset.buildAsync} call. */
 export class BuildScope {
     private readonly _diagnostics: IBuildDiagnostic[] = [];
     private readonly _lossRecords: LossRecord[] = [];
+    private readonly _resources: IBuildResourceEntry[] = [];
+    private readonly _registeredResources = new WeakSet<object>();
+    private _disposePromise: Promise<void> | undefined;
 
     /** The diagnostics collected so far in deterministic production order. */
     public get diagnostics(): ReadonlyArray<IBuildDiagnostic> {
@@ -107,6 +123,58 @@ export class BuildScope {
         this._lossRecords.push(lossRecord);
         return lossRecord;
     }
+
+    /**
+     * Registers a non-null block output or fan-out copy with this build. Disposable object identity is
+     * deduplicated within the build.
+     * @param value The produced value to register.
+     * @param producer The block or transcoder that produced the value.
+     */
+    public registerValue(value: unknown, producer?: IBuildDiagnosticProducer): void {
+        if (!IsBuildResource(value)) {
+            return;
+        }
+
+        if (this._registeredResources.has(value)) {
+            return;
+        }
+
+        this._registeredResources.add(value);
+        this._resources.push({ resource: value, producer });
+    }
+
+    /**
+     * Disposes registered resources once in reverse registration order. Cleanup errors are collected as
+     * diagnostics and never reject this operation.
+     * @returns A promise that resolves after all registered resources settle.
+     */
+    public async disposeAsync(): Promise<void> {
+        this._disposePromise ??= this._disposeResourcesAsync();
+        return await this._disposePromise;
+    }
+
+    private async _disposeResourcesAsync(): Promise<void> {
+        await this._disposeResourceAtAsync(this._resources.length - 1);
+    }
+
+    private async _disposeResourceAtAsync(index: number): Promise<void> {
+        if (index < 0) {
+            return;
+        }
+
+        const entry = this._resources[index];
+        try {
+            await entry.resource.dispose();
+        } catch (error) {
+            this.addDiagnostic({
+                code: "NODE_ASSET_CLEANUP_FAILED",
+                severity: "warning",
+                message: GetErrorMessage(error),
+                producer: entry.producer,
+            });
+        }
+        await this._disposeResourceAtAsync(index - 1);
+    }
 }
 
 /** Exported bytes plus immutable diagnostics produced by the same build. */
@@ -127,4 +195,12 @@ export class NodeAssetBuildResult extends Uint8Array {
         this.diagnostics = Object.freeze([...diagnostics]);
         this.lossRecords = Object.freeze([...lossRecords]);
     }
+}
+
+function IsBuildResource(value: unknown): value is IBuildResource & object {
+    return typeof value === "object" && value !== null && "dispose" in value && typeof value.dispose === "function";
+}
+
+function GetErrorMessage(error: unknown): string {
+    return error instanceof Error ? error.message : String(error);
 }

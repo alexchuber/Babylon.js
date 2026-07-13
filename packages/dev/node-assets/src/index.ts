@@ -5,6 +5,7 @@ export {
     type BuildRepresentationKind,
     type IBuildDiagnostic,
     type IBuildDiagnosticProducer,
+    type IBuildResource,
     type IResolvedDiagnosticLossContext,
     type LossDisposition,
     type LossRecord,

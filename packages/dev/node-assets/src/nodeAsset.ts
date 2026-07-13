@@ -150,16 +150,30 @@ export class NodeAsset {
             throw new Error(`The "${this.name}" node asset has no export block to build.`);
         }
 
-        // A per-build memo so each block is evaluated exactly once even when its output fans out to
-        // several consumers. Scoped to this call: a fresh build starts with a fresh memo.
         const scope = new BuildScope();
-        const evaluated = new Map<NodeAssetBlock, Promise<void>>();
-        await this._evaluateBlockAsync(exportBlock, evaluated, scope);
-
-        if (!exportBlock.result) {
-            throw new Error(`The "${this.name}" node asset produced no result.`);
+        let result: Uint8Array | null = null;
+        let primaryError: unknown;
+        let failed = false;
+        try {
+            // A per-build memo so each block is evaluated exactly once even when its output fans out to
+            // several consumers. Scoped to this call: a fresh build starts with a fresh memo.
+            const evaluated = new Map<NodeAssetBlock, Promise<void>>();
+            await this._evaluateBlockAsync(exportBlock, evaluated, scope);
+            result = exportBlock.result;
+            if (!result) {
+                throw new Error(`The "${this.name}" node asset produced no result.`);
+            }
+        } catch (error) {
+            failed = true;
+            primaryError = error;
+        } finally {
+            await scope.disposeAsync();
         }
-        return new NodeAssetBuildResult(exportBlock.result, scope.diagnostics, scope.lossRecords);
+
+        if (failed) {
+            throw primaryError;
+        }
+        return new NodeAssetBuildResult(result!, scope.diagnostics, scope.lossRecords);
     }
 
     /**
@@ -222,6 +236,31 @@ export class NodeAsset {
             })
         );
 
-        await block._buildBlockAsync(scope);
+        let primaryError: unknown;
+        let failed = false;
+        try {
+            await block._buildBlockAsync(scope);
+        } catch (error) {
+            failed = true;
+            primaryError = error;
+        }
+
+        const producer = { kind: "block" as const, blockId: block.uniqueId, blockName: block.name };
+        for (const output of block.outputs) {
+            if (output.value == null) {
+                continue;
+            }
+            try {
+                scope.registerValue(output.value, producer);
+            } catch (error) {
+                if (!failed) {
+                    failed = true;
+                    primaryError = error;
+                }
+            }
+        }
+        if (failed) {
+            throw primaryError;
+        }
     }
 }
