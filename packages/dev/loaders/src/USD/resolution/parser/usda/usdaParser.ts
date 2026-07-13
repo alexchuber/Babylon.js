@@ -13,6 +13,7 @@ import {
     type SdfVariability,
 } from "../../sdf/sdfSpec";
 import { type SdfArrayValueType, type SdfMetadata, type SdfScalarValueType, type SdfValue, type SdfValueType } from "../../sdf/sdfValue";
+import { UsdResourceLimitError } from "../../../usdErrors";
 
 const DiagnosticMetadataKey = "parser:diagnostics";
 
@@ -936,7 +937,10 @@ class UsdaParser {
 
     private _enterNesting(path: string): void {
         if (this._nestingDepth >= MaxNestingDepth) {
-            throw new Error(`USDA parser: nesting depth exceeds ${MaxNestingDepth} at '${path}'.`);
+            throw new UsdResourceLimitError("prim-nesting", MaxNestingDepth, `USDA parser: nesting depth exceeds ${MaxNestingDepth} at '${path}'.`, {
+                actual: this._nestingDepth + 1,
+                path,
+            });
         }
         this._nestingDepth++;
     }
@@ -947,7 +951,9 @@ class UsdaParser {
 
     private _enterValue(): void {
         if (this._valueDepth >= MaxValueNestingDepth) {
-            throw new Error(`USDA parser: value nesting depth exceeds the ${MaxValueNestingDepth}-level resource cap.`);
+            throw new UsdResourceLimitError("value-nesting", MaxValueNestingDepth, `USDA parser: value nesting depth exceeds the ${MaxValueNestingDepth}-level resource cap.`, {
+                actual: this._valueDepth + 1,
+            });
         }
         this._valueDepth++;
     }
