@@ -68,7 +68,10 @@ class PairExportBlock extends NodeAssetBlock {
     }
 }
 
-function CreateFanOutGraph(type: NodeAssetConnectionPointType, value: unknown): {
+function CreateFanOutGraph(
+    type: NodeAssetConnectionPointType,
+    value: unknown
+): {
     asset: NodeAsset;
     branchA: CaptureBranchBlock;
     branchB: CaptureBranchBlock;

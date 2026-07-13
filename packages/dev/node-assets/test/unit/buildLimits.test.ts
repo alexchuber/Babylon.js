@@ -7,13 +7,7 @@ import { ImportImageBlock } from "../../src/Blocks/importImageBlock";
 import { NodeAssetBlock } from "../../src/blockFoundation/nodeAssetBlock";
 import { type NodeAssetConnectionPoint } from "../../src/connection/nodeAssetConnectionPoint";
 import { NodeAssetConnectionPointType } from "../../src/connection/nodeAssetConnectionPointType";
-import {
-    BuildConfigurationError,
-    BuildLimitError,
-    type BuildScope,
-    type INodeAssetBuildOptions,
-    type NodeAssetBuildResult,
-} from "../../src/evaluation/buildScope";
+import { BuildConfigurationError, BuildLimitError, type BuildScope, type INodeAssetBuildOptions, type NodeAssetBuildResult } from "../../src/evaluation/buildScope";
 import { NodeAsset } from "../../src/nodeAsset";
 
 function CreateImageAsset(bytes = new Uint8Array([1, 2, 3])): NodeAsset {

@@ -55,8 +55,9 @@ class ResourceExportBlock extends NodeAssetBlock {
 
     public override async _buildBlockAsync(): Promise<void> {
         const resource = this.inputA.value as TrackedResource;
-        expect(resource.isDisposed).toBe(false);
-        expect(this.inputB.value).toBe(resource);
+        if (resource.isDisposed || this.inputB.value !== resource) {
+            throw new Error("The resource must stay live and shared until terminal export completes.");
+        }
         resource.events.push("export");
         this.result = new Uint8Array([9]);
     }
@@ -99,7 +100,9 @@ class BlockingResourceExportBlock extends ResourceExportBlock {
 
     public override async _buildBlockAsync(): Promise<void> {
         const resource = this.inputA.value as TrackedResource;
-        expect(resource.isDisposed).toBe(false);
+        if (resource.isDisposed) {
+            throw new Error("The resource was disposed before terminal export completed.");
+        }
         this._markEntered();
         await new Promise<void>((resolve) => {
             this.release = resolve;

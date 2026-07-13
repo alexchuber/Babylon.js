@@ -46,7 +46,9 @@ class ConcurrentFanInExportBlock extends NodeAssetBlock {
     }
 
     public override async _buildBlockAsync(): Promise<void> {
-        expect(this.inputA.value).toBe(this.inputB.value);
+        if (this.inputA.value !== this.inputB.value) {
+            throw new Error("Concurrent scalar fan-in did not preserve shared identity.");
+        }
         this.result = (this.inputA.value as { data: Uint8Array }).data;
     }
 }
