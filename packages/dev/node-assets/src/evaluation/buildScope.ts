@@ -1,5 +1,70 @@
 import { type IResolvedDiagnostic, type ResolvedDiagnosticSeverity } from "loaders/USD/resolution/resolvedStage";
 
+/** Configurable ceilings enforced by one build scope. Equality is allowed; only exceeding fails. */
+export interface INodeAssetBuildLimits {
+    /** Maximum bytes accepted from any one source block. */
+    readonly maxSourceAssetBytes: number;
+    /** Maximum aggregate bytes accepted from all source blocks. */
+    readonly maxTotalSourceBytes: number;
+    /** Maximum number of block evaluations. */
+    readonly maxEvaluations: number;
+    /** Maximum wall-clock duration in milliseconds. */
+    readonly maxWallClockMs: number;
+}
+
+/** Optional cancellation and partial limit overrides for one build. */
+export interface INodeAssetBuildOptions {
+    /** Caller-owned cancellation signal linked to the build scope. */
+    readonly signal?: AbortSignal;
+    /** Partial ceilings; omitted values use behavior-safe defaults. */
+    readonly limits?: Partial<INodeAssetBuildLimits>;
+}
+
+/** Raised when a configured build limit is not finite, non-negative, or count-safe. */
+export class BuildConfigurationError extends TypeError {
+    /** Stable machine-readable configuration error code. */
+    public readonly code = "NODE_ASSET_BUILD_INVALID_LIMIT";
+    /** The invalid limit field. */
+    public readonly limitName: keyof INodeAssetBuildLimits;
+
+    /**
+     * Creates a build-limit configuration error.
+     * @param limitName The invalid limit field.
+     */
+    public constructor(limitName: keyof INodeAssetBuildLimits) {
+        super(`The "${limitName}" build limit is invalid.`);
+        this.name = "BuildConfigurationError";
+        this.limitName = limitName;
+    }
+}
+
+/** Machine-readable build-limit failures. */
+export type BuildLimitErrorCode = "NODE_ASSET_LIMIT_SOURCE_BYTES" | "NODE_ASSET_LIMIT_TOTAL_SOURCE_BYTES" | "NODE_ASSET_LIMIT_EVALUATIONS" | "NODE_ASSET_LIMIT_WALL_CLOCK";
+
+/** Raised when a build exceeds a configured resource or time ceiling. */
+export class BuildLimitError extends Error {
+    /** Stable machine-readable limit failure code. */
+    public readonly code: BuildLimitErrorCode;
+    /** Configured inclusive ceiling. */
+    public readonly limit: number;
+    /** Observed value that exceeded the ceiling. */
+    public readonly actual: number;
+
+    /**
+     * Creates a build-limit failure.
+     * @param code Stable machine-readable limit failure code.
+     * @param limit Configured inclusive ceiling.
+     * @param actual Observed value that exceeded the ceiling.
+     */
+    public constructor(code: BuildLimitErrorCode, limit: number, actual: number) {
+        super(`The node asset build exceeded ${code}: ${actual} > ${limit}.`);
+        this.name = "BuildLimitError";
+        this.code = code;
+        this.limit = limit;
+        this.actual = actual;
+    }
+}
+
 /** The producer category attached to a build diagnostic. */
 export type BuildDiagnosticProducerKind = "block" | "transcoder";
 
@@ -98,6 +163,12 @@ interface IBuildResourceEntry {
 }
 
 const ResourceOwnership = new WeakMap<object, IResourceOwnership>();
+const DefaultBuildLimits: INodeAssetBuildLimits = Object.freeze({
+    maxSourceAssetBytes: Number.MAX_SAFE_INTEGER,
+    maxTotalSourceBytes: Number.MAX_SAFE_INTEGER,
+    maxEvaluations: Number.MAX_SAFE_INTEGER,
+    maxWallClockMs: Number.MAX_SAFE_INTEGER,
+});
 
 /** Raised when a caller or failed sibling cancels a build. */
 export class BuildCancelledError extends Error {
@@ -121,20 +192,31 @@ export class BuildCancelledError extends Error {
 export class BuildScope {
     private readonly _abortController = new AbortController();
     private readonly _diagnostics: IBuildDiagnostic[] = [];
+    private readonly _limits: INodeAssetBuildLimits;
     private readonly _lossRecords: LossRecord[] = [];
     private readonly _resources: IBuildResourceEntry[] = [];
     private readonly _registeredResources = new WeakSet<object>();
+    private readonly _startedAt = Date.now();
     private readonly _callerSignal: AbortSignal | undefined;
     private readonly _onCallerAbort: (() => void) | undefined;
     private _disposePromise: Promise<void> | undefined;
     private _hasPrimaryError = false;
     private _primaryError: unknown;
+    private _evaluationCount = 0;
+    private _totalSourceBytes = 0;
+    private _wallClockTimer: ReturnType<typeof setTimeout> | undefined;
 
     /**
      * Creates one build scope and links an optional caller signal to its internal controller.
-     * @param callerSignal The optional caller-owned cancellation signal.
+     * @param options Optional caller cancellation and partial build limits.
      */
-    public constructor(callerSignal?: AbortSignal) {
+    public constructor(options: INodeAssetBuildOptions = {}) {
+        ValidateBuildLimits(options.limits);
+        this._limits = { ...DefaultBuildLimits, ...options.limits };
+        if (options.limits?.maxWallClockMs !== undefined) {
+            this._scheduleWallClockTimeout();
+        }
+        const callerSignal = options.signal;
         this._callerSignal = callerSignal;
         if (callerSignal) {
             this._onCallerAbort = () => {
@@ -209,8 +291,36 @@ export class BuildScope {
 
     /** Throws the build's cancellation error when cancellation was requested. */
     public throwIfAborted(): void {
+        if (!this.signal.aborted) {
+            const elapsed = Date.now() - this._startedAt;
+            if (elapsed > this._limits.maxWallClockMs) {
+                this._throwLimit("NODE_ASSET_LIMIT_WALL_CLOCK", this._limits.maxWallClockMs, elapsed);
+            }
+        }
         if (this.signal.aborted) {
             throw this.signal.reason;
+        }
+    }
+
+    /** Counts one evaluate-once block execution and fails only when the configured ceiling is exceeded. */
+    public beginEvaluation(): void {
+        this._evaluationCount++;
+        if (this._evaluationCount > this._limits.maxEvaluations) {
+            this._throwLimit("NODE_ASSET_LIMIT_EVALUATIONS", this._limits.maxEvaluations, this._evaluationCount);
+        }
+    }
+
+    /**
+     * Accounts one source block's actual input bytes before parsing.
+     * @param byteLength The source payload's actual byte length.
+     */
+    public accountSourceBytes(byteLength: number): void {
+        if (byteLength > this._limits.maxSourceAssetBytes) {
+            this._throwLimit("NODE_ASSET_LIMIT_SOURCE_BYTES", this._limits.maxSourceAssetBytes, byteLength);
+        }
+        this._totalSourceBytes += byteLength;
+        if (this._totalSourceBytes > this._limits.maxTotalSourceBytes) {
+            this._throwLimit("NODE_ASSET_LIMIT_TOTAL_SOURCE_BYTES", this._limits.maxTotalSourceBytes, this._totalSourceBytes);
         }
     }
 
@@ -285,6 +395,10 @@ export class BuildScope {
             if (this._callerSignal && this._onCallerAbort) {
                 this._callerSignal.removeEventListener("abort", this._onCallerAbort);
             }
+            if (this._wallClockTimer !== undefined) {
+                clearTimeout(this._wallClockTimer);
+                this._wallClockTimer = undefined;
+            }
         }
     }
 
@@ -316,6 +430,26 @@ export class BuildScope {
             this._abortController.abort(new BuildCancelledError(reason));
         }
     }
+
+    private _throwLimit(code: BuildLimitErrorCode, limit: number, actual: number): never {
+        const error = new BuildLimitError(code, limit, actual);
+        this.abortForFailure(error);
+        throw error;
+    }
+
+    private _scheduleWallClockTimeout(): void {
+        const elapsed = Date.now() - this._startedAt;
+        const remaining = this._limits.maxWallClockMs - elapsed;
+        const delay = Math.min(Math.max(remaining + 1, 0), 2_147_483_647);
+        this._wallClockTimer = setTimeout(() => {
+            const currentElapsed = Date.now() - this._startedAt;
+            if (currentElapsed > this._limits.maxWallClockMs) {
+                this.abortForFailure(new BuildLimitError("NODE_ASSET_LIMIT_WALL_CLOCK", this._limits.maxWallClockMs, currentElapsed));
+            } else {
+                this._scheduleWallClockTimeout();
+            }
+        }, delay);
+    }
 }
 
 /** Exported bytes plus immutable diagnostics produced by the same build. */
@@ -344,4 +478,25 @@ function IsBuildResource(value: unknown): value is IBuildResource & object {
 
 function GetErrorMessage(error: unknown): string {
     return error instanceof Error ? error.message : String(error);
+}
+
+function ValidateBuildLimits(limits: Partial<INodeAssetBuildLimits> | undefined): void {
+    if (!limits) {
+        return;
+    }
+
+    ValidateCountLimit(limits, "maxSourceAssetBytes");
+    ValidateCountLimit(limits, "maxTotalSourceBytes");
+    ValidateCountLimit(limits, "maxEvaluations");
+    const wallClock = limits.maxWallClockMs;
+    if (wallClock !== undefined && (!Number.isFinite(wallClock) || wallClock < 0)) {
+        throw new BuildConfigurationError("maxWallClockMs");
+    }
+}
+
+function ValidateCountLimit(limits: Partial<INodeAssetBuildLimits>, name: "maxSourceAssetBytes" | "maxTotalSourceBytes" | "maxEvaluations"): void {
+    const value = limits[name];
+    if (value !== undefined && (!Number.isSafeInteger(value) || value < 0)) {
+        throw new BuildConfigurationError(name);
+    }
 }

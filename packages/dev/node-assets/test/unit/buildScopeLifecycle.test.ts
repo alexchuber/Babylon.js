@@ -3,7 +3,7 @@ import { describe, expect, it } from "vitest";
 import { NodeAssetBlock } from "../../src/blockFoundation/nodeAssetBlock";
 import { type NodeAssetConnectionPoint } from "../../src/connection/nodeAssetConnectionPoint";
 import { NodeAssetConnectionPointType } from "../../src/connection/nodeAssetConnectionPointType";
-import { BuildResourceOwnershipError } from "../../src/evaluation/buildScope";
+import { BuildLimitError, BuildResourceOwnershipError, type BuildScope } from "../../src/evaluation/buildScope";
 import { NodeAsset } from "../../src/nodeAsset";
 
 class TrackedResource {
@@ -69,6 +69,16 @@ class FailingResourceConsumerBlock extends NodeAssetBlock {
 
     public override async _buildBlockAsync(): Promise<void> {
         throw this.error;
+    }
+}
+
+class LimitFailingResourceSourceBlock extends NodeAssetBlock {
+    public readonly output = this._registerOutput("output", NodeAssetConnectionPointType.NODE_GEOMETRY);
+    public readonly resource = new TrackedResource([]);
+
+    public override async _buildBlockAsync(scope?: BuildScope): Promise<void> {
+        this.output.value = this.resource;
+        scope!.accountSourceBytes(1);
     }
 }
 
@@ -205,5 +215,18 @@ describe("build scope resource lifecycle", () => {
             code: "NODE_ASSET_RESOURCE_STALE",
         });
         expect(resource.disposeCalls).toBe(1);
+    });
+
+    it("disposes a resource exactly once when a configured limit aborts its producer", async () => {
+        const asset = new NodeAsset("limit cleanup");
+        const source = new LimitFailingResourceSourceBlock("limited source", asset);
+        const exporter = new ResourceExportBlock("export", asset);
+        source.output.connectTo(exporter.inputA);
+        source.output.connectTo(exporter.inputB);
+
+        await expect(asset.buildAsync({ limits: { maxSourceAssetBytes: 0 } })).rejects.toMatchObject<BuildLimitError>({
+            code: "NODE_ASSET_LIMIT_SOURCE_BYTES",
+        });
+        expect(source.resource.disposeCalls).toBe(1);
     });
 });

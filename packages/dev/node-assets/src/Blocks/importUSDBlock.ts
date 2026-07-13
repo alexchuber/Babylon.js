@@ -5,6 +5,7 @@ import { RegisterBlock } from "../blockFoundation/blockRegistry";
 import { NodeAssetBlock } from "../blockFoundation/nodeAssetBlock";
 import { type NodeAssetConnectionPoint } from "../connection/nodeAssetConnectionPoint";
 import { NodeAssetConnectionPointType } from "../connection/nodeAssetConnectionPointType";
+import { type BuildScope } from "../evaluation/buildScope";
 import { type NodeAsset } from "../nodeAsset";
 import { GltfAsset } from "../representations/gltfAsset";
 import { GetSerializedNullableString, type NodeAssetBlockSerialization } from "../serialization/nodeAssetSerialization";
@@ -70,11 +71,13 @@ export class ImportUSDBlock extends NodeAssetBlock {
     /**
      * Sniffs {@link data}'s USD format, transcodes it onto a gltf-transform `Document`, and sets that
      * document as the output value.
+     * @param scope The optional build scope used to account source bytes before parsing.
      */
-    public override async _buildBlockAsync(): Promise<void> {
+    public override async _buildBlockAsync(scope?: BuildScope): Promise<void> {
         if (!this.data) {
             throw new Error(`The "${this.name}" USD import block has no data to import.`);
         }
+        scope?.accountSourceBytes(this.data.byteLength);
 
         const { TranscodeUsdToDocumentAsync } = await import("./tinyUsdzTranscoder");
         const sourceFormat = SniffUsdFormat(this.data);

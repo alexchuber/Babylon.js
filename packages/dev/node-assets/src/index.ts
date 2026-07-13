@@ -1,6 +1,9 @@
 export { NodeAsset } from "./nodeAsset";
 export {
     BuildCancelledError,
+    BuildConfigurationError,
+    BuildLimitError,
+    type BuildLimitErrorCode,
     BuildScope,
     type BuildDiagnosticProducerKind,
     type BuildRepresentationKind,
@@ -9,6 +12,8 @@ export {
     type IBuildDiagnostic,
     type IBuildDiagnosticProducer,
     type IBuildResource,
+    type INodeAssetBuildLimits,
+    type INodeAssetBuildOptions,
     type IResolvedDiagnosticLossContext,
     type LossDisposition,
     type LossRecord,

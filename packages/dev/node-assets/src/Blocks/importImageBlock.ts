@@ -5,6 +5,7 @@ import { RegisterBlock } from "../blockFoundation/blockRegistry";
 import { NodeAssetBlock } from "../blockFoundation/nodeAssetBlock";
 import { type NodeAssetConnectionPoint } from "../connection/nodeAssetConnectionPoint";
 import { NodeAssetConnectionPointType } from "../connection/nodeAssetConnectionPointType";
+import { type BuildScope } from "../evaluation/buildScope";
 import { type NodeAsset } from "../nodeAsset";
 import { GetSerializedNullableString, GetSerializedString, type NodeAssetBlockSerialization } from "../serialization/nodeAssetSerialization";
 import { type ImagePayload } from "./imagePayload";
@@ -47,11 +48,13 @@ export class ImportImageBlock extends NodeAssetBlock {
     /**
      * Wraps {@link data} and {@link mimeType} into an {@link ImagePayload} and sets it as the output
      * value. The bytes are carried encoded; `width`/`height` are decoded by a later op, not here.
+     * @param scope The optional build scope used to account source bytes.
      */
-    public override async _buildBlockAsync(): Promise<void> {
+    public override async _buildBlockAsync(scope?: BuildScope): Promise<void> {
         if (!this.data) {
             throw new Error(`The "${this.name}" import block has no data to import.`);
         }
+        scope?.accountSourceBytes(this.data.byteLength);
         const payload: ImagePayload = { data: this.data, mimeType: this.mimeType };
         this.output.value = payload;
     }

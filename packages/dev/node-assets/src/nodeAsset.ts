@@ -2,7 +2,7 @@ import { CreateBlockByClassName } from "./blockFoundation/blockRegistry";
 import { IsExportBlock } from "./blockFoundation/exportBlock";
 import { type NodeAssetBlock } from "./blockFoundation/nodeAssetBlock";
 import { type NodeAssetConnectionPoint } from "./connection/nodeAssetConnectionPoint";
-import { BuildScope, NodeAssetBuildResult } from "./evaluation/buildScope";
+import { BuildScope, type INodeAssetBuildOptions, NodeAssetBuildResult } from "./evaluation/buildScope";
 import { CloneForFanOutAsync } from "./evaluation/fanOutCopy";
 import { IsNodeAssetSerializedGraph, type NodeAssetConnectionSerialization, type NodeAssetSerializedGraph } from "./serialization/nodeAssetSerialization";
 import { UniqueIdGenerator } from "./utils/uniqueIdGenerator";
@@ -142,16 +142,23 @@ export class NodeAsset {
      * Runs the graph by pulling from the terminal export block (located via its
      * {@link IExportBlock} marker, not by concrete type) and returns the built bytes. Pull-based,
      * no caching; a required input left unconnected is an error.
-     * @param signal - The optional caller signal to link to this build.
+     * @param signalOrOptions - A direct caller signal or cancellation and partial limit options.
      * @returns The built bytes produced by the terminal export block.
      */
-    public async buildAsync(signal?: AbortSignal): Promise<NodeAssetBuildResult> {
+    // eslint-disable-next-line no-restricted-syntax
+    public buildAsync(): Promise<NodeAssetBuildResult>;
+    // eslint-disable-next-line no-restricted-syntax
+    public buildAsync(signal: AbortSignal): Promise<NodeAssetBuildResult>;
+    // eslint-disable-next-line no-restricted-syntax
+    public buildAsync(options: INodeAssetBuildOptions): Promise<NodeAssetBuildResult>;
+    public async buildAsync(signalOrOptions?: AbortSignal | INodeAssetBuildOptions): Promise<NodeAssetBuildResult> {
         const exportBlock = this._attachedBlocks.find(IsExportBlock);
         if (!exportBlock) {
             throw new Error(`The "${this.name}" node asset has no export block to build.`);
         }
 
-        const scope = new BuildScope(signal);
+        const options = IsAbortSignal(signalOrOptions) ? { signal: signalOrOptions } : (signalOrOptions ?? {});
+        const scope = new BuildScope(options);
         let result: Uint8Array | null = null;
         let primaryError: unknown;
         let failed = false;
@@ -193,6 +200,8 @@ export class NodeAsset {
         if (existing) {
             return await existing;
         }
+        scope.throwIfAborted();
+        scope.beginEvaluation();
         // Populate the memo synchronously (before the await below) so a sibling branch reaching this
         // same block dedupes onto this promise instead of starting a second evaluation.
         const promise = this._doEvaluateBlockAsync(block, evaluated, scope);
@@ -297,4 +306,8 @@ export class NodeAsset {
             }
         }
     }
+}
+
+function IsAbortSignal(value: AbortSignal | INodeAssetBuildOptions | undefined): value is AbortSignal {
+    return typeof value === "object" && value !== null && "aborted" in value && "addEventListener" in value;
 }

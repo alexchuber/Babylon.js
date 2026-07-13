@@ -5,6 +5,7 @@ import { RegisterBlock } from "../blockFoundation/blockRegistry";
 import { NodeAssetBlock } from "../blockFoundation/nodeAssetBlock";
 import { type NodeAssetConnectionPoint } from "../connection/nodeAssetConnectionPoint";
 import { NodeAssetConnectionPointType } from "../connection/nodeAssetConnectionPointType";
+import { type BuildScope } from "../evaluation/buildScope";
 import { type NodeAsset } from "../nodeAsset";
 import { GltfAsset } from "../representations/gltfAsset";
 import { GetSerializedNullableString, type NodeAssetBlockSerialization } from "../serialization/nodeAssetSerialization";
@@ -48,11 +49,13 @@ export class ImportGLTFBlock extends NodeAssetBlock {
 
     /**
      * Reads {@link data} into a glTF representation and sets it as the output value.
+     * @param scope The optional build scope used to account source bytes before parsing.
      */
-    public override async _buildBlockAsync(): Promise<void> {
+    public override async _buildBlockAsync(scope?: BuildScope): Promise<void> {
         if (!this.data) {
             throw new Error(`The "${this.name}" import block has no data to import.`);
         }
+        scope?.accountSourceBytes(this.data.byteLength);
 
         const { WebIO } = await import("@gltf-transform/core");
         const { ALL_EXTENSIONS } = await import("@gltf-transform/extensions");
