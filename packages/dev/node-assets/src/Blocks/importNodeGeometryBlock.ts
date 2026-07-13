@@ -1,8 +1,11 @@
+import { NodeGeometry } from "core/Meshes/Node/nodeGeometry";
+
 import { RegisterBlock } from "../blockFoundation/blockRegistry";
 import { NodeAssetBlock } from "../blockFoundation/nodeAssetBlock";
 import { type NodeAssetConnectionPoint } from "../connection/nodeAssetConnectionPoint";
 import { NodeAssetConnectionPointType } from "../connection/nodeAssetConnectionPointType";
 import { type NodeAsset } from "../nodeAsset";
+import { NodeGeometryAsset } from "../representations/nodeGeometryAsset";
 
 /**
  * Imports a Node Geometry graph from a URL or snippet ID and exposes it as a
@@ -30,11 +33,41 @@ export class ImportNodeGeometryBlock extends NodeAssetBlock {
     }
 
     /**
-     * Not yet implemented.
-     * @throws Always throws — this is a husk block.
+     * Loads a Node Geometry graph from the URL or snippet ID on the {@link url} input.
+     * If the value starts with `#`, it is treated as a snippet server ID and loaded via
+     * {@link NodeGeometry.ParseFromSnippetAsync}. Otherwise, the URL is fetched and the
+     * response is parsed as a serialized Node Geometry JSON object.
      */
     public override async _buildBlockAsync(): Promise<void> {
-        throw new Error(`${this.getClassName()}._buildBlockAsync is not yet implemented.`);
+        const urlValue = this.url.value as string;
+        if (!urlValue) {
+            throw new Error(`The "${this.name}" import block has no URL or snippet ID to load.`);
+        }
+
+        let ng: NodeGeometry;
+
+        if (urlValue.startsWith("#")) {
+            const snippetId = urlValue.substring(1);
+            ng = await NodeGeometry.ParseFromSnippetAsync(snippetId, undefined, true);
+        } else {
+            const response = await fetch(urlValue);
+            if (!response.ok) {
+                throw new Error(`The "${this.name}" import block failed to fetch "${urlValue}": ${response.status} ${response.statusText}`);
+            }
+            const json = await response.json();
+            ng = new NodeGeometry(json.name ?? this.name);
+            ng.parseSerializedObject(json);
+        }
+
+        if (!ng.outputBlock) {
+            throw new Error(`The "${this.name}" import block loaded a Node Geometry graph with no output block.`);
+        }
+
+        this.output.value = new NodeGeometryAsset(ng, {
+            identity: urlValue,
+            revision: 0,
+            manifest: { format: "nodeGeometry", source: urlValue },
+        });
     }
 }
 
