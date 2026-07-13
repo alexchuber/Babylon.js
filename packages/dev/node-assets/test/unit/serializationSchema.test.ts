@@ -140,4 +140,14 @@ describe("serialized graph schema", () => {
 
         expect(() => NodeAsset.Parse(rawGraph)).toThrow("Invalid NodeAsset serialized graph");
     });
+
+    it.each([-1, Number.MAX_SAFE_INTEGER, 1e100])("rejects a block id that cannot safely advance the unique-id generator: %s", (id) => {
+        expect(() =>
+            NodeAsset.Parse({
+                name: "unsafe-id",
+                blocks: [{ customType: ImportGLTFBlock.ClassName, id, name: "import", data: null, source: null }],
+                connections: [],
+            })
+        ).toThrow("Invalid NodeAsset serialized graph");
+    });
 });

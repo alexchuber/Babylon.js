@@ -216,6 +216,7 @@ export class BuildScope {
     private readonly _startedAt = globalThis.performance.now();
     private readonly _callerSignal: AbortSignal | undefined;
     private readonly _onCallerAbort: (() => void) | undefined;
+    private _abortOrigin: "caller" | "failure" | undefined;
     private _disposePromise: Promise<void> | undefined;
     private _hasPrimaryError = false;
     private _primaryError: unknown;
@@ -237,7 +238,7 @@ export class BuildScope {
         this._callerSignal = callerSignal;
         if (callerSignal) {
             this._onCallerAbort = () => {
-                this._cancel(callerSignal.reason);
+                this._cancel(callerSignal.reason, "caller");
             };
             if (callerSignal.aborted) {
                 this._onCallerAbort();
@@ -355,7 +356,7 @@ export class BuildScope {
             this._hasPrimaryError = true;
             this._primaryError = error;
         }
-        this._cancel(error);
+        this._cancel(error, "failure");
     }
 
     /**
@@ -364,7 +365,13 @@ export class BuildScope {
      * @returns Whether the value represents cancellation rather than a primary fatal failure.
      */
     public isCancellationError(error: unknown): boolean {
-        return this.signal.aborted && (error instanceof BuildCancelledError || ((error instanceof Error || error instanceof DOMException) && error.name === "AbortError"));
+        if (!this.signal.aborted) {
+            return false;
+        }
+        if (error === this.signal.reason || error instanceof BuildCancelledError) {
+            return true;
+        }
+        return this._abortOrigin === "caller" && (error instanceof Error || error instanceof DOMException) && error.name === "AbortError";
     }
 
     /**
@@ -478,8 +485,9 @@ export class BuildScope {
         await this._disposeResourceAtAsync(index - 1);
     }
 
-    private _cancel(reason?: unknown): void {
+    private _cancel(reason: unknown, origin: "caller" | "failure"): void {
         if (!this.signal.aborted) {
+            this._abortOrigin = origin;
             this._abortController.abort(new BuildCancelledError(reason));
         }
     }

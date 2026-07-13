@@ -65,13 +65,13 @@ describe("blockNodeMapping", () => {
         expect(PointToPort(block, block.output).direction).toBe("output");
     });
 
-    it("maps every appended representation kind without an undefined style", () => {
+    it("rejects representation kinds whose editor descriptors are deferred", () => {
         const asset = new NodeAsset("representations");
         const block = new RepresentationMappingTestBlock("block", asset);
 
-        expect(PointToPort(block, block.usd).name).toBe("USD Stage");
-        expect(PointToPort(block, block.babylon).name).toBe("Babylon Scene");
-        expect(PointToPort(block, block.nodeGeometry).name).toBe("Node Geometry");
+        expect(() => PointToPort(block, block.usd)).toThrow(/not supported by the Node Assets Editor/);
+        expect(() => PointToPort(block, block.babylon)).toThrow(/not supported by the Node Assets Editor/);
+        expect(() => PointToPort(block, block.nodeGeometry)).toThrow(/not supported by the Node Assets Editor/);
     });
 
     it("builds a node with input ports before output ports", () => {

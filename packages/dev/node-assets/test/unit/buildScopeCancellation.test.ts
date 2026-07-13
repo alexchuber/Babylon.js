@@ -451,6 +451,27 @@ describe("build scope cancellation", () => {
         expect(second.settled).toBe(true);
     });
 
+    it("keeps an earlier input's independent AbortError primary after a later input aborts the scope", async () => {
+        const asset = new NodeAsset("deterministic abort-error primary");
+        const first = new ControlledFatalSourceBlock("first", asset);
+        const second = new ControlledFatalSourceBlock("second", asset);
+        const exporter = new ResourcePairExportBlock("export", asset);
+        first.output.connectTo(exporter.inputA);
+        second.output.connectTo(exporter.inputB);
+        first.error = new DOMException("first input aborted independently", "AbortError");
+        second.error = new Error("second input failure");
+
+        const build = asset.buildAsync();
+        await Promise.all([first.started, second.started]);
+        second.fail();
+        await Promise.resolve();
+        first.fail();
+
+        await expect(build).rejects.toBe(first.error);
+        expect(first.settled).toBe(true);
+        expect(second.settled).toBe(true);
+    });
+
     it("treats an independent AbortError as fatal and aborts its started sibling", async () => {
         const asset = new NodeAsset("independent abort error");
         const fatal = new FatalSourceBlock("abort error", asset);
