@@ -4,6 +4,7 @@ import { describe, expect, expectTypeOf, it, vi } from "vitest";
 import { ExportGLTFBlock } from "../../src/Blocks/exportGLTFBlock";
 import { ImportGLTFBlock } from "../../src/Blocks/importGLTFBlock";
 import { MergeScenes } from "../../src/Blocks/mergeScenes";
+import { NumberLiteral } from "../../src/Blocks/numberLiteral";
 import { NodeAsset } from "../../src/nodeAsset";
 import { type NodeAssetSerializedGraph } from "../../src/serialization/nodeAssetSerialization";
 
@@ -149,5 +150,22 @@ describe("serialized graph schema", () => {
                 connections: [],
             })
         ).toThrow("Invalid NodeAsset serialized graph");
+    });
+
+    it("does not advance the unique-id generator when semantic connection validation rejects a high-id graph", () => {
+        const id = Number.MAX_SAFE_INTEGER - 1;
+        expect(() =>
+            NodeAsset.Parse({
+                name: "invalid-high-id-connection",
+                blocks: [{ customType: ImportGLTFBlock.ClassName, id, name: "import", data: null, source: null }],
+                connections: [{ fromBlock: id, fromPoint: "output", toBlock: id, toPoint: "missing" }],
+            })
+        ).toThrow("Invalid NodeAsset serialized graph");
+
+        const asset = new NodeAsset("generator remains usable");
+        const first = new NumberLiteral("first", asset);
+        const second = new NumberLiteral("second", asset);
+        expect(Number.isSafeInteger(first.uniqueId)).toBe(true);
+        expect(second.uniqueId).toBe(first.uniqueId + 1);
     });
 });

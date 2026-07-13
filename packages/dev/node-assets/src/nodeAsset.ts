@@ -115,10 +115,6 @@ export class NodeAsset {
             blocksById.set(blockData.id, block);
             maxId = Math.max(maxId, blockData.id);
         }
-        // Restored ids can exceed the freshly-generated ones assigned in the block constructors above;
-        // advance the generator so later blocks cannot collide with them.
-        UniqueIdGenerator.EnsureIdsGreaterThan(maxId);
-
         for (const connection of serializationObject.connections ?? []) {
             const fromBlock = blocksById.get(connection.fromBlock);
             const toBlock = blocksById.get(connection.toBlock);
@@ -136,6 +132,9 @@ export class NodeAsset {
             fromPoint.connectTo(toPoint);
         }
 
+        // Advance only after every semantic graph check succeeds. A rejected graph must not poison the
+        // process-wide generator with an id that never became part of a usable NodeAsset.
+        UniqueIdGenerator.EnsureIdsGreaterThan(maxId);
         return asset;
     }
 

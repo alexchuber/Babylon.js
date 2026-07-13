@@ -222,7 +222,6 @@ export class BuildScope {
     private readonly _startedAt = globalThis.performance.now();
     private readonly _callerSignal: AbortSignal | undefined;
     private readonly _onCallerAbort: (() => void) | undefined;
-    private _abortOrigin: "caller" | "failure" | undefined;
     private _disposePromise: Promise<void> | undefined;
     private _hasPrimaryError = false;
     private _primaryError: unknown;
@@ -244,7 +243,7 @@ export class BuildScope {
         this._callerSignal = callerSignal;
         if (callerSignal) {
             this._onCallerAbort = () => {
-                this._cancel(callerSignal.reason, "caller");
+                this._cancel(callerSignal.reason);
             };
             if (callerSignal.aborted) {
                 this._onCallerAbort();
@@ -328,6 +327,55 @@ export class BuildScope {
         }
     }
 
+    /**
+     * Runs an operation that cooperatively uses this scope's signal. The scope's abort listener is
+     * installed before the operation starts, so a scope-caused abort is branded without inferring
+     * causality from an error name after the fact. All started operation work is still awaited.
+     * @param operation The abortable operation to run.
+     * @returns The operation result.
+     */
+    public async runAbortableAsync<T>(operation: () => Promise<T>): Promise<T> {
+        this.throwIfAborted();
+        let markAborted = () => {};
+        const abortRequested = new Promise<void>((resolve) => {
+            markAborted = resolve;
+            this.signal.addEventListener("abort", markAborted, { once: true });
+        });
+        // Give operation settlement and abort notification equivalent promise depth so their actual
+        // ordering, rather than an extra reaction hop, decides the race.
+        // eslint-disable-next-line github/no-then
+        const aborted = abortRequested.then(() => "aborted" as const);
+        let operationPromise: Promise<T>;
+        try {
+            operationPromise = operation();
+        } catch (error) {
+            this.signal.removeEventListener("abort", markAborted);
+            throw error;
+        }
+        // eslint-disable-next-line github/no-then
+        const settled = operationPromise.then(
+            (value) => ({ status: "fulfilled" as const, value }),
+            (reason: unknown) => ({ status: "rejected" as const, reason })
+        );
+        try {
+            const first = await Promise.race([settled, aborted]);
+            if (first !== "aborted") {
+                if (first.status === "rejected") {
+                    throw first.reason;
+                }
+                return first.value;
+            }
+
+            const final = await settled;
+            if (final.status === "rejected" && !IsAbortError(final.reason)) {
+                throw final.reason;
+            }
+            throw this.signal.reason;
+        } finally {
+            this.signal.removeEventListener("abort", markAborted);
+        }
+    }
+
     /** Counts one evaluate-once block execution and fails only when the configured ceiling is exceeded. */
     public beginEvaluation(): void {
         this._evaluationCount++;
@@ -362,7 +410,7 @@ export class BuildScope {
             this._hasPrimaryError = true;
             this._primaryError = error;
         }
-        this._cancel(error, "failure");
+        this._cancel(error);
     }
 
     /**
@@ -377,7 +425,7 @@ export class BuildScope {
         if (error === this.signal.reason || error instanceof BuildCancelledError) {
             return true;
         }
-        return this._abortOrigin === "caller" && (error instanceof Error || error instanceof DOMException) && error.name === "AbortError";
+        return false;
     }
 
     /**
@@ -502,9 +550,8 @@ export class BuildScope {
         await this._disposeResourceAtAsync(index - 1);
     }
 
-    private _cancel(reason: unknown, origin: "caller" | "failure"): void {
+    private _cancel(reason?: unknown): void {
         if (!this.signal.aborted) {
-            this._abortOrigin = origin;
             this._abortController.abort(new BuildCancelledError(reason));
         }
     }
@@ -583,6 +630,10 @@ function IsBuildResource(value: unknown): value is IBuildResource & object {
 
 function IsObject(value: unknown): value is object {
     return (typeof value === "object" && value !== null) || typeof value === "function";
+}
+
+function IsAbortError(value: unknown): value is Error {
+    return (value instanceof Error || value instanceof DOMException) && value.name === "AbortError";
 }
 
 function FreezeBuildDiagnostic(diagnostic: IBuildDiagnostic): IBuildDiagnostic {

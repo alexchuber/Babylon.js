@@ -3,7 +3,7 @@ import { describe, expect, it } from "vitest";
 import { NodeAssetBlock } from "../../src/blockFoundation/nodeAssetBlock";
 import { type NodeAssetConnectionPoint } from "../../src/connection/nodeAssetConnectionPoint";
 import { NodeAssetConnectionPointType } from "../../src/connection/nodeAssetConnectionPointType";
-import { BuildCancelledError, GetNodeAssetBuildReport, type BuildScope } from "../../src/evaluation/buildScope";
+import { BuildCancelledError, BuildScope, GetNodeAssetBuildReport } from "../../src/evaluation/buildScope";
 import { NodeAsset } from "../../src/nodeAsset";
 
 class CountingSourceBlock extends NodeAssetBlock {
@@ -108,14 +108,40 @@ class NativeAbortSourceBlock extends NodeAssetBlock {
 
     public override async _buildBlockAsync(scope?: BuildScope): Promise<void> {
         this._markStarted();
-        await new Promise<void>((_resolve, reject) => {
-            const rejectAbort = () => reject(this.createAbortError());
-            if (scope!.signal.aborted) {
-                rejectAbort();
-            } else {
-                scope!.signal.addEventListener("abort", rejectAbort, { once: true });
-            }
+        await scope!.runAbortableAsync(
+            async () =>
+                await new Promise<void>((_resolve, reject) => {
+                    const rejectAbort = () => reject(this.createAbortError());
+                    if (scope!.signal.aborted) {
+                        rejectAbort();
+                    } else {
+                        scope!.signal.addEventListener("abort", rejectAbort, { once: true });
+                    }
+                })
+        );
+    }
+}
+
+class ScopeNormalizedAbortSourceBlock extends NodeAssetBlock {
+    public readonly output = this._registerOutput("output", NodeAssetConnectionPointType.NODE_GEOMETRY);
+    public readonly started: Promise<void>;
+    private _markStarted: () => void = () => {};
+
+    public constructor(name: string, nodeAsset: NodeAsset) {
+        super(name, nodeAsset);
+        this.started = new Promise<void>((resolve) => {
+            this._markStarted = resolve;
         });
+    }
+
+    public override async _buildBlockAsync(scope?: BuildScope): Promise<void> {
+        this._markStarted();
+        await scope!.runAbortableAsync(
+            async () =>
+                await new Promise<void>((_resolve, reject) => {
+                    scope!.signal.addEventListener("abort", () => reject(new DOMException("The native operation was aborted.", "AbortError")), { once: true });
+                })
+        );
     }
 }
 
@@ -382,6 +408,20 @@ describe("build scope cancellation", () => {
         });
     });
 
+    it("preserves an independent AbortError that settles before caller cancellation", async () => {
+        const controller = new AbortController();
+        const scope = new BuildScope({ signal: controller.signal });
+        const independent = new DOMException("independent", "AbortError");
+
+        const operation = scope.runAbortableAsync(async () => {
+            throw independent;
+        });
+        controller.abort("caller stopped after rejection");
+
+        await expect(operation).rejects.toBe(independent);
+        await scope.disposeAsync();
+    });
+
     it("awaits a non-cooperative terminal export, then rejects caller cancellation and cleans up", async () => {
         const asset = new NodeAsset("cancel during terminal export");
         const source = new ImmediateResourceSourceBlock("resource source", asset);
@@ -470,6 +510,18 @@ describe("build scope cancellation", () => {
         await expect(build).rejects.toBe(first.error);
         expect(first.settled).toBe(true);
         expect(second.settled).toBe(true);
+    });
+
+    it("keeps the real fatal primary when an earlier native operation rejects because the scope aborted it", async () => {
+        const asset = new NodeAsset("scope-caused native abort");
+        const native = new ScopeNormalizedAbortSourceBlock("native", asset);
+        const fatal = new FatalSourceBlock("fatal", asset);
+        fatal.siblingStarted = native.started;
+        const exporter = new ResourcePairExportBlock("export", asset);
+        native.output.connectTo(exporter.inputA);
+        fatal.output.connectTo(exporter.inputB);
+
+        await expect(asset.buildAsync()).rejects.toBe(fatal.error);
     });
 
     it("treats an independent AbortError as fatal and aborts its started sibling", async () => {
