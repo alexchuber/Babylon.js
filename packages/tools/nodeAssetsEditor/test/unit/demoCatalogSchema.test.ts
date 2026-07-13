@@ -3,6 +3,7 @@ import { describe, expect, it } from "vitest";
 import {
     DemoCatalogSchemaVersion,
     DemoCatalogDemoCount,
+    DemoCatalogEntries,
     DemoCatalogRegistry,
     DemoAssetRole,
     DemoLossPolicy,
@@ -10,6 +11,7 @@ import {
     DemoTeachingConcept,
     DemoUsdFixtureFormat,
     BuildDemoCatalogViewModels,
+    GetDemoCatalogEntry,
     IsBakeNodeGeometryNode,
     IsEvaluateNodeGeometryNode,
     IsNodeGeometryResource,
@@ -423,14 +425,19 @@ describe("demo catalog schema", () => {
             json: { blocks: [], metadata: { name: "box" } },
         });
 
-        const evaluation = catalog.demos[0].graph[1];
-        expect(IsEvaluateNodeGeometryNode(evaluation)).toBe(true);
+        const graph = catalog.demos[0].graph as readonly DemoGraphNode[];
+        const evaluation = graph[1];
+        if (!IsEvaluateNodeGeometryNode(evaluation)) {
+            throw new Error("Expected an explicit NodeGeometry evaluation node");
+        }
         expect(evaluation.evaluation).toEqual({
             mode: "explicit",
             operation: "build",
         });
-        const bake = catalog.demos[0].graph[2];
-        expect(IsBakeNodeGeometryNode(bake)).toBe(true);
+        const bake = graph[2];
+        if (!IsBakeNodeGeometryNode(bake)) {
+            throw new Error("Expected an explicit NodeGeometry bake node");
+        }
         expect(bake.evaluation).toEqual({
             mode: "explicit",
             operation: "createMesh",
@@ -487,6 +494,12 @@ describe("demo catalog schema", () => {
             source: { kind: "bundled", origin: "same-origin", assetKey: "toycar-usdz" },
             resolvedStage: { representation: "IResolvedStage" },
         });
+        expect(usdDemo.conventions).toEqual({
+            handedness: "preserved",
+            unit: "converted",
+            upAxis: "converted",
+            unitScale: 0.01,
+        });
 
         const nodeGeometryDemo = DemoCatalogRegistry.demos.find(({ id }) => id === "node-geometry-box-to-gltf")!;
         const nodeGeometryGraph = nodeGeometryDemo.graph as readonly DemoGraphNode[];
@@ -503,6 +516,14 @@ describe("demo catalog schema", () => {
         ]);
         expect(imageRoles).toEqual(expect.arrayContaining([DemoAssetRole.BASE_COLOR, DemoAssetRole.NORMAL, DemoAssetRole.ROUGHNESS]));
         expect("IMAGE" in DemoResourceKind).toBe(false);
+    });
+
+    it("loads every checked-in JSON definition through the catalog lookup", () => {
+        expect(DemoCatalogEntries).toHaveLength(DemoCatalogDemoCount);
+        expect(DemoCatalogEntries.map(({ id }) => id)).toEqual(DemoCatalogRegistry.demos.map(({ id }) => id));
+        expect(DemoCatalogEntries.every(({ graph, editor }) => graph !== undefined && editor.frames.length >= 0)).toBe(true);
+        expect(GetDemoCatalogEntry("gltf-optimize-draco-basisu")).toBe(DemoCatalogEntries[0]);
+        expect(GetDemoCatalogEntry("missing-demo")).toBeUndefined();
     });
 
     it("keeps selection parity, lanes, packed texture views, and catalog view models explicit", () => {

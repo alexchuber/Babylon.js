@@ -1,0 +1,378 @@
+{
+    "id": "gltf-optimize-draco-basisu",
+    "title": "Optimize glTF with Draco and BasisU",
+    "summary": "Reduce geometry and texture payloads while making extension-backed preservation visible.",
+    "description": "Reduce geometry and texture payloads while making extension-backed preservation visible.",
+    "tags": ["gltf", "optimization", "draco", "basisu"],
+    "availability": {
+        "status": "available"
+    },
+    "resourceLanes": [
+        {
+            "id": "source",
+            "label": "Source scene",
+            "resourceIds": ["orb-gltf"],
+            "assetBindingIds": ["source-orb"],
+            "textureBindingIds": [],
+            "diagnostics": []
+        }
+    ],
+    "resources": [
+        {
+            "id": "orb-gltf",
+            "label": "Bundled energy orb glTF",
+            "kind": "gltf",
+            "format": "glb",
+            "source": {
+                "kind": "bundled",
+                "assetKey": "orb-glb",
+                "path": "scenes/nodeAssets/orb.glb",
+                "mimeType": "model/gltf-binary",
+                "sourceLabel": "Bundled energy orb glTF",
+                "origin": "same-origin"
+            },
+            "sourceLabel": "Bundled energy orb glTF",
+            "domainTags": {
+                "handedness": "right",
+                "unit": "meters",
+                "upAxis": "Y"
+            }
+        }
+    ],
+    "graph": {
+        "name": "gltf-optimize-draco-basisu",
+        "blocks": [
+            {
+                "customType": "ImportGLTFBlock",
+                "id": 1,
+                "name": "Import glTF",
+                "data": null,
+                "source": "scenes/nodeAssets/orb.glb"
+            },
+            {
+                "customType": "SimplifyBlock",
+                "id": 2,
+                "name": "Simplify geometry",
+                "ratio": 0.5,
+                "error": 0.001
+            },
+            {
+                "customType": "KTX2CompressionBlock",
+                "id": 3,
+                "name": "BasisU textures",
+                "generateMipmaps": true
+            },
+            {
+                "customType": "DracoCompressionBlock",
+                "id": 4,
+                "name": "Draco geometry",
+                "method": 1,
+                "encodeSpeed": 5,
+                "decodeSpeed": 5,
+                "quantizationBits": null
+            },
+            {
+                "customType": "PruneBlock",
+                "id": 5,
+                "name": "Prune unused data",
+                "keepLeaves": false,
+                "keepAttributes": false
+            },
+            {
+                "customType": "ExportGLTFBlock",
+                "id": 6,
+                "name": "Export optimized glTF"
+            }
+        ],
+        "connections": [
+            {
+                "fromBlock": 1,
+                "fromPoint": "output",
+                "toBlock": 2,
+                "toPoint": "input"
+            },
+            {
+                "fromBlock": 2,
+                "fromPoint": "output",
+                "toBlock": 3,
+                "toPoint": "input"
+            },
+            {
+                "fromBlock": 3,
+                "fromPoint": "output",
+                "toBlock": 4,
+                "toPoint": "input"
+            },
+            {
+                "fromBlock": 4,
+                "fromPoint": "output",
+                "toBlock": 5,
+                "toPoint": "input"
+            },
+            {
+                "fromBlock": 5,
+                "fromPoint": "output",
+                "toBlock": 6,
+                "toPoint": "input"
+            }
+        ]
+    },
+    "editor": {
+        "blocks": [
+            {
+                "id": 1,
+                "title": "Import glTF",
+                "position": {
+                    "x": 60,
+                    "y": 240
+                },
+                "collapsed": false
+            },
+            {
+                "id": 2,
+                "title": "Simplify geometry",
+                "position": {
+                    "x": 300,
+                    "y": 240
+                },
+                "collapsed": false
+            },
+            {
+                "id": 3,
+                "title": "BasisU textures",
+                "position": {
+                    "x": 540,
+                    "y": 240
+                },
+                "collapsed": false
+            },
+            {
+                "id": 4,
+                "title": "Draco geometry",
+                "position": {
+                    "x": 780,
+                    "y": 240
+                },
+                "collapsed": false
+            },
+            {
+                "id": 5,
+                "title": "Prune unused data",
+                "position": {
+                    "x": 1020,
+                    "y": 240
+                },
+                "collapsed": false
+            },
+            {
+                "id": 6,
+                "title": "Export optimized glTF",
+                "position": {
+                    "x": 1260,
+                    "y": 240
+                },
+                "collapsed": false,
+                "fileName": "optimized-orb"
+            }
+        ],
+        "frames": [
+            {
+                "id": "frame-optimization",
+                "label": "Optimization",
+                "color": "#2563eb",
+                "position": {
+                    "x": 260,
+                    "y": 160
+                },
+                "size": {
+                    "width": 1040,
+                    "height": 220
+                },
+                "nodeIds": ["2", "3", "4", "5"],
+                "collapsed": false
+            }
+        ],
+        "lossBadges": [
+            {
+                "diagnosticId": "gltf-geometry-simplification",
+                "label": "Geometry baked",
+                "severity": "warning",
+                "graphNodeIds": [2]
+            },
+            {
+                "diagnosticId": "gltf-basisu-extension",
+                "label": "BasisU extension",
+                "severity": "info",
+                "graphNodeIds": [3]
+            },
+            {
+                "diagnosticId": "gltf-draco-extension",
+                "label": "Draco extension",
+                "severity": "info",
+                "graphNodeIds": [4]
+            }
+        ]
+    },
+    "assets": [
+        {
+            "id": "source-orb",
+            "blockId": 1,
+            "input": "data",
+            "bundledAssetKey": "orb-glb",
+            "role": "source-scene",
+            "mimeType": "model/gltf-binary",
+            "sourceLabel": "Bundled energy orb glTF"
+        }
+    ],
+    "textureBindings": [],
+    "materialTargets": [],
+    "selections": [
+        {
+            "id": "source-mesh",
+            "label": "Source mesh",
+            "resolution": {
+                "status": "resolved",
+                "selection": {
+                    "domain": "gltf",
+                    "granularity": "mesh",
+                    "valueKind": "jsonPointer",
+                    "value": "/meshes/0"
+                }
+            },
+            "pill": {
+                "ownerRepresentation": "gltf",
+                "targetType": "mesh",
+                "cardinality": "one",
+                "status": "resolved"
+            }
+        },
+        {
+            "id": "source-material",
+            "label": "Source material",
+            "resolution": {
+                "status": "resolved",
+                "selection": {
+                    "domain": "gltf",
+                    "granularity": "material",
+                    "valueKind": "jsonPointer",
+                    "value": "/materials/0"
+                }
+            },
+            "pill": {
+                "ownerRepresentation": "gltf",
+                "targetType": "material",
+                "cardinality": "one",
+                "status": "resolved"
+            }
+        },
+        {
+            "id": "optional-animation",
+            "label": "Animation",
+            "resolution": {
+                "status": "empty",
+                "diagnostic": {
+                    "status": "empty",
+                    "why": "This optimization demo has no animation selection."
+                }
+            },
+            "pill": {
+                "ownerRepresentation": "gltf",
+                "targetType": "animation",
+                "cardinality": "one",
+                "status": "empty"
+            }
+        }
+    ],
+    "selectionOwners": ["gltf"],
+    "terminal": {
+        "kind": "gltf",
+        "expectedMimeType": "model/gltf-binary"
+    },
+    "conventions": {
+        "handedness": "right",
+        "unit": "meter",
+        "upAxis": "Y"
+    },
+    "expectedLosses": [
+        {
+            "id": "gltf-geometry-simplification",
+            "feature": "Source mesh detail",
+            "policy": "bake",
+            "severity": "warning",
+            "why": "The simplify operator intentionally bakes a lower triangle count into the exported geometry."
+        },
+        {
+            "id": "gltf-basisu-extension",
+            "feature": "Basis Universal texture compression",
+            "policy": "extension",
+            "extension": "KHR_texture_basisu",
+            "severity": "info",
+            "why": "Texture pixels remain decodable through the KTX2/BasisU glTF extension."
+        },
+        {
+            "id": "gltf-draco-extension",
+            "feature": "Draco mesh compression",
+            "policy": "extension",
+            "extension": "KHR_draco_mesh_compression",
+            "severity": "info",
+            "why": "Geometry remains recoverable through the required glTF Draco extension."
+        }
+    ],
+    "nodeGeometry": {
+        "status": "not-applicable",
+        "proceduralUntil": "not-applicable",
+        "why": "This pipeline does not contain a NodeGeometry resource."
+    },
+    "expectedOutcome": {
+        "description": "The optimized orb is available as a glTF preview with compressed geometry and textures.",
+        "assertions": ["The export contains KHR_draco_mesh_compression.", "The export contains KHR_texture_basisu."]
+    },
+    "preExportReview": {
+        "visibility": "before-terminal-export",
+        "beforeExportNodeId": 5,
+        "physicalMetadata": {
+            "handedness": "right",
+            "unit": "meter",
+            "upAxis": "Y"
+        },
+        "accumulatedLosses": [
+            {
+                "id": "gltf-geometry-simplification",
+                "feature": "Source mesh detail",
+                "policy": "bake",
+                "severity": "warning",
+                "why": "The simplify operator intentionally bakes a lower triangle count into the exported geometry."
+            },
+            {
+                "id": "gltf-basisu-extension",
+                "feature": "Basis Universal texture compression",
+                "policy": "extension",
+                "extension": "KHR_texture_basisu",
+                "severity": "info",
+                "why": "Texture pixels remain decodable through the KTX2/BasisU glTF extension."
+            },
+            {
+                "id": "gltf-draco-extension",
+                "feature": "Draco mesh compression",
+                "policy": "extension",
+                "extension": "KHR_draco_mesh_compression",
+                "severity": "info",
+                "why": "Geometry remains recoverable through the required glTF Draco extension."
+            }
+        ]
+    },
+    "teaching": {
+        "order": 1,
+        "concepts": ["expected-losses", "physical-metadata", "pre-export-review", "graph-layout"],
+        "takeaway": "A smaller file is still an intentional contract: inspect baked detail and extension-backed features before export.",
+        "focus": {
+            "frameIds": ["frame-optimization"],
+            "blockIds": [2, 3, 4, 5]
+        }
+    },
+    "domainTags": {
+        "handedness": "right",
+        "unit": "meters",
+        "upAxis": "Y"
+    }
+}

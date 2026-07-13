@@ -1,0 +1,484 @@
+{
+    "id": "usd-to-gltf",
+    "title": "USDZ to glTF",
+    "summary": "Resolve a bundled USDZ ToyCar stage and inspect adaptation losses before the glTF terminal.",
+    "description": "Resolve a bundled USDZ ToyCar stage and inspect adaptation losses before the glTF terminal.",
+    "tags": ["usd", "usdz", "gltf", "losses"],
+    "availability": {
+        "status": "available"
+    },
+    "resourceLanes": [
+        {
+            "id": "source",
+            "label": "Source stage",
+            "resourceIds": ["toycar-usdz"],
+            "assetBindingIds": ["source-toycar-usdz"],
+            "textureBindingIds": [],
+            "diagnostics": []
+        }
+    ],
+    "resources": [
+        {
+            "id": "toycar-usdz",
+            "label": "Bundled ToyCar USDZ fixture",
+            "kind": "usd",
+            "format": "usdz",
+            "source": {
+                "kind": "bundled",
+                "assetKey": "toycar-usdz",
+                "path": "scenes/nodeAssets/toycar.usdz",
+                "mimeType": "model/vnd.usdz+zip",
+                "sourceLabel": "Bundled ToyCar USDZ fixture",
+                "origin": "same-origin"
+            },
+            "sourceLabel": "Bundled ToyCar USDZ fixture",
+            "resolvedStage": {
+                "representation": "IResolvedStage",
+                "sourceFormat": "usdz"
+            },
+            "adaptation": {
+                "target": "babylon",
+                "losses": [
+                    {
+                        "id": "usd-texture-graphs",
+                        "feature": "USD texture graphs",
+                        "policy": "drop",
+                        "severity": "warning",
+                        "why": "The Babylon adaptation does not preserve arbitrary USD shader graphs."
+                    },
+                    {
+                        "id": "usd-lights",
+                        "feature": "USD lights",
+                        "policy": "drop",
+                        "severity": "warning",
+                        "why": "The resolved-stage adapter prunes unsupported USD light representations."
+                    },
+                    {
+                        "id": "usd-cameras",
+                        "feature": "USD cameras",
+                        "policy": "drop",
+                        "severity": "warning",
+                        "why": "The resolved-stage adapter does not carry USD camera prims into this target."
+                    },
+                    {
+                        "id": "usd-skinning-animation",
+                        "feature": "USD skinning and animation",
+                        "policy": "drop",
+                        "severity": "warning",
+                        "why": "The current Babylon adaptation does not preserve the source animation model."
+                    },
+                    {
+                        "id": "usd-point-instancing",
+                        "feature": "USD point instancing",
+                        "policy": "drop",
+                        "severity": "warning",
+                        "why": "Point instancing is recorded as a loss when the target scene is adapted."
+                    },
+                    {
+                        "id": "usd-variants",
+                        "feature": "USD variants",
+                        "policy": "drop",
+                        "severity": "warning",
+                        "why": "The glTF scene spine has no equivalent variant-set model."
+                    },
+                    {
+                        "id": "usd-coordinate-conversion",
+                        "feature": "USD Z-up and authored units",
+                        "policy": "bake",
+                        "severity": "warning",
+                        "why": "The USD_Root adaptation converts source coordinates and records the applied unit scale."
+                    }
+                ]
+            },
+            "expectedLosses": [
+                {
+                    "id": "usd-texture-graphs",
+                    "feature": "USD texture graphs",
+                    "policy": "drop",
+                    "severity": "warning",
+                    "why": "The Babylon adaptation does not preserve arbitrary USD shader graphs."
+                },
+                {
+                    "id": "usd-lights",
+                    "feature": "USD lights",
+                    "policy": "drop",
+                    "severity": "warning",
+                    "why": "The resolved-stage adapter prunes unsupported USD light representations."
+                },
+                {
+                    "id": "usd-cameras",
+                    "feature": "USD cameras",
+                    "policy": "drop",
+                    "severity": "warning",
+                    "why": "The resolved-stage adapter does not carry USD camera prims into this target."
+                },
+                {
+                    "id": "usd-skinning-animation",
+                    "feature": "USD skinning and animation",
+                    "policy": "drop",
+                    "severity": "warning",
+                    "why": "The current Babylon adaptation does not preserve the source animation model."
+                },
+                {
+                    "id": "usd-point-instancing",
+                    "feature": "USD point instancing",
+                    "policy": "drop",
+                    "severity": "warning",
+                    "why": "Point instancing is recorded as a loss when the target scene is adapted."
+                },
+                {
+                    "id": "usd-variants",
+                    "feature": "USD variants",
+                    "policy": "drop",
+                    "severity": "warning",
+                    "why": "The glTF scene spine has no equivalent variant-set model."
+                },
+                {
+                    "id": "usd-coordinate-conversion",
+                    "feature": "USD Z-up and authored units",
+                    "policy": "bake",
+                    "severity": "warning",
+                    "why": "The USD_Root adaptation converts source coordinates and records the applied unit scale."
+                }
+            ],
+            "domainTags": {
+                "handedness": "right",
+                "unit": "centimeters",
+                "upAxis": "Z"
+            }
+        }
+    ],
+    "graph": [
+        {
+            "kind": "ImportScene",
+            "id": "import-usdz",
+            "resourceId": "toycar-usdz",
+            "output": "resolvedStage"
+        },
+        {
+            "kind": "AdaptScene",
+            "id": "adapt-usdz",
+            "input": "resolvedStage",
+            "output": "gltfScene",
+            "target": "gltf"
+        },
+        {
+            "kind": "ExportScene",
+            "id": "export-usdz",
+            "input": "gltfScene",
+            "format": "gltf"
+        }
+    ],
+    "editor": {
+        "blocks": [
+            {
+                "id": 1,
+                "title": "Import USDZ",
+                "position": {
+                    "x": 80,
+                    "y": 240
+                },
+                "collapsed": false
+            },
+            {
+                "id": 2,
+                "title": "Adapt to glTF",
+                "position": {
+                    "x": 420,
+                    "y": 240
+                },
+                "collapsed": false
+            },
+            {
+                "id": 3,
+                "title": "Export glTF",
+                "position": {
+                    "x": 780,
+                    "y": 240
+                },
+                "collapsed": false,
+                "fileName": "toycar-from-usdz"
+            }
+        ],
+        "frames": [
+            {
+                "id": "frame-usd-adaptation",
+                "label": "USD adaptation",
+                "color": "#f59e0b",
+                "position": {
+                    "x": 40,
+                    "y": 160
+                },
+                "size": {
+                    "width": 760,
+                    "height": 220
+                },
+                "nodeIds": ["1", "2"],
+                "collapsed": false
+            }
+        ],
+        "lossBadges": [
+            {
+                "diagnosticId": "usd-texture-graphs",
+                "label": "Texture graphs dropped",
+                "severity": "warning",
+                "graphNodeIds": [2]
+            },
+            {
+                "diagnosticId": "usd-lights",
+                "label": "Lights dropped",
+                "severity": "warning",
+                "graphNodeIds": [2]
+            },
+            {
+                "diagnosticId": "usd-coordinate-conversion",
+                "label": "Coordinates converted",
+                "severity": "warning",
+                "graphNodeIds": [2]
+            }
+        ]
+    },
+    "assets": [
+        {
+            "id": "source-toycar-usdz",
+            "blockId": 1,
+            "input": "data",
+            "bundledAssetKey": "toycar-usdz",
+            "role": "source-scene",
+            "mimeType": "model/vnd.usdz+zip",
+            "sourceLabel": "Bundled ToyCar USDZ fixture"
+        }
+    ],
+    "textureBindings": [],
+    "materialTargets": [],
+    "selections": [
+        {
+            "id": "toycar-prim",
+            "label": "ToyCar body",
+            "resolution": {
+                "status": "resolved",
+                "selection": {
+                    "domain": "usd",
+                    "granularity": "prim",
+                    "valueKind": "primPath",
+                    "value": "/ToyCar/Body"
+                }
+            },
+            "pill": {
+                "ownerRepresentation": "usd",
+                "targetType": "prim",
+                "cardinality": "one",
+                "status": "resolved"
+            }
+        },
+        {
+            "id": "old-variant",
+            "label": "Old variant",
+            "resolution": {
+                "status": "stale",
+                "selection": {
+                    "domain": "usd",
+                    "granularity": "variant",
+                    "valueKind": "primPath",
+                    "value": "/ToyCar/OldVariant"
+                },
+                "diagnostic": {
+                    "status": "stale",
+                    "why": "The authored variant path is no longer present in the bundled stage."
+                }
+            },
+            "pill": {
+                "ownerRepresentation": "usd",
+                "targetType": "variant",
+                "cardinality": "one",
+                "status": "stale"
+            }
+        },
+        {
+            "id": "missing-camera",
+            "label": "Camera",
+            "resolution": {
+                "status": "dangling",
+                "selection": {
+                    "domain": "usd",
+                    "granularity": "camera",
+                    "valueKind": "primPath",
+                    "value": "/ToyCar/Camera"
+                },
+                "diagnostic": {
+                    "status": "dangling",
+                    "why": "The fixture contains no camera prim at this path."
+                }
+            },
+            "pill": {
+                "ownerRepresentation": "usd",
+                "targetType": "camera",
+                "cardinality": "one",
+                "status": "dangling"
+            }
+        },
+        {
+            "id": "optional-light",
+            "label": "Light",
+            "resolution": {
+                "status": "empty",
+                "diagnostic": {
+                    "status": "empty",
+                    "why": "This demo intentionally leaves a light selection empty."
+                }
+            },
+            "pill": {
+                "ownerRepresentation": "usd",
+                "targetType": "light",
+                "cardinality": "one",
+                "status": "empty"
+            }
+        }
+    ],
+    "selectionOwners": ["usd"],
+    "terminal": {
+        "kind": "gltf",
+        "expectedMimeType": "model/gltf-binary"
+    },
+    "conventions": {
+        "handedness": "preserved",
+        "unit": "converted",
+        "upAxis": "converted",
+        "unitScale": 0.01
+    },
+    "expectedLosses": [
+        {
+            "id": "usd-texture-graphs",
+            "feature": "USD texture graphs",
+            "policy": "drop",
+            "severity": "warning",
+            "why": "The Babylon adaptation does not preserve arbitrary USD shader graphs."
+        },
+        {
+            "id": "usd-lights",
+            "feature": "USD lights",
+            "policy": "drop",
+            "severity": "warning",
+            "why": "The resolved-stage adapter prunes unsupported USD light representations."
+        },
+        {
+            "id": "usd-cameras",
+            "feature": "USD cameras",
+            "policy": "drop",
+            "severity": "warning",
+            "why": "The resolved-stage adapter does not carry USD camera prims into this target."
+        },
+        {
+            "id": "usd-skinning-animation",
+            "feature": "USD skinning and animation",
+            "policy": "drop",
+            "severity": "warning",
+            "why": "The current Babylon adaptation does not preserve the source animation model."
+        },
+        {
+            "id": "usd-point-instancing",
+            "feature": "USD point instancing",
+            "policy": "drop",
+            "severity": "warning",
+            "why": "Point instancing is recorded as a loss when the target scene is adapted."
+        },
+        {
+            "id": "usd-variants",
+            "feature": "USD variants",
+            "policy": "drop",
+            "severity": "warning",
+            "why": "The glTF scene spine has no equivalent variant-set model."
+        },
+        {
+            "id": "usd-coordinate-conversion",
+            "feature": "USD Z-up and authored units",
+            "policy": "bake",
+            "severity": "warning",
+            "why": "The USD_Root adaptation converts source coordinates and records the applied unit scale."
+        }
+    ],
+    "nodeGeometry": {
+        "status": "not-applicable",
+        "proceduralUntil": "not-applicable",
+        "why": "This pipeline does not contain a NodeGeometry resource."
+    },
+    "expectedOutcome": {
+        "description": "The adapted ToyCar is available in the glTF terminal preview with every expected USD loss visible.",
+        "assertions": ["The source is represented as IResolvedStage metadata.", "Loss badges are visible before export."]
+    },
+    "preExportReview": {
+        "visibility": "before-terminal-export",
+        "beforeExportNodeId": "adapt-usdz",
+        "physicalMetadata": {
+            "handedness": "preserved",
+            "unit": "converted",
+            "upAxis": "converted",
+            "unitScale": 0.01
+        },
+        "accumulatedLosses": [
+            {
+                "id": "usd-texture-graphs",
+                "feature": "USD texture graphs",
+                "policy": "drop",
+                "severity": "warning",
+                "why": "The Babylon adaptation does not preserve arbitrary USD shader graphs."
+            },
+            {
+                "id": "usd-lights",
+                "feature": "USD lights",
+                "policy": "drop",
+                "severity": "warning",
+                "why": "The resolved-stage adapter prunes unsupported USD light representations."
+            },
+            {
+                "id": "usd-cameras",
+                "feature": "USD cameras",
+                "policy": "drop",
+                "severity": "warning",
+                "why": "The resolved-stage adapter does not carry USD camera prims into this target."
+            },
+            {
+                "id": "usd-skinning-animation",
+                "feature": "USD skinning and animation",
+                "policy": "drop",
+                "severity": "warning",
+                "why": "The current Babylon adaptation does not preserve the source animation model."
+            },
+            {
+                "id": "usd-point-instancing",
+                "feature": "USD point instancing",
+                "policy": "drop",
+                "severity": "warning",
+                "why": "Point instancing is recorded as a loss when the target scene is adapted."
+            },
+            {
+                "id": "usd-variants",
+                "feature": "USD variants",
+                "policy": "drop",
+                "severity": "warning",
+                "why": "The glTF scene spine has no equivalent variant-set model."
+            },
+            {
+                "id": "usd-coordinate-conversion",
+                "feature": "USD Z-up and authored units",
+                "policy": "bake",
+                "severity": "warning",
+                "why": "The USD_Root adaptation converts source coordinates and records the applied unit scale."
+            }
+        ]
+    },
+    "teaching": {
+        "order": 2,
+        "concepts": ["domain-selections", "selection-diagnostics", "expected-losses", "physical-metadata", "pre-export-review", "graph-layout"],
+        "takeaway": "USD adaptation is not lossless by default: exact prim selections, coordinate conversion, and dropped features are all reviewable.",
+        "focus": {
+            "frameIds": ["frame-usd-adaptation"],
+            "blockIds": [1, 2]
+        }
+    },
+    "domainTags": {
+        "handedness": "right",
+        "unit": "centimeters",
+        "upAxis": "Z"
+    }
+}

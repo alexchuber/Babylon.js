@@ -1,0 +1,408 @@
+{
+    "id": "texture-extract-process-reinsert",
+    "title": "Extract, process, and reinsert a texture",
+    "summary": "Treat image data as a semantic binding while a texture slot stays an exact glTF selection.",
+    "description": "Treat image data as a semantic binding while a texture slot stays an exact glTF selection.",
+    "tags": ["gltf", "image", "texture", "bindings"],
+    "availability": {
+        "status": "available"
+    },
+    "resourceLanes": [
+        {
+            "id": "source",
+            "label": "Source scene",
+            "resourceIds": ["orb-gltf"],
+            "assetBindingIds": ["source-orb-textured"],
+            "textureBindingIds": [],
+            "diagnostics": []
+        },
+        {
+            "id": "image",
+            "label": "Processed image",
+            "resourceIds": [],
+            "assetBindingIds": [],
+            "textureBindingIds": ["base-color-roundtrip"],
+            "diagnostics": []
+        }
+    ],
+    "resources": [
+        {
+            "id": "orb-gltf",
+            "label": "Bundled energy orb glTF",
+            "kind": "gltf",
+            "format": "glb",
+            "source": {
+                "kind": "bundled",
+                "assetKey": "orb-glb",
+                "path": "scenes/nodeAssets/orb.glb",
+                "mimeType": "model/gltf-binary",
+                "sourceLabel": "Bundled energy orb glTF",
+                "origin": "same-origin"
+            },
+            "sourceLabel": "Bundled energy orb glTF",
+            "domainTags": {
+                "handedness": "right",
+                "unit": "meters",
+                "upAxis": "Y"
+            }
+        }
+    ],
+    "graph": {
+        "name": "texture-extract-process-reinsert",
+        "blocks": [
+            {
+                "customType": "ImportGLTFBlock",
+                "id": 1,
+                "name": "Import textured glTF",
+                "data": null,
+                "source": "scenes/nodeAssets/orb.glb"
+            },
+            {
+                "customType": "Selector",
+                "id": 2,
+                "name": "Base-color slot",
+                "pointer": "/materials/0/pbrMetallicRoughness/baseColorTexture"
+            },
+            {
+                "customType": "ExtractTexture",
+                "id": 3,
+                "name": "Extract base color"
+            },
+            {
+                "customType": "ResizeImageBlock",
+                "id": 4,
+                "name": "Resize image",
+                "width": 512,
+                "height": 512
+            },
+            {
+                "customType": "ConvertImageFormatBlock",
+                "id": 5,
+                "name": "Convert to WebP",
+                "format": "webp",
+                "quality": 0.9
+            },
+            {
+                "customType": "SetTexture",
+                "id": 6,
+                "name": "Reinsert base color"
+            },
+            {
+                "customType": "ExportGLTFBlock",
+                "id": 7,
+                "name": "Export processed glTF"
+            }
+        ],
+        "connections": [
+            {
+                "fromBlock": 1,
+                "fromPoint": "output",
+                "toBlock": 3,
+                "toPoint": "scene"
+            },
+            {
+                "fromBlock": 2,
+                "fromPoint": "output",
+                "toBlock": 3,
+                "toPoint": "pointer"
+            },
+            {
+                "fromBlock": 3,
+                "fromPoint": "output",
+                "toBlock": 4,
+                "toPoint": "input"
+            },
+            {
+                "fromBlock": 4,
+                "fromPoint": "output",
+                "toBlock": 5,
+                "toPoint": "input"
+            },
+            {
+                "fromBlock": 1,
+                "fromPoint": "output",
+                "toBlock": 6,
+                "toPoint": "scene"
+            },
+            {
+                "fromBlock": 2,
+                "fromPoint": "output",
+                "toBlock": 6,
+                "toPoint": "pointer"
+            },
+            {
+                "fromBlock": 5,
+                "fromPoint": "output",
+                "toBlock": 6,
+                "toPoint": "image"
+            },
+            {
+                "fromBlock": 6,
+                "fromPoint": "output",
+                "toBlock": 7,
+                "toPoint": "input"
+            }
+        ]
+    },
+    "editor": {
+        "blocks": [
+            {
+                "id": 1,
+                "title": "Import textured glTF",
+                "position": {
+                    "x": 40,
+                    "y": 260
+                },
+                "collapsed": false
+            },
+            {
+                "id": 2,
+                "title": "Base-color slot",
+                "position": {
+                    "x": 300,
+                    "y": 80
+                },
+                "collapsed": false
+            },
+            {
+                "id": 3,
+                "title": "Extract base color",
+                "position": {
+                    "x": 540,
+                    "y": 260
+                },
+                "collapsed": false
+            },
+            {
+                "id": 4,
+                "title": "Resize image",
+                "position": {
+                    "x": 780,
+                    "y": 260
+                },
+                "collapsed": false
+            },
+            {
+                "id": 5,
+                "title": "Convert to WebP",
+                "position": {
+                    "x": 1020,
+                    "y": 260
+                },
+                "collapsed": false
+            },
+            {
+                "id": 6,
+                "title": "Reinsert base color",
+                "position": {
+                    "x": 1260,
+                    "y": 260
+                },
+                "collapsed": false
+            },
+            {
+                "id": 7,
+                "title": "Export processed glTF",
+                "position": {
+                    "x": 1500,
+                    "y": 260
+                },
+                "collapsed": false,
+                "fileName": "processed-orb"
+            }
+        ],
+        "frames": [
+            {
+                "id": "frame-image-lane",
+                "label": "Image lane",
+                "color": "#0891b2",
+                "position": {
+                    "x": 500,
+                    "y": 160
+                },
+                "size": {
+                    "width": 820,
+                    "height": 220
+                },
+                "nodeIds": ["3", "4", "5", "6"],
+                "collapsed": false
+            }
+        ],
+        "lossBadges": [
+            {
+                "diagnosticId": "image-resize",
+                "label": "Resolution baked",
+                "severity": "warning",
+                "graphNodeIds": [4]
+            },
+            {
+                "diagnosticId": "image-reencode",
+                "label": "WebP re-encode",
+                "severity": "warning",
+                "graphNodeIds": [5]
+            }
+        ]
+    },
+    "assets": [
+        {
+            "id": "source-orb-textured",
+            "blockId": 1,
+            "input": "data",
+            "bundledAssetKey": "orb-glb",
+            "role": "source-scene",
+            "mimeType": "model/gltf-binary",
+            "sourceLabel": "Bundled textured orb glTF"
+        }
+    ],
+    "textureBindings": [
+        {
+            "id": "base-color-roundtrip",
+            "role": "base-color",
+            "source": {
+                "kind": "graphOutput",
+                "blockId": 3,
+                "output": "output"
+            },
+            "target": {
+                "selectionId": "base-color-slot",
+                "slot": "baseColorTexture"
+            }
+        }
+    ],
+    "materialTargets": [],
+    "selections": [
+        {
+            "id": "base-color-slot",
+            "label": "Base-color texture slot",
+            "resolution": {
+                "status": "resolved",
+                "selection": {
+                    "domain": "gltf",
+                    "granularity": "texture",
+                    "valueKind": "jsonPointer",
+                    "value": "/materials/0/pbrMetallicRoughness/baseColorTexture"
+                }
+            },
+            "pill": {
+                "ownerRepresentation": "gltf",
+                "targetType": "texture",
+                "cardinality": "one",
+                "status": "resolved"
+            }
+        },
+        {
+            "id": "old-normal-slot",
+            "label": "Old normal slot",
+            "resolution": {
+                "status": "stale",
+                "selection": {
+                    "domain": "gltf",
+                    "granularity": "texture",
+                    "valueKind": "jsonPointer",
+                    "value": "/materials/0/normalTexture"
+                },
+                "diagnostic": {
+                    "status": "stale",
+                    "why": "The source fixture does not contain the optional normal slot."
+                }
+            },
+            "pill": {
+                "ownerRepresentation": "gltf",
+                "targetType": "texture",
+                "cardinality": "one",
+                "status": "stale"
+            }
+        },
+        {
+            "id": "optional-mask",
+            "label": "Mask",
+            "resolution": {
+                "status": "empty",
+                "diagnostic": {
+                    "status": "empty",
+                    "why": "This round trip edits only the base-color slot."
+                }
+            },
+            "pill": {
+                "ownerRepresentation": "gltf",
+                "targetType": "texture",
+                "cardinality": "one",
+                "status": "empty"
+            }
+        }
+    ],
+    "selectionOwners": ["gltf"],
+    "terminal": {
+        "kind": "gltf",
+        "expectedMimeType": "model/gltf-binary"
+    },
+    "conventions": {
+        "handedness": "right",
+        "unit": "meter",
+        "upAxis": "Y"
+    },
+    "expectedLosses": [
+        {
+            "id": "image-resize",
+            "feature": "Source texture resolution",
+            "policy": "bake",
+            "severity": "warning",
+            "why": "The image lane intentionally bakes the selected texture to a fixed working resolution."
+        },
+        {
+            "id": "image-reencode",
+            "feature": "Source image encoding",
+            "policy": "bake",
+            "severity": "warning",
+            "why": "The processed image is re-encoded as WebP before it is inserted into the glTF texture slot."
+        }
+    ],
+    "nodeGeometry": {
+        "status": "not-applicable",
+        "proceduralUntil": "not-applicable",
+        "why": "This pipeline does not contain a NodeGeometry resource."
+    },
+    "expectedOutcome": {
+        "description": "The selected base-color image is resized and re-encoded before being written back into the glTF scene.",
+        "assertions": ["The image path is represented by bindings.", "The output texture slot remains the exact selected slot."]
+    },
+    "preExportReview": {
+        "visibility": "before-terminal-export",
+        "beforeExportNodeId": 6,
+        "physicalMetadata": {
+            "handedness": "right",
+            "unit": "meter",
+            "upAxis": "Y"
+        },
+        "accumulatedLosses": [
+            {
+                "id": "image-resize",
+                "feature": "Source texture resolution",
+                "policy": "bake",
+                "severity": "warning",
+                "why": "The image lane intentionally bakes the selected texture to a fixed working resolution."
+            },
+            {
+                "id": "image-reencode",
+                "feature": "Source image encoding",
+                "policy": "bake",
+                "severity": "warning",
+                "why": "The processed image is re-encoded as WebP before it is inserted into the glTF texture slot."
+            }
+        ]
+    },
+    "teaching": {
+        "order": 6,
+        "concepts": ["domain-selections", "selection-diagnostics", "image-bindings", "expected-losses", "pre-export-review", "graph-layout"],
+        "takeaway": "Image payloads are semantic bindings, while the texture slot they modify remains a domain-owned exact selection.",
+        "focus": {
+            "frameIds": ["frame-image-lane"],
+            "blockIds": [2, 3, 4, 5, 6]
+        }
+    },
+    "domainTags": {
+        "handedness": "right",
+        "unit": "meters",
+        "upAxis": "Y"
+    }
+}

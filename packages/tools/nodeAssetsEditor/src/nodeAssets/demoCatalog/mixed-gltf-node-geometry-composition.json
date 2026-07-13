@@ -1,0 +1,376 @@
+{
+    "id": "mixed-gltf-node-geometry-composition",
+    "title": "Compose glTF with NodeGeometry",
+    "summary": "Adapt a glTF scene to Babylon, explicitly realize procedural geometry, and compose the result.",
+    "description": "Adapt a glTF scene to Babylon, explicitly realize procedural geometry, and compose the result.",
+    "tags": ["gltf", "node-geometry", "composition", "babylon"],
+    "availability": {
+        "status": "requires-selection-adapter",
+        "why": "The composed Babylon scene selections are gated until Babylon selection parity exists."
+    },
+    "resourceLanes": [
+        {
+            "id": "source",
+            "label": "Source scene",
+            "resourceIds": ["orb-gltf"],
+            "assetBindingIds": ["source-orb-composition"],
+            "textureBindingIds": [],
+            "diagnostics": []
+        },
+        {
+            "id": "procedural",
+            "label": "Procedural geometry",
+            "resourceIds": ["box-geometry"],
+            "assetBindingIds": [],
+            "textureBindingIds": [],
+            "diagnostics": []
+        },
+        {
+            "id": "babylon",
+            "label": "Babylon representation",
+            "resourceIds": [],
+            "assetBindingIds": [],
+            "textureBindingIds": [],
+            "diagnostics": [
+                {
+                    "id": "babylon-left-handed-scene-lane",
+                    "kind": "left-handed-scene",
+                    "label": "Left-handed scene",
+                    "severity": "warning",
+                    "representation": "babylon",
+                    "handedness": "left",
+                    "scope": "representation-lane",
+                    "why": "Babylon representation lanes carry a left-handed scene and must keep that convention visible."
+                }
+            ]
+        }
+    ],
+    "resources": [
+        {
+            "id": "orb-gltf",
+            "label": "Bundled energy orb glTF",
+            "kind": "gltf",
+            "format": "glb",
+            "source": {
+                "kind": "bundled",
+                "assetKey": "orb-glb",
+                "path": "scenes/nodeAssets/orb.glb",
+                "mimeType": "model/gltf-binary",
+                "sourceLabel": "Bundled energy orb glTF",
+                "origin": "same-origin"
+            },
+            "sourceLabel": "Bundled energy orb glTF",
+            "domainTags": {
+                "handedness": "right",
+                "unit": "meters",
+                "upAxis": "Y"
+            }
+        },
+        {
+            "id": "box-geometry",
+            "label": "NodeGeometry box definition",
+            "kind": "nodeGeometry",
+            "format": "babylon-node-geometry",
+            "source": {
+                "kind": "snippet",
+                "snippetId": "PYY6XE#69"
+            },
+            "sourceLabel": "NodeGeometry box definition",
+            "snippetId": "PYY6XE#69"
+        }
+    ],
+    "graph": [
+        {
+            "kind": "ImportScene",
+            "id": "import-composition-gltf",
+            "resourceId": "orb-gltf",
+            "output": "gltfScene"
+        },
+        {
+            "kind": "AdaptScene",
+            "id": "adapt-composition-babylon",
+            "input": "gltfScene",
+            "output": "babylonScene",
+            "target": "babylon",
+            "diagnostics": [
+                {
+                    "id": "babylon-left-handed-scene-conversion",
+                    "kind": "left-handed-scene",
+                    "label": "Left-handed scene",
+                    "severity": "warning",
+                    "representation": "babylon",
+                    "handedness": "left",
+                    "scope": "conversion",
+                    "why": "The Babylon-to-target conversion must make its left-handed scene convention explicit before export."
+                }
+            ]
+        },
+        {
+            "kind": "ImportNodeGeometry",
+            "id": "import-composition-geometry",
+            "resourceId": "box-geometry",
+            "output": "proceduralGeometry"
+        },
+        {
+            "kind": "EvaluateNodeGeometry",
+            "id": "evaluate-composition-geometry",
+            "geometry": "proceduralGeometry",
+            "output": "vertexData",
+            "evaluation": {
+                "mode": "explicit",
+                "operation": "build"
+            }
+        },
+        {
+            "kind": "BakeNodeGeometry",
+            "id": "bake-composition-geometry",
+            "geometry": "proceduralGeometry",
+            "scene": "babylonScene",
+            "meshName": "ComposedBox",
+            "output": "babylonScene",
+            "evaluation": {
+                "mode": "explicit",
+                "operation": "createMesh"
+            }
+        },
+        {
+            "kind": "ExportScene",
+            "id": "export-composition",
+            "input": "babylonScene",
+            "format": "gltf"
+        }
+    ],
+    "editor": {
+        "blocks": [
+            {
+                "id": 1,
+                "title": "Import glTF",
+                "position": {
+                    "x": 40,
+                    "y": 220
+                },
+                "collapsed": false
+            },
+            {
+                "id": 2,
+                "title": "Adapt to Babylon",
+                "position": {
+                    "x": 320,
+                    "y": 220
+                },
+                "collapsed": false
+            },
+            {
+                "id": 3,
+                "title": "Import NodeGeometry",
+                "position": {
+                    "x": 40,
+                    "y": 520
+                },
+                "collapsed": false
+            },
+            {
+                "id": 4,
+                "title": "Evaluate",
+                "position": {
+                    "x": 320,
+                    "y": 520
+                },
+                "collapsed": false
+            },
+            {
+                "id": 5,
+                "title": "Bake ComposedBox",
+                "position": {
+                    "x": 620,
+                    "y": 360
+                },
+                "collapsed": false
+            },
+            {
+                "id": 6,
+                "title": "Export glTF",
+                "position": {
+                    "x": 960,
+                    "y": 360
+                },
+                "collapsed": false,
+                "fileName": "orb-with-box"
+            }
+        ],
+        "frames": [
+            {
+                "id": "frame-source-adaptation",
+                "label": "Source adaptation",
+                "color": "#7c3aed",
+                "position": {
+                    "x": 280,
+                    "y": 140
+                },
+                "size": {
+                    "width": 300,
+                    "height": 180
+                },
+                "nodeIds": ["1", "2"],
+                "collapsed": false
+            },
+            {
+                "id": "frame-procedural-geometry",
+                "label": "Procedural geometry",
+                "color": "#dc2626",
+                "position": {
+                    "x": 0,
+                    "y": 440
+                },
+                "size": {
+                    "width": 560,
+                    "height": 200
+                },
+                "nodeIds": ["3", "4"],
+                "collapsed": false
+            }
+        ],
+        "lossBadges": [
+            {
+                "diagnosticId": "node-geometry-bake",
+                "label": "Explicit geometry bake",
+                "severity": "info",
+                "graphNodeIds": [5]
+            }
+        ]
+    },
+    "assets": [
+        {
+            "id": "source-orb-composition",
+            "blockId": 1,
+            "input": "data",
+            "bundledAssetKey": "orb-glb",
+            "role": "source-scene",
+            "mimeType": "model/gltf-binary",
+            "sourceLabel": "Bundled energy orb glTF"
+        }
+    ],
+    "textureBindings": [],
+    "materialTargets": [],
+    "selections": [
+        {
+            "id": "composition-parent",
+            "label": "Babylon scene",
+            "resolution": {
+                "status": "resolved",
+                "selection": {
+                    "domain": "babylon",
+                    "granularity": "scene",
+                    "valueKind": "name",
+                    "value": "babylonScene"
+                }
+            },
+            "pill": {
+                "ownerRepresentation": "babylon",
+                "targetType": "scene",
+                "cardinality": "one",
+                "status": "resolved"
+            }
+        },
+        {
+            "id": "composed-box",
+            "label": "Composed box",
+            "resolution": {
+                "status": "resolved",
+                "selection": {
+                    "domain": "babylon",
+                    "granularity": "mesh",
+                    "valueKind": "name",
+                    "value": "ComposedBox"
+                }
+            },
+            "pill": {
+                "ownerRepresentation": "babylon",
+                "targetType": "mesh",
+                "cardinality": "one",
+                "status": "resolved"
+            }
+        },
+        {
+            "id": "optional-placement",
+            "label": "Placement",
+            "resolution": {
+                "status": "empty",
+                "diagnostic": {
+                    "status": "empty",
+                    "why": "The procedural box is created at the scene root."
+                }
+            },
+            "pill": {
+                "ownerRepresentation": "babylon",
+                "targetType": "node",
+                "cardinality": "one",
+                "status": "empty"
+            }
+        }
+    ],
+    "selectionOwners": ["babylon"],
+    "terminal": {
+        "kind": "gltf",
+        "expectedMimeType": "model/gltf-binary"
+    },
+    "conventions": {
+        "handedness": "right",
+        "unit": "meter",
+        "upAxis": "Y"
+    },
+    "expectedLosses": [
+        {
+            "id": "node-geometry-bake",
+            "feature": "Procedural NodeGeometry graph",
+            "policy": "bake",
+            "severity": "info",
+            "why": "The visible bake node turns procedural geometry into vertex data and a realized mesh for export."
+        }
+    ],
+    "nodeGeometry": {
+        "status": "requires-adapter",
+        "proceduralUntil": "BakeNodeGeometry",
+        "target": {
+            "name": "ComposedBox",
+            "parentPointer": "/scene"
+        },
+        "why": "The scene adapter must evaluate NodeGeometry explicitly before attaching the realized mesh to the Babylon composition."
+    },
+    "expectedOutcome": {
+        "description": "The orb and an explicitly realized ComposedBox are exported together as one glTF scene.",
+        "assertions": ["The NodeGeometry resource never becomes a scene by itself.", "The final scene contains both source and realized geometry."]
+    },
+    "preExportReview": {
+        "visibility": "before-terminal-export",
+        "beforeExportNodeId": "bake-composition-geometry",
+        "physicalMetadata": {
+            "handedness": "right",
+            "unit": "meter",
+            "upAxis": "Y"
+        },
+        "accumulatedLosses": [
+            {
+                "id": "node-geometry-bake",
+                "feature": "Procedural NodeGeometry graph",
+                "policy": "bake",
+                "severity": "info",
+                "why": "The visible bake node turns procedural geometry into vertex data and a realized mesh for export."
+            }
+        ]
+    },
+    "teaching": {
+        "order": 7,
+        "concepts": ["node-geometry-evaluation", "domain-selections", "expected-losses", "physical-metadata", "pre-export-review", "graph-layout"],
+        "takeaway": "Composition is explicit: a scene can receive procedural geometry only after evaluation and realization.",
+        "focus": {
+            "frameIds": ["frame-source-adaptation", "frame-procedural-geometry"],
+            "blockIds": [2, 4, 5]
+        }
+    },
+    "domainTags": {
+        "handedness": "right",
+        "unit": "meters",
+        "upAxis": "Y"
+    }
+}

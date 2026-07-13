@@ -14,14 +14,15 @@ import { Observable } from "core/Misc/observable";
 
 import { type BuildPBRMaterial } from "node-assets/Blocks/buildPBRMaterial";
 import { ExportGLTFBlock } from "node-assets/Blocks/exportGLTFBlock";
-import { type ImportGLTFBlock } from "node-assets/Blocks/importGLTFBlock";
-import { type ImportImageBlock } from "node-assets/Blocks/importImageBlock";
+import { ImportGLTFBlock } from "node-assets/Blocks/importGLTFBlock";
+import { ImportImageBlock } from "node-assets/Blocks/importImageBlock";
+import { ImportUSDBlock } from "node-assets/Blocks/importUSDBlock";
 import { type KTX2CompressionBlock } from "node-assets/Blocks/ktx2CompressionBlock";
 import { NodeAsset } from "node-assets/nodeAsset";
 import { type NodeAssetBlock } from "node-assets/blockFoundation/nodeAssetBlock";
 
 import { GraphEditorState } from "../nodeGraph/editorState";
-import { type IGraphNode, type IGraphSnapshot, type IGraphWire, type Vec2 } from "../nodeGraph/graphModel";
+import { type IGraphFrame, type IGraphNode, type IGraphSnapshot, type IGraphWire, type Vec2 } from "../nodeGraph/graphModel";
 import { type IPaletteCategory } from "../nodeGraph/paletteModel";
 import { type IPropertySection } from "../nodeGraph/propertyModel";
 
@@ -33,7 +34,8 @@ import { BlockToNode, PortIdForPoint } from "./blockNodeMapping";
 import { BuildPaletteCategories } from "./paletteCategories";
 import { NodeAssetReconciler } from "./nodeAssetReconciler";
 import { NodeAssetBuildWorkerClient, type INodeAssetBuildClient } from "./nodeAssetBuildWorkerClient";
-import { DefaultSampleAssetUrls } from "./defaultSampleAssets";
+import { DefaultSampleAssetUrls, GetDemoCatalogAssetUrl } from "./defaultSampleAssets";
+import { RequireDemoCatalogEntry, type DemoAssetBinding, type DemoNodeAssetGraph } from "./demoCatalog";
 
 /** The editor metadata layered on top of a serialized graph: per-block visual state keyed by block id. */
 interface IEditorBlockMetadata {
@@ -48,7 +50,7 @@ interface IEditorBlockMetadata {
 /** The full editor save file: the domain graph plus the editor-owned visual metadata. */
 interface INodeAssetEditorFile {
     readonly graph: ReturnType<NodeAsset["serialize"]>;
-    readonly editor: { readonly blocks: readonly IEditorBlockMetadata[] };
+    readonly editor: { readonly blocks: readonly IEditorBlockMetadata[]; readonly frames?: readonly IGraphFrame[] };
 }
 
 // Human-readable provenance labels for the seeded "energy orb" sample assets, shown in each import
@@ -193,6 +195,40 @@ export class NodeAssetGraphController {
     }
 
     /**
+     * Loads a JSON-backed catalog demo into the editor.
+     *
+     * Asset bytes are fetched and the graph is parsed before the current editor
+     * state is replaced. Declarative adapter graphs remain inspectable in the
+     * catalog but report an explicit error here until a corresponding runtime
+     * adapter is registered.
+     *
+     * @param id - Stable catalog demo id.
+     * @returns A promise that resolves after all bundled inputs are hydrated.
+     */
+    public async loadDemoAsync(id: string): Promise<void> {
+        const demo = RequireDemoCatalogEntry(id);
+        if (Array.isArray(demo.graph)) {
+            throw new Error(`Node Assets demo "${id}" uses a declarative graph and has no registered editor adapter yet.`);
+        }
+
+        const assetBytesByKey = new Map<string, Uint8Array>();
+        const assetKeys = [...new Set(demo.assets.map(({ bundledAssetKey }) => bundledAssetKey))];
+        const fetchedAssets = await Promise.all(
+            assetKeys.map(async (assetKey) => {
+                const bytes = await this._fetchAssetBytesAsync(GetDemoCatalogAssetUrl(assetKey));
+                return [assetKey, bytes] as const;
+            })
+        );
+        for (const [assetKey, bytes] of fetchedAssets) {
+            assetBytesByKey.set(assetKey, bytes);
+        }
+
+        const asset = NodeAsset.Parse(demo.graph as DemoNodeAssetGraph);
+        this._hydrateDemoAssets(asset, demo.assets, assetBytesByKey);
+        this._replaceGraph(asset, { blocks: demo.editor.blocks, frames: demo.editor.frames }, true);
+    }
+
+    /**
      * Creates the visual node for a dropped palette item, constructing the backing block first so the
      * subsequent `state.addNode` (and its reconcile) sees a fully mapped block.
      * @param paletteItemId - The dropped palette item id.
@@ -275,7 +311,7 @@ export class NodeAssetGraphController {
                 });
             }
         }
-        const file: INodeAssetEditorFile = { graph: this._nodeAsset.serialize(), editor: { blocks } };
+        const file: INodeAssetEditorFile = { graph: this._nodeAsset.serialize(), editor: { blocks, frames: this.state.frames } };
         return JSON.stringify(file, null, 2);
     }
 
@@ -287,12 +323,19 @@ export class NodeAssetGraphController {
     public load(json: string): void {
         const file = JSON.parse(json) as INodeAssetEditorFile;
         const asset = NodeAsset.Parse(file.graph);
+        this._replaceGraph(asset, file.editor ?? { blocks: [] }, false);
+    }
 
+    private _replaceGraph(
+        asset: NodeAsset,
+        editor: { readonly blocks: readonly IEditorBlockMetadata[]; readonly frames?: readonly IGraphFrame[] },
+        framesUseBlockIds: boolean
+    ): void {
         this._nodeAsset = asset;
         this._reconciler.reset(asset);
 
         const metadataById = new Map<number, IEditorBlockMetadata>();
-        for (const metadata of file.editor?.blocks ?? []) {
+        for (const metadata of editor.blocks) {
             metadataById.set(metadata.id, metadata);
         }
 
@@ -326,7 +369,64 @@ export class NodeAssetGraphController {
         }
 
         // Correspondence is rebuilt above, so the reconcile fired by reset sees a consistent world.
-        this.state.reset({ nodes, wires, frames: [] });
+        const frames = framesUseBlockIds ? this._resolveCatalogFrames(editor.frames ?? [], nodes) : [...(editor.frames ?? [])];
+        this.state.reset({ nodes, wires, frames });
+    }
+
+    private _resolveCatalogFrames(frames: readonly IGraphFrame[], nodes: readonly IGraphNode[]): readonly IGraphFrame[] {
+        const visualNodeIdByBlockId = new Map<string, string>();
+        for (const node of nodes) {
+            visualNodeIdByBlockId.set(node.id, node.id);
+            if (node.id.startsWith("node-")) {
+                visualNodeIdByBlockId.set(node.id.slice("node-".length), node.id);
+            }
+        }
+
+        return frames.map((frame) => ({
+            ...frame,
+            nodeIds: frame.nodeIds.map((nodeId) => {
+                const visualNodeId = visualNodeIdByBlockId.get(nodeId);
+                if (!visualNodeId) {
+                    throw new Error(`Demo frame "${frame.id}" references unknown graph node "${nodeId}".`);
+                }
+                return visualNodeId;
+            }),
+        }));
+    }
+
+    private _hydrateDemoAssets(asset: NodeAsset, bindings: readonly DemoAssetBinding[], assetBytesByKey: ReadonlyMap<string, Uint8Array>): void {
+        for (const binding of bindings) {
+            const block = asset.attachedBlocks.find(({ uniqueId }) => uniqueId === binding.blockId);
+            if (!block) {
+                throw new Error(`Demo asset binding "${binding.id}" references missing block ${binding.blockId}.`);
+            }
+            if (binding.input !== "data") {
+                throw new Error(`Demo asset binding "${binding.id}" targets unsupported input "${binding.input}".`);
+            }
+
+            const bytes = assetBytesByKey.get(binding.bundledAssetKey);
+            if (!bytes) {
+                throw new Error(`Demo asset binding "${binding.id}" has no fetched bytes for "${binding.bundledAssetKey}".`);
+            }
+
+            if (block instanceof ImportGLTFBlock) {
+                block.data = bytes;
+                block.source = binding.sourceLabel ?? binding.bundledAssetKey;
+                continue;
+            }
+            if (block instanceof ImportImageBlock) {
+                block.data = bytes;
+                block.mimeType = binding.mimeType ?? "application/octet-stream";
+                block.source = binding.sourceLabel ?? binding.bundledAssetKey;
+                continue;
+            }
+            if (block instanceof ImportUSDBlock) {
+                block.data = bytes;
+                continue;
+            }
+
+            throw new Error(`Demo asset binding "${binding.id}" targets unsupported block "${block.getClassName()}".`);
+        }
     }
 
     /** Releases the state subscription. */

@@ -1,0 +1,17 @@
+{
+    "producer": {
+        "name": "Babylon.js",
+        "version": "8.0"
+    },
+    "autoClear": true,
+    "clearColor": [0.04, 0.04, 0.06, 1],
+    "meshes": [
+        {
+            "name": "Body",
+            "id": "body",
+            "uniqueId": 1,
+            "positions": [-2, -1, 0, 2, -1, 0, 2, 1, 0, -2, 1, 0],
+            "indices": [0, 1, 2, 0, 2, 3]
+        }
+    ]
+}

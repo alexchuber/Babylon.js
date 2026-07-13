@@ -1,0 +1,345 @@
+{
+    "id": "babylon-mutation-to-gltf",
+    "title": "Mutate a Babylon scene and export glTF",
+    "summary": "Use an exact Babylon selection to apply a mutation, then review what survives the glTF boundary.",
+    "description": "Use an exact Babylon selection to apply a mutation, then review what survives the glTF boundary.",
+    "tags": ["babylon", "mutation", "selection", "gltf"],
+    "availability": {
+        "status": "requires-selection-adapter",
+        "why": "Babylon-owned exact selections are not yet backed by the editor's owned resolver."
+    },
+    "resourceLanes": [
+        {
+            "id": "source",
+            "label": "Source scene",
+            "resourceIds": ["source-babylon"],
+            "assetBindingIds": ["source-toycar-babylon"],
+            "textureBindingIds": [],
+            "diagnostics": []
+        },
+        {
+            "id": "babylon",
+            "label": "Babylon representation",
+            "resourceIds": [],
+            "assetBindingIds": [],
+            "textureBindingIds": [],
+            "diagnostics": [
+                {
+                    "id": "babylon-left-handed-scene-lane",
+                    "kind": "left-handed-scene",
+                    "label": "Left-handed scene",
+                    "severity": "warning",
+                    "representation": "babylon",
+                    "handedness": "left",
+                    "scope": "representation-lane",
+                    "why": "Babylon representation lanes carry a left-handed scene and must keep that convention visible."
+                }
+            ]
+        }
+    ],
+    "resources": [
+        {
+            "id": "source-babylon",
+            "label": "Bundled Babylon scene",
+            "kind": "babylon",
+            "format": "babylon",
+            "source": {
+                "kind": "bundled",
+                "assetKey": "toycar-babylon",
+                "path": "scenes/nodeAssets/toycar.babylon",
+                "mimeType": "application/json",
+                "sourceLabel": "Bundled Babylon scene",
+                "origin": "same-origin"
+            },
+            "sourceLabel": "Bundled Babylon scene",
+            "domainTags": {
+                "handedness": "left",
+                "unit": "meters",
+                "upAxis": "Y"
+            }
+        }
+    ],
+    "graph": [
+        {
+            "kind": "ImportScene",
+            "id": "import-babylon",
+            "resourceId": "source-babylon",
+            "output": "babylonScene"
+        },
+        {
+            "kind": "MutateScene",
+            "id": "mutate-babylon",
+            "input": "babylonScene",
+            "output": "mutatedBabylonScene",
+            "selectionId": "body-translation",
+            "operation": "set-property"
+        },
+        {
+            "kind": "AdaptScene",
+            "id": "adapt-mutated-babylon",
+            "input": "mutatedBabylonScene",
+            "output": "gltfScene",
+            "target": "gltf",
+            "diagnostics": [
+                {
+                    "id": "babylon-left-handed-scene-conversion",
+                    "kind": "left-handed-scene",
+                    "label": "Left-handed scene",
+                    "severity": "warning",
+                    "representation": "babylon",
+                    "handedness": "left",
+                    "scope": "conversion",
+                    "why": "The Babylon-to-target conversion must make its left-handed scene convention explicit before export."
+                }
+            ]
+        },
+        {
+            "kind": "ExportScene",
+            "id": "export-mutated-babylon",
+            "input": "gltfScene",
+            "format": "gltf"
+        }
+    ],
+    "editor": {
+        "blocks": [
+            {
+                "id": 1,
+                "title": "Import Babylon",
+                "position": {
+                    "x": 40,
+                    "y": 240
+                },
+                "collapsed": false
+            },
+            {
+                "id": 2,
+                "title": "Set body transform",
+                "position": {
+                    "x": 360,
+                    "y": 240
+                },
+                "collapsed": false
+            },
+            {
+                "id": 3,
+                "title": "Adapt to glTF",
+                "position": {
+                    "x": 700,
+                    "y": 240
+                },
+                "collapsed": false
+            },
+            {
+                "id": 4,
+                "title": "Export glTF",
+                "position": {
+                    "x": 1040,
+                    "y": 240
+                },
+                "collapsed": false,
+                "fileName": "mutated-toycar"
+            }
+        ],
+        "frames": [
+            {
+                "id": "frame-selection-mutation",
+                "label": "Selection and mutation",
+                "color": "#059669",
+                "position": {
+                    "x": 300,
+                    "y": 160
+                },
+                "size": {
+                    "width": 440,
+                    "height": 220
+                },
+                "nodeIds": ["1", "2"],
+                "collapsed": false
+            }
+        ],
+        "lossBadges": [
+            {
+                "diagnosticId": "babylon-custom-material",
+                "label": "Material baked",
+                "severity": "warning",
+                "graphNodeIds": [3]
+            },
+            {
+                "diagnosticId": "babylon-physics-metadata",
+                "label": "Physics metadata dropped",
+                "severity": "info",
+                "graphNodeIds": [3]
+            },
+            {
+                "diagnosticId": "babylon-animation",
+                "label": "Animation preserved",
+                "severity": "info",
+                "graphNodeIds": [3]
+            }
+        ]
+    },
+    "assets": [
+        {
+            "id": "source-toycar-babylon",
+            "blockId": 1,
+            "input": "data",
+            "bundledAssetKey": "toycar-babylon",
+            "role": "source-scene",
+            "mimeType": "application/json",
+            "sourceLabel": "Bundled Babylon scene fixture"
+        }
+    ],
+    "textureBindings": [],
+    "materialTargets": [],
+    "selections": [
+        {
+            "id": "body-translation",
+            "label": "Body node",
+            "resolution": {
+                "status": "resolved",
+                "selection": {
+                    "domain": "babylon",
+                    "granularity": "node",
+                    "valueKind": "name",
+                    "value": "Body"
+                }
+            },
+            "pill": {
+                "ownerRepresentation": "babylon",
+                "targetType": "node",
+                "cardinality": "one",
+                "status": "resolved"
+            }
+        },
+        {
+            "id": "body-material",
+            "label": "Paint material",
+            "resolution": {
+                "status": "resolved",
+                "selection": {
+                    "domain": "babylon",
+                    "granularity": "material",
+                    "valueKind": "name",
+                    "value": "Paint"
+                }
+            },
+            "pill": {
+                "ownerRepresentation": "babylon",
+                "targetType": "material",
+                "cardinality": "one",
+                "status": "resolved"
+            }
+        },
+        {
+            "id": "removed-wheel",
+            "label": "Removed wheel",
+            "resolution": {
+                "status": "dangling",
+                "selection": {
+                    "domain": "babylon",
+                    "granularity": "mesh",
+                    "valueKind": "name",
+                    "value": "RemovedWheel"
+                },
+                "diagnostic": {
+                    "status": "dangling",
+                    "why": "The optional wheel is absent from the bundled fixture."
+                }
+            },
+            "pill": {
+                "ownerRepresentation": "babylon",
+                "targetType": "mesh",
+                "cardinality": "one",
+                "status": "dangling"
+            }
+        }
+    ],
+    "selectionOwners": ["babylon"],
+    "terminal": {
+        "kind": "gltf",
+        "expectedMimeType": "model/gltf-binary"
+    },
+    "conventions": {
+        "handedness": "right",
+        "unit": "meter",
+        "upAxis": "Y"
+    },
+    "expectedLosses": [
+        {
+            "id": "babylon-custom-material",
+            "feature": "Babylon custom material",
+            "policy": "bake",
+            "severity": "warning",
+            "why": "The Babylon material is baked to the glTF material model at export."
+        },
+        {
+            "id": "babylon-physics-metadata",
+            "feature": "Babylon physics metadata",
+            "policy": "drop",
+            "severity": "info",
+            "why": "The glTF scene spine has no portable physics-body representation for this demo."
+        },
+        {
+            "id": "babylon-animation",
+            "feature": "Babylon animation metadata",
+            "policy": "preserve",
+            "severity": "info",
+            "why": "The selected animation is represented by glTF animation channels."
+        }
+    ],
+    "nodeGeometry": {
+        "status": "not-applicable",
+        "proceduralUntil": "not-applicable",
+        "why": "This pipeline does not contain a NodeGeometry resource."
+    },
+    "expectedOutcome": {
+        "description": "The selected Babylon node is mutated and the resulting scene is available as glTF.",
+        "assertions": ["The body selection resolves by Babylon node name.", "The mutation remains visible in the exported scene."]
+    },
+    "preExportReview": {
+        "visibility": "before-terminal-export",
+        "beforeExportNodeId": "adapt-mutated-babylon",
+        "physicalMetadata": {
+            "handedness": "right",
+            "unit": "meter",
+            "upAxis": "Y"
+        },
+        "accumulatedLosses": [
+            {
+                "id": "babylon-custom-material",
+                "feature": "Babylon custom material",
+                "policy": "bake",
+                "severity": "warning",
+                "why": "The Babylon material is baked to the glTF material model at export."
+            },
+            {
+                "id": "babylon-physics-metadata",
+                "feature": "Babylon physics metadata",
+                "policy": "drop",
+                "severity": "info",
+                "why": "The glTF scene spine has no portable physics-body representation for this demo."
+            },
+            {
+                "id": "babylon-animation",
+                "feature": "Babylon animation metadata",
+                "policy": "preserve",
+                "severity": "info",
+                "why": "The selected animation is represented by glTF animation channels."
+            }
+        ]
+    },
+    "teaching": {
+        "order": 4,
+        "concepts": ["domain-selections", "selection-diagnostics", "expected-losses", "pre-export-review", "graph-layout"],
+        "takeaway": "Selections belong to their domain and need explicit stale or dangling states before a mutation is trusted.",
+        "focus": {
+            "frameIds": ["frame-selection-mutation"],
+            "blockIds": [1, 2]
+        }
+    },
+    "domainTags": {
+        "handedness": "left",
+        "unit": "meters",
+        "upAxis": "Y"
+    }
+}

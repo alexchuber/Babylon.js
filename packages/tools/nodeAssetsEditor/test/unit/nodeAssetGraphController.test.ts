@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { type IGraphNode } from "../../src/nodeGraph/graphModel";
 import { type PropertyDescriptor } from "../../src/nodeGraph/propertyModel";
@@ -40,6 +40,10 @@ function CountBuildRelevantChanges(controller: NodeAssetGraphController): { read
 }
 
 describe("NodeAssetGraphController", () => {
+    afterEach(() => {
+        vi.restoreAllMocks();
+    });
+
     it("does not emit build-relevant changes for cosmetic editor edits", () => {
         const controller = new NodeAssetGraphController();
         const changes = CountBuildRelevantChanges(controller);
@@ -207,6 +211,56 @@ describe("NodeAssetGraphController", () => {
             const reloaded = FindNode(controller, "Merge Scenes");
             expect(reloaded.ports.filter((port) => port.direction === "input")).toHaveLength(3);
             expect(reloaded.ports.filter((port) => port.direction === "output")).toHaveLength(1);
+        } finally {
+            controller.dispose();
+        }
+    });
+
+    it("loads a JSON-backed runtime demo, hydrates unique bundled assets, and restores frames", async () => {
+        const fetchMock = vi.spyOn(globalThis, "fetch").mockImplementation(async () => new Response(new Uint8Array([1, 2, 3]), { status: 200 }));
+        const controller = new NodeAssetGraphController();
+        try {
+            await controller.loadDemoAsync("multi-domain-material-construction");
+
+            expect(fetchMock).toHaveBeenCalledTimes(3);
+            expect(controller.state.nodes.map(({ title }) => title)).toEqual([
+                "Import bare glTF",
+                "Base-color image",
+                "Normal image",
+                "Roughness image",
+                "Build PBR material",
+                "Export material glTF",
+            ]);
+            expect(controller.state.frames.map(({ id }) => id)).toEqual(["frame-material-bindings"]);
+            expect(controller.state.frames[0].nodeIds).toEqual(["node-2", "node-3", "node-4"]);
+            expect(JSON.parse(controller.serialize()).editor.frames).toHaveLength(1);
+        } finally {
+            controller.dispose();
+        }
+    });
+
+    it("rejects declarative-only demos without replacing the active graph", async () => {
+        const controller = new NodeAssetGraphController();
+        try {
+            const before = controller.state.nodes.map(({ title }) => title);
+
+            await expect(controller.loadDemoAsync("usd-to-gltf")).rejects.toThrow("declarative graph");
+
+            expect(controller.state.nodes.map(({ title }) => title)).toEqual(before);
+        } finally {
+            controller.dispose();
+        }
+    });
+
+    it("reports unknown demos and failed fixture requests without partial loading", async () => {
+        const controller = new NodeAssetGraphController();
+        try {
+            await expect(controller.loadDemoAsync("does-not-exist")).rejects.toThrow('Unknown Node Assets demo "does-not-exist".');
+
+            vi.spyOn(globalThis, "fetch").mockResolvedValue(new Response(null, { status: 404, statusText: "Not Found" }));
+            const before = controller.state.nodes.map(({ title }) => title);
+            await expect(controller.loadDemoAsync("gltf-optimize-draco-basisu")).rejects.toThrow("Could not load");
+            expect(controller.state.nodes.map(({ title }) => title)).toEqual(before);
         } finally {
             controller.dispose();
         }

@@ -1,0 +1,534 @@
+{
+    "id": "multi-domain-material-construction",
+    "title": "Construct a material from domain bindings",
+    "summary": "Build a portable PBR material from semantic image roles instead of inventing image resource subtypes.",
+    "description": "Build a portable PBR material from semantic image roles instead of inventing image resource subtypes.",
+    "tags": ["gltf", "materials", "pbr", "image-bindings"],
+    "availability": {
+        "status": "available"
+    },
+    "resourceLanes": [
+        {
+            "id": "source",
+            "label": "Source scene",
+            "resourceIds": ["orb-gltf"],
+            "assetBindingIds": ["source-orb-material"],
+            "textureBindingIds": [],
+            "diagnostics": []
+        },
+        {
+            "id": "images",
+            "label": "Semantic image bindings",
+            "resourceIds": [],
+            "assetBindingIds": ["base-color-image", "normal-image", "metallic-roughness-image"],
+            "textureBindingIds": ["base-color-texture", "normal-texture", "metallic-texture", "roughness-texture"],
+            "diagnostics": []
+        }
+    ],
+    "resources": [
+        {
+            "id": "orb-gltf",
+            "label": "Bundled energy orb glTF",
+            "kind": "gltf",
+            "format": "glb",
+            "source": {
+                "kind": "bundled",
+                "assetKey": "orb-glb",
+                "path": "scenes/nodeAssets/orb.glb",
+                "mimeType": "model/gltf-binary",
+                "sourceLabel": "Bundled energy orb glTF",
+                "origin": "same-origin"
+            },
+            "sourceLabel": "Bundled energy orb glTF",
+            "domainTags": {
+                "handedness": "right",
+                "unit": "meters",
+                "upAxis": "Y"
+            }
+        }
+    ],
+    "graph": {
+        "name": "multi-domain-material-construction",
+        "blocks": [
+            {
+                "customType": "ImportGLTFBlock",
+                "id": 1,
+                "name": "Import bare glTF",
+                "data": null,
+                "source": "scenes/nodeAssets/orb.glb"
+            },
+            {
+                "customType": "ImportImageBlock",
+                "id": 2,
+                "name": "Base-color image",
+                "data": null,
+                "mimeType": "image/png",
+                "source": "scenes/nodeAssets/orbMetal.png"
+            },
+            {
+                "customType": "ImportImageBlock",
+                "id": 3,
+                "name": "Normal image",
+                "data": null,
+                "mimeType": "image/png",
+                "source": "scenes/nodeAssets/orbPattern.png"
+            },
+            {
+                "customType": "ImportImageBlock",
+                "id": 4,
+                "name": "Roughness image",
+                "data": null,
+                "mimeType": "image/png",
+                "source": "scenes/nodeAssets/orbPattern.png"
+            },
+            {
+                "customType": "BuildPBRMaterial",
+                "id": 5,
+                "name": "Build PBR material",
+                "baseColorFactor": [1, 1, 1, 1],
+                "metallicFactor": 0.75,
+                "roughnessFactor": 0.35,
+                "emissiveFactor": [0, 0, 0]
+            },
+            {
+                "customType": "ExportGLTFBlock",
+                "id": 6,
+                "name": "Export material glTF"
+            }
+        ],
+        "connections": [
+            {
+                "fromBlock": 1,
+                "fromPoint": "output",
+                "toBlock": 5,
+                "toPoint": "scene"
+            },
+            {
+                "fromBlock": 2,
+                "fromPoint": "output",
+                "toBlock": 5,
+                "toPoint": "baseColor"
+            },
+            {
+                "fromBlock": 3,
+                "fromPoint": "output",
+                "toBlock": 5,
+                "toPoint": "normal"
+            },
+            {
+                "fromBlock": 4,
+                "fromPoint": "output",
+                "toBlock": 5,
+                "toPoint": "metallicRoughness"
+            },
+            {
+                "fromBlock": 5,
+                "fromPoint": "output",
+                "toBlock": 6,
+                "toPoint": "input"
+            }
+        ]
+    },
+    "editor": {
+        "blocks": [
+            {
+                "id": 1,
+                "title": "Import bare glTF",
+                "position": {
+                    "x": 40,
+                    "y": 240
+                },
+                "collapsed": false
+            },
+            {
+                "id": 2,
+                "title": "Base-color image",
+                "position": {
+                    "x": 340,
+                    "y": 80
+                },
+                "collapsed": false
+            },
+            {
+                "id": 3,
+                "title": "Normal image",
+                "position": {
+                    "x": 340,
+                    "y": 240
+                },
+                "collapsed": false
+            },
+            {
+                "id": 4,
+                "title": "Roughness image",
+                "position": {
+                    "x": 340,
+                    "y": 400
+                },
+                "collapsed": false
+            },
+            {
+                "id": 5,
+                "title": "Build PBR material",
+                "position": {
+                    "x": 700,
+                    "y": 240
+                },
+                "collapsed": false
+            },
+            {
+                "id": 6,
+                "title": "Export material glTF",
+                "position": {
+                    "x": 1060,
+                    "y": 240
+                },
+                "collapsed": false,
+                "fileName": "material-orb"
+            }
+        ],
+        "frames": [
+            {
+                "id": "frame-material-bindings",
+                "label": "Semantic image bindings",
+                "color": "#0f766e",
+                "position": {
+                    "x": 280,
+                    "y": 20
+                },
+                "size": {
+                    "width": 360,
+                    "height": 500
+                },
+                "nodeIds": ["2", "3", "4"],
+                "collapsed": false
+            }
+        ],
+        "lossBadges": [
+            {
+                "diagnosticId": "material-slot-construction",
+                "label": "Material baked",
+                "severity": "info",
+                "graphNodeIds": [5]
+            },
+            {
+                "diagnosticId": "materialx-preview-surface-fallback",
+                "label": "UsdPreviewSurface fallback",
+                "severity": "warning",
+                "graphNodeIds": [5]
+            }
+        ]
+    },
+    "assets": [
+        {
+            "id": "source-orb-material",
+            "blockId": 1,
+            "input": "data",
+            "bundledAssetKey": "orb-glb",
+            "role": "source-scene",
+            "mimeType": "model/gltf-binary",
+            "sourceLabel": "Bundled bare orb glTF"
+        },
+        {
+            "id": "base-color-image",
+            "blockId": 2,
+            "input": "data",
+            "bundledAssetKey": "orb-metal",
+            "role": "base-color",
+            "mimeType": "image/png",
+            "sourceLabel": "Bundled metal base-color image"
+        },
+        {
+            "id": "normal-image",
+            "blockId": 3,
+            "input": "data",
+            "bundledAssetKey": "orb-pattern",
+            "role": "normal",
+            "mimeType": "image/png",
+            "sourceLabel": "Bundled pattern normal image"
+        },
+        {
+            "id": "metallic-roughness-image",
+            "blockId": 4,
+            "input": "data",
+            "bundledAssetKey": "orb-pattern",
+            "role": "metallic-roughness",
+            "mimeType": "image/png",
+            "sourceLabel": "Bundled pattern roughness image"
+        }
+    ],
+    "textureBindings": [
+        {
+            "id": "base-color-texture",
+            "role": "base-color",
+            "source": {
+                "kind": "assetBinding",
+                "assetBindingId": "base-color-image"
+            },
+            "target": {
+                "selectionId": "base-color-role",
+                "slot": "baseColorTexture"
+            }
+        },
+        {
+            "id": "normal-texture",
+            "role": "normal",
+            "source": {
+                "kind": "assetBinding",
+                "assetBindingId": "normal-image"
+            },
+            "target": {
+                "selectionId": "normal-role",
+                "slot": "normalTexture"
+            }
+        },
+        {
+            "id": "metallic-texture",
+            "role": "metallic",
+            "source": {
+                "kind": "assetBinding",
+                "assetBindingId": "metallic-roughness-image"
+            },
+            "target": {
+                "selectionId": "metallic-role",
+                "slot": "metallicRoughnessTexture"
+            },
+            "channelView": {
+                "channel": "b",
+                "colorSpace": "linear",
+                "packedGroupId": "metallic-roughness"
+            }
+        },
+        {
+            "id": "roughness-texture",
+            "role": "roughness",
+            "source": {
+                "kind": "assetBinding",
+                "assetBindingId": "metallic-roughness-image"
+            },
+            "target": {
+                "selectionId": "roughness-role",
+                "slot": "metallicRoughnessTexture"
+            },
+            "channelView": {
+                "channel": "g",
+                "colorSpace": "linear",
+                "packedGroupId": "metallic-roughness"
+            }
+        }
+    ],
+    "materialTargets": [
+        {
+            "id": "materialx-gltf-pbr",
+            "label": "MaterialX gltf_pbr (high fidelity)",
+            "domain": "materialx",
+            "type": "gltf_pbr",
+            "fidelity": "high-fidelity",
+            "expectedLosses": []
+        },
+        {
+            "id": "usd-preview-surface-fallback",
+            "label": "UsdPreviewSurface (fallback)",
+            "domain": "usd",
+            "type": "UsdPreviewSurface",
+            "fidelity": "fallback",
+            "expectedLosses": [
+                {
+                    "id": "materialx-preview-surface-fallback",
+                    "feature": "MaterialX gltf_pbr fidelity",
+                    "policy": "drop",
+                    "severity": "warning",
+                    "why": "UsdPreviewSurface is a lower-fidelity fallback and cannot preserve the full MaterialX gltf_pbr target semantics."
+                }
+            ]
+        }
+    ],
+    "selections": [
+        {
+            "id": "material-target",
+            "label": "Material target mesh",
+            "resolution": {
+                "status": "resolved",
+                "selection": {
+                    "domain": "gltf",
+                    "granularity": "mesh",
+                    "valueKind": "jsonPointer",
+                    "value": "/meshes/0"
+                }
+            },
+            "pill": {
+                "ownerRepresentation": "gltf",
+                "targetType": "mesh",
+                "cardinality": "one",
+                "status": "resolved"
+            }
+        },
+        {
+            "id": "base-color-role",
+            "label": "Base-color role",
+            "resolution": {
+                "status": "resolved",
+                "selection": {
+                    "domain": "gltf",
+                    "granularity": "texture",
+                    "valueKind": "jsonPointer",
+                    "value": "/materials/0/pbrMetallicRoughness/baseColorTexture"
+                }
+            },
+            "pill": {
+                "ownerRepresentation": "gltf",
+                "targetType": "texture",
+                "cardinality": "one",
+                "status": "resolved"
+            }
+        },
+        {
+            "id": "normal-role",
+            "label": "Normal role",
+            "resolution": {
+                "status": "resolved",
+                "selection": {
+                    "domain": "gltf",
+                    "granularity": "texture",
+                    "valueKind": "jsonPointer",
+                    "value": "/materials/0/normalTexture"
+                }
+            },
+            "pill": {
+                "ownerRepresentation": "gltf",
+                "targetType": "texture",
+                "cardinality": "one",
+                "status": "resolved"
+            }
+        },
+        {
+            "id": "metallic-role",
+            "label": "Metallic role",
+            "resolution": {
+                "status": "resolved",
+                "selection": {
+                    "domain": "gltf",
+                    "granularity": "texture",
+                    "valueKind": "jsonPointer",
+                    "value": "/materials/0/pbrMetallicRoughness/metallicRoughnessTexture"
+                }
+            },
+            "pill": {
+                "ownerRepresentation": "gltf",
+                "targetType": "texture",
+                "cardinality": "one",
+                "status": "resolved"
+            }
+        },
+        {
+            "id": "roughness-role",
+            "label": "Roughness role",
+            "resolution": {
+                "status": "resolved",
+                "selection": {
+                    "domain": "gltf",
+                    "granularity": "texture",
+                    "valueKind": "jsonPointer",
+                    "value": "/materials/0/pbrMetallicRoughness/metallicRoughnessTexture"
+                }
+            },
+            "pill": {
+                "ownerRepresentation": "gltf",
+                "targetType": "texture",
+                "cardinality": "one",
+                "status": "resolved"
+            }
+        },
+        {
+            "id": "optional-emissive",
+            "label": "Emissive",
+            "resolution": {
+                "status": "empty",
+                "diagnostic": {
+                    "status": "empty",
+                    "why": "This material intentionally leaves the emissive role unbound."
+                }
+            },
+            "pill": {
+                "ownerRepresentation": "gltf",
+                "targetType": "texture",
+                "cardinality": "one",
+                "status": "empty"
+            }
+        }
+    ],
+    "selectionOwners": ["gltf"],
+    "terminal": {
+        "kind": "gltf",
+        "expectedMimeType": "model/gltf-binary"
+    },
+    "conventions": {
+        "handedness": "right",
+        "unit": "meter",
+        "upAxis": "Y"
+    },
+    "expectedLosses": [
+        {
+            "id": "material-slot-construction",
+            "feature": "Source material assignment",
+            "policy": "bake",
+            "severity": "info",
+            "why": "The material-construction block creates a portable glTF PBR material from semantic image bindings."
+        },
+        {
+            "id": "materialx-preview-surface-fallback",
+            "feature": "MaterialX gltf_pbr fidelity",
+            "policy": "drop",
+            "severity": "warning",
+            "why": "UsdPreviewSurface is a lower-fidelity fallback and cannot preserve the full MaterialX gltf_pbr target semantics."
+        }
+    ],
+    "nodeGeometry": {
+        "status": "not-applicable",
+        "proceduralUntil": "not-applicable",
+        "why": "This pipeline does not contain a NodeGeometry resource."
+    },
+    "expectedOutcome": {
+        "description": "The imported mesh receives a portable glTF PBR material populated from semantic image bindings.",
+        "assertions": ["Base-color, normal, and roughness bindings are distinct.", "No image subtype is used as a resource kind."]
+    },
+    "preExportReview": {
+        "visibility": "before-terminal-export",
+        "beforeExportNodeId": 5,
+        "physicalMetadata": {
+            "handedness": "right",
+            "unit": "meter",
+            "upAxis": "Y"
+        },
+        "accumulatedLosses": [
+            {
+                "id": "material-slot-construction",
+                "feature": "Source material assignment",
+                "policy": "bake",
+                "severity": "info",
+                "why": "The material-construction block creates a portable glTF PBR material from semantic image bindings."
+            },
+            {
+                "id": "materialx-preview-surface-fallback",
+                "feature": "MaterialX gltf_pbr fidelity",
+                "policy": "drop",
+                "severity": "warning",
+                "why": "UsdPreviewSurface is a lower-fidelity fallback and cannot preserve the full MaterialX gltf_pbr target semantics."
+            }
+        ]
+    },
+    "teaching": {
+        "order": 8,
+        "concepts": ["image-bindings", "domain-selections", "expected-losses", "physical-metadata", "pre-export-review", "graph-layout"],
+        "takeaway": "Images carry semantic roles at bindings, and material construction makes the final portable slots visible before export.",
+        "focus": {
+            "frameIds": ["frame-material-bindings"],
+            "blockIds": [2, 3, 4, 5]
+        }
+    },
+    "domainTags": {
+        "handedness": "right",
+        "unit": "meters",
+        "upAxis": "Y"
+    }
+}

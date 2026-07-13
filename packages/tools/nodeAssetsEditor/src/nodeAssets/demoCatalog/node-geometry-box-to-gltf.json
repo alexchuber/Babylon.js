@@ -1,0 +1,260 @@
+{
+    "id": "node-geometry-box-to-gltf",
+    "title": "Evaluate NodeGeometry before export",
+    "summary": "Keep a NodeGeometry resource procedural until an explicit Evaluate and Bake boundary makes a mesh.",
+    "description": "Keep a NodeGeometry resource procedural until an explicit Evaluate and Bake boundary makes a mesh.",
+    "tags": ["node-geometry", "procedural", "evaluate", "gltf"],
+    "availability": {
+        "status": "requires-selection-adapter",
+        "why": "The realized Babylon mesh selection is gated until Babylon selection parity exists."
+    },
+    "resourceLanes": [
+        {
+            "id": "procedural",
+            "label": "Procedural geometry",
+            "resourceIds": ["box-geometry"],
+            "assetBindingIds": [],
+            "textureBindingIds": [],
+            "diagnostics": []
+        },
+        {
+            "id": "babylon",
+            "label": "Babylon representation",
+            "resourceIds": [],
+            "assetBindingIds": [],
+            "textureBindingIds": [],
+            "diagnostics": [
+                {
+                    "id": "babylon-left-handed-scene-lane",
+                    "kind": "left-handed-scene",
+                    "label": "Left-handed scene",
+                    "severity": "warning",
+                    "representation": "babylon",
+                    "handedness": "left",
+                    "scope": "representation-lane",
+                    "why": "Babylon representation lanes carry a left-handed scene and must keep that convention visible."
+                }
+            ]
+        }
+    ],
+    "resources": [
+        {
+            "id": "box-geometry",
+            "label": "NodeGeometry box definition",
+            "kind": "nodeGeometry",
+            "format": "babylon-node-geometry",
+            "source": {
+                "kind": "snippet",
+                "snippetId": "PYY6XE#69"
+            },
+            "sourceLabel": "NodeGeometry box definition",
+            "snippetId": "PYY6XE#69"
+        }
+    ],
+    "graph": [
+        {
+            "kind": "ImportNodeGeometry",
+            "id": "import-node-geometry",
+            "resourceId": "box-geometry",
+            "output": "proceduralGeometry"
+        },
+        {
+            "kind": "EvaluateNodeGeometry",
+            "id": "evaluate-node-geometry",
+            "geometry": "proceduralGeometry",
+            "output": "vertexData",
+            "evaluation": {
+                "mode": "explicit",
+                "operation": "build"
+            }
+        },
+        {
+            "kind": "BakeNodeGeometry",
+            "id": "bake-node-geometry",
+            "geometry": "proceduralGeometry",
+            "scene": "babylonScene",
+            "meshName": "Box",
+            "output": "babylonScene",
+            "evaluation": {
+                "mode": "explicit",
+                "operation": "createMesh"
+            }
+        },
+        {
+            "kind": "ExportScene",
+            "id": "export-node-geometry",
+            "input": "babylonScene",
+            "format": "gltf"
+        }
+    ],
+    "editor": {
+        "blocks": [
+            {
+                "id": 1,
+                "title": "Import NodeGeometry",
+                "position": {
+                    "x": 60,
+                    "y": 240
+                },
+                "collapsed": false
+            },
+            {
+                "id": 2,
+                "title": "Evaluate",
+                "position": {
+                    "x": 360,
+                    "y": 240
+                },
+                "collapsed": false
+            },
+            {
+                "id": 3,
+                "title": "Bake mesh",
+                "position": {
+                    "x": 660,
+                    "y": 240
+                },
+                "collapsed": false
+            },
+            {
+                "id": 4,
+                "title": "Export glTF",
+                "position": {
+                    "x": 960,
+                    "y": 240
+                },
+                "collapsed": false,
+                "fileName": "node-geometry-box"
+            }
+        ],
+        "frames": [
+            {
+                "id": "frame-explicit-evaluation",
+                "label": "Explicit evaluation",
+                "color": "#dc2626",
+                "position": {
+                    "x": 300,
+                    "y": 160
+                },
+                "size": {
+                    "width": 660,
+                    "height": 220
+                },
+                "nodeIds": ["2", "3"],
+                "collapsed": false
+            }
+        ],
+        "lossBadges": [
+            {
+                "diagnosticId": "node-geometry-bake",
+                "label": "Bake boundary",
+                "severity": "info",
+                "graphNodeIds": [3]
+            }
+        ]
+    },
+    "assets": [],
+    "textureBindings": [],
+    "materialTargets": [],
+    "selections": [
+        {
+            "id": "box-output",
+            "label": "Realized box",
+            "resolution": {
+                "status": "resolved",
+                "selection": {
+                    "domain": "babylon",
+                    "granularity": "mesh",
+                    "valueKind": "name",
+                    "value": "Box"
+                }
+            },
+            "pill": {
+                "ownerRepresentation": "babylon",
+                "targetType": "mesh",
+                "cardinality": "one",
+                "status": "resolved"
+            }
+        },
+        {
+            "id": "optional-parent",
+            "label": "Parent",
+            "resolution": {
+                "status": "empty",
+                "diagnostic": {
+                    "status": "empty",
+                    "why": "The box is realized at the scene root."
+                }
+            },
+            "pill": {
+                "ownerRepresentation": "babylon",
+                "targetType": "node",
+                "cardinality": "one",
+                "status": "empty"
+            }
+        }
+    ],
+    "selectionOwners": ["babylon"],
+    "terminal": {
+        "kind": "gltf",
+        "expectedMimeType": "model/gltf-binary"
+    },
+    "conventions": {
+        "handedness": "right",
+        "unit": "meter",
+        "upAxis": "Y"
+    },
+    "expectedLosses": [
+        {
+            "id": "node-geometry-bake",
+            "feature": "Procedural NodeGeometry graph",
+            "policy": "bake",
+            "severity": "info",
+            "why": "The visible bake node turns procedural geometry into vertex data and a realized mesh for export."
+        }
+    ],
+    "nodeGeometry": {
+        "status": "requires-adapter",
+        "proceduralUntil": "BakeNodeGeometry",
+        "target": {
+            "name": "Box"
+        },
+        "why": "The NodeGeometry adapter must call build() and only then createMesh(name, scene); parsing the resource alone must not attach a mesh."
+    },
+    "expectedOutcome": {
+        "description": "A visible Box mesh is realized from serialized NodeGeometry and exported as glTF.",
+        "assertions": ["ImportNodeGeometry remains procedural.", "EvaluateNodeGeometry is explicit.", "BakeNodeGeometry is the attachment boundary."]
+    },
+    "preExportReview": {
+        "visibility": "before-terminal-export",
+        "beforeExportNodeId": "bake-node-geometry",
+        "physicalMetadata": {
+            "handedness": "right",
+            "unit": "meter",
+            "upAxis": "Y"
+        },
+        "accumulatedLosses": [
+            {
+                "id": "node-geometry-bake",
+                "feature": "Procedural NodeGeometry graph",
+                "policy": "bake",
+                "severity": "info",
+                "why": "The visible bake node turns procedural geometry into vertex data and a realized mesh for export."
+            }
+        ]
+    },
+    "teaching": {
+        "order": 5,
+        "concepts": ["node-geometry-evaluation", "expected-losses", "physical-metadata", "pre-export-review", "graph-layout"],
+        "takeaway": "A serialized NodeGeometry definition is a resource, not a scene; only a visible evaluation/bake node creates exportable geometry.",
+        "focus": {
+            "frameIds": ["frame-explicit-evaluation"],
+            "blockIds": [1, 2, 3]
+        }
+    },
+    "domainTags": {
+        "handedness": "right",
+        "unit": "meters",
+        "upAxis": "Y"
+    }
+}
