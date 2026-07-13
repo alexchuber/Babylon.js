@@ -47,7 +47,8 @@ describe("USD instancing adapter", () => {
             prototypeMeshIndices: [0],
             protoIndices: new Int32Array([0, 0, 0]),
             positions: new Float32Array([1, 2, 3, 4, 5, 6, 7, 8, 9]),
-            invisibleIds: new Int32Array([1]),
+            ids: new Int32Array([10, 20, 30]),
+            invisibleIds: new Int32Array([20]),
         };
 
         const instancedMeshes = CreatePointInstancerThinInstances(instancer, [prototypeMesh], scene);

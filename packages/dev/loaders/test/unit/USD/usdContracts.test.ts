@@ -48,6 +48,7 @@ describe("USD resolved-stage contract", () => {
             const mesh = result.meshes[0];
 
             expect(scene.useRightHandedSystem).toBe(true);
+            expect(result.geometries).toHaveLength(1);
             expect(Array.from(mesh.getIndices()!)).toEqual(Array.from(indices));
             expect(Array.from(mesh.getVerticesData(VertexBuffer.NormalKind)!)).toEqual(Array.from(normals));
             expect(mesh.position.asArray()).toEqual([2, 3, 4]);

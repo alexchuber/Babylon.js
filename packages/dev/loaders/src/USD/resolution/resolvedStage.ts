@@ -305,13 +305,15 @@ export interface IResolvedPointInstancer {
     prototypeMaterialBindings?: (IResolvedMaterialBinding | undefined)[];
     /** Per-instance prototype selector (index into `prototypeMeshIndices`). */
     protoIndices: Int32Array;
+    /** Optional authored instance ids aligned with `protoIndices`; array index is used when absent. */
+    ids?: Int32Array;
     /** Per-instance translation (3 per instance), in the instancer's local space. */
     positions: Float32Array;
     /** Per-instance orientation quaternion (4 per instance). */
     orientations?: Float32Array;
     /** Per-instance scale (3 per instance). */
     scales?: Float32Array;
-    /** Instance ids that are invisible and must be skipped. */
+    /** Authored instance ids that are invisible and must be skipped. */
     invisibleIds?: Int32Array;
 }
 

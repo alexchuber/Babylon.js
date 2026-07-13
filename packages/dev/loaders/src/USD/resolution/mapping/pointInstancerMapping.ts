@@ -21,6 +21,7 @@ export function ResolvePointInstancer(prim: ISdfPrimSpec, context: IStageMapping
         prototypeMeshIndices: prototypes.map((prototype) => prototype.meshIndex),
         prototypeMaterialBindings: prototypes.map((prototype) => prototype.materialBinding),
         protoIndices: BuildInt32Array(GetAttributeValue(GetAttribute(prim, "protoIndices"))),
+        ids: ResolveOptionalInt32Array(GetAttributeValue(GetAttribute(prim, "ids"))),
         positions: BuildVec3Buffer(GetAttributeValue(GetAttribute(prim, "positions"))),
         orientations: BuildQuatBuffer(GetAttributeValue(GetAttribute(prim, "orientations"))),
         scales: ResolveOptionalVec3Buffer(GetAttributeValue(GetAttribute(prim, "scales"))),

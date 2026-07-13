@@ -27,8 +27,8 @@ export function CreateInstance(sourceMesh: Mesh, name: string): InstancedMesh {
  * `instancer.prototypeMeshIndices`, after creating each prototype through the geometry adapter.
  * This adapter only writes per-prototype thin-instance matrix buffers; the instancer prim's own
  * transform is applied by the walk to the prototypes' parent, so these matrices stay in the
- * instancer's local USD space. Invisible instance ids are treated as zero-based instance indices
- * and omitted from the matrix buffers. Missing orientations use the identity quaternion; missing
+ * instancer's local USD space. Invisible instance ids are matched against authored `ids` when
+ * present, or zero-based instance indices otherwise. Missing orientations use the identity quaternion; missing
  * scales use unit scale.
  *
  * Babylon thin instances share one draw call per prototype mesh, which is the intended performance
@@ -49,7 +49,7 @@ export function CreatePointInstancerThinInstances(instancer: IResolvedPointInsta
 
     for (let instanceIndex = 0; instanceIndex < instanceCount; instanceIndex++) {
         const prototypeIndex = instancer.protoIndices[instanceIndex];
-        if (IsVisiblePrototypeInstance(instanceIndex, prototypeIndex, prototypeCount, prototypeMeshes, scene, invisibleIds)) {
+        if (IsVisiblePrototypeInstance(instanceIndex, prototypeIndex, prototypeCount, prototypeMeshes, scene, instancer.ids, invisibleIds)) {
             visibleCounts[prototypeIndex]++;
         }
     }
@@ -71,7 +71,7 @@ export function CreatePointInstancerThinInstances(instancer: IResolvedPointInsta
 
     for (let instanceIndex = 0; instanceIndex < instanceCount; instanceIndex++) {
         const prototypeIndex = instancer.protoIndices[instanceIndex];
-        if (!IsVisiblePrototypeInstance(instanceIndex, prototypeIndex, prototypeCount, prototypeMeshes, scene, invisibleIds)) {
+        if (!IsVisiblePrototypeInstance(instanceIndex, prototypeIndex, prototypeCount, prototypeMeshes, scene, instancer.ids, invisibleIds)) {
             continue;
         }
 
@@ -120,6 +120,9 @@ function GetInstanceCount(instancer: IResolvedPointInstancer): number {
     if (instancer.scales) {
         instanceCount = Math.min(instanceCount, Math.floor(instancer.scales.length / 3));
     }
+    if (instancer.ids) {
+        instanceCount = Math.min(instanceCount, instancer.ids.length);
+    }
     return instanceCount;
 }
 
@@ -141,7 +144,9 @@ function IsVisiblePrototypeInstance(
     prototypeCount: number,
     prototypeMeshes: Mesh[],
     scene: Scene,
+    ids: Int32Array | undefined,
     invisibleIds: Set<number> | undefined
 ): boolean {
-    return prototypeIndex >= 0 && prototypeIndex < prototypeCount && prototypeMeshes[prototypeIndex].getScene() === scene && !invisibleIds?.has(instanceIndex);
+    const instanceId = ids?.[instanceIndex] ?? instanceIndex;
+    return prototypeIndex >= 0 && prototypeIndex < prototypeCount && prototypeMeshes[prototypeIndex].getScene() === scene && !invisibleIds?.has(instanceId);
 }

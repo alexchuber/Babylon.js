@@ -37,6 +37,7 @@ export function AdaptResolvedStageToScene(
     assetContainer: Nullable<AssetContainer>,
     options: Readonly<USDLoadingOptions>
 ): ISceneLoaderAsyncResult {
+    const existingGeometries = new Set(scene.geometries);
     const meshes: AbstractMesh[] = [];
     const transformNodes: TransformNode[] = [];
     const lights: Light[] = [];
@@ -89,7 +90,7 @@ export function AdaptResolvedStageToScene(
         skeletons,
         animationGroups,
         transformNodes,
-        geometries: [],
+        geometries: scene.geometries.filter((geometry) => !existingGeometries.has(geometry)),
         lights,
         spriteManagers: [],
     };

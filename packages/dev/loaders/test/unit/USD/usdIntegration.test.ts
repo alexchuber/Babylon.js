@@ -66,6 +66,34 @@ def Xform "World"
 }
 `;
 
+const subsetMaterialUsda = `#usda 1.0
+def Xform "World"
+{
+    def Mesh "Quad"
+    {
+        int[] faceVertexCounts = [3, 3]
+        int[] faceVertexIndices = [0, 1, 2, 0, 2, 3]
+        point3f[] points = [(-1, -1, 0), (1, -1, 0), (1, 1, 0), (-1, 1, 0)]
+        uniform token subdivisionScheme = "none"
+
+        def GeomSubset "First"
+        {
+            uniform token elementType = "face"
+            int[] indices = [0]
+            rel material:binding = </World/Mat>
+        }
+    }
+
+    def Material "Mat"
+    {
+        def Shader "Preview"
+        {
+            uniform token info:id = "UsdPreviewSurface"
+        }
+    }
+}
+`;
+
 // Root layer whose reference points at a sub-directory asset path. When the stage is loaded from a
 // flat drag-and-drop set (rootUrl "file:"), Babylon stores every dropped file in FilesInputStore by
 // basename, so the loader must address the sibling as `file:child.usda`, not `file:assets/child.usda`.
@@ -376,12 +404,15 @@ describe("USD loader integration", () => {
         const scene = new Scene(engine);
         const loader = new USDFileLoader();
 
-        const container = await loader.loadAssetContainerAsync(scene, materialUsda, "");
+        const container = await loader.loadAssetContainerAsync(scene, subsetMaterialUsda, "");
 
         expect(container.meshes.some((mesh) => mesh.name === "Quad")).toBe(true);
         expect(container.materials).toHaveLength(1);
+        expect(container.multiMaterials).toHaveLength(1);
+        expect(container.geometries).toHaveLength(1);
         expect(scene.meshes.some((mesh) => mesh.name === "Quad")).toBe(false);
         expect(scene.materials).toHaveLength(0);
+        expect(scene.multiMaterials).toHaveLength(0);
 
         container.dispose();
         scene.dispose();

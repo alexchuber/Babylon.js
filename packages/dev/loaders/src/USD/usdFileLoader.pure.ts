@@ -126,6 +126,7 @@ export class USDFileLoader implements ISceneLoaderPluginAsync, ISceneLoaderPlugi
         const existingCameras = new Set(scene.cameras);
         const existingGeometries = new Set(scene.geometries);
         const existingMaterials = new Set(scene.materials);
+        const existingMultiMaterials = new Set(scene.multiMaterials);
         const existingTextures = new Set(scene.textures);
         this._assetContainer = container;
         try {
@@ -138,6 +139,7 @@ export class USDFileLoader implements ISceneLoaderPluginAsync, ISceneLoaderPlugi
             AppendNewEntities(container.cameras, scene.cameras, existingCameras);
             AppendNewEntities(container.geometries, scene.geometries, existingGeometries);
             AppendNewEntities(container.materials, scene.materials, existingMaterials);
+            AppendNewEntities(container.multiMaterials, scene.multiMaterials, existingMultiMaterials);
             AppendNewEntities(container.textures, scene.textures, existingTextures);
             container.removeAllFromScene();
         } catch (error) {
@@ -149,6 +151,7 @@ export class USDFileLoader implements ISceneLoaderPluginAsync, ISceneLoaderPlugi
             AppendNewEntities(container.cameras, scene.cameras, existingCameras);
             AppendNewEntities(container.geometries, scene.geometries, existingGeometries);
             AppendNewEntities(container.materials, scene.materials, existingMaterials);
+            AppendNewEntities(container.multiMaterials, scene.multiMaterials, existingMultiMaterials);
             AppendNewEntities(container.textures, scene.textures, existingTextures);
             container.dispose();
             throw error;
