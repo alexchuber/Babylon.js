@@ -72,6 +72,16 @@ should not block feature slices from landing their focused unit tests.
   - Each entry includes `dependsOn`, using tags such as `["Loaders", "glTF"]`,
     `["Loaders", "Meshes"]`, `["Materials", "Textures"]`, `["Rendering"]`, or
     `["Cameras"]` as appropriate to the demo.
+  - **ToyCar fixture progression**: ship the **CC0 glTF ToyCar** baseline visualization test **now**; add
+    a **USD ToyCar companion only after the USD import/preview surface exists**. Both go through the
+    **mandatory Playground snippet / `playgroundId` flow** (create + save snippet, reference by id) — and
+    **no snippet publish is performed in this work** (snippets are prepared, not published).
+- **Firefox worker/transcoder budgets**:
+  - Add a Firefox acceptance lane (a dedicated Playwright project for the editor, e.g.
+    `nodeAssetsEditorFirefox`) scoped to **cheap / non-WASM demo graphs**; profile a per-transcoder
+    Firefox-vs-Chrome wall-clock budget before assuming the existing 240s watchdog generalizes.
+  - **Basis/Draco-heavy (synchronous-WASM) transcode paths stay Chromium-scoped** with their own budget;
+    do not run them in the Firefox lane. Distinguish the two explicitly in the config/acceptance.
 
 ## Tests
 
@@ -103,6 +113,10 @@ Tests first:
 - [ ] Gallery Playwright specs are enabled (no skipped/shell tests) and prove query-param/catalog
       injection, selectors, card selection, graph loading, and pipeline execution against real
       `data-testid` hooks.
+- [ ] A Firefox editor lane covers cheap/non-WASM graphs with a profiled budget; Basis/Draco-heavy
+      synchronous-WASM paths stay Chromium-scoped with their own budget.
+- [ ] The CC0 glTF ToyCar baseline visualization ships via the `playgroundId` flow (no publish); the USD
+      ToyCar companion is deferred until the USD import/preview surface exists.
 - [ ] Security pass confirms no dynamic code from assets and no unbounded allocation path.
 - [ ] Security acceptance keeps the exact `tinyusdz` 0.9.9 pin (no dependency bump/replacement).
 - [ ] CI workflow wiring is recorded as deferred/proposed only; no `.github` files are added without

@@ -100,5 +100,8 @@ Tests first under `packages/tools/nodeAssetsEditor/`:
 - Issue 05 — USD import/transcoder blocks.
 - Issue 06 — Babylon transcoders, LossyFork, handedness metadata.
 - Issue 07 — NodeGeometry import/Evaluate/Bake blocks.
+- Issue 08 — worker/transferable protocol. **Hard dependency**: issues 08 and 09 both touch
+  `nodeAssetBuildWorkerCore.ts` / `nodeAssetGraphController.ts`; sequence 08 → 09 to avoid a
+  shared-worker/controller-file conflict.
 
 No outward PR/push — commit locally only.

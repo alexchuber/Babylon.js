@@ -14,6 +14,11 @@ reject mismatched wires, and everything richer (a format registry, capability ne
 wrapper classes) was considered and cut as premature for a breadth-first POC — repetition inside
 block bodies is cheaper than a wrong abstraction.
 
+> **Historical accuracy note (milestone 07).** The list above (and the original NodeAssets glossary)
+> named a **`BYTES`** kind, but the **actual shipped `NodeAssetConnectionPointType` enum never had
+> `BYTES`** — its kinds were only `SCENE`, `NUMBER`, `STRING`, `JSON`, `IMAGE`. Treat the `BYTES`
+> mention here as a stale/inaccurate historical artifact, not a description of the real enum.
+
 ## Consequences
 
 - Adding a new payload kind is a one-line enum addition plus blocks that read/write that `value`

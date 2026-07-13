@@ -146,8 +146,9 @@ winding (a mesh-level detail), flip (as the whole concept).
 ## Blocks
 
 **ImportGLTFBlock / ExportGLTFBlock**:
-The glTF boundary blocks. Import turns source `.glb`/`.gltf` bytes into a SCENE; Export consumes a
-SCENE and produces the deliverable glb bytes. _Avoid_: loader/saver, reader/writer.
+The glTF boundary blocks. Import turns source `.glb`/`.gltf` bytes into a **GLTF_DOCUMENT** (the glTF
+representation; `SCENE` is the legacy alias); Export consumes a GLTF_DOCUMENT and produces the
+deliverable glb bytes. _Avoid_: loader/saver, reader/writer.
 
 **ImportUSDBlock**:
 A source block that imports USD (`.usd`/`.usda`/`.usdz`). _(Milestone 07)_ new USD graphs use the
@@ -162,9 +163,9 @@ deliverable image bytes. `ExportImageBlock` is a terminal export block alongside
 _Avoid_: image loader/saver.
 
 **operator block**:
-A family of SCENE→SCENE middle blocks wrapping `@gltf-transform/functions` operations — dedup, prune,
-weld, quantize, simplify, flatten, join, and friends. One block per operation. _Avoid_: transform
-(the editor/scene word), filter, modifier.
+A family of **GLTF_DOCUMENT→GLTF_DOCUMENT** middle blocks wrapping `@gltf-transform/functions`
+operations — dedup, prune, weld, quantize, simplify, flatten, join, and friends. One block per
+operation. _Avoid_: transform (the editor/scene word), filter, modifier.
 
 **DracoCompressionBlock**:
 A middle block that tags the document for `KHR_draco_mesh_compression`; the actual geometry encode
@@ -184,15 +185,15 @@ A block that emits a pointer (as a STRING) naming the property later Get/Set blo
 home of wildcard/query syntax. _Avoid_: query block (until multi-target), finder.
 
 **GetProperty / SetProperty**:
-The generic selector triad's operations. GetProperty reads the value at a pointer out of a SCENE
-(output JSON); SetProperty writes a value at a pointer into a SCENE (output SCENE). Together they
-subsume set-extras, placement, and (typed for IMAGE) texture extraction. _Avoid_: read/write node,
-mutate.
+The generic selector triad's operations. GetProperty reads the value at a pointer out of a
+**GLTF_DOCUMENT** (output JSON); SetProperty writes a value at a pointer into a GLTF_DOCUMENT (output
+GLTF_DOCUMENT). Together they subsume set-extras, placement, and (typed for IMAGE) texture extraction.
+_Avoid_: read/write node, mutate.
 
 **MergeScenes**:
-A composition block folding N SCENE inputs into one SCENE (wrapping gltf-transform's document merge),
-preserving each source's hierarchy under the combined roots so per-source pointers stay addressable.
-_Avoid_: combine, union, join (that is an operator block).
+A composition block folding N **GLTF_DOCUMENT** inputs into one GLTF_DOCUMENT (wrapping gltf-transform's
+document merge), preserving each source's hierarchy under the combined roots so per-source pointers stay
+addressable. _Avoid_: combine, union, join (that is an operator block).
 
 **ExtractTexture / SetTexture**:
 The IMAGE-typed members of the selector family. ExtractTexture resolves a texture-slot pointer and
@@ -201,8 +202,8 @@ GetProperty/SetProperty, different port kind. _Avoid_: get/put texture, texture 
 
 **BuildPBRMaterial**:
 A block that assembles a PBR metallic-roughness material from IMAGE inputs (base colour, normal,
-metallic-roughness, emissive) and factor params, attaches it to a SCENE, and optionally assigns it at
-a target pointer. The "compose up the funnel" tool. _Avoid_: material factory, shader block.
+metallic-roughness, emissive) and factor params, attaches it to a **GLTF_DOCUMENT**, and optionally
+assigns it at a target pointer. The "compose up the funnel" tool. _Avoid_: material factory, shader block.
 
 **gltf-transform Document**:
 The payload wrapped by a **GltfAsset** (the `GLTF_DOCUMENT` representation) — a gltf-transform

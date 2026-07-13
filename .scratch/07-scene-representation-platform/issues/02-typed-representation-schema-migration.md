@@ -33,13 +33,16 @@ schema foundation only: no new transcoders, no build-scope lifecycle, and no edi
 ## What to build
 
 - `packages/dev/node-assets/src/connection/nodeAssetConnectionPointType.ts`
-  - Add `GLTF_DOCUMENT`, `USD_STAGE`, `BABYLON_SCENE`, and `NODE_GEOMETRY`.
-  - Keep `SCENE` as a deprecated alias for `GLTF_DOCUMENT` for deserialization/source wires.
+  - **Explicit enum strategy (no vague normalization):** define **`GLTF_DOCUMENT = 0`** and make
+    **`SCENE = GLTF_DOCUMENT`** (a literal alias to the same numeric value `0`, which is what `SCENE`
+    already was). **Preserve the existing numeric values of `NUMBER`/`STRING`/`JSON`/`IMAGE`** and
+    **append** the new kinds `USD_STAGE`, `BABYLON_SCENE`, `NODE_GEOMETRY` at the end. Because `SCENE`
+    and `GLTF_DOCUMENT` are the *same* value, no connection-time normalization is needed — kind-equality
+    already treats them as identical; serialized graphs using the old `SCENE` value deserialize unchanged.
 - `packages/dev/node-assets/src/connection/nodeAssetConnectionPoint.ts`
-  - Keep `value: unknown`.
-  - Normalize `SCENE`/`GLTF_DOCUMENT` compatibility at connection time without weakening strict
-    equality for other kinds.
-  - Surface a deprecation diagnostic for `SCENE` alias use.
+  - Keep `value: unknown` and the strict kind-equality `connectTo`. Do **not** add ad-hoc
+    `SCENE`↔`GLTF_DOCUMENT` normalization — they are one value.
+  - Optionally surface a deprecation diagnostic when a graph/source explicitly names `SCENE`.
 - New wrappers:
   - `packages/dev/node-assets/src/representations/gltfAsset.ts`
   - `packages/dev/node-assets/src/representations/usdAsset.ts`
@@ -68,16 +71,19 @@ Tests first under `packages/dev/node-assets/test/unit/`:
 
 - `typedRepresentations.test.ts` — enum contains the four new kinds, wrappers carry the expected
   payloads, and no generic representation kind exists.
-- `sceneAliasCompatibility.test.ts` — old serialized `SCENE` graphs connect/build as
-  `GLTF_DOCUMENT` and emit one deprecation diagnostic.
-- `nodeAssetConnectionPoint.test.ts` update — mismatched representation wires reject; only
-  `SCENE`↔`GLTF_DOCUMENT` compatibility is allowed.
+- `sceneAliasCompatibility.test.ts` — `SCENE` and `GLTF_DOCUMENT` are the **same enum value** (`0`);
+  old serialized `SCENE` graphs deserialize and build as `GLTF_DOCUMENT` with no normalization step;
+  existing `NUMBER`/`STRING`/`JSON`/`IMAGE` numeric values are unchanged.
+- `nodeAssetConnectionPoint.test.ts` update — mismatched representation wires reject under strict
+  kind-equality; `SCENE`↔`GLTF_DOCUMENT` connect because they are one value (not via special-casing).
 - `importExportMetadata.test.ts` / `operatorPipeline.test.ts` updates — ImportGLTF, ExportGLTF,
   operators, MergeScenes, selectors, texture blocks, and legacy BuildPBRMaterial still build.
 
 ## Acceptance criteria
 
-- [ ] New connection point kinds exist and remain flat kind-equality types.
+- [ ] New connection point kinds exist and remain flat kind-equality types; `GLTF_DOCUMENT = 0`,
+      `SCENE = GLTF_DOCUMENT` (same value), `NUMBER`/`STRING`/`JSON`/`IMAGE` numeric values preserved, new
+      kinds appended; no connection-time normalization.
 - [ ] `SCENE` is a deprecated alias for `GLTF_DOCUMENT`; nothing new emits `SCENE`.
 - [ ] `GltfAsset`, `UsdAsset`, and `BabylonAsset` wrappers exist and are exported.
 - [ ] The serialized graph has an explicit named type and `serialize()` returns it (no `any`); the `JSON`
