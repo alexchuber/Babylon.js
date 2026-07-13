@@ -108,6 +108,8 @@ export type LossRecord = IBuildDiagnostic & {
     readonly targetRepresentation: BuildRepresentationKind;
     /** Block or transcoder that produced this record. */
     readonly producer: IBuildDiagnosticProducer;
+    /** Stable refinement tags propagated by later representation boundaries. */
+    readonly tags?: ReadonlyArray<string>;
 };
 
 /** Additional data needed to map a loader diagnostic to a {@link LossRecord}. */
@@ -122,6 +124,8 @@ export interface IResolvedDiagnosticLossContext {
     readonly targetRepresentation: BuildRepresentationKind;
     /** Block or transcoder that produced this record. */
     readonly producer: IBuildDiagnosticProducer;
+    /** Optional stable refinement tags. */
+    readonly tags?: ReadonlyArray<string>;
 }
 
 /** A build-owned value that releases resources synchronously or asynchronously. */
@@ -283,6 +287,7 @@ export class BuildScope {
             sourceRepresentation: context.sourceRepresentation,
             targetRepresentation: context.targetRepresentation,
             producer: context.producer,
+            tags: context.tags ? Object.freeze([...context.tags]) : undefined,
         });
         this._diagnostics.push(buildDiagnostic);
         this._lossRecords.push(lossRecord);
@@ -454,6 +459,11 @@ export class BuildScope {
 
 /** Exported bytes plus immutable diagnostics produced by the same build. */
 export class NodeAssetBuildResult extends Uint8Array {
+    /** Keeps inherited typed-array copy operations compatible with the standard Uint8Array constructor. */
+    public static get [Symbol.species](): Uint8ArrayConstructor {
+        return Uint8Array;
+    }
+
     /** Non-fatal diagnostics produced by the build. */
     public readonly diagnostics: ReadonlyArray<IBuildDiagnostic>;
     /** Canonical loss records produced by representation boundaries. */

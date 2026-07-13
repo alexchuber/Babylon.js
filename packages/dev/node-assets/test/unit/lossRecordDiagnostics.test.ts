@@ -29,6 +29,7 @@ class DiagnosticSourceBlock extends NodeAssetBlock {
                 sourceRepresentation: "USD_STAGE",
                 targetRepresentation: "GLTF_DOCUMENT",
                 producer: { kind: "transcoder", blockId: this.uniqueId, blockName: this.name },
+                tags: ["usd", "xform"],
             }
         );
         this.output.value = { data: new Uint8Array([4, 5, 6]), mimeType: "image/png" };
@@ -79,6 +80,7 @@ describe("build diagnostics and loss records", () => {
 
         expect(result).toBeInstanceOf(Uint8Array);
         expect(Array.from(result)).toEqual([4, 5, 6]);
+        expect(result.slice(1)).toEqual(new Uint8Array([5, 6]));
         expect(result).toBeInstanceOf(NodeAssetBuildResult);
         expect(result.diagnostics).toEqual([
             {
@@ -106,6 +108,7 @@ describe("build diagnostics and loss records", () => {
                 sourceRepresentation: "USD_STAGE",
                 targetRepresentation: "GLTF_DOCUMENT",
                 producer: { kind: "transcoder", blockId: expect.any(Number), blockName: "diagnostic source" },
+                tags: ["usd", "xform"],
             },
         ]);
         expect("losses" in result).toBe(false);
