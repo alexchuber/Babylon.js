@@ -3,7 +3,7 @@ import { describe, expect, expectTypeOf, it } from "vitest";
 import { NodeAssetBlock } from "../../src/blockFoundation/nodeAssetBlock";
 import { type NodeAssetConnectionPoint } from "../../src/connection/nodeAssetConnectionPoint";
 import { NodeAssetConnectionPointType } from "../../src/connection/nodeAssetConnectionPointType";
-import { type BuildScope, NodeAssetBuildResult } from "../../src/evaluation/buildScope";
+import { type BuildScope, type NodeAssetBuildResult } from "../../src/evaluation/buildScope";
 import { NodeAsset } from "../../src/nodeAsset";
 
 class DiagnosticSourceBlock extends NodeAssetBlock {
@@ -81,7 +81,6 @@ describe("build diagnostics and loss records", () => {
         expect(result).toBeInstanceOf(Uint8Array);
         expect(Array.from(result)).toEqual([4, 5, 6]);
         expect(result.slice(1)).toEqual(new Uint8Array([5, 6]));
-        expect(result).toBeInstanceOf(NodeAssetBuildResult);
         expect(result.diagnostics).toEqual([
             {
                 code: "SOURCE_NOTE",

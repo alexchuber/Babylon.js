@@ -457,29 +457,37 @@ export class BuildScope {
     }
 }
 
-/** Exported bytes plus immutable diagnostics produced by the same build. */
-export class NodeAssetBuildResult extends Uint8Array {
-    /** Keeps inherited typed-array copy operations compatible with the standard Uint8Array constructor. */
-    public static get [Symbol.species](): Uint8ArrayConstructor {
-        return Uint8Array;
-    }
-
+/** Existing export bytes augmented in place with immutable, non-enumerable build metadata. */
+export type NodeAssetBuildResult = Uint8Array & {
     /** Non-fatal diagnostics produced by the build. */
-    public readonly diagnostics: ReadonlyArray<IBuildDiagnostic>;
+    readonly diagnostics: ReadonlyArray<IBuildDiagnostic>;
     /** Canonical loss records produced by representation boundaries. */
-    public readonly lossRecords: ReadonlyArray<LossRecord>;
+    readonly lossRecords: ReadonlyArray<LossRecord>;
+};
 
-    /**
-     * Creates a Uint8Array-compatible build result.
-     * @param bytes The terminal export bytes.
-     * @param diagnostics Non-fatal build diagnostics.
-     * @param lossRecords Representation loss records.
-     */
-    public constructor(bytes: Uint8Array, diagnostics: ReadonlyArray<IBuildDiagnostic>, lossRecords: ReadonlyArray<LossRecord>) {
-        super(bytes);
-        this.diagnostics = Object.freeze([...diagnostics]);
-        this.lossRecords = Object.freeze([...lossRecords]);
-    }
+/**
+ * Attaches build metadata without copying or changing the terminal export's Uint8Array identity.
+ * @param bytes The terminal export bytes.
+ * @param diagnostics Non-fatal build diagnostics.
+ * @param lossRecords Representation loss records.
+ * @returns The same Uint8Array augmented with readonly build metadata.
+ */
+export function CreateNodeAssetBuildResult(bytes: Uint8Array, diagnostics: ReadonlyArray<IBuildDiagnostic>, lossRecords: ReadonlyArray<LossRecord>): NodeAssetBuildResult {
+    Object.defineProperties(bytes, {
+        diagnostics: {
+            configurable: true,
+            enumerable: false,
+            value: Object.freeze([...diagnostics]),
+            writable: false,
+        },
+        lossRecords: {
+            configurable: true,
+            enumerable: false,
+            value: Object.freeze([...lossRecords]),
+            writable: false,
+        },
+    });
+    return bytes as NodeAssetBuildResult;
 }
 
 function IsBuildResource(value: unknown): value is IBuildResource & object {

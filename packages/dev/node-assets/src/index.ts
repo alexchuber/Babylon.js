@@ -18,7 +18,7 @@ export {
     type IResolvedDiagnosticLossContext,
     type LossDisposition,
     type LossRecord,
-    NodeAssetBuildResult,
+    type NodeAssetBuildResult,
 } from "./evaluation/buildScope";
 export { NodeAssetBlock } from "./blockFoundation/nodeAssetBlock";
 export { NodeAssetConnectionPoint } from "./connection/nodeAssetConnectionPoint";

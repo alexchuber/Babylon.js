@@ -2,7 +2,7 @@ import { CreateBlockByClassName } from "./blockFoundation/blockRegistry";
 import { IsExportBlock } from "./blockFoundation/exportBlock";
 import { type NodeAssetBlock } from "./blockFoundation/nodeAssetBlock";
 import { type NodeAssetConnectionPoint } from "./connection/nodeAssetConnectionPoint";
-import { BuildScope, type INodeAssetBuildOptions, NodeAssetBuildResult } from "./evaluation/buildScope";
+import { BuildScope, CreateNodeAssetBuildResult, type INodeAssetBuildOptions, type NodeAssetBuildResult } from "./evaluation/buildScope";
 import { CloneForFanOutAsync } from "./evaluation/fanOutCopy";
 import { IsNodeAssetSerializedGraph, type NodeAssetConnectionSerialization, type NodeAssetSerializedGraph } from "./serialization/nodeAssetSerialization";
 import { UniqueIdGenerator } from "./utils/uniqueIdGenerator";
@@ -182,7 +182,7 @@ export class NodeAsset {
         if (failed) {
             throw primaryError;
         }
-        return new NodeAssetBuildResult(result!, scope.diagnostics, scope.lossRecords);
+        return CreateNodeAssetBuildResult(result!, scope.diagnostics, scope.lossRecords);
     }
 
     /**
