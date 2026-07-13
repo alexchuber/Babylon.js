@@ -20,6 +20,11 @@ type TokenKind = "identifier" | "number" | "string" | "asset" | "path" | "symbol
 type ListOperation = "prepend" | "append" | "add" | "delete" | "reorder";
 type RawValue = boolean | number | string | IRawNumber | IRawAsset | IRawPath | IRawDictionary | RawValue[];
 const MaxUsdaDiagnostics = 256;
+// Shared cap on structural nesting (prim bodies and variant bodies) and on value nesting
+// (arrays/tuples/dictionaries). Both bound untrusted input so pathological depth is rejected with a
+// typed parser error instead of a native RangeError, without penalizing wide (sibling-heavy) stages.
+const MaxNestingDepth = 256;
+const MaxValueNestingDepth = 256;
 
 interface IToken {
     kind: TokenKind;
@@ -305,7 +310,8 @@ class UsdaLexer {
 }
 
 class UsdaParser {
-    private _primDepth = 0;
+    private _nestingDepth = 0;
+    private _valueDepth = 0;
     private _position = 0;
     private readonly _diagnostics: IUsdaParseDiagnostic[] = [];
 
@@ -465,15 +471,12 @@ class UsdaParser {
         }
 
         if (this._matchSymbol("{")) {
-            if (this._primDepth >= 256) {
-                throw new Error(`USDA parser: prim nesting depth exceeds 256 at '${path}'.`);
-            }
-            this._primDepth++;
+            this._enterNesting(path);
             try {
                 this._parseBody(prim, path);
                 this._expectSymbol("}");
             } finally {
-                this._primDepth--;
+                this._exitNesting();
             }
         } else {
             this._diagnose(`Expected body for prim '${path}'.`);
@@ -627,8 +630,13 @@ class UsdaParser {
                 this._parseVariantMetadata(variant);
             }
             if (this._expectSymbol("{")) {
-                this._parseBody(variant, ownerPath);
-                this._expectSymbol("}");
+                this._enterNesting(ownerPath);
+                try {
+                    this._parseBody(variant, ownerPath);
+                    this._expectSymbol("}");
+                } finally {
+                    this._exitNesting();
+                }
             }
             variantSet.variants[variantName] = variant;
         }
@@ -922,6 +930,28 @@ class UsdaParser {
         return { offset: offset ?? 0, scale: scale ?? 1 };
     }
 
+    private _enterNesting(path: string): void {
+        if (this._nestingDepth >= MaxNestingDepth) {
+            throw new Error(`USDA parser: nesting depth exceeds ${MaxNestingDepth} at '${path}'.`);
+        }
+        this._nestingDepth++;
+    }
+
+    private _exitNesting(): void {
+        this._nestingDepth--;
+    }
+
+    private _enterValue(): void {
+        if (this._valueDepth >= MaxValueNestingDepth) {
+            throw new Error(`USDA parser: value nesting depth exceeds the ${MaxValueNestingDepth}-level resource cap.`);
+        }
+        this._valueDepth++;
+    }
+
+    private _exitValue(): void {
+        this._valueDepth--;
+    }
+
     private _parseRawValue(): RawValue | undefined {
         const token = this._peek();
         if (token.kind === "eof") {
@@ -960,47 +990,57 @@ class UsdaParser {
     }
 
     private _parseRawArray(closing: ")" | "]"): RawValue[] {
-        const values: RawValue[] = [];
-        while (!this._isAtEnd() && this._peek().value !== closing) {
-            this._skipDelimiters();
-            if (this._peek().value === closing) {
-                break;
+        this._enterValue();
+        try {
+            const values: RawValue[] = [];
+            while (!this._isAtEnd() && this._peek().value !== closing) {
+                this._skipDelimiters();
+                if (this._peek().value === closing) {
+                    break;
+                }
+                const value = this._parseRawValue();
+                if (value !== undefined) {
+                    values.push(value);
+                }
+                this._matchSymbol(",");
             }
-            const value = this._parseRawValue();
-            if (value !== undefined) {
-                values.push(value);
-            }
-            this._matchSymbol(",");
+            this._expectSymbol(closing);
+            return values;
+        } finally {
+            this._exitValue();
         }
-        this._expectSymbol(closing);
-        return values;
     }
 
     private _parseRawDictionary(): IRawDictionary {
-        const value: Record<string, RawValue> = {};
-        while (!this._isAtEnd() && this._peek().value !== "}") {
-            this._skipDelimiters();
-            if (this._peek().value === "}") {
-                break;
-            }
-            let key = this._consumeKey();
-            if (!key) {
-                this._consume();
-                continue;
-            }
-            if (this._peek().value !== ":" && this._peek().value !== "=" && (this._peek(1).value === ":" || this._peek(1).value === "=")) {
-                key = this._consumeKey() ?? key;
-            }
-            if (this._matchSymbol(":") || this._matchSymbol("=")) {
-                const rawValue = this._parseRawValue();
-                if (rawValue !== undefined) {
-                    value[key] = rawValue;
+        this._enterValue();
+        try {
+            const value: Record<string, RawValue> = {};
+            while (!this._isAtEnd() && this._peek().value !== "}") {
+                this._skipDelimiters();
+                if (this._peek().value === "}") {
+                    break;
                 }
+                let key = this._consumeKey();
+                if (!key) {
+                    this._consume();
+                    continue;
+                }
+                if (this._peek().value !== ":" && this._peek().value !== "=" && (this._peek(1).value === ":" || this._peek(1).value === "=")) {
+                    key = this._consumeKey() ?? key;
+                }
+                if (this._matchSymbol(":") || this._matchSymbol("=")) {
+                    const rawValue = this._parseRawValue();
+                    if (rawValue !== undefined) {
+                        value[key] = rawValue;
+                    }
+                }
+                this._matchSymbol(",");
             }
-            this._matchSymbol(",");
+            this._expectSymbol("}");
+            return { kind: "dictionary", value };
+        } finally {
+            this._exitValue();
         }
-        this._expectSymbol("}");
-        return { kind: "dictionary", value };
     }
 
     private _tryConsumeSpecifier(): SdfSpecifier | undefined {

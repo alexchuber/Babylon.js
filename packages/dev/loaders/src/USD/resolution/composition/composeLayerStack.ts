@@ -43,6 +43,22 @@ export interface IComposeLayerStackResult {
     diagnostics: ICompositionDiagnostic[];
 }
 
+/**
+ * Options controlling layer-stack composition.
+ */
+export interface IComposeLayerStackOptions {
+    /**
+     * Maximum number of prims composition may produce before it aborts with a bounded error.
+     *
+     * This guards against adversarial composition amplification — deeply chained, repeated, or
+     * fanned-out references, payloads, inherits, and specializes that multiply a small input into an
+     * enormous flattened stage. The cap counts prim specs only (not attribute array elements), so it
+     * never penalizes an ordinary wide stage or a mesh with large vertex buffers. Defaults to
+     * {@link DefaultMaxCompositionNodes}.
+     */
+    maxCompositionNodes?: number;
+}
+
 type ResolveLayer = (assetPath: string, fromIdentifier: string) => ISdfLayer | undefined;
 type ListItemKey<T> = (item: T) => string;
 
@@ -53,6 +69,14 @@ interface ICompositionContext {
     readonly composingLayers: Set<string>;
     readonly localLayers: Map<string, ISdfLayer>;
     readonly composingLocalLayers: Set<string>;
+    readonly budget: ICompositionBudget;
+}
+
+// Mutable running total of composed prim specs, checked against the configured cap so composition
+// aborts deterministically once adversarial amplification exceeds the budget.
+interface ICompositionBudget {
+    readonly maxCompositionNodes: number;
+    composedPrims: number;
 }
 
 interface ILayerCompositionState {
@@ -68,6 +92,9 @@ interface IPrimChildResolver {
 const DefaultTimeCodesPerSecond = 24;
 const DefaultMetersPerUnit = 0.01;
 const DefaultUpAxis = "Y";
+// Default composition prim budget. Generous enough for ordinary large stages (hundreds of thousands
+// of prims) while still rejecting adversarial amplification that would otherwise multiply without bound.
+const DefaultMaxCompositionNodes = 1_000_000;
 
 /**
  * Resolves a sequence of Sdf list operations from weakest to strongest into the final ordered list.
@@ -99,9 +126,10 @@ export function ResolveSdfListOp<T>(listOps: readonly (ISdfListOp<T> | undefined
  * Composition is side-effect-free and never performs file IO.
  * @param rootLayer The strongest root layer for the stage.
  * @param resolveLayer Callback used to resolve sublayers, references, and payloads.
+ * @param options Optional composition options, such as the maximum composed prim budget.
  * @returns The flattened layer and any non-fatal composition diagnostics.
  */
-export function ComposeLayerStack(rootLayer: ISdfLayer, resolveLayer: ResolveLayer): IComposeLayerStackResult {
+export function ComposeLayerStack(rootLayer: ISdfLayer, resolveLayer: ResolveLayer, options?: IComposeLayerStackOptions): IComposeLayerStackResult {
     const context: ICompositionContext = {
         resolveLayer,
         diagnostics: [],
@@ -109,6 +137,7 @@ export function ComposeLayerStack(rootLayer: ISdfLayer, resolveLayer: ResolveLay
         composingLayers: new Set<string>(),
         localLayers: new Map<string, ISdfLayer>(),
         composingLocalLayers: new Set<string>(),
+        budget: { maxCompositionNodes: options?.maxCompositionNodes ?? DefaultMaxCompositionNodes, composedPrims: 0 },
     };
 
     return {
@@ -120,6 +149,10 @@ export function ComposeLayerStack(rootLayer: ISdfLayer, resolveLayer: ResolveLay
 function ComposeLayer(layer: ISdfLayer, context: ICompositionContext): ISdfLayer {
     const cachedLayer = context.composedLayers.get(layer.identifier);
     if (cachedLayer) {
+        // A cache hit still contributes its prims to the output stage, so charge the budget for the
+        // clone. This bounds repeated-reference amplification, where many arcs graft copies of the
+        // same already-composed layer without re-entering ComposePrim.
+        ChargeCompositionBudget(context, CountLayerPrims(cachedLayer));
         return Clone(cachedLayer);
     }
 
@@ -252,6 +285,7 @@ function ComposeSyntheticPrim(prim: ISdfPrimSpec, state: ILayerCompositionState,
 }
 
 function ComposePrim(prim: ISdfPrimSpec, state: ILayerCompositionState, context: ICompositionContext, resolveChild: IPrimChildResolver): ISdfPrimSpec | undefined {
+    ChargeCompositionBudget(context, 1);
     let composedPrim = CreateEmptyPrim(prim);
 
     composedPrim = ComposePathArcs(composedPrim, ResolveSdfListOp([prim.specializes]), state, context, "specializes");
@@ -1060,6 +1094,34 @@ function GetNameFromPath(path: string): string {
 
 function AddDiagnostic(context: ICompositionContext, diagnostic: ICompositionDiagnostic): void {
     context.diagnostics.push(diagnostic);
+}
+
+// Adds to the running composition prim count and aborts with a bounded, typed error the moment the
+// configured budget is exceeded, so adversarial amplification is rejected deterministically rather
+// than exhausting memory or silently truncating the stage.
+function ChargeCompositionBudget(context: ICompositionContext, prims: number): void {
+    context.budget.composedPrims += prims;
+    if (context.budget.composedPrims > context.budget.maxCompositionNodes) {
+        throw new Error(`USD composition: composed prim count exceeds the ${context.budget.maxCompositionNodes}-node resource cap.`);
+    }
+}
+
+// Counts the prim specs (including descendants) in a composed layer. Used to charge the budget when a
+// cached composed layer is cloned into the output.
+function CountLayerPrims(layer: ISdfLayer): number {
+    let count = 0;
+    for (const prim of layer.rootPrims) {
+        count += CountPrimSubtree(prim);
+    }
+    return count;
+}
+
+function CountPrimSubtree(prim: ISdfPrimSpec): number {
+    let count = 1;
+    for (const child of prim.children) {
+        count += CountPrimSubtree(child);
+    }
+    return count;
 }
 
 function CloneOptional<T>(value: T | undefined): T | undefined {
