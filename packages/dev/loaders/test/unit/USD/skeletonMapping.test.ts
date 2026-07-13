@@ -145,6 +145,8 @@ describe("USD skeleton mapping", () => {
         expect(Array.from(mesh.skinning!.jointIndices)).toEqual([0, 1, 1, 0, 1, 0]);
         expect(Array.from(mesh.skinning!.jointWeights)).toEqual([1, 0, 0.75, 0.25, 0.5, 0.5]);
         expect(mesh.skinning?.geomBindTransform).toEqual(identityMatrix);
-        expect(stage.diagnostics).toEqual([]);
+        // The skinned mesh has no authored subdivisionScheme, so it now carries an honest subdivision
+        // info diagnostic; nothing else (no errors or warnings) should be reported.
+        expect(stage.diagnostics.filter((diagnostic) => !/subdivision/i.test(diagnostic.message))).toEqual([]);
     });
 });

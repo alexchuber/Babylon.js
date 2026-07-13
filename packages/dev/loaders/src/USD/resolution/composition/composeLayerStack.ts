@@ -13,6 +13,7 @@ import {
     type ISdfVariantSpec,
     type SdfMetadata,
 } from "../sdf";
+import { UsdResourceLimitError, ValidateResourceLimit } from "../../usdErrors";
 
 /**
  * Diagnostic emitted while composing a USD layer stack. Diagnostics are returned next to the
@@ -43,6 +44,42 @@ export interface IComposeLayerStackResult {
     diagnostics: ICompositionDiagnostic[];
 }
 
+/**
+ * Options controlling layer-stack composition.
+ */
+export interface IComposeLayerStackOptions {
+    /**
+     * Maximum number of prims composition may produce before it aborts with a bounded error.
+     *
+     * This guards against adversarial amplification — deeply chained, repeated, or fanned-out
+     * references, payloads, inherits, and specializes that multiply a small input into an enormous
+     * flattened stage. The cap counts prim specs only (not attribute array elements), so it never
+     * penalizes an ordinary wide stage or a mesh with large vertex buffers. Defaults to 1,000,000.
+     *
+     * Must be a finite, non-negative safe integer (zero rejects any composed prim).
+     */
+    maxCompositionNodes?: number;
+
+    /**
+     * Maximum composition recursion depth (nested arc/prim resolution) before composition aborts with a
+     * bounded error. This keeps deep reference/payload/inherit/specialize chains from overflowing the
+     * JavaScript call stack with a native `RangeError`. Defaults to 512.
+     *
+     * Must be a finite, non-negative safe integer.
+     */
+    maxCompositionDepth?: number;
+
+    /**
+     * Maximum units of composition work (prim specs composed, merged, and cloned) before composition
+     * aborts with a bounded error. Unlike {@link maxCompositionNodes}, which bounds the size of the
+     * output, this bounds the actual work performed, so adversarial inputs that produce a small output
+     * through super-linear merging/cloning are still rejected. Defaults to 20,000,000.
+     *
+     * Must be a finite, non-negative safe integer.
+     */
+    maxCompositionWork?: number;
+}
+
 type ResolveLayer = (assetPath: string, fromIdentifier: string) => ISdfLayer | undefined;
 type ListItemKey<T> = (item: T) => string;
 
@@ -53,6 +90,19 @@ interface ICompositionContext {
     readonly composingLayers: Set<string>;
     readonly localLayers: Map<string, ISdfLayer>;
     readonly composingLocalLayers: Set<string>;
+    readonly budget: ICompositionBudget;
+}
+
+// Mutable running totals checked against the configured caps so composition aborts deterministically
+// once adversarial input exceeds a budget: nodes bounds output size, depth bounds recursion (native
+// stack safety), and work bounds actual prim-level effort (compose/merge/clone).
+interface ICompositionBudget {
+    readonly maxNodes: number;
+    readonly maxDepth: number;
+    readonly maxWork: number;
+    nodes: number;
+    depth: number;
+    work: number;
 }
 
 interface ILayerCompositionState {
@@ -68,6 +118,11 @@ interface IPrimChildResolver {
 const DefaultTimeCodesPerSecond = 24;
 const DefaultMetersPerUnit = 0.01;
 const DefaultUpAxis = "Y";
+// Default composition budgets. Nodes/work are generous enough for ordinary large stages while still
+// rejecting adversarial amplification; depth stays well below the native call-stack ceiling.
+const DefaultMaxCompositionNodes = 1_000_000;
+const DefaultMaxCompositionDepth = 512;
+const DefaultMaxCompositionWork = 20_000_000;
 
 /**
  * Resolves a sequence of Sdf list operations from weakest to strongest into the final ordered list.
@@ -99,9 +154,10 @@ export function ResolveSdfListOp<T>(listOps: readonly (ISdfListOp<T> | undefined
  * Composition is side-effect-free and never performs file IO.
  * @param rootLayer The strongest root layer for the stage.
  * @param resolveLayer Callback used to resolve sublayers, references, and payloads.
+ * @param options Optional composition options, such as the maximum composed prim budget.
  * @returns The flattened layer and any non-fatal composition diagnostics.
  */
-export function ComposeLayerStack(rootLayer: ISdfLayer, resolveLayer: ResolveLayer): IComposeLayerStackResult {
+export function ComposeLayerStack(rootLayer: ISdfLayer, resolveLayer: ResolveLayer, options?: IComposeLayerStackOptions): IComposeLayerStackResult {
     const context: ICompositionContext = {
         resolveLayer,
         diagnostics: [],
@@ -109,6 +165,14 @@ export function ComposeLayerStack(rootLayer: ISdfLayer, resolveLayer: ResolveLay
         composingLayers: new Set<string>(),
         localLayers: new Map<string, ISdfLayer>(),
         composingLocalLayers: new Set<string>(),
+        budget: {
+            maxNodes: ResolveCompositionLimit(options?.maxCompositionNodes, DefaultMaxCompositionNodes, "maxCompositionNodes"),
+            maxDepth: ResolveCompositionLimit(options?.maxCompositionDepth, DefaultMaxCompositionDepth, "maxCompositionDepth"),
+            maxWork: ResolveCompositionLimit(options?.maxCompositionWork, DefaultMaxCompositionWork, "maxCompositionWork"),
+            nodes: 0,
+            depth: 0,
+            work: 0,
+        },
     };
 
     return {
@@ -117,9 +181,19 @@ export function ComposeLayerStack(rootLayer: ISdfLayer, resolveLayer: ResolveLay
     };
 }
 
+// Validates a caller-provided composition limit (defaulting when omitted). Defensive second layer of
+// validation at the direct-API seam; public entry points validate first via ValidateResourceLimit.
+function ResolveCompositionLimit(value: number | undefined, fallback: number, option: string): number {
+    return value === undefined ? fallback : ValidateResourceLimit(value, option);
+}
+
 function ComposeLayer(layer: ISdfLayer, context: ICompositionContext): ISdfLayer {
     const cachedLayer = context.composedLayers.get(layer.identifier);
     if (cachedLayer) {
+        // A cache hit clones the whole cached layer (work), but only the subtree the caller grafts
+        // becomes output nodes; those are charged at the graft site via ChargeGraft. Charging the whole
+        // cached layer here would over-count references that pull one small prim from a large library.
+        ChargeWork(context, CountLayerPrims(cachedLayer));
         return Clone(cachedLayer);
     }
 
@@ -200,10 +274,10 @@ function BuildLocalLayer(layer: ISdfLayer, context: ICompositionContext): ISdfLa
         }
 
         const composedSubLayerStack = ApplyLayerOffsetToLayer(BuildLocalLayer(resolvedLayer, context), subLayer.layerOffset);
-        mergedLayer = MergeLayerOpinions(mergedLayer, composedSubLayerStack);
+        mergedLayer = MergeLayerOpinions(context, mergedLayer, composedSubLayerStack);
     }
 
-    mergedLayer = MergeLayerOpinions(mergedLayer, {
+    mergedLayer = MergeLayerOpinions(context, mergedLayer, {
         ...Clone(layer),
         subLayers: [],
     });
@@ -252,21 +326,28 @@ function ComposeSyntheticPrim(prim: ISdfPrimSpec, state: ILayerCompositionState,
 }
 
 function ComposePrim(prim: ISdfPrimSpec, state: ILayerCompositionState, context: ICompositionContext, resolveChild: IPrimChildResolver): ISdfPrimSpec | undefined {
-    let composedPrim = CreateEmptyPrim(prim);
+    EnterCompositionDepth(context);
+    try {
+        ChargeNodes(context, 1);
+        ChargeWork(context, 1);
+        let composedPrim = CreateEmptyPrim(prim);
 
-    composedPrim = ComposePathArcs(composedPrim, ResolveSdfListOp([prim.specializes]), state, context, "specializes");
-    composedPrim = ComposeAssetArcs(composedPrim, ResolveSdfListOp([prim.payloads], CreatePayloadKey), state, context, "payload");
-    composedPrim = ComposeAssetArcs(composedPrim, ResolveSdfListOp([prim.references], CreateReferenceKey), state, context, "reference");
-    composedPrim = ComposeVariantOpinions(composedPrim, prim, state, context);
-    composedPrim = ComposePathArcs(composedPrim, ResolveSdfListOp([prim.inherits]), state, context, "inherits");
-    composedPrim = MergePrimOpinions(composedPrim, CreateDirectPrimOpinion(prim, resolveChild));
+        composedPrim = ComposePathArcs(composedPrim, ResolveSdfListOp([prim.specializes]), state, context, "specializes");
+        composedPrim = ComposeAssetArcs(composedPrim, ResolveSdfListOp([prim.payloads], CreatePayloadKey), state, context, "payload");
+        composedPrim = ComposeAssetArcs(composedPrim, ResolveSdfListOp([prim.references], CreateReferenceKey), state, context, "reference");
+        composedPrim = ComposeVariantOpinions(composedPrim, prim, state, context);
+        composedPrim = ComposePathArcs(composedPrim, ResolveSdfListOp([prim.inherits]), state, context, "inherits");
+        composedPrim = MergePrimOpinions(context, composedPrim, CreateDirectPrimOpinion(prim, resolveChild));
 
-    if (composedPrim.active === false) {
-        return undefined;
+        if (composedPrim.active === false) {
+            return undefined;
+        }
+
+        const relocatedPrim = ApplyRelocatesToPrim(composedPrim, composedPrim.relocates ?? []);
+        return StripCompositionFields(relocatedPrim);
+    } finally {
+        ExitCompositionDepth(context);
     }
-
-    const relocatedPrim = ApplyRelocatesToPrim(composedPrim, composedPrim.relocates ?? []);
-    return StripCompositionFields(relocatedPrim);
 }
 
 function ComposePathArcs(
@@ -293,7 +374,8 @@ function ComposePathArcs(
             continue;
         }
 
-        result = MergePrimOpinions(result, RebasePrimTree(arcPrim, arcPrim.path, composedPrim.path));
+        ChargeGraft(context, arcPrim);
+        result = MergePrimOpinions(context, result, RebasePrimTree(arcPrim, arcPrim.path, composedPrim.path));
     }
 
     return result;
@@ -313,7 +395,7 @@ function ComposeAssetArcs(
         const arcPrim = ComposeAssetArc(composedPrim, arc, state, context, arcName);
 
         if (arcPrim) {
-            result = MergePrimOpinions(result, arcPrim);
+            result = MergePrimOpinions(context, result, arcPrim);
         }
     }
 
@@ -347,6 +429,7 @@ function ComposeAssetArc(
             return undefined;
         }
 
+        ChargeGraft(context, internalPrim);
         return ApplyLayerOffsetToPrim(RebasePrimTree(internalPrim, internalPrim.path, targetPrim.path), arc.layerOffset);
     }
 
@@ -371,6 +454,7 @@ function ComposeAssetArc(
         return undefined;
     }
 
+    ChargeGraft(context, sourcePrim);
     return ApplyLayerOffsetToPrim(RebasePrimTree(sourcePrim, sourcePrim.path, targetPrim.path), arc.layerOffset);
 }
 
@@ -419,6 +503,8 @@ function SelectReferencedPrim(
             path: targetPrimPath,
             specifier: "over",
             properties: {},
+            // No budget charge here: the caller (ComposeAssetArc) charges the whole returned synthetic
+            // subtree once via ChargeGraft, so charging the children here too would double-count.
             children: layer.rootPrims.map((prim) => RebasePrimAsChild(prim, targetPrimPath)),
         };
     }
@@ -448,7 +534,7 @@ function ComposeVariantOpinions(composedPrim: ISdfPrimSpec, prim: ISdfPrimSpec, 
         const composedVariantPrim = ComposeSyntheticPrim(variantPrim, state, context);
 
         if (composedVariantPrim) {
-            result = MergePrimOpinions(result, composedVariantPrim);
+            result = MergePrimOpinions(context, result, composedVariantPrim);
         }
     }
 
@@ -509,8 +595,9 @@ function CreateDirectPrimOpinion(prim: ISdfPrimSpec, resolveChild: IPrimChildRes
     };
 }
 
-function MergeLayerOpinions(weakerLayer: ISdfLayer | undefined, strongerLayer: ISdfLayer): ISdfLayer {
+function MergeLayerOpinions(context: ICompositionContext, weakerLayer: ISdfLayer | undefined, strongerLayer: ISdfLayer): ISdfLayer {
     if (!weakerLayer) {
+        ChargeWork(context, CountLayerPrims(strongerLayer));
         return Clone(strongerLayer);
     }
 
@@ -524,13 +611,16 @@ function MergeLayerOpinions(weakerLayer: ISdfLayer | undefined, strongerLayer: I
         endTimeCode: strongerLayer.endTimeCode ?? weakerLayer.endTimeCode,
         defaultPrim: strongerLayer.defaultPrim ?? weakerLayer.defaultPrim,
         subLayers: [],
-        rootPrims: MergePrimArrays(weakerLayer.rootPrims, strongerLayer.rootPrims),
+        rootPrims: MergePrimArrays(context, weakerLayer.rootPrims, strongerLayer.rootPrims),
         metadata: MergeMetadata(weakerLayer.metadata, strongerLayer.metadata),
     };
 }
 
-function MergePrimArrays(weakerPrims: readonly ISdfPrimSpec[], strongerPrims: readonly ISdfPrimSpec[]): ISdfPrimSpec[] {
-    const mergedPrims = weakerPrims.map((prim) => Clone(prim));
+function MergePrimArrays(context: ICompositionContext, weakerPrims: readonly ISdfPrimSpec[], strongerPrims: readonly ISdfPrimSpec[]): ISdfPrimSpec[] {
+    const mergedPrims = weakerPrims.map((prim) => {
+        ChargeWork(context, 1);
+        return Clone(prim);
+    });
     const indexesByPath = new Map<string, number>();
 
     for (let index = 0; index < mergedPrims.length; index++) {
@@ -541,25 +631,27 @@ function MergePrimArrays(weakerPrims: readonly ISdfPrimSpec[], strongerPrims: re
         const existingIndex = indexesByPath.get(strongerPrim.path);
 
         if (existingIndex === undefined) {
+            ChargeWork(context, 1);
             indexesByPath.set(strongerPrim.path, mergedPrims.length);
             mergedPrims.push(Clone(strongerPrim));
             continue;
         }
 
-        mergedPrims[existingIndex] = MergePrimOpinions(mergedPrims[existingIndex], strongerPrim);
+        mergedPrims[existingIndex] = MergePrimOpinions(context, mergedPrims[existingIndex], strongerPrim);
     }
 
     return mergedPrims;
 }
 
-function MergePrimOpinions(weakerPrim: ISdfPrimSpec, strongerPrim: ISdfPrimSpec): ISdfPrimSpec {
+function MergePrimOpinions(context: ICompositionContext, weakerPrim: ISdfPrimSpec, strongerPrim: ISdfPrimSpec): ISdfPrimSpec {
+    ChargeWork(context, 1);
     return {
         name: strongerPrim.name,
         path: strongerPrim.path,
         specifier: strongerPrim.specifier,
         typeName: strongerPrim.typeName ?? weakerPrim.typeName,
         properties: MergeProperties(weakerPrim.properties, strongerPrim.properties),
-        children: MergePrimArrays(weakerPrim.children, strongerPrim.children),
+        children: MergePrimArrays(context, weakerPrim.children, strongerPrim.children),
         active: strongerPrim.active ?? weakerPrim.active,
         instanceable: strongerPrim.instanceable ?? weakerPrim.instanceable,
         kind: strongerPrim.kind ?? weakerPrim.kind,
@@ -567,7 +659,7 @@ function MergePrimOpinions(weakerPrim: ISdfPrimSpec, strongerPrim: ISdfPrimSpec)
         payloads: MergeListOpField(weakerPrim.payloads, strongerPrim.payloads, CreatePayloadKey),
         inherits: MergeListOpField(weakerPrim.inherits, strongerPrim.inherits),
         specializes: MergeListOpField(weakerPrim.specializes, strongerPrim.specializes),
-        variantSets: MergeVariantSets(weakerPrim.variantSets, strongerPrim.variantSets),
+        variantSets: MergeVariantSets(context, weakerPrim.variantSets, strongerPrim.variantSets),
         variantSelections: MergeRecord(weakerPrim.variantSelections, strongerPrim.variantSelections),
         relocates: MergeRelocates(weakerPrim.relocates, strongerPrim.relocates),
         metadata: MergeMetadata(weakerPrim.metadata, strongerPrim.metadata),
@@ -639,7 +731,11 @@ function MergeListOpField<T>(
     };
 }
 
-function MergeVariantSets(weakerSets: ISdfVariantSetSpec[] | undefined, strongerSets: ISdfVariantSetSpec[] | undefined): ISdfVariantSetSpec[] | undefined {
+function MergeVariantSets(
+    context: ICompositionContext,
+    weakerSets: ISdfVariantSetSpec[] | undefined,
+    strongerSets: ISdfVariantSetSpec[] | undefined
+): ISdfVariantSetSpec[] | undefined {
     if (!weakerSets && !strongerSets) {
         return undefined;
     }
@@ -660,19 +756,19 @@ function MergeVariantSets(weakerSets: ISdfVariantSetSpec[] | undefined, stronger
             continue;
         }
 
-        sets[existingIndex] = MergeVariantSetOpinion(sets[existingIndex], strongerSet);
+        sets[existingIndex] = MergeVariantSetOpinion(context, sets[existingIndex], strongerSet);
     }
 
     return sets;
 }
 
-function MergeVariantSetOpinion(weakerSet: ISdfVariantSetSpec, strongerSet: ISdfVariantSetSpec): ISdfVariantSetSpec {
+function MergeVariantSetOpinion(context: ICompositionContext, weakerSet: ISdfVariantSetSpec, strongerSet: ISdfVariantSetSpec): ISdfVariantSetSpec {
     const variants: Record<string, ISdfVariantSpec> = Clone(weakerSet.variants);
 
     for (const variantName of Object.keys(strongerSet.variants)) {
         const strongerVariant = strongerSet.variants[variantName];
         const weakerVariant = variants[variantName];
-        variants[variantName] = weakerVariant ? MergeVariantOpinion(weakerVariant, strongerVariant) : Clone(strongerVariant);
+        variants[variantName] = weakerVariant ? MergeVariantOpinion(context, weakerVariant, strongerVariant) : Clone(strongerVariant);
     }
 
     return {
@@ -681,16 +777,16 @@ function MergeVariantSetOpinion(weakerSet: ISdfVariantSetSpec, strongerSet: ISdf
     };
 }
 
-function MergeVariantOpinion(weakerVariant: ISdfVariantSpec, strongerVariant: ISdfVariantSpec): ISdfVariantSpec {
+function MergeVariantOpinion(context: ICompositionContext, weakerVariant: ISdfVariantSpec, strongerVariant: ISdfVariantSpec): ISdfVariantSpec {
     return {
         name: strongerVariant.name ?? weakerVariant.name,
         properties: MergeProperties(weakerVariant.properties, strongerVariant.properties),
-        children: MergePrimArrays(weakerVariant.children, strongerVariant.children),
+        children: MergePrimArrays(context, weakerVariant.children, strongerVariant.children),
         references: MergeListOpField(weakerVariant.references, strongerVariant.references, CreateReferenceKey),
         payloads: MergeListOpField(weakerVariant.payloads, strongerVariant.payloads, CreatePayloadKey),
         inherits: MergeListOpField(weakerVariant.inherits, strongerVariant.inherits),
         specializes: MergeListOpField(weakerVariant.specializes, strongerVariant.specializes),
-        variantSets: MergeVariantSets(weakerVariant.variantSets, strongerVariant.variantSets),
+        variantSets: MergeVariantSets(context, weakerVariant.variantSets, strongerVariant.variantSets),
         variantSelections: MergeRecord(weakerVariant.variantSelections, strongerVariant.variantSelections),
         relocates: MergeRelocates(weakerVariant.relocates, strongerVariant.relocates),
         metadata: MergeMetadata(weakerVariant.metadata, strongerVariant.metadata),
@@ -1060,6 +1156,81 @@ function GetNameFromPath(path: string): string {
 
 function AddDiagnostic(context: ICompositionContext, diagnostic: ICompositionDiagnostic): void {
     context.diagnostics.push(diagnostic);
+}
+
+// Charges the node budget (output prim-spec count) and aborts with a typed, bounded error the moment it
+// is exceeded, so adversarial amplification is rejected deterministically rather than exhausting memory
+// or silently truncating the stage.
+function ChargeNodes(context: ICompositionContext, prims: number): void {
+    context.budget.nodes += prims;
+    if (context.budget.nodes > context.budget.maxNodes) {
+        throw new UsdResourceLimitError(
+            "composition-nodes",
+            context.budget.maxNodes,
+            `USD composition: composed prim count exceeds the ${context.budget.maxNodes}-node resource cap.`,
+            {
+                actual: context.budget.nodes,
+            }
+        );
+    }
+}
+
+// Charges the work budget (prim specs composed, merged, or cloned). Bounds actual effort so inputs that
+// produce a small output through super-linear merging/cloning still abort deterministically.
+function ChargeWork(context: ICompositionContext, units: number): void {
+    context.budget.work += units;
+    if (context.budget.work > context.budget.maxWork) {
+        throw new UsdResourceLimitError("composition-work", context.budget.maxWork, `USD composition: composition work exceeds the ${context.budget.maxWork}-unit resource cap.`, {
+            actual: context.budget.work,
+        });
+    }
+}
+
+// Enters one level of composition recursion, aborting before the native call stack can overflow. Uses
+// check-before-increment so a rejected depth leaves the counter balanced.
+function EnterCompositionDepth(context: ICompositionContext): void {
+    if (context.budget.depth >= context.budget.maxDepth) {
+        throw new UsdResourceLimitError(
+            "composition-depth",
+            context.budget.maxDepth,
+            `USD composition: composition depth exceeds the ${context.budget.maxDepth}-level resource cap.`,
+            {
+                actual: context.budget.depth + 1,
+            }
+        );
+    }
+    context.budget.depth++;
+}
+
+function ExitCompositionDepth(context: ICompositionContext): void {
+    context.budget.depth--;
+}
+
+// Charges a grafted subtree against both budgets: cloning it is work, and its prims become part of the
+// output stage (nodes). Used at every arc-graft site so node accounting reflects the grafted output
+// rather than any larger cached layer the subtree was selected from.
+function ChargeGraft(context: ICompositionContext, prim: ISdfPrimSpec): void {
+    const count = CountPrimSubtree(prim);
+    ChargeWork(context, count);
+    ChargeNodes(context, count);
+}
+
+// Counts the prim specs (including descendants) in a composed layer. Used to charge the budget when a
+// cached or local composed layer is cloned into the output.
+function CountLayerPrims(layer: ISdfLayer): number {
+    let count = 0;
+    for (const prim of layer.rootPrims) {
+        count += CountPrimSubtree(prim);
+    }
+    return count;
+}
+
+function CountPrimSubtree(prim: ISdfPrimSpec): number {
+    let count = 1;
+    for (const child of prim.children) {
+        count += CountPrimSubtree(child);
+    }
+    return count;
 }
 
 function CloneOptional<T>(value: T | undefined): T | undefined {

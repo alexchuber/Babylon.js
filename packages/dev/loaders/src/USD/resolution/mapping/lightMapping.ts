@@ -23,7 +23,28 @@ export function ResolveLight(prim: ISdfPrimSpec, context: IStageMappingContext):
     };
 
     ApplyKindSpecificInputs(light, prim, context);
+    EmitLightFidelityDiagnostic(light, prim, context);
     return light;
+}
+
+// Babylon core lights cannot represent UsdLux area lights or an environment dome, so the adapter
+// approximates them. Record an honest, non-fatal diagnostic describing the approximation and any
+// dropped data instead of silently degrading the light.
+function EmitLightFidelityDiagnostic(light: IResolvedLight, prim: ISdfPrimSpec, context: IStageMappingContext): void {
+    if (light.kind === "sphere" || light.kind === "disk" || light.kind === "rect" || light.kind === "cylinder") {
+        context.diagnostics.push({
+            severity: "info",
+            path: prim.path,
+            message: `${prim.typeName ?? "Area light"} is approximated as a point light; its area shape and orientation are not represented.`,
+        });
+    } else if (light.kind === "dome") {
+        // Only claim the environment texture was dropped when one was actually authored; a textureless
+        // dome light is simply approximated as a hemispheric light.
+        const message = light.domeTexture
+            ? "DomeLight is approximated as a hemispheric light; its dome/environment texture is not applied by the direct Babylon adapter."
+            : "DomeLight is approximated as a hemispheric light.";
+        context.diagnostics.push({ severity: "info", path: prim.path, message });
+    }
 }
 
 function MapLightKind(typeName: string | undefined): ResolvedLightKind | undefined {

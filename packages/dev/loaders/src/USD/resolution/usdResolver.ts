@@ -6,10 +6,11 @@ import { type ISdfLayer } from "./sdf";
 import { ReadListOpItems } from "./sdf/sdfListOp";
 import { type ISdfCompositionFields, type ISdfPrimSpec } from "./sdf/sdfSpec";
 import { ParseUsda } from "./parser/usda/usdaParser";
-import { ComposeLayerStack, type ICompositionDiagnostic } from "./composition/composeLayerStack";
+import { ComposeLayerStack, type ICompositionDiagnostic, type IComposeLayerStackOptions } from "./composition/composeLayerStack";
 import { MapLayerToResolvedStage } from "./mapping/stageMapper";
 import { ParseCrate } from "./parser/crate/crateReader";
 import { ReadUsdzArchive } from "./parser/usdzArchive";
+import { ValidateResourceLimit } from "../usdErrors";
 import { ResolveAssetIdentifier } from "./assetPath";
 
 /** The concrete on-disk USD container format, sniffed from magic bytes rather than the file extension. */
@@ -89,15 +90,33 @@ export async function ResolveUsdStageWithFetcherAsync(
     fetchAsset: FetchUsdAsset
 ): Promise<IResolvedStage> {
     const diagnostics: IResolvedDiagnostic[] = [];
+    const compositionOptions = ResolveCompositionOptions(options);
     const detected = DetectUsdFormat(data);
     const rootIdentifier = `${rootUrl ?? ""}${fileName ?? "stage.usda"}`;
 
     if (detected.format === "usdz") {
-        return await ResolveUsdzStageAsync(data as ArrayBuffer, rootIdentifier, options, fetchAsset, diagnostics);
+        return await ResolveUsdzStageAsync(data as ArrayBuffer, rootIdentifier, options, compositionOptions, fetchAsset, diagnostics);
     }
 
     const rootLayer = detected.format === "usdc" ? ParseCrate(data as ArrayBuffer, rootIdentifier) : ParseUsda(detected.text ?? "", rootIdentifier);
-    return FreezeResolvedStage(await ComposeAndMapStageAsync(rootLayer, fetchAsset, diagnostics));
+    return FreezeResolvedStage(await ComposeAndMapStageAsync(rootLayer, fetchAsset, compositionOptions, diagnostics));
+}
+
+// Extracts and validates the composition resource limits from the loader options at the public
+// boundary, so an invalid configuration fails fast before any parsing or composition work.
+// ComposeLayerStack validates again defensively at the direct API seam.
+function ResolveCompositionOptions(options: Readonly<USDLoadingOptions>): IComposeLayerStackOptions {
+    const composition: IComposeLayerStackOptions = {};
+    if (options.maxCompositionNodes !== undefined) {
+        composition.maxCompositionNodes = ValidateResourceLimit(options.maxCompositionNodes, "maxCompositionNodes");
+    }
+    if (options.maxCompositionDepth !== undefined) {
+        composition.maxCompositionDepth = ValidateResourceLimit(options.maxCompositionDepth, "maxCompositionDepth");
+    }
+    if (options.maxCompositionWork !== undefined) {
+        composition.maxCompositionWork = ValidateResourceLimit(options.maxCompositionWork, "maxCompositionWork");
+    }
+    return composition;
 }
 
 // Unzips a USDZ archive, parses its inner root layer (USDA or USDC), and composes the stage with a
@@ -107,6 +126,7 @@ async function ResolveUsdzStageAsync(
     data: ArrayBuffer,
     rootIdentifier: string,
     options: Readonly<USDLoadingOptions>,
+    compositionOptions: IComposeLayerStackOptions,
     fetchAsset: FetchUsdAsset,
     diagnostics: IResolvedDiagnostic[]
 ): Promise<IResolvedStage> {
@@ -138,7 +158,7 @@ async function ResolveUsdzStageAsync(
         return await fetchAsset(ResolveAssetIdentifier(resolvedIdentifier, rootIdentifier));
     };
 
-    const stage = await ComposeAndMapStageAsync(rootLayer, fetchArchiveAssetAsync, diagnostics);
+    const stage = await ComposeAndMapStageAsync(rootLayer, fetchArchiveAssetAsync, compositionOptions, diagnostics);
     await LoadEmbeddedTextureDataAsync(stage, fetchArchiveAssetAsync, stage.diagnostics);
     return FreezeResolvedStage(stage);
 }
@@ -223,11 +243,16 @@ function GuessImageMimeType(uri: string): string | undefined {
 
 // Pre-fetches the external layer stack, composes it with LIVERPS strength ordering, and maps the
 // flattened result into a resolved stage. Shared by every container format once a root layer exists.
-async function ComposeAndMapStageAsync(rootLayer: ISdfLayer, fetchAsset: FetchUsdAsset, diagnostics: IResolvedDiagnostic[]): Promise<IResolvedStage> {
+async function ComposeAndMapStageAsync(
+    rootLayer: ISdfLayer,
+    fetchAsset: FetchUsdAsset,
+    compositionOptions: IComposeLayerStackOptions,
+    diagnostics: IResolvedDiagnostic[]
+): Promise<IResolvedStage> {
     const layers = await PrefetchLayerStackAsync(rootLayer, fetchAsset, diagnostics);
 
     const resolveLayer = (assetPath: string, fromIdentifier: string): ISdfLayer | undefined => layers.get(ResolveAssetIdentifier(assetPath, fromIdentifier));
-    const composed = ComposeLayerStack(rootLayer, resolveLayer);
+    const composed = ComposeLayerStack(rootLayer, resolveLayer, compositionOptions);
     for (const compositionDiagnostic of composed.diagnostics) {
         diagnostics.push(ToResolvedDiagnostic(compositionDiagnostic));
     }

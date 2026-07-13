@@ -71,6 +71,10 @@ describe("USD light mapping", () => {
         });
         expect(portal.light).toMatchObject({ kind: "rect", color: [1, 1, 1], intensity: 1, exposure: 0, width: 2, height: 3, normalize: true });
         expect(sky.light?.domeTexture).toMatchObject({ uri: "/Scenes/textures/sky.exr", uvSet: 0, wrapU: "repeat", wrapV: "repeat", colorSpace: "sRGB" });
-        expect(stage.diagnostics).toEqual([]);
+        // Area and dome lights are approximated by the direct Babylon adapter and now report honest,
+        // non-fatal fidelity diagnostics; the faithful DistantLight mapping stays silent.
+        expect(stage.diagnostics).toHaveLength(2);
+        expect(stage.diagnostics[0]).toMatchObject({ severity: "info", path: "/World/Portal", message: expect.stringMatching(/point light/i) });
+        expect(stage.diagnostics[1]).toMatchObject({ severity: "info", path: "/World/Sky", message: expect.stringMatching(/hemispheric/i) });
     });
 });

@@ -158,12 +158,7 @@ function CreateAttributeCrate(): Uint8Array {
 function CreateQuaternionCrate(): Uint8Array {
     const scalarOffset = BootstrapSize;
     const arrayOffset = scalarOffset + 16;
-    const payload = Bytes([
-        ...Float32Bytes([0.125, 0.25, 0.5, 1]),
-        ...Uint32Bytes(0),
-        ...Uint32Bytes(2),
-        ...Float32Bytes([0, 0, 0, 1, 0.125, 0.25, 0.5, 1]),
-    ]);
+    const payload = Bytes([...Float32Bytes([0.125, 0.25, 0.5, 1]), ...Uint32Bytes(0), ...Uint32Bytes(2), ...Float32Bytes([0, 0, 0, 1, 0.125, 0.25, 0.5, 1])]);
     const tokenBlob = AsciiBytes("root\0orient\0orientations\0typeName\0default\0quatf\0quatf[]\0");
     const sections = [
         ["TOKENS", Bytes([...Uint64Bytes(7), ...Uint64Bytes(tokenBlob.length), ...tokenBlob])],
@@ -178,17 +173,20 @@ function CreateQuaternionCrate(): Uint8Array {
                 ...FieldRecordBytes(4, ValueRep(ValueTypeQuatf, arrayOffset, true)),
             ]),
         ],
-        ["FIELDSETS", Bytes([...Uint64Bytes(7), ...Uint32Bytes(0xffffffff), ...Uint32Bytes(0), ...Uint32Bytes(1), ...Uint32Bytes(0xffffffff), ...Uint32Bytes(2), ...Uint32Bytes(3), ...Uint32Bytes(0xffffffff)])],
         [
-            "PATHS",
+            "FIELDSETS",
             Bytes([
-                ...Uint64Bytes(4),
-                ...PathHeaderBytes(0, 0, 1),
-                ...PathHeaderBytes(1, 0, 1),
-                ...PathHeaderBytes(2, 1, 6),
-                ...PathHeaderBytes(3, 2, 4),
+                ...Uint64Bytes(7),
+                ...Uint32Bytes(0xffffffff),
+                ...Uint32Bytes(0),
+                ...Uint32Bytes(1),
+                ...Uint32Bytes(0xffffffff),
+                ...Uint32Bytes(2),
+                ...Uint32Bytes(3),
+                ...Uint32Bytes(0xffffffff),
             ]),
         ],
+        ["PATHS", Bytes([...Uint64Bytes(4), ...PathHeaderBytes(0, 0, 1), ...PathHeaderBytes(1, 0, 1), ...PathHeaderBytes(2, 1, 6), ...PathHeaderBytes(3, 2, 4)])],
         [
             "SPECS",
             Bytes([

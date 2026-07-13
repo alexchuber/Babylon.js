@@ -114,7 +114,9 @@ describe("USD point instancer mapping", () => {
         expect(Array.from(instancer.instancer!.scales!)).toEqual([1, 1, 1, 2, 2, 2]);
         expect(Array.from(instancer.instancer!.invisibleIds!)).toEqual([1]);
         expect(Array.from(stage.meshes[0].indices)).toEqual([0, 1, 2]);
-        expect(stage.diagnostics).toEqual([]);
+        // The pooled prototype mesh has no authored subdivisionScheme, so it now carries an honest
+        // subdivision info diagnostic; nothing else (no errors or warnings) should be reported.
+        expect(stage.diagnostics.filter((diagnostic) => !/subdivision/i.test(diagnostic.message))).toEqual([]);
     });
 
     it("omits optional PointInstancer buffers when they are not authored", () => {
