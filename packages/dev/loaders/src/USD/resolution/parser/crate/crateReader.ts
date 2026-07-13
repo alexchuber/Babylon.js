@@ -1108,6 +1108,10 @@ function ReadPathHeader(
 // Builds paths from the 0.4.0 compressed path arrays.
 /**
  * Builds resolved paths from crate 0.4+ compressed path arrays.
+ *
+ * Exported for unit tests and the intra-module crate reader only; it is not re-exported from the loaders
+ * package root and is not public API.
+ * @internal
  * @param pathIndexes output path indexes
  * @param elementTokenIndexes token indexes for path elements
  * @param jumps encoded child/sibling traversal jumps

@@ -99,6 +99,10 @@ export function ParseUsda(text: string, identifier: string): ISdfLayer {
 
 /**
  * Parses ASCII USDA text into the frozen Sdf layer data model and returns recoverable diagnostics separately.
+ *
+ * Exported for unit tests and the intra-module {@link ParseUsda} entry point only; it is not re-exported from
+ * the loaders package root and is not public API.
+ * @internal
  * @param text USDA source text.
  * @param identifier Layer identifier to store on the returned Sdf layer.
  * @returns Parsed Sdf layer plus recoverable diagnostics.
