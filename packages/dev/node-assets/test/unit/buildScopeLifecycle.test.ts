@@ -29,6 +29,35 @@ class TrackedResource {
     }
 }
 
+class BlockingCleanupResource extends TrackedResource {
+    public readonly cleanupStarted: Promise<void>;
+    private _markCleanupStarted: () => void = () => {};
+    private readonly _releaseCleanup: Promise<void>;
+    private _release: () => void = () => {};
+
+    public constructor(events: string[]) {
+        super(events);
+        this.cleanupStarted = new Promise<void>((resolve) => {
+            this._markCleanupStarted = resolve;
+        });
+        this._releaseCleanup = new Promise<void>((resolve) => {
+            this._release = resolve;
+        });
+    }
+
+    public finishCleanup(): void {
+        this._release();
+    }
+
+    public override async dispose(): Promise<void> {
+        this.disposeCalls++;
+        this._markCleanupStarted();
+        await this._releaseCleanup;
+        this.events.push("dispose");
+        this.isDisposed = true;
+    }
+}
+
 class ResourceSourceBlock extends NodeAssetBlock {
     public readonly outputA = this._registerOutput("outputA", NodeAssetConnectionPointType.NODE_GEOMETRY);
     public readonly outputB = this._registerOutput("outputB", NodeAssetConnectionPointType.NODE_GEOMETRY);
@@ -83,6 +112,32 @@ class LimitFailingResourceSourceBlock extends NodeAssetBlock {
     public override async _buildBlockAsync(scope?: BuildScope): Promise<void> {
         this.output.value = this.resource;
         scope!.accountSourceBytes(this.sourceBytes);
+    }
+}
+
+class DisposingPassThroughBlock extends NodeAssetBlock {
+    public readonly input = this._registerInput("input", NodeAssetConnectionPointType.NODE_GEOMETRY);
+    public readonly output = this._registerOutput("output", NodeAssetConnectionPointType.NODE_GEOMETRY);
+
+    public override async _buildBlockAsync(): Promise<void> {
+        const resource = this.input.value as TrackedResource;
+        await resource.dispose();
+        this.output.value = resource;
+    }
+}
+
+class UncheckedResourceExportBlock extends NodeAssetBlock {
+    public readonly isExportTerminal = true;
+    public readonly input: NodeAssetConnectionPoint;
+    public result: Uint8Array | null = null;
+
+    public constructor(name: string, nodeAsset: NodeAsset) {
+        super(name, nodeAsset);
+        this.input = this._registerInput("input", NodeAssetConnectionPointType.NODE_GEOMETRY);
+    }
+
+    public override async _buildBlockAsync(): Promise<void> {
+        this.result = new Uint8Array([1]);
     }
 }
 
@@ -295,5 +350,33 @@ describe("build scope resource lifecycle", () => {
             code: "NODE_ASSET_LIMIT_EVALUATIONS",
         });
         expect(source.resource.disposeCalls).toBe(1);
+    });
+
+    it("rejects a resource disposed and forwarded within the same build scope", async () => {
+        const asset = new NodeAsset("same-scope stale resource");
+        const source = new ResourceSourceBlock("source", asset);
+        const disposer = new DisposingPassThroughBlock("disposer", asset);
+        const exporter = new UncheckedResourceExportBlock("export", asset);
+        source.outputA.connectTo(disposer.input);
+        disposer.output.connectTo(exporter.input);
+
+        await expect(asset.buildAsync()).rejects.toMatchObject<BuildResourceOwnershipError>({
+            code: "NODE_ASSET_RESOURCE_STALE",
+        });
+    });
+
+    it("honors caller cancellation requested while asynchronous cleanup is in flight", async () => {
+        const controller = new AbortController();
+        const resource = new BlockingCleanupResource([]);
+        const build = CreateSuccessfulResourceBuild(resource).buildAsync(controller.signal);
+        await resource.cleanupStarted;
+
+        controller.abort("cancel during cleanup");
+        resource.finishCleanup();
+
+        await expect(build).rejects.toMatchObject({
+            code: "NODE_ASSET_BUILD_CANCELLED",
+        });
+        expect(resource.disposeCalls).toBe(1);
     });
 });

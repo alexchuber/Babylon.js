@@ -200,6 +200,7 @@ describe("four-way fan-out policy", () => {
     it("clones NodeGeometry through exact serialize/no-build reconstruction with a copied frozen snapshot", async () => {
         const nodeGeometry = new NodeGeometry("procedural fixture");
         nodeGeometry.setToDefault();
+        nodeGeometry.comment = "preserve this serialized comment";
         const outputBlock = nodeGeometry.outputBlock!;
         const boxBlock = outputBlock.geometry.connectedPoint!.ownerBlock;
         const sizeBlock = boxBlock.inputs[0].connectedPoint!.ownerBlock;

@@ -52,10 +52,11 @@ export class ImportGLTFBlock extends NodeAssetBlock {
      * @param scope The optional build scope used to account source bytes before parsing.
      */
     public override async _buildBlockAsync(scope?: BuildScope): Promise<void> {
-        if (!this.data) {
+        const data = this.data;
+        if (!data) {
             throw new Error(`The "${this.name}" import block has no data to import.`);
         }
-        scope?.accountSourceBytes(this.data.byteLength);
+        scope?.accountSourceBytes(data.byteLength);
 
         const { WebIO } = await import("@gltf-transform/core");
         const { ALL_EXTENSIONS } = await import("@gltf-transform/extensions");
@@ -66,7 +67,7 @@ export class ImportGLTFBlock extends NodeAssetBlock {
         // eslint-disable-next-line @typescript-eslint/naming-convention -- gltf-transform dependency key
         const dependencies = { "draco3d.decoder": dracoModuleOptions ? await draco3d.createDecoderModule(dracoModuleOptions) : await draco3d.createDecoderModule() };
         const io = new WebIO().registerExtensions(ALL_EXTENSIONS).registerDependencies(dependencies);
-        const document = await io.readBinary(this.data);
+        const document = await io.readBinary(data);
         this.output.value = new GltfAsset(document, {
             identity: this.source ?? this.name,
             revision: 0,

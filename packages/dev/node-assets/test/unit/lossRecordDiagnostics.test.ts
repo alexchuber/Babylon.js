@@ -60,6 +60,22 @@ class FatalSourceBlock extends NodeAssetBlock {
     }
 }
 
+class ReusedBytesSourceBlock extends NodeAssetBlock {
+    public readonly output = this._registerOutput("output", NodeAssetConnectionPointType.IMAGE);
+    public readonly bytes = new Uint8Array([8]);
+    private _buildCount = 0;
+
+    public override async _buildBlockAsync(scope?: BuildScope): Promise<void> {
+        this._buildCount++;
+        scope?.addDiagnostic({
+            code: `BUILD_${this._buildCount}`,
+            severity: "info",
+            message: `Build ${this._buildCount}`,
+        });
+        this.output.value = { data: this.bytes, mimeType: "image/png" };
+    }
+}
+
 function CreateDiagnosticAsset(): NodeAsset {
     const asset = new NodeAsset("diagnostics");
     const source = new DiagnosticSourceBlock("diagnostic source", asset);
@@ -124,5 +140,19 @@ describe("build diagnostics and loss records", () => {
         source.error = primary;
 
         await expect(asset.buildAsync()).rejects.toBe(primary);
+    });
+
+    it("keeps prior result metadata immutable when a later build reuses the same export bytes", async () => {
+        const asset = new NodeAsset("reused export bytes");
+        const source = new ReusedBytesSourceBlock("source", asset);
+        const exporter = new BytesExportBlock("export", asset);
+        source.output.connectTo(exporter.input);
+
+        const first = await asset.buildAsync();
+        const second = await asset.buildAsync();
+
+        expect(first).not.toBe(second);
+        expect(first.diagnostics).toMatchObject([{ code: "BUILD_1" }]);
+        expect(second.diagnostics).toMatchObject([{ code: "BUILD_2" }]);
     });
 });

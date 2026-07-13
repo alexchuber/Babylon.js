@@ -157,7 +157,6 @@ export class BuildResourceOwnershipError extends Error {
 }
 
 interface IResourceOwnership {
-    readonly scope: BuildScope;
     disposed: boolean;
 }
 
@@ -200,7 +199,7 @@ export class BuildScope {
     private readonly _lossRecords: LossRecord[] = [];
     private readonly _resources: IBuildResourceEntry[] = [];
     private readonly _registeredResources = new WeakSet<object>();
-    private readonly _startedAt = Date.now();
+    private readonly _startedAt = globalThis.performance.now();
     private readonly _callerSignal: AbortSignal | undefined;
     private readonly _onCallerAbort: (() => void) | undefined;
     private _disposePromise: Promise<void> | undefined;
@@ -297,7 +296,7 @@ export class BuildScope {
     /** Throws the build's cancellation error when cancellation was requested. */
     public throwIfAborted(): void {
         if (!this.signal.aborted) {
-            const elapsed = Date.now() - this._startedAt;
+            const elapsed = globalThis.performance.now() - this._startedAt;
             if (elapsed > this._limits.maxWallClockMs) {
                 this._throwLimit("NODE_ASSET_LIMIT_WALL_CLOCK", this._limits.maxWallClockMs, elapsed);
             }
@@ -364,22 +363,19 @@ export class BuildScope {
             return;
         }
 
+        const ownership = ResourceOwnership.get(value);
+        if (ownership?.disposed || value.isDisposed) {
+            throw new BuildResourceOwnershipError("NODE_ASSET_RESOURCE_STALE", "A disposed build resource cannot be reused by the same or a later build.");
+        }
         if (this._registeredResources.has(value)) {
             return;
         }
-        const ownership = ResourceOwnership.get(value);
-        if (ownership || value.isDisposed) {
-            const code = ownership?.disposed || value.isDisposed ? "NODE_ASSET_RESOURCE_STALE" : "NODE_ASSET_RESOURCE_OWNED";
-            throw new BuildResourceOwnershipError(
-                code,
-                code === "NODE_ASSET_RESOURCE_STALE"
-                    ? "A disposed build resource cannot be reused by a later build."
-                    : "A build resource cannot be shared by concurrent build scopes."
-            );
+        if (ownership) {
+            throw new BuildResourceOwnershipError("NODE_ASSET_RESOURCE_OWNED", "A build resource cannot be shared by concurrent build scopes.");
         }
 
         this._registeredResources.add(value);
-        ResourceOwnership.set(value, { scope: this, disposed: false });
+        ResourceOwnership.set(value, { disposed: false });
         this._resources.push({ resource: value, producer });
     }
 
@@ -404,6 +400,7 @@ export class BuildScope {
                 clearTimeout(this._wallClockTimer);
                 this._wallClockTimer = undefined;
             }
+            this._resources.length = 0;
         }
     }
 
@@ -443,11 +440,11 @@ export class BuildScope {
     }
 
     private _scheduleWallClockTimeout(): void {
-        const elapsed = Date.now() - this._startedAt;
+        const elapsed = globalThis.performance.now() - this._startedAt;
         const remaining = this._limits.maxWallClockMs - elapsed;
         const delay = Math.min(Math.max(remaining + 1, 0), 2_147_483_647);
         this._wallClockTimer = setTimeout(() => {
-            const currentElapsed = Date.now() - this._startedAt;
+            const currentElapsed = globalThis.performance.now() - this._startedAt;
             if (currentElapsed > this._limits.maxWallClockMs) {
                 this.abortForFailure(new BuildLimitError("NODE_ASSET_LIMIT_WALL_CLOCK", this._limits.maxWallClockMs, currentElapsed));
             } else {
@@ -466,28 +463,31 @@ export type NodeAssetBuildResult = Uint8Array & {
 };
 
 /**
- * Attaches build metadata without copying or changing the terminal export's Uint8Array identity.
+ * Attaches build metadata without copying fresh terminal bytes. If a later build reuses bytes that
+ * already carry metadata, it copies them so each result keeps immutable per-build metadata.
  * @param bytes The terminal export bytes.
  * @param diagnostics Non-fatal build diagnostics.
  * @param lossRecords Representation loss records.
- * @returns The same Uint8Array augmented with readonly build metadata.
+ * @returns The fresh Uint8Array, or a copy of reused bytes, augmented with readonly build metadata.
  */
 export function CreateNodeAssetBuildResult(bytes: Uint8Array, diagnostics: ReadonlyArray<IBuildDiagnostic>, lossRecords: ReadonlyArray<LossRecord>): NodeAssetBuildResult {
-    Object.defineProperties(bytes, {
+    const hasBuildMetadata = Object.prototype.hasOwnProperty.call(bytes, "diagnostics") || Object.prototype.hasOwnProperty.call(bytes, "lossRecords");
+    const result = hasBuildMetadata ? bytes.slice() : bytes;
+    Object.defineProperties(result, {
         diagnostics: {
-            configurable: true,
+            configurable: false,
             enumerable: false,
             value: Object.freeze([...diagnostics]),
             writable: false,
         },
         lossRecords: {
-            configurable: true,
+            configurable: false,
             enumerable: false,
             value: Object.freeze([...lossRecords]),
             writable: false,
         },
     });
-    return bytes as NodeAssetBuildResult;
+    return result as NodeAssetBuildResult;
 }
 
 function IsBuildResource(value: unknown): value is IBuildResource & object {

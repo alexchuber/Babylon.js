@@ -51,11 +51,12 @@ export class ImportImageBlock extends NodeAssetBlock {
      * @param scope The optional build scope used to account source bytes.
      */
     public override async _buildBlockAsync(scope?: BuildScope): Promise<void> {
-        if (!this.data) {
+        const data = this.data;
+        if (!data) {
             throw new Error(`The "${this.name}" import block has no data to import.`);
         }
-        scope?.accountSourceBytes(this.data.byteLength);
-        const payload: ImagePayload = { data: this.data, mimeType: this.mimeType };
+        scope?.accountSourceBytes(data.byteLength);
+        const payload: ImagePayload = { data, mimeType: this.mimeType };
         this.output.value = payload;
     }
 

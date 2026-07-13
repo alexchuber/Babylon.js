@@ -10,6 +10,8 @@ import { NodeAssetConnectionPointType } from "../../src/connection/nodeAssetConn
 import { BuildConfigurationError, BuildLimitError, type BuildScope, type INodeAssetBuildOptions, type NodeAssetBuildResult } from "../../src/evaluation/buildScope";
 import { NodeAsset } from "../../src/nodeAsset";
 
+vi.mock("draco3dgltf", async () => await vi.importActual("draco3dgltf"));
+
 function CreateImageAsset(bytes = new Uint8Array([1, 2, 3])): NodeAsset {
     const asset = new NodeAsset("image limits");
     const importer = new ImportImageBlock("image source", asset);
@@ -17,6 +19,11 @@ function CreateImageAsset(bytes = new Uint8Array([1, 2, 3])): NodeAsset {
     const exporter = new ExportImageBlock("export", asset);
     importer.output.connectTo(exporter.input);
     return asset;
+}
+
+async function CreateEmptyGlbAsync(): Promise<Uint8Array> {
+    const { Document, WebIO } = await import("@gltf-transform/core");
+    return await new WebIO().writeBinary(new Document());
 }
 
 class ImagePairExportBlock extends NodeAssetBlock {
@@ -53,8 +60,35 @@ function CreateTwoSourceImageAsset(): NodeAsset {
 class TimedResource {
     public disposeCalls = 0;
 
-    public dispose(): void {
+    public dispose(): void | Promise<void> {
         this.disposeCalls++;
+    }
+}
+
+class BlockingCleanupTimedResource extends TimedResource {
+    public readonly cleanupStarted: Promise<void>;
+    private _markCleanupStarted: () => void = () => {};
+    private readonly _releaseCleanup: Promise<void>;
+    private _release: () => void = () => {};
+
+    public constructor() {
+        super();
+        this.cleanupStarted = new Promise<void>((resolve) => {
+            this._markCleanupStarted = resolve;
+        });
+        this._releaseCleanup = new Promise<void>((resolve) => {
+            this._release = resolve;
+        });
+    }
+
+    public finishCleanup(): void {
+        this._release();
+    }
+
+    public override async dispose(): Promise<void> {
+        this.disposeCalls++;
+        this._markCleanupStarted();
+        await this._releaseCleanup;
     }
 }
 
@@ -65,7 +99,7 @@ class TimedResourceSourceBlock extends NodeAssetBlock {
 
     public override async _buildBlockAsync(): Promise<void> {
         this.output.value = this.resource;
-        vi.setSystemTime(Date.now() + this.elapsedMs);
+        await vi.advanceTimersByTimeAsync(this.elapsedMs);
     }
 }
 
@@ -131,6 +165,15 @@ class HangingTimedResourceSourceBlock extends NodeAssetBlock {
             });
         }
         scope!.throwIfAborted();
+    }
+}
+
+class BlockingCleanupTimedSourceBlock extends NodeAssetBlock {
+    public readonly output = this._registerOutput("output", NodeAssetConnectionPointType.NODE_GEOMETRY);
+    public readonly resource = new BlockingCleanupTimedResource();
+
+    public override async _buildBlockAsync(): Promise<void> {
+        this.output.value = this.resource;
     }
 }
 
@@ -247,6 +290,22 @@ describe("build limits", () => {
         });
     });
 
+    it("accounts and parses the same source-byte snapshot when callers replace data in flight", async () => {
+        const validGlb = await CreateEmptyGlbAsync();
+        const malformedReplacement = new Uint8Array([0]);
+        const asset = new NodeAsset("source snapshot");
+        const importer = new ImportGLTFBlock("replaceable source", asset);
+        let reads = 0;
+        Object.defineProperty(importer, "data", {
+            configurable: true,
+            get: () => (reads++ < 2 ? validGlb : malformedReplacement),
+        });
+        const exporter = new ExportGLTFBlock("export", asset);
+        importer.output.connectTo(exporter.input);
+
+        await expect(asset.buildAsync({ limits: { maxSourceAssetBytes: validGlb.byteLength } })).resolves.toBeInstanceOf(Uint8Array);
+    });
+
     it("keeps the existing unconfigured source/export fixture behavior-safe by default", async () => {
         const result = await CreateImageAsset().buildAsync();
         expect(Array.from(result)).toEqual([1, 2, 3]);
@@ -343,6 +402,25 @@ describe("build limits", () => {
             code: "NODE_ASSET_LIMIT_WALL_CLOCK",
             limit: 0,
             actual: 1,
+        });
+        expect(source.resource.disposeCalls).toBe(1);
+    });
+
+    it("rejects a wall-clock timeout requested while asynchronous cleanup is in flight", async () => {
+        vi.useFakeTimers();
+        const asset = new NodeAsset("cleanup timeout");
+        const source = new BlockingCleanupTimedSourceBlock("source", asset);
+        const exporter = new TimedResourceExportBlock("export", asset);
+        source.output.connectTo(exporter.input);
+        const build = asset.buildAsync({ limits: { maxWallClockMs: 5 } });
+        await source.resource.cleanupStarted;
+
+        await vi.advanceTimersByTimeAsync(6);
+        source.resource.finishCleanup();
+
+        await expect(build).rejects.toMatchObject<BuildLimitError>({
+            code: "NODE_ASSET_LIMIT_WALL_CLOCK",
+            limit: 5,
         });
         expect(source.resource.disposeCalls).toBe(1);
     });

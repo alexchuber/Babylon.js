@@ -182,6 +182,10 @@ export class NodeAsset {
         if (failed) {
             throw primaryError;
         }
+        if (scope.hasPrimaryError) {
+            throw scope.primaryError;
+        }
+        scope.throwIfAborted();
         return CreateNodeAssetBuildResult(result!, scope.diagnostics, scope.lossRecords);
     }
 

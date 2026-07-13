@@ -74,14 +74,15 @@ export class ImportUSDBlock extends NodeAssetBlock {
      * @param scope The optional build scope used to account source bytes before parsing.
      */
     public override async _buildBlockAsync(scope?: BuildScope): Promise<void> {
-        if (!this.data) {
+        const data = this.data;
+        if (!data) {
             throw new Error(`The "${this.name}" USD import block has no data to import.`);
         }
-        scope?.accountSourceBytes(this.data.byteLength);
+        scope?.accountSourceBytes(data.byteLength);
 
         const { TranscodeUsdToDocumentAsync } = await import("./tinyUsdzTranscoder");
-        const sourceFormat = SniffUsdFormat(this.data);
-        const document = await TranscodeUsdToDocumentAsync(this.data, { sourceFormat, wasmUrl: this.usdWasmUrl });
+        const sourceFormat = SniffUsdFormat(data);
+        const document = await TranscodeUsdToDocumentAsync(data, { sourceFormat, wasmUrl: this.usdWasmUrl });
         this.output.value = new GltfAsset(document, {
             identity: this.name,
             revision: 0,
