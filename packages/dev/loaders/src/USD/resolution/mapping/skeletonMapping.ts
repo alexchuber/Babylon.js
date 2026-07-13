@@ -15,6 +15,7 @@ import {
     AsNumber,
     AsNumberArray,
     AsQuat,
+    AsTokenArray,
     AsVec3,
     AsVec3Array,
     GetAttribute,
@@ -109,45 +110,40 @@ export function ResolveSkinning(meshPrim: ISdfPrimSpec, context: ISkeletonMappin
 
     const aligned = AlignSkinningBuffers(meshPrim, resolvedMesh, jointIndices, jointWeights, influencesPerVertex);
     const skeleton = context.skeletons[skeletonIndex];
-    // skel:joints is a uniform token[] attribute in USD SkelBindingAPI; there is no relationship form.
-    // A relationship fallback would read absolute prim paths that never match the skeleton's joint
-    // tokens and silently remap every influence onto joint 0, so only the attribute is read.
-    const bindingJoints = GetTokenArrayAttribute(meshPrim, "skel:joints") ?? [];
-    let remappedJointIndices = aligned.jointIndices;
-    let hasUnresolvedJoint = false;
-    if (bindingJoints.length > 0 && skeleton) {
-        // Index the skeleton joints once so remapping is O(V + J) rather than O(V * J) via indexOf.
-        // First occurrence wins on duplicate joint tokens, matching the previous indexOf behavior.
-        const jointIndexByPath = new Map<string, number>();
-        skeleton.joints.forEach((joint, index) => {
-            if (!jointIndexByPath.has(joint)) {
-                jointIndexByPath.set(joint, index);
-            }
-        });
-        remappedJointIndices = aligned.jointIndices.map((value) => {
-            const jointPath = bindingJoints[Math.max(0, Math.trunc(value))];
-            const skeletonJointIndex = jointPath === undefined ? undefined : jointIndexByPath.get(jointPath);
-            if (skeletonJointIndex === undefined) {
-                // Bind the influence to the root joint (index 0) as an explicit, reported fallback
-                // rather than silently. The weight is preserved so the vertex is not left unweighted
-                // (which would collapse it to the skeleton origin).
-                hasUnresolvedJoint = true;
-                return 0;
-            }
-            return skeletonJointIndex;
-        });
-    }
-    if (hasUnresolvedJoint) {
+    const bindingJoints = ResolveBindingJoints(meshPrim, context);
+    // Index the skeleton joints once so remapping is O(V + J) rather than O(V * J) via indexOf.
+    // First occurrence wins on duplicate joint tokens, matching USD and the previous indexOf behavior.
+    const jointIndexByPath = new Map<string, number>();
+    skeleton?.joints.forEach((joint, index) => {
+        if (!jointIndexByPath.has(joint)) {
+            jointIndexByPath.set(joint, index);
+        }
+    });
+    const skeletonJointCount = skeleton?.joints.length ?? 0;
+
+    let hasInvalidInfluence = false;
+    const remappedJointIndices = aligned.jointIndices.map((value) => {
+        const resolved = ResolveInfluenceJoint(value, bindingJoints, jointIndexByPath, skeletonJointCount);
+        if (resolved === undefined) {
+            // Explicit, reported fallback to the root joint. The weight is preserved so a fully-invalid
+            // vertex is not left unweighted (which would collapse it to the skeleton origin) and its
+            // per-vertex weight normalization is kept.
+            hasInvalidInfluence = true;
+            return 0;
+        }
+        return resolved;
+    });
+    if (hasInvalidInfluence) {
         context.diagnostics.push({
             severity: "warning",
             path: meshPrim.path,
-            message: "Skinned Mesh references joints not present in the bound Skeleton; the unresolved influences were bound to the root joint.",
+            message: "Skinned Mesh has joint influences that are invalid or reference joints absent from the bound Skeleton; they were bound to the root joint.",
         });
     }
     const skinning: IResolvedSkinning = {
         skeletonIndex,
         influencesPerVertex,
-        jointIndices: new Uint32Array(remappedJointIndices.map((value) => Math.max(0, Math.trunc(value)))),
+        jointIndices: new Uint32Array(remappedJointIndices),
         jointWeights: new Float32Array(aligned.jointWeights),
     };
 
@@ -157,6 +153,46 @@ export function ResolveSkinning(meshPrim: ISdfPrimSpec, context: ISkeletonMappin
     }
 
     return skinning;
+}
+
+// Reads the mesh's skel:joints binding order. USD SkelBindingAPI authors it as a uniform token[]
+// attribute; a relationship or any other authored type is rejected with a diagnostic and treated as
+// absent, which falls back to indexing the skeleton's joints directly.
+function ResolveBindingJoints(meshPrim: ISdfPrimSpec, context: ISkeletonMappingContext): string[] | undefined {
+    const attribute = GetAttribute(meshPrim, "skel:joints");
+    if (attribute) {
+        if (attribute.typeName !== "token[]") {
+            context.diagnostics.push({
+                severity: "warning",
+                path: meshPrim.path,
+                message: `Mesh skel:joints must be a token[] attribute but was authored as '${attribute.typeName}'; the binding was ignored.`,
+            });
+            return undefined;
+        }
+        return AsTokenArray(GetAttributeValue(attribute)) ?? [];
+    }
+    if (GetRelationship(meshPrim, "skel:joints")) {
+        context.diagnostics.push({
+            severity: "warning",
+            path: meshPrim.path,
+            message: "Mesh skel:joints must be a token[] attribute but was authored as a relationship; the binding was ignored.",
+        });
+    }
+    return undefined;
+}
+
+// Resolves one authored joint-influence index to a skeleton joint index, or undefined when the
+// influence is invalid: non-finite, fractional, negative, out of the binding list, referencing a joint
+// absent from the skeleton, or out of the skeleton's range when no binding list is authored.
+function ResolveInfluenceJoint(value: number, bindingJoints: string[] | undefined, jointIndexByPath: ReadonlyMap<string, number>, skeletonJointCount: number): number | undefined {
+    if (!Number.isInteger(value) || value < 0) {
+        return undefined;
+    }
+    if (bindingJoints && bindingJoints.length > 0) {
+        const jointPath = bindingJoints[value];
+        return jointPath === undefined ? undefined : jointIndexByPath.get(jointPath);
+    }
+    return value < skeletonJointCount ? value : undefined;
 }
 
 function BuildParentIndices(joints: string[]): Int32Array {
