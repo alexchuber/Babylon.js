@@ -2,11 +2,15 @@ import { RegisterBlock } from "../blockFoundation/blockRegistry";
 import { NodeAssetBlock } from "../blockFoundation/nodeAssetBlock";
 import { type NodeAssetConnectionPoint } from "../connection/nodeAssetConnectionPoint";
 import { NodeAssetConnectionPointType } from "../connection/nodeAssetConnectionPointType";
+import { type NodeAssetJsonObject } from "../connection/nodeAssetValueMap";
 import { type NodeAsset } from "../nodeAsset";
+import { type ImagePayload } from "./imagePayload";
 
 /**
  * Composes individual PBR material components (metallic, roughness, base color, normal, emissive)
- * into a JSON description suitable for applying to a glTF material.
+ * into a JSON description suitable for applying to a glTF material. Numeric factors are clamped to
+ * [0, 1] per the glTF spec. Texture presence is indicated by boolean flags; the actual image data
+ * is not embedded in the JSON output since it is not JSON-serializable.
  */
 export class ComposeGLTFMaterialBlock extends NodeAssetBlock {
     /** The class name, used for identification and safe under minification. */
@@ -46,12 +50,45 @@ export class ComposeGLTFMaterialBlock extends NodeAssetBlock {
     }
 
     /**
-     * Not yet implemented.
-     * @throws Always throws — this is a husk block.
+     * Collects all connected inputs into a JSON material descriptor object. Numeric factors
+     * default to glTF spec values (metallic=1, roughness=1) when their inputs are null, and are
+     * clamped to [0, 1]. Texture channels are indicated by boolean presence flags.
      */
     public override async _buildBlockAsync(): Promise<void> {
-        throw new Error(`${this.getClassName()}._buildBlockAsync is not yet implemented.`);
+        const metallicRaw = typeof this.metallic.value === "number" ? this.metallic.value : 1.0;
+        const roughnessRaw = typeof this.roughness.value === "number" ? this.roughness.value : 1.0;
+        const metallicFactor = Math.max(0, Math.min(1, metallicRaw));
+        const roughnessFactor = Math.max(0, Math.min(1, roughnessRaw));
+
+        const hasBaseColor = IsImagePayload(this.baseColor.value);
+        const hasNormal = IsImagePayload(this.normal.value);
+        const hasEmissive = IsImagePayload(this.emissive.value);
+
+        const descriptor: NodeAssetJsonObject = {
+            pbrMetallicRoughness: {
+                metallicFactor,
+                roughnessFactor,
+            },
+            hasBaseColorTexture: hasBaseColor,
+            hasNormalTexture: hasNormal,
+            hasEmissiveTexture: hasEmissive,
+        };
+
+        this.output.value = descriptor;
     }
+}
+
+/**
+ * Tests whether a runtime value looks like a valid {@link ImagePayload}.
+ * @param value - The value to test.
+ * @returns Whether the value has the shape of an ImagePayload.
+ */
+function IsImagePayload(value: unknown): value is ImagePayload {
+    if (value == null || typeof value !== "object") {
+        return false;
+    }
+    const candidate = value as Record<string, unknown>;
+    return candidate.data instanceof Uint8Array && typeof candidate.mimeType === "string";
 }
 
 RegisterBlock(ComposeGLTFMaterialBlock.ClassName, (name, nodeAsset) => new ComposeGLTFMaterialBlock(name, nodeAsset));
