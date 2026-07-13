@@ -1,5 +1,6 @@
 export { NodeAsset } from "./nodeAsset";
 export {
+    BuildCancelledError,
     BuildScope,
     type BuildDiagnosticProducerKind,
     type BuildRepresentationKind,

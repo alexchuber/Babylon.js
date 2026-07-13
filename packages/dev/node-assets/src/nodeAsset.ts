@@ -142,19 +142,21 @@ export class NodeAsset {
      * Runs the graph by pulling from the terminal export block (located via its
      * {@link IExportBlock} marker, not by concrete type) and returns the built bytes. Pull-based,
      * no caching; a required input left unconnected is an error.
+     * @param signal - The optional caller signal to link to this build.
      * @returns The built bytes produced by the terminal export block.
      */
-    public async buildAsync(): Promise<NodeAssetBuildResult> {
+    public async buildAsync(signal?: AbortSignal): Promise<NodeAssetBuildResult> {
         const exportBlock = this._attachedBlocks.find(IsExportBlock);
         if (!exportBlock) {
             throw new Error(`The "${this.name}" node asset has no export block to build.`);
         }
 
-        const scope = new BuildScope();
+        const scope = new BuildScope(signal);
         let result: Uint8Array | null = null;
         let primaryError: unknown;
         let failed = false;
         try {
+            scope.throwIfAborted();
             // A per-build memo so each block is evaluated exactly once even when its output fans out to
             // several consumers. Scoped to this call: a fresh build starts with a fresh memo.
             const evaluated = new Map<NodeAssetBlock, Promise<void>>();
@@ -195,7 +197,12 @@ export class NodeAsset {
         // same block dedupes onto this promise instead of starting a second evaluation.
         const promise = this._doEvaluateBlockAsync(block, evaluated, scope);
         evaluated.set(block, promise);
-        return await promise;
+        try {
+            return await promise;
+        } catch (error) {
+            scope.abortForFailure(error);
+            throw error;
+        }
     }
 
     /**
@@ -222,20 +229,28 @@ export class NodeAsset {
         }
 
         // Build all upstream blocks first, then propagate their resolved values.
-        await Promise.all(
+        await this._settleInOrderAsync(
             connections.map(async (connection) => {
                 await this._evaluateBlockAsync(connection.upstream.ownerBlock, evaluated, scope);
-            })
+            }),
+            scope
         );
         // When an upstream output fans out to more than one input, each consumer receives its own
         // clone of a mutable representation payload so an in-place edit on one branch cannot stomp another;
         // a sole consumer — and every immutable scalar payload — shares the value by reference.
-        await Promise.all(
+        await this._settleInOrderAsync(
             connections.map(async ({ input, upstream }) => {
-                input.value = upstream.connectedPoints.length > 1 ? await CloneForFanOutAsync(upstream.type, upstream.value) : upstream.value;
-            })
+                try {
+                    input.value = upstream.connectedPoints.length > 1 ? await CloneForFanOutAsync(upstream.type, upstream.value) : upstream.value;
+                } catch (error) {
+                    scope.abortForFailure(error);
+                    throw error;
+                }
+            }),
+            scope
         );
 
+        scope.throwIfAborted();
         let primaryError: unknown;
         let failed = false;
         try {
@@ -243,6 +258,7 @@ export class NodeAsset {
         } catch (error) {
             failed = true;
             primaryError = error;
+            scope.abortForFailure(error);
         }
 
         const producer = { kind: "block" as const, blockId: block.uniqueId, blockName: block.name };
@@ -256,11 +272,29 @@ export class NodeAsset {
                 if (!failed) {
                     failed = true;
                     primaryError = error;
+                    scope.abortForFailure(error);
                 }
             }
         }
         if (failed) {
             throw primaryError;
+        }
+    }
+
+    private async _settleInOrderAsync(tasks: ReadonlyArray<Promise<void>>, scope: BuildScope): Promise<void> {
+        const results = await Promise.allSettled(tasks);
+        for (const result of results) {
+            if (result.status === "rejected" && !scope.isCancellationError(result.reason)) {
+                throw result.reason;
+            }
+        }
+        if (scope.hasPrimaryError) {
+            throw scope.primaryError;
+        }
+        for (const result of results) {
+            if (result.status === "rejected") {
+                throw result.reason;
+            }
         }
     }
 }

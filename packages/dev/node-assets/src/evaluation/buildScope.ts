@@ -99,13 +99,59 @@ interface IBuildResourceEntry {
 
 const ResourceOwnership = new WeakMap<object, IResourceOwnership>();
 
+/** Raised when a caller or failed sibling cancels a build. */
+export class BuildCancelledError extends Error {
+    /** Stable machine-readable cancellation code. */
+    public readonly code = "NODE_ASSET_BUILD_CANCELLED";
+    /** The caller or internal reason that requested cancellation. */
+    public readonly reason: unknown;
+
+    /**
+     * Creates a build cancellation error.
+     * @param reason The caller or internal reason that requested cancellation.
+     */
+    public constructor(reason?: unknown) {
+        super("The node asset build was cancelled.");
+        this.name = "BuildCancelledError";
+        this.reason = reason;
+    }
+}
+
 /** Owns diagnostics and other per-build state for one {@link NodeAsset.buildAsync} call. */
 export class BuildScope {
+    private readonly _abortController = new AbortController();
     private readonly _diagnostics: IBuildDiagnostic[] = [];
     private readonly _lossRecords: LossRecord[] = [];
     private readonly _resources: IBuildResourceEntry[] = [];
     private readonly _registeredResources = new WeakSet<object>();
+    private readonly _callerSignal: AbortSignal | undefined;
+    private readonly _onCallerAbort: (() => void) | undefined;
     private _disposePromise: Promise<void> | undefined;
+    private _hasPrimaryError = false;
+    private _primaryError: unknown;
+
+    /**
+     * Creates one build scope and links an optional caller signal to its internal controller.
+     * @param callerSignal The optional caller-owned cancellation signal.
+     */
+    public constructor(callerSignal?: AbortSignal) {
+        this._callerSignal = callerSignal;
+        if (callerSignal) {
+            this._onCallerAbort = () => {
+                this._cancel(callerSignal.reason);
+            };
+            if (callerSignal.aborted) {
+                this._onCallerAbort();
+            } else {
+                callerSignal.addEventListener("abort", this._onCallerAbort, { once: true });
+            }
+        }
+    }
+
+    /** The build-owned signal blocks use for cooperative cancellation. */
+    public get signal(): AbortSignal {
+        return this._abortController.signal;
+    }
 
     /** The diagnostics collected so far in deterministic production order. */
     public get diagnostics(): ReadonlyArray<IBuildDiagnostic> {
@@ -115,6 +161,16 @@ export class BuildScope {
     /** The loss records collected so far in deterministic production order. */
     public get lossRecords(): ReadonlyArray<LossRecord> {
         return this._lossRecords;
+    }
+
+    /** Whether an internal fatal or limit failure requested sibling cancellation. */
+    public get hasPrimaryError(): boolean {
+        return this._hasPrimaryError;
+    }
+
+    /** The first observed internal fatal or limit error, preserved by identity. */
+    public get primaryError(): unknown {
+        return this._primaryError;
     }
 
     /**
@@ -149,6 +205,37 @@ export class BuildScope {
         this._diagnostics.push(buildDiagnostic);
         this._lossRecords.push(lossRecord);
         return lossRecord;
+    }
+
+    /** Throws the build's cancellation error when cancellation was requested. */
+    public throwIfAborted(): void {
+        if (this.signal.aborted) {
+            throw this.signal.reason;
+        }
+    }
+
+    /**
+     * Records the first observed fatal error and immediately requests cooperative sibling cancellation.
+     * @param error The original fatal error.
+     */
+    public abortForFailure(error: unknown): void {
+        if (this.isCancellationError(error)) {
+            return;
+        }
+        if (!this._hasPrimaryError) {
+            this._hasPrimaryError = true;
+            this._primaryError = error;
+        }
+        this._cancel(error);
+    }
+
+    /**
+     * Tests whether an error is a cooperative sibling-cancellation artifact.
+     * @param error The thrown value to classify.
+     * @returns Whether the value represents cancellation rather than a primary fatal failure.
+     */
+    public isCancellationError(error: unknown): boolean {
+        return error instanceof BuildCancelledError || (error instanceof DOMException && error.name === "AbortError");
     }
 
     /**
@@ -192,7 +279,13 @@ export class BuildScope {
     }
 
     private async _disposeResourcesAsync(): Promise<void> {
-        await this._disposeResourceAtAsync(this._resources.length - 1);
+        try {
+            await this._disposeResourceAtAsync(this._resources.length - 1);
+        } finally {
+            if (this._callerSignal && this._onCallerAbort) {
+                this._callerSignal.removeEventListener("abort", this._onCallerAbort);
+            }
+        }
     }
 
     private async _disposeResourceAtAsync(index: number): Promise<void> {
@@ -216,6 +309,12 @@ export class BuildScope {
             });
         }
         await this._disposeResourceAtAsync(index - 1);
+    }
+
+    private _cancel(reason?: unknown): void {
+        if (!this.signal.aborted) {
+            this._abortController.abort(new BuildCancelledError(reason));
+        }
     }
 }
 

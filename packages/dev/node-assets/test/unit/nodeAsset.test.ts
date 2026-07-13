@@ -4,11 +4,52 @@ import { DracoCompressionBlock, DracoEncoderMethod } from "../../src/Blocks/drac
 import { ExportGLTFBlock } from "../../src/Blocks/exportGLTFBlock";
 import { ImportGLTFBlock } from "../../src/Blocks/importGLTFBlock";
 import { KTX2CompressionBlock } from "../../src/Blocks/ktx2CompressionBlock";
+import { NodeAssetBlock } from "../../src/blockFoundation/nodeAssetBlock";
+import { type NodeAssetConnectionPoint } from "../../src/connection/nodeAssetConnectionPoint";
+import { NodeAssetConnectionPointType } from "../../src/connection/nodeAssetConnectionPointType";
 import { NodeAsset } from "../../src/nodeAsset";
 
 // The import/export blocks register the Draco encoder/decoder, so the roundtrip needs the real
 // draco3dgltf module rather than the stub the global vitest setup installs for @dev/core.
 vi.mock("draco3dgltf", async () => await vi.importActual("draco3dgltf"));
+
+class ConcurrentSourceBlock extends NodeAssetBlock {
+    public readonly output = this._registerOutput("output", NodeAssetConnectionPointType.IMAGE);
+    public evaluations = 0;
+
+    public override async _buildBlockAsync(): Promise<void> {
+        this.evaluations++;
+        await Promise.resolve();
+        this.output.value = { data: new Uint8Array([7]), mimeType: "image/png" };
+    }
+}
+
+class ImagePassThroughBlock extends NodeAssetBlock {
+    public readonly input = this._registerInput("input", NodeAssetConnectionPointType.IMAGE);
+    public readonly output = this._registerOutput("output", NodeAssetConnectionPointType.IMAGE);
+
+    public override async _buildBlockAsync(): Promise<void> {
+        this.output.value = this.input.value;
+    }
+}
+
+class ConcurrentFanInExportBlock extends NodeAssetBlock {
+    public readonly isExportTerminal = true;
+    public readonly inputA: NodeAssetConnectionPoint;
+    public readonly inputB: NodeAssetConnectionPoint;
+    public result: Uint8Array | null = null;
+
+    public constructor(name: string, nodeAsset: NodeAsset) {
+        super(name, nodeAsset);
+        this.inputA = this._registerInput("inputA", NodeAssetConnectionPointType.IMAGE);
+        this.inputB = this._registerInput("inputB", NodeAssetConnectionPointType.IMAGE);
+    }
+
+    public override async _buildBlockAsync(): Promise<void> {
+        expect(this.inputA.value).toBe(this.inputB.value);
+        this.result = (this.inputA.value as { data: Uint8Array }).data;
+    }
+}
 
 /**
  * Builds a tiny uncompressed glb (one node, one mesh) in code so the roundtrip test does not
@@ -218,5 +259,22 @@ describe("NodeAsset", () => {
         expect(parsedDraco.encodeSpeed).toBe(2);
         expect(parsedDraco.decodeSpeed).toBe(8);
         expect(parsedDraco.quantizationBits).toEqual({ POSITION: 12, NORMAL: 8 });
+    });
+
+    it("deduplicates a concurrently reached upstream across fan-in", async () => {
+        const asset = new NodeAsset("concurrent fan-in");
+        const source = new ConcurrentSourceBlock("source", asset);
+        const branchA = new ImagePassThroughBlock("branch A", asset);
+        const branchB = new ImagePassThroughBlock("branch B", asset);
+        const exporter = new ConcurrentFanInExportBlock("export", asset);
+        source.output.connectTo(branchA.input);
+        source.output.connectTo(branchB.input);
+        branchA.output.connectTo(exporter.inputA);
+        branchB.output.connectTo(exporter.inputB);
+
+        const result = await asset.buildAsync();
+
+        expect(source.evaluations).toBe(1);
+        expect(Array.from(result)).toEqual([7]);
     });
 });
