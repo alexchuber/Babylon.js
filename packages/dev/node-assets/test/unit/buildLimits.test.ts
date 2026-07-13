@@ -84,6 +84,30 @@ class TimedResourceExportBlock extends NodeAssetBlock {
     }
 }
 
+class ControlledTimedResourceExportBlock extends TimedResourceExportBlock {
+    public readonly entered: Promise<void>;
+    public release: () => void = () => {};
+
+    private readonly _markEntered: () => void;
+
+    public constructor(name: string, nodeAsset: NodeAsset) {
+        super(name, nodeAsset);
+        let markEntered = () => {};
+        this.entered = new Promise<void>((resolve) => {
+            markEntered = resolve;
+        });
+        this._markEntered = markEntered;
+    }
+
+    public override async _buildBlockAsync(): Promise<void> {
+        this._markEntered();
+        await new Promise<void>((resolve) => {
+            this.release = resolve;
+        });
+        this.result = new Uint8Array([1]);
+    }
+}
+
 class HangingTimedResourceSourceBlock extends NodeAssetBlock {
     public readonly output = this._registerOutput("output", NodeAssetConnectionPointType.NODE_GEOMETRY);
     public readonly resource = new TimedResource();
@@ -164,6 +188,14 @@ describe("build limits", () => {
         });
     });
 
+    it("accepts an empty source at the exact zero per-source and total-source boundaries", async () => {
+        await expect(
+            CreateImageAsset(new Uint8Array()).buildAsync({
+                limits: { maxSourceAssetBytes: 0, maxTotalSourceBytes: 0 },
+            })
+        ).resolves.toBeInstanceOf(Uint8Array);
+    });
+
     it.each([
         [5, "below"],
         [4, "equal"],
@@ -191,6 +223,14 @@ describe("build limits", () => {
             code: "NODE_ASSET_LIMIT_EVALUATIONS",
             limit: 1,
             actual: 2,
+        });
+    });
+
+    it("accepts a zero evaluation limit as configuration and fails on the first evaluation", async () => {
+        await expect(CreateImageAsset().buildAsync({ limits: { maxEvaluations: 0 } })).rejects.toMatchObject<BuildLimitError>({
+            code: "NODE_ASSET_LIMIT_EVALUATIONS",
+            limit: 0,
+            actual: 1,
         });
     });
 
@@ -236,6 +276,14 @@ describe("build limits", () => {
         expect(source.resource.disposeCalls).toBe(1);
     });
 
+    it("allows a build that completes at the exact zero wall-clock boundary", async () => {
+        vi.useFakeTimers();
+        vi.setSystemTime(0);
+        const { asset } = CreateTimedAsset(0);
+
+        await expect(asset.buildAsync({ limits: { maxWallClockMs: 0 } })).resolves.toBeInstanceOf(Uint8Array);
+    });
+
     it("times out in-flight work and awaits resource cleanup", async () => {
         vi.useFakeTimers();
         vi.setSystemTime(0);
@@ -262,6 +310,39 @@ describe("build limits", () => {
         expect(outcome).toMatchObject<BuildLimitError>({
             code: "NODE_ASSET_LIMIT_WALL_CLOCK",
             limit: 5,
+        });
+        expect(source.resource.disposeCalls).toBe(1);
+    });
+
+    it("awaits a non-cooperative terminal export, then rejects timeout and cleans up", async () => {
+        vi.useFakeTimers();
+        vi.setSystemTime(0);
+        const asset = new NodeAsset("terminal timeout");
+        const source = new TimedResourceSourceBlock("resource source", asset);
+        const exporter = new ControlledTimedResourceExportBlock("controlled export", asset);
+        source.output.connectTo(exporter.input);
+
+        const build = asset.buildAsync({ limits: { maxWallClockMs: 0 } });
+        await exporter.entered;
+        await vi.advanceTimersByTimeAsync(1);
+        let settled = false;
+        void build.then(
+            () => {
+                settled = true;
+            },
+            () => {
+                settled = true;
+            }
+        );
+        await Promise.resolve();
+        expect(settled).toBe(false);
+        expect(source.resource.disposeCalls).toBe(0);
+
+        exporter.release();
+        await expect(build).rejects.toMatchObject<BuildLimitError>({
+            code: "NODE_ASSET_LIMIT_WALL_CLOCK",
+            limit: 0,
+            actual: 1,
         });
         expect(source.resource.disposeCalls).toBe(1);
     });

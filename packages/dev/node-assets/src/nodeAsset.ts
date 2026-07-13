@@ -296,6 +296,10 @@ export class NodeAsset {
         if (failed) {
             throw primaryError;
         }
+        if (scope.hasPrimaryError) {
+            throw scope.primaryError;
+        }
+        scope.throwIfAborted();
     }
 
     private async _settleInOrderAsync(tasks: ReadonlyArray<Promise<void>>, scope: BuildScope): Promise<void> {

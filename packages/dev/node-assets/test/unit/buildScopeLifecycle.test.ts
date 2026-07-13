@@ -33,8 +33,10 @@ class ResourceSourceBlock extends NodeAssetBlock {
     public readonly outputA = this._registerOutput("outputA", NodeAssetConnectionPointType.NODE_GEOMETRY);
     public readonly outputB = this._registerOutput("outputB", NodeAssetConnectionPointType.NODE_GEOMETRY);
     public resource: TrackedResource = new TrackedResource([]);
+    public scope: BuildScope | undefined;
 
-    public override async _buildBlockAsync(): Promise<void> {
+    public override async _buildBlockAsync(scope?: BuildScope): Promise<void> {
+        this.scope = scope;
         this.resource.events.push("produce");
         this.outputA.value = this.resource;
         this.outputB.value = this.resource;
@@ -76,10 +78,21 @@ class FailingResourceConsumerBlock extends NodeAssetBlock {
 class LimitFailingResourceSourceBlock extends NodeAssetBlock {
     public readonly output = this._registerOutput("output", NodeAssetConnectionPointType.NODE_GEOMETRY);
     public readonly resource = new TrackedResource([]);
+    public sourceBytes = 1;
 
     public override async _buildBlockAsync(scope?: BuildScope): Promise<void> {
         this.output.value = this.resource;
-        scope!.accountSourceBytes(1);
+        scope!.accountSourceBytes(this.sourceBytes);
+    }
+}
+
+class EvaluationLimitResourceSourceBlock extends NodeAssetBlock {
+    public readonly output = this._registerOutput("output", NodeAssetConnectionPointType.NODE_GEOMETRY);
+    public readonly resource = new TrackedResource([]);
+
+    public override async _buildBlockAsync(scope?: BuildScope): Promise<void> {
+        this.output.value = this.resource;
+        scope!.beginEvaluation();
     }
 }
 
@@ -156,6 +169,22 @@ describe("build scope resource lifecycle", () => {
         expect(resource.disposeCalls).toBe(1);
     });
 
+    it("keeps cleanup idempotent after the build already disposed its ledger", async () => {
+        const resource = new TrackedResource([]);
+        const asset = new NodeAsset("idempotent cleanup");
+        const source = new ResourceSourceBlock("resource source", asset);
+        source.resource = resource;
+        const exporter = new ResourceExportBlock("export", asset);
+        source.outputA.connectTo(exporter.inputA);
+        source.outputB.connectTo(exporter.inputB);
+
+        await asset.buildAsync();
+        await source.scope!.disposeAsync();
+        await source.scope!.disposeAsync();
+
+        expect(resource.disposeCalls).toBe(1);
+    });
+
     it("records cleanup failures without failing a successful build or replacing a fatal error", async () => {
         const cleanupError = new Error("cleanup failed");
         const successfulResource = new TrackedResource([], false, cleanupError);
@@ -185,6 +214,13 @@ describe("build scope resource lifecycle", () => {
 
         await expect(asset.buildAsync()).rejects.toBe(primary);
         expect(fatalResource.disposeCalls).toBe(1);
+        expect(source.scope?.diagnostics).toMatchObject([
+            {
+                code: "NODE_ASSET_CLEANUP_FAILED",
+                severity: "warning",
+                message: "cleanup failed",
+            },
+        ]);
     });
 
     it("rejects a resource shared by concurrent build scopes without disposing the owner's resource", async () => {
@@ -229,6 +265,34 @@ describe("build scope resource lifecycle", () => {
 
         await expect(asset.buildAsync({ limits: { maxSourceAssetBytes: 0 } })).rejects.toMatchObject<BuildLimitError>({
             code: "NODE_ASSET_LIMIT_SOURCE_BYTES",
+        });
+        expect(source.resource.disposeCalls).toBe(1);
+    });
+
+    it("disposes all started resources exactly once when aggregate source bytes exceed the limit", async () => {
+        const asset = new NodeAsset("total source cleanup");
+        const first = new LimitFailingResourceSourceBlock("first source", asset);
+        const second = new LimitFailingResourceSourceBlock("second source", asset);
+        const exporter = new ResourceExportBlock("export", asset);
+        first.output.connectTo(exporter.inputA);
+        second.output.connectTo(exporter.inputB);
+
+        await expect(asset.buildAsync({ limits: { maxTotalSourceBytes: 1 } })).rejects.toMatchObject<BuildLimitError>({
+            code: "NODE_ASSET_LIMIT_TOTAL_SOURCE_BYTES",
+        });
+        expect(first.resource.disposeCalls).toBe(1);
+        expect(second.resource.disposeCalls).toBe(1);
+    });
+
+    it("disposes an already-produced resource exactly once when evaluation count exceeds the limit", async () => {
+        const asset = new NodeAsset("evaluation cleanup");
+        const source = new EvaluationLimitResourceSourceBlock("resource source", asset);
+        const exporter = new ResourceExportBlock("export", asset);
+        source.output.connectTo(exporter.inputA);
+        source.output.connectTo(exporter.inputB);
+
+        await expect(asset.buildAsync({ limits: { maxEvaluations: 2 } })).rejects.toMatchObject<BuildLimitError>({
+            code: "NODE_ASSET_LIMIT_EVALUATIONS",
         });
         expect(source.resource.disposeCalls).toBe(1);
     });

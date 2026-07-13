@@ -80,6 +80,43 @@ class ResourceExportBlock extends NodeAssetBlock {
     }
 }
 
+class ControlledResourceExportBlock extends ResourceExportBlock {
+    public readonly entered: Promise<void>;
+    public release: () => void = () => {};
+
+    private readonly _markEntered: () => void;
+
+    public constructor(name: string, nodeAsset: NodeAsset) {
+        super(name, nodeAsset);
+        let markEntered = () => {};
+        this.entered = new Promise<void>((resolve) => {
+            markEntered = resolve;
+        });
+        this._markEntered = markEntered;
+    }
+
+    public override async _buildBlockAsync(): Promise<void> {
+        const resource = this.input.value as CancelledResource;
+        this._markEntered();
+        await new Promise<void>((resolve) => {
+            this.release = resolve;
+        });
+        if (resource.isDisposed) {
+            throw new Error("The terminal resource was disposed before export settled.");
+        }
+        this.result = new Uint8Array([1]);
+    }
+}
+
+class ImmediateResourceSourceBlock extends NodeAssetBlock {
+    public readonly output = this._registerOutput("output", NodeAssetConnectionPointType.NODE_GEOMETRY);
+    public readonly resource = new CancelledResource();
+
+    public override async _buildBlockAsync(): Promise<void> {
+        this.output.value = this.resource;
+    }
+}
+
 class FatalSourceBlock extends NodeAssetBlock {
     public readonly output = this._registerOutput("output", NodeAssetConnectionPointType.NODE_GEOMETRY);
     public error = new Error("fatal");
@@ -207,6 +244,36 @@ describe("build scope cancellation", () => {
         ]);
 
         expect(outcome).toBeInstanceOf(BuildCancelledError);
+        expect(source.resource.disposeCalls).toBe(1);
+    });
+
+    it("awaits a non-cooperative terminal export, then rejects caller cancellation and cleans up", async () => {
+        const asset = new NodeAsset("cancel during terminal export");
+        const source = new ImmediateResourceSourceBlock("resource source", asset);
+        const exporter = new ControlledResourceExportBlock("controlled export", asset);
+        source.output.connectTo(exporter.input);
+        const controller = new AbortController();
+
+        const build = asset.buildAsync(controller.signal);
+        await exporter.entered;
+        controller.abort("caller stopped");
+        let settled = false;
+        void build.then(
+            () => {
+                settled = true;
+            },
+            () => {
+                settled = true;
+            }
+        );
+        await Promise.resolve();
+        expect(settled).toBe(false);
+        expect(source.resource.disposeCalls).toBe(0);
+
+        exporter.release();
+        await expect(build).rejects.toMatchObject<BuildCancelledError>({
+            code: "NODE_ASSET_BUILD_CANCELLED",
+        });
         expect(source.resource.disposeCalls).toBe(1);
     });
 
