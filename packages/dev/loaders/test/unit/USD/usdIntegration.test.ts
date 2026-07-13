@@ -405,6 +405,19 @@ def "Ref" (
         expect(stage.root.children.map((prim) => prim.name)).toEqual(["Ref"]);
         expect(stage.diagnostics.some((diagnostic) => diagnostic.message.includes("USDC") && diagnostic.message.includes("skipped"))).toBe(false);
     });
+
+    it("resolves USDZ external fallbacks relative to the source archive URL", async () => {
+        const archive = fflate.zipSync({ "root.usda": new TextEncoder().encode(rootUsda) }, { level: 0 });
+        const requested: string[] = [];
+
+        const stage = await ResolveUsdStageWithFetcherAsync(archive.buffer, "https://example.com/models/", "scene.usdz", { fflate }, async (identifier) => {
+            requested.push(identifier);
+            return childUsda;
+        });
+
+        expect(stage.root.children[0].children.some((prim) => prim.name === "Ref")).toBe(true);
+        expect(requested).toContain("https://example.com/models/child.usda");
+    });
 });
 
 function CreateMinimalUsdc(): Uint8Array {

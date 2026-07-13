@@ -135,7 +135,7 @@ async function ResolveUsdzStageAsync(
             new Uint8Array(copy).set(embedded);
             return copy;
         }
-        return await fetchAsset(resolvedIdentifier);
+        return await fetchAsset(ResolveAssetIdentifier(resolvedIdentifier, rootIdentifier));
     };
 
     const stage = await ComposeAndMapStageAsync(rootLayer, fetchArchiveAssetAsync, diagnostics);

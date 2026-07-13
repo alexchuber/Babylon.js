@@ -44,6 +44,16 @@ def PointInstancer "Instancer"
             int[] faceVertexCounts = [4]
             int[] faceVertexIndices = [0, 1, 2, 3]
             point3f[] points = [(-1, -1, 0), (1, -1, 0), (1, 1, 0), (-1, 1, 0)]
+            rel material:binding = </Instancer/Mat>
+        }
+    }
+
+    def Material "Mat"
+    {
+        def Shader "Preview"
+        {
+            uniform token info:id = "UsdPreviewSurface"
+            color3f inputs:diffuseColor = (0.2, 0.4, 0.6)
         }
     }
 }
@@ -54,6 +64,7 @@ def PointInstancer "Instancer"
         const prototype = result.meshes.find((mesh) => mesh.name === "Instancer_proto0");
         expect(prototype).toBeDefined();
         expect(prototype!.thinInstanceCount).toBe(2);
+        expect(prototype!.material).not.toBeNull();
 
         dispose();
     });

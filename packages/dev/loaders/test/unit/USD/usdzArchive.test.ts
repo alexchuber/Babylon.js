@@ -20,7 +20,7 @@ describe("USDZ archive reader", () => {
         expect(archive.assets.get("textures/base.png")).toEqual(new Uint8Array([1, 2, 3]));
     });
 
-    it("uses the first USD-extension entry as the root when non-layer assets come first", async () => {
+    it("rejects archives whose first entry is not a USD layer", async () => {
         const zipped = fflate.zipSync(
             {
                 "textures/base.png": new Uint8Array([4, 5, 6]),
@@ -30,12 +30,7 @@ describe("USDZ archive reader", () => {
             { level: 0 }
         );
 
-        const archive = await ReadUsdzArchive(zipped.buffer, fflate);
-
-        expect(archive.rootLayer.fileName).toBe("root.usda");
-        expect(new TextDecoder().decode(new Uint8Array(archive.rootLayer.data))).toMatch(/^#usda/);
-        expect(archive.assets.get("textures/base.png")).toEqual(new Uint8Array([4, 5, 6]));
-        expect(archive.assets.get("layers/mesh.usdc")).toEqual(new Uint8Array([7, 8, 9]));
+        await expect(ReadUsdzArchive(zipped.buffer, fflate)).rejects.toThrow("first entry");
     });
 
     it("rejects malformed and truncated archives", async () => {
@@ -56,5 +51,9 @@ describe("USDZ archive reader", () => {
         };
 
         await expect(ReadUsdzArchive(new ArrayBuffer(0), oversizedArchive)).rejects.toThrow("uncompressed size exceeds");
+    });
+
+    it("reports a controlled error when fflate is omitted outside a browser", async () => {
+        await expect(ReadUsdzArchive(new ArrayBuffer(0))).rejects.toThrow("preloaded fflate");
     });
 });

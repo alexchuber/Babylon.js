@@ -1,7 +1,8 @@
-import { type IResolvedMesh, type IResolvedPointInstancer, type Quat, type Vec3 } from "../resolvedStage";
+import { type IResolvedMaterialBinding, type IResolvedMesh, type IResolvedPointInstancer, type Quat, type Vec3 } from "../resolvedStage";
 import { type ISdfPrimSpec, type SdfValue } from "../sdf";
 import { type IStageMappingContext } from "./mappingContext";
 import { BuildMeshPoolKey, ResolveMesh } from "./meshMapping";
+import { ResolveMaterialBinding } from "./materialMapping";
 import { AsNumberArray, AsVec3Array, GetAttribute, GetAttributeValue, GetRelationship, GetRelationshipTargets } from "./valueAccess";
 
 /**
@@ -15,8 +16,10 @@ export function ResolvePointInstancer(prim: ISdfPrimSpec, context: IStageMapping
         return undefined;
     }
 
+    const prototypes = ResolvePrototypes(prim, context);
     return {
-        prototypeMeshIndices: ResolvePrototypeMeshIndices(prim, context),
+        prototypeMeshIndices: prototypes.map((prototype) => prototype.meshIndex),
+        prototypeMaterialBindings: prototypes.map((prototype) => prototype.materialBinding),
         protoIndices: BuildInt32Array(GetAttributeValue(GetAttribute(prim, "protoIndices"))),
         positions: BuildVec3Buffer(GetAttributeValue(GetAttribute(prim, "positions"))),
         orientations: BuildQuatBuffer(GetAttributeValue(GetAttribute(prim, "orientations"))),
@@ -25,8 +28,8 @@ export function ResolvePointInstancer(prim: ISdfPrimSpec, context: IStageMapping
     };
 }
 
-function ResolvePrototypeMeshIndices(prim: ISdfPrimSpec, context: IStageMappingContext): number[] {
-    const prototypeMeshIndices: number[] = [];
+function ResolvePrototypes(prim: ISdfPrimSpec, context: IStageMappingContext): { meshIndex: number; materialBinding: IResolvedMaterialBinding | undefined }[] {
+    const prototypes: { meshIndex: number; materialBinding: IResolvedMaterialBinding | undefined }[] = [];
     for (const targetPath of GetRelationshipTargets(GetRelationship(prim, "prototypes"))) {
         const prototypePrim = context.primByPath.get(NormalizePrimPath(targetPath));
         const meshPrim = prototypePrim ? FindPrototypeMesh(prototypePrim, context) : undefined;
@@ -41,10 +44,13 @@ function ResolvePrototypeMeshIndices(prim: ISdfPrimSpec, context: IStageMappingC
 
         const mesh = ResolveMesh(meshPrim, context);
         if (mesh) {
-            prototypeMeshIndices.push(PoolMesh(mesh, context));
+            prototypes.push({
+                meshIndex: PoolMesh(mesh, context),
+                materialBinding: ResolveMaterialBinding(meshPrim, context),
+            });
         }
     }
-    return prototypeMeshIndices;
+    return prototypes;
 }
 
 function FindPrototypeMesh(prim: ISdfPrimSpec, context: IStageMappingContext): ISdfPrimSpec | undefined {

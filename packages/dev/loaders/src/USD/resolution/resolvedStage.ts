@@ -301,6 +301,8 @@ export interface IResolvedTexture {
 export interface IResolvedPointInstancer {
     /** Indices into `IResolvedStage.meshes` for each prototype, in prototype order. */
     prototypeMeshIndices: number[];
+    /** Material bindings aligned with `prototypeMeshIndices`, when authored on prototype meshes. */
+    prototypeMaterialBindings?: (IResolvedMaterialBinding | undefined)[];
     /** Per-instance prototype selector (index into `prototypeMeshIndices`). */
     protoIndices: Int32Array;
     /** Per-instance translation (3 per instance), in the instancer's local space. */

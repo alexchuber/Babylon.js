@@ -91,6 +91,10 @@ async function LoadFflateAsync(fflateInstance: unknown, deflateUrl: string | und
         throw new Error("USDZ archive reader requires an fflate-compatible object with unzipSync.");
     }
 
+    if (typeof window === "undefined") {
+        throw new Error("USDZ archive reader requires a preloaded fflate instance outside a browser.");
+    }
+
     const windowWithFflate = window as Window & { fflate?: unknown };
     if (!windowWithFflate.fflate) {
         await Tools.LoadScriptAsync(deflateUrl ?? DefaultFflateUrl);
@@ -128,19 +132,16 @@ function FindRootLayerFileName(assets: Map<string, Uint8Array>, orderedFileNames
     // USDZ defines the first archive file as the root layer. fflate returns an object record without a
     // formal ordering contract, so prefer the ZIP central directory's local-header order when it can be
     // read, then fall back to the first USD-extension entry from fflate's record iteration order.
-    const candidates = orderedFileNames ?? Array.from(assets.keys());
-    for (const fileName of candidates) {
-        if (assets.has(fileName) && IsUsdLayerFileName(fileName)) {
-            return fileName;
-        }
+    const firstFileName = (orderedFileNames ?? Array.from(assets.keys()))[0];
+    if (!firstFileName || !assets.has(firstFileName) || !IsUsdLayerFileName(firstFileName)) {
+        throw new Error("USDZ archive first entry must be a USD root layer.");
     }
-
-    return undefined;
+    return firstFileName;
 }
 
 function IsUsdLayerFileName(fileName: string): boolean {
     const normalizedFileName = fileName.toLowerCase();
-    return normalizedFileName.endsWith(".usd") || normalizedFileName.endsWith(".usda") || normalizedFileName.endsWith(".usdc") || normalizedFileName.endsWith(".usdz");
+    return normalizedFileName.endsWith(".usd") || normalizedFileName.endsWith(".usda") || normalizedFileName.endsWith(".usdc");
 }
 
 function ReadZipFileOrder(data: Uint8Array): string[] | undefined {

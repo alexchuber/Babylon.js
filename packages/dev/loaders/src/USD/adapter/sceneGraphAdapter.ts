@@ -118,7 +118,7 @@ function AdaptMeshPrim(prim: IResolvedPrim, context: IUsdAdapterContext): Mesh {
     const mesh = CreateMeshFromResolved(prim.name, resolvedMesh, context.scene);
     context.meshes.push(mesh);
 
-    BindMaterial(mesh, prim, resolvedMesh, context);
+    BindMaterial(mesh, prim.materialBinding, resolvedMesh, context);
 
     if (prim.skinning) {
         const skeleton = GetOrCreateSkeleton(prim.skinning.skeletonIndex, context);
@@ -140,7 +140,7 @@ function AdaptInstancePrim(prim: IResolvedPrim, context: IUsdAdapterContext): Tr
         const source = CreateMeshFromResolved(prim.name, resolvedMesh, context.scene);
         context.sourceMeshCache.set(sourceIndex, source);
         context.meshes.push(source);
-        BindMaterial(source, prim, resolvedMesh, context);
+        BindMaterial(source, prim.materialBinding, resolvedMesh, context);
         return source;
     }
 
@@ -163,7 +163,9 @@ function AdaptPointInstancerPrim(prim: IResolvedPrim, context: IUsdAdapterContex
     // transform; the per-instance matrices stay in the instancer's local space.
     const prototypeMeshes = instancer.prototypeMeshIndices.map((meshIndex, prototypeOrder) => {
         const resolvedMesh = context.stage.meshes[meshIndex];
-        return CreateMeshFromResolved(`${prim.name}_proto${prototypeOrder}`, resolvedMesh, context.scene);
+        const prototypeMesh = CreateMeshFromResolved(`${prim.name}_proto${prototypeOrder}`, resolvedMesh, context.scene);
+        BindMaterial(prototypeMesh, instancer.prototypeMaterialBindings?.[prototypeOrder], resolvedMesh, context);
+        return prototypeMesh;
     });
 
     const rendered = CreatePointInstancerThinInstances(instancer, prototypeMeshes, context.scene);
@@ -210,7 +212,7 @@ function AdaptCameraPrim(prim: IResolvedPrim, context: IUsdAdapterContext): Tran
 }
 
 // Binds the prim's material(s) to a mesh, building a MultiMaterial when the mesh has geom subsets.
-function BindMaterial(mesh: Mesh, prim: IResolvedPrim, resolvedMesh: IResolvedMesh, context: IUsdAdapterContext): void {
+function BindMaterial(mesh: Mesh, materialBinding: IResolvedPrim["materialBinding"], resolvedMesh: IResolvedMesh, context: IUsdAdapterContext): void {
     const subsets = resolvedMesh.geomSubsets;
     if (subsets && subsets.length > 0) {
         RegisterMultiMaterial();
@@ -235,8 +237,8 @@ function BindMaterial(mesh: Mesh, prim: IResolvedPrim, resolvedMesh: IResolvedMe
         return;
     }
 
-    if (prim.materialBinding?.materialIndex !== undefined) {
-        BindMaterialByIndex(mesh, resolvedMesh, context, prim.materialBinding.materialIndex);
+    if (materialBinding?.materialIndex !== undefined) {
+        BindMaterialByIndex(mesh, resolvedMesh, context, materialBinding.materialIndex);
     }
 }
 
