@@ -349,7 +349,7 @@ export class BuildScope {
      * @returns Whether the value represents cancellation rather than a primary fatal failure.
      */
     public isCancellationError(error: unknown): boolean {
-        return error instanceof BuildCancelledError || (error instanceof DOMException && error.name === "AbortError");
+        return this.signal.aborted && (error instanceof BuildCancelledError || (error instanceof DOMException && error.name === "AbortError"));
     }
 
     /**
@@ -413,6 +413,10 @@ export class BuildScope {
         const ownership = ResourceOwnership.get(entry.resource);
         if (ownership) {
             ownership.disposed = true;
+        }
+        if (entry.resource.isDisposed) {
+            await this._disposeResourceAtAsync(index - 1);
+            return;
         }
         try {
             await entry.resource.dispose();

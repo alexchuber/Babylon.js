@@ -180,6 +180,9 @@ export class NodeAsset {
         }
 
         if (failed) {
+            if (scope.hasPrimaryError && scope.isCancellationError(primaryError)) {
+                throw scope.primaryError;
+            }
             throw primaryError;
         }
         if (scope.hasPrimaryError) {

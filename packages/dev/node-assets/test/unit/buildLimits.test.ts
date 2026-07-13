@@ -142,6 +142,28 @@ class ControlledTimedResourceExportBlock extends TimedResourceExportBlock {
     }
 }
 
+class CooperativeTimedResourceExportBlock extends TimedResourceExportBlock {
+    public readonly entered: Promise<void>;
+    private _markEntered: () => void = () => {};
+
+    public constructor(name: string, nodeAsset: NodeAsset) {
+        super(name, nodeAsset);
+        this.entered = new Promise<void>((resolve) => {
+            this._markEntered = resolve;
+        });
+    }
+
+    public override async _buildBlockAsync(scope?: BuildScope): Promise<void> {
+        this._markEntered();
+        if (!scope!.signal.aborted) {
+            await new Promise<void>((resolve) => {
+                scope!.signal.addEventListener("abort", () => resolve(), { once: true });
+            });
+        }
+        scope!.throwIfAborted();
+    }
+}
+
 class HangingTimedResourceSourceBlock extends NodeAssetBlock {
     public readonly output = this._registerOutput("output", NodeAssetConnectionPointType.NODE_GEOMETRY);
     public readonly resource = new TimedResource();
@@ -402,6 +424,26 @@ describe("build limits", () => {
             code: "NODE_ASSET_LIMIT_WALL_CLOCK",
             limit: 0,
             actual: 1,
+        });
+        expect(source.resource.disposeCalls).toBe(1);
+    });
+
+    it("surfaces the wall-clock limit when a cooperative terminal wakes on timeout", async () => {
+        vi.useFakeTimers();
+        const { asset, source } = CreateTimedAsset(0);
+        const originalExporter = asset.attachedBlocks.find((block) => block instanceof TimedResourceExportBlock)!;
+        asset.removeBlock(originalExporter);
+        const exporter = new CooperativeTimedResourceExportBlock("cooperative export", asset);
+        source.output.connectTo(exporter.input);
+        const build = asset.buildAsync({ limits: { maxWallClockMs: 5 } });
+        const outcome = build.catch((error: unknown) => error);
+        await exporter.entered;
+
+        await vi.advanceTimersByTimeAsync(6);
+
+        expect(await outcome).toMatchObject<BuildLimitError>({
+            code: "NODE_ASSET_LIMIT_WALL_CLOCK",
+            limit: 5,
         });
         expect(source.resource.disposeCalls).toBe(1);
     });

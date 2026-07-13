@@ -315,4 +315,19 @@ describe("build scope cancellation", () => {
         expect(first.settled).toBe(true);
         expect(second.settled).toBe(true);
     });
+
+    it("treats an independent AbortError as fatal and aborts its started sibling", async () => {
+        const asset = new NodeAsset("independent abort error");
+        const fatal = new FatalSourceBlock("abort error", asset);
+        const sibling = new AbortableResourceSourceBlock("abortable sibling", asset);
+        fatal.siblingStarted = sibling.started;
+        fatal.error = new DOMException("block aborted independently", "AbortError");
+        const exporter = new ResourcePairExportBlock("export", asset);
+        fatal.output.connectTo(exporter.inputA);
+        sibling.output.connectTo(exporter.inputB);
+
+        await expect(asset.buildAsync()).rejects.toBe(fatal.error);
+        expect(sibling.settled).toBe(true);
+        expect(sibling.resource.disposeCalls).toBe(1);
+    });
 });

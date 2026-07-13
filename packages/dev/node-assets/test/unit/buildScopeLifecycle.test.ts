@@ -363,6 +363,7 @@ describe("build scope resource lifecycle", () => {
         await expect(asset.buildAsync()).rejects.toMatchObject<BuildResourceOwnershipError>({
             code: "NODE_ASSET_RESOURCE_STALE",
         });
+        expect(source.resource.disposeCalls).toBe(1);
     });
 
     it("honors caller cancellation requested while asynchronous cleanup is in flight", async () => {
