@@ -37,6 +37,9 @@ schema/build-scope work and before NodeGeometry bakes into Babylon.
 
 - `packages/dev/node-assets/src/representations/babylonAsset.ts`
   - Own a `NullEngine` + `Scene`, revision, handedness metadata, and build-scope disposal hook.
+  - **Model physical convention metadata with source and target convention values kept separate from
+    conversion policy** — e.g. source up-axis / handedness / units, target convention, and the policy that
+    maps between them are three distinct fields, never one conflated value.
 - New transcoders:
   - `packages/dev/node-assets/src/Blocks/gltf2babylon.ts` (`GLTF_DOCUMENT` → `BABYLON_SCENE`)
   - `packages/dev/node-assets/src/Blocks/babylon2gltf.ts` (`BABYLON_SCENE` → `GLTF_DOCUMENT`)

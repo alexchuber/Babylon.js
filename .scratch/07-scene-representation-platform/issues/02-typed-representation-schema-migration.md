@@ -55,6 +55,12 @@ schema foundation only: no new transcoders, no build-scope lifecycle, and no edi
   - `Blocks/buildPBRMaterial.ts` legacy path
 - Export wrappers and kinds from `packages/dev/node-assets/src/index.ts` and register any affected
   blocks in `blockFoundation/blockRegistry.ts`.
+- **Type precision (no `any`):**
+  - Give the serialized NodeAsset graph an **explicit named type** and tighten `NodeAsset.serialize()`
+    to return it (do not leave callers typing graph data as `ReturnType<NodeAsset['serialize']>` over an
+    `any` return).
+  - Model the `JSON` payload kind as a **recursive JSON value type** (primitive | array | object), not
+    `any`/`object`.
 
 ## Tests
 
@@ -74,6 +80,8 @@ Tests first under `packages/dev/node-assets/test/unit/`:
 - [ ] New connection point kinds exist and remain flat kind-equality types.
 - [ ] `SCENE` is a deprecated alias for `GLTF_DOCUMENT`; nothing new emits `SCENE`.
 - [ ] `GltfAsset`, `UsdAsset`, and `BabylonAsset` wrappers exist and are exported.
+- [ ] The serialized graph has an explicit named type and `serialize()` returns it (no `any`); the `JSON`
+      kind uses a recursive JSON value type.
 - [ ] Existing glTF blocks operate on `GLTF_DOCUMENT` while legacy `SCENE` graphs still load/build.
 - [ ] No generic representation wire, common scene supertype, union, `Switch`, hub, or path planner
       is introduced.

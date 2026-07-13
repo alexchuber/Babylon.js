@@ -32,7 +32,9 @@ migration without waiting for USD/Babylon transcoders.
 ## What to build
 
 - New `packages/dev/node-assets/src/selection/selection.ts`
-  - Define `Selection` with owner, version, targetKind, cardinality, addresses, and validity state.
+  - Define `Selection` as a **correlated (owner-discriminated) union** — owner is the discriminant that
+    correlates `targetKind` and `addresses` (glTF pointers vs USD paths vs Babylon refs), not a widened
+    struct with optional fields — plus version, cardinality, and validity state.
   - Add glTF helpers for JSON-Pointer-addressed selections.
 - `packages/dev/node-assets/src/selector/pointerToAccessor.ts`
   - Keep existing pointer resolution.

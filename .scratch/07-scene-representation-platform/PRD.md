@@ -170,6 +170,30 @@ path planner in v1.
 - R10.2 **Diagnostics surfacing**: build-scope diagnostics and `LossRecord`s render on the offending node
   and in a diagnostics list.
 - R10.3 A **gallery** of the eight demos, openable and adaptable.
+- R10.4 **One canonical production `DemoCatalog` source** feeds the gallery, plus a typed view-model
+  adapter for the UI. No independent UI / schema / Playwright catalogs — tests and UI derive from the same
+  source.
+- R10.5 The serialized NodeAsset graph has an **explicit, named type**. The editor never types graph data
+  as `ReturnType<NodeAsset['serialize']>` while `serialize()` returns `any`; the serialized shape is
+  modeled explicitly (and `serialize()` is tightened to it).
+- R10.6 **Physical metadata models source and target convention values separately from conversion policy**
+  (e.g. source up-axis/handedness/units vs target convention vs the policy that maps between them are three
+  distinct fields, not one conflated value).
+- R10.7 Selection and JSON typing are precise: selections are a **correlated (owner-discriminated) union**
+  (not a widened struct), and JSON payloads use a **recursive JSON value type**, never `any`.
+- R10.8 **No skipped/shell Playwright tests.** Gallery E2E is enabled and proves query-param / catalog
+  injection, selectors, card selection, graph loading, and pipeline execution against real `data-testid`
+  hooks (e.g. `[data-testid=demo-gallery]`).
+- R10.9 Domain/representation colors use **semantic Fluent / theme tokens**, never raw hex.
+- R10.10 Graph preview uses **list / diagram semantics** and hides decorative glyphs from the
+  accessibility tree.
+
+> **Abandoned editor branch.** A prior editor/gallery branch exists but is **abandoned** and MUST NOT be
+> referenced as an implemented foundation. Independent review of it found the seven issues above (R10.4–
+> R10.10); a forced-on shell Playwright test failed at a missing `[data-testid=demo-gallery]`, with a
+> baseline of 4 passed / 8 skipped. Editor work (issues 09–11) begins **only after the real runtime block
+> contracts exist** (issues 02–07), and re-implements the editor against those contracts — not by reviving
+> the abandoned branch.
 
 ## Non-Goals (v1)
 
@@ -304,7 +328,14 @@ Each demo is a ready-made graph in the gallery, builds headlessly, and has visua
 - **AG10 — Workers/transferables.** Large-input builds move buffers as transferables (no copy) across the
   worker boundary; a protocol round-trip test passes. Tests-first (unit).
 - **AG11 — Editor & gallery.** All new descriptors appear; the eight demos open, build, and preview; the
-  Transcoders category and diagnostics surfacing work. Editor tests + the eight demos.
+  Transcoders category and diagnostics surfacing work. One canonical `DemoCatalog` + typed view-model
+  adapter feeds both UI and tests; the serialized graph uses an explicit named type (no `ReturnType`-of-
+  `any`); physical metadata separates source/target convention from policy; selections are a correlated
+  union and JSON is a recursive type; domain colors use Fluent/theme tokens (no raw hex); graph preview
+  uses list/diagram semantics with decorative glyphs hidden. **No skipped/shell Playwright tests** — the
+  gallery E2E is enabled and proves query-param/catalog injection, selectors, card selection, graph
+  loading, and pipeline execution against real `data-testid` hooks. Editor tests + the eight demos. The
+  abandoned prior editor branch is not used as a foundation.
 - **AG12 — Golden/fuzz/Playwright/visual/security.** Golden fixtures for each transcoder; fuzz on the USD
   parser and transcoders (malformed input fails-fast, no hang/leak); Playwright/visual coverage for the
   eight demos; a security pass on untrusted-input handling and disposal-under-failure.

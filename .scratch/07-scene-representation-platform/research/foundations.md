@@ -309,3 +309,23 @@ adds the following load-bearing decisions and findings, now reflected in the ADR
   through the dependency-vetting process and is not added without approval (issue 11).
 - **tinyusdz 0.9.9 pin is proven correct** via API diff (both older and newer versions break the shipped
   transcoder); do not bump. (PRD security; issue 11.)
+
+### Abandoned editor/gallery branch — review findings (do not use as foundation)
+
+An independent review of a prior editor/gallery branch produced **seven high-confidence warnings**, now
+promoted to editor acceptance criteria (PRD R10.4–R10.10; issues 09/10/11). The branch itself is
+**abandoned and must not be referenced as an implemented foundation**; a forced-on shell Playwright test
+failed at a missing `[data-testid=demo-gallery]` (baseline **4 passed / 8 skipped**). Editor work begins
+**only after the real runtime block contracts exist** (issues 02–07). The seven:
+
+1. One canonical production `DemoCatalog` source + a typed view-model adapter — no independent UI / schema
+   / Playwright catalogs.
+2. An explicit serialized NodeAsset graph type — never `ReturnType<NodeAsset['serialize']>` while
+   `serialize()` returns `any`.
+3. Physical metadata models **source and target convention values separately from conversion policy**.
+4. Correlated (owner-discriminated) selection unions and a recursive JSON value type — no widened structs
+   or `any`.
+5. No skipped/shell Playwright tests — enable them and prove query-param/catalog injection, selectors,
+   card selection, graph loading, and pipeline execution.
+6. Domain colors use semantic Fluent / theme tokens — no raw hex.
+7. Graph preview uses list / diagram accessibility semantics and hides decorative glyphs.

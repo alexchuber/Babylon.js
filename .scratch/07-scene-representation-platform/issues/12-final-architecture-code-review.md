@@ -49,11 +49,16 @@ single feature branch can guarantee.
   - `packages/tools/tests/test/visualization/config.json`
 - Verify:
   - Exactly three 3D representation kinds and `NODE_GEOMETRY` resource kind.
-  - Exactly four v1 transcoders.
+  - Exactly four v1 transcoders; USD2glTF is genuinely direct (Babylon adapter never called).
   - glTF is the only 3D export terminal.
-  - Build scope owns lifecycle/disposal/diagnostics/transferables.
-  - Selections are domain-owned/versioned and mutators remap/invalidate.
+  - Build scope owns lifecycle/disposal/diagnostics/transferables; the `_doEvaluateBlockAsync`
+    sibling-race is fixed.
+  - Selections are domain-owned/versioned (correlated union) and mutators remap/invalidate.
   - Eight demos exist and match the PRD.
+  - Editor review criteria (R10.4–R10.10) hold: one canonical `DemoCatalog` + view-model adapter,
+    explicit serialized-graph type (no `ReturnType`-of-`any`), source/target-vs-policy metadata,
+    recursive JSON type, no skipped/shell Playwright tests, Fluent/theme color tokens, list/diagram a11y
+    semantics. The abandoned editor branch is not used as a foundation.
 - Update directly related docs only if implementation names differ from the issues/PRD in an
   approved, intentional way.
 - Run final review and fix high-confidence defects found by the review.

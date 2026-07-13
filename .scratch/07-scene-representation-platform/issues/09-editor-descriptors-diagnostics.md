@@ -29,6 +29,13 @@ metadata and surfacing, not runtime transcoder behavior.
 - Each representation gets its own port color; no generic representation port.
 - Diagnostics are surfaced from build results; do not parse console output.
 - Add the Transcoders category only for the four named v1 transcoders.
+- **Do not revive the abandoned editor/gallery branch** or treat it as an implemented foundation.
+  Build against the landed runtime block contracts (issues 02–07).
+- **Representation/domain colors use semantic Fluent / theme tokens — never raw hex.**
+- **One canonical `DemoCatalog` production source + a typed view-model adapter** for the UI; no
+  independent UI/schema/Playwright catalogs.
+- **The serialized NodeAsset graph has an explicit named type** — never `ReturnType<NodeAsset['serialize']>`
+  while `serialize()` returns `any`.
 
 ## What to build
 
@@ -59,8 +66,8 @@ Tests first under `packages/tools/nodeAssetsEditor/`:
 
 - `src/nodeAssets/blockCatalog.test.ts` — all new runtime blocks have descriptors; exactly four
   transcoders appear under Transcoders.
-- `src/nodeAssets/blockNodeMapping.test.ts` — representation/resource kinds map to distinct colors
-  and no generic representation port exists.
+- `blockNodeMapping.test.ts` — representation/resource kinds map to distinct colors
+  (from Fluent/theme tokens, **asserting no raw hex literals**) and no generic representation port exists.
 - `src/nodeAssets/nodeAssetGraphController.test.ts` — build diagnostics/LossRecords attach to the
   offending node and diagnostics list data.
 - `src/nodeAssets/nodeAssetBuildWorkerCore.test.ts` — worker result includes diagnostics and
@@ -78,6 +85,10 @@ Tests first under `packages/tools/nodeAssetsEditor/`:
       port colors.
 - [ ] Diagnostics and `LossRecord`s render on offending nodes and in a diagnostics list.
 - [ ] Handedness is exposed in the editor/manifest for Babylon previews.
+- [ ] Domain/representation colors come from semantic Fluent/theme tokens (no raw hex).
+- [ ] One canonical `DemoCatalog` source + typed view-model adapter; no independent UI/schema catalogs.
+- [ ] The serialized graph uses an explicit named type (no `ReturnType`-of-`any`).
+- [ ] The abandoned prior editor/gallery branch is not used as an implemented foundation.
 - [ ] test:unit passes
 - [ ] format:check + lint:check pass
 

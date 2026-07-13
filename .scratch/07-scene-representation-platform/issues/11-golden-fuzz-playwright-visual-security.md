@@ -54,6 +54,11 @@ should not block feature slices from landing their focused unit tests.
   - Malformed crate/usda/usdz cases fail fast and do not hang.
 - Editor tests under `packages/tools/nodeAssetsEditor/`
   - Diagnostics/LossRecord surfacing remains visible for gallery demo failures.
+  - **Gallery E2E: no skipped/shell Playwright tests.** Enable the gallery specs and prove, against real
+    `data-testid` hooks (e.g. `[data-testid=demo-gallery]`): query-param / catalog injection, selectors,
+    card selection, graph loading, and pipeline execution. (Baseline on the abandoned branch was 4
+    passed / 8 skipped and a forced-on shell failed at the missing `[data-testid=demo-gallery]` — this
+    issue replaces that with real passing coverage.)
 - Visualization:
   - Add entries to `packages/tools/tests/test/visualization/config.json` for the eight demos.
   - Use Playground snippets (`playgroundId`) created with the repo visual-testing snippet workflow.
@@ -90,6 +95,9 @@ Tests first:
 - [ ] Playwright visualization config has eight playgroundId-based demo entries with `dependsOn`
       tags and committed reference images.
 - [ ] Visual tests pass for the targeted demo entries.
+- [ ] Gallery Playwright specs are enabled (no skipped/shell tests) and prove query-param/catalog
+      injection, selectors, card selection, graph loading, and pipeline execution against real
+      `data-testid` hooks.
 - [ ] Security pass confirms no dynamic code from assets and no unbounded allocation path.
 - [ ] Security acceptance keeps the exact `tinyusdz` 0.9.9 pin (no dependency bump/replacement).
 - [ ] CI workflow wiring is recorded as deferred/proposed only; no `.github` files are added without

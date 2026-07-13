@@ -29,6 +29,13 @@ works end to end without expanding the runtime surface.
 - Demos are examples, not hidden feature logic.
 - Keep fixtures small and deterministic.
 - Visual snippets/reference images are issue 11; this issue prepares buildable graphs.
+- **One canonical production `DemoCatalog` source** drives the gallery, with a typed view-model adapter
+  for the UI. Tests and UI derive from the same catalog — no independent UI/schema/Playwright catalogs.
+- **Do not revive the abandoned editor/gallery branch** as a foundation; it is reference-only and failed
+  its own forced-on E2E at a missing `[data-testid=demo-gallery]` (baseline 4 passed / 8 skipped). Build
+  the gallery fresh against landed runtime block contracts.
+- Gallery card / graph-preview UI uses **list / diagram accessibility semantics** and **hides decorative
+  glyphs** from the a11y tree.
 
 ## What to build
 
@@ -49,7 +56,10 @@ works end to end without expanding the runtime surface.
 - `packages/dev/node-assets/src/index.ts`
   - Export gallery/example graph helpers.
 - Editor gallery plumbing in `packages/tools/nodeAssetsEditor/src/nodeAssets/`
-  - Add gallery entries that open these example graphs in Node Assets Editor.
+  - A single canonical `DemoCatalog` source (e.g. `demoCatalog.ts`) + a typed view-model adapter; the
+    gallery UI and all tests consume it — no parallel catalogs.
+  - Add gallery entries that open these example graphs in Node Assets Editor, behind real `data-testid`
+    hooks (e.g. `[data-testid=demo-gallery]`) so E2E in issue 11 can drive them.
   - Ensure preview uses the existing glTF terminal output or Babylon preview metadata where
     applicable.
 - Keep each example's declared expected diagnostics/LossRecords near the example definition so
@@ -76,6 +86,10 @@ Tests first:
 - [ ] Editor gallery lists and opens exactly those eight demos.
 - [ ] Every demo builds headlessly or reports the expected preview payload and diagnostics.
 - [ ] Demo fixtures are small, deterministic, and reusable by issue 11.
+- [ ] One canonical `DemoCatalog` + typed view-model adapter drives gallery UI and tests (no parallel
+      catalogs); gallery exposes real `data-testid` hooks.
+- [ ] Gallery cards / graph preview use list/diagram a11y semantics and hide decorative glyphs.
+- [ ] The abandoned editor/gallery branch is not used as an implemented foundation.
 - [ ] No extra runtime transcoders, export terminals, hub, path planner, or generic wire are added.
 - [ ] test:unit passes
 - [ ] format:check + lint:check pass
