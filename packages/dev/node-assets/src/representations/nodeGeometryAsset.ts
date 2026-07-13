@@ -3,6 +3,7 @@ import { NodeGeometry } from "core/Meshes/Node/nodeGeometry";
 import { VertexData, VertexDataMaterialInfo } from "core/Meshes/mesh.vertexData";
 
 import { IsNodeAssetJsonValue, type NodeAssetJsonObject, type NodeAssetJsonValue } from "../connection/nodeAssetValueMap";
+import { BuildResourceIdentities } from "../evaluation/buildScope";
 import { DeepFreeze, ValidateAndFreezeAssetMetadata } from "./immutableMetadata";
 
 RegisterAllNodeGeometryBlocks();
@@ -29,6 +30,8 @@ export class NodeGeometryAsset {
     public readonly revision: number;
     /** Deeply frozen representation facts. */
     public readonly manifest: Readonly<NodeAssetJsonObject>;
+    /** The parsed graph identity exclusively owned by this wrapper during a build. */
+    public readonly [BuildResourceIdentities]: ReadonlyArray<object>;
 
     private _isDisposed = false;
 
@@ -44,6 +47,7 @@ export class NodeGeometryAsset {
         this.identity = validatedMetadata.identity;
         this.revision = validatedMetadata.revision;
         this.manifest = validatedMetadata.manifest;
+        this[BuildResourceIdentities] = Object.freeze([nodeGeometry]);
         this.evaluatedVertexData = evaluatedVertexData === undefined ? undefined : CloneAndValidateVertexData(evaluatedVertexData);
     }
 

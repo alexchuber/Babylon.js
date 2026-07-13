@@ -1,10 +1,15 @@
-import { describe, expect, it } from "vitest";
+import { NullEngine } from "core/Engines/nullEngine";
+import { NodeGeometry } from "core/Meshes/Node/nodeGeometry";
+import { Scene } from "core/scene";
+import { describe, expect, it, vi } from "vitest";
 
 import { NodeAssetBlock } from "../../src/blockFoundation/nodeAssetBlock";
 import { type NodeAssetConnectionPoint } from "../../src/connection/nodeAssetConnectionPoint";
 import { NodeAssetConnectionPointType } from "../../src/connection/nodeAssetConnectionPointType";
 import { BuildLimitError, BuildResourceOwnershipError, GetNodeAssetBuildReport, type BuildScope } from "../../src/evaluation/buildScope";
 import { NodeAsset } from "../../src/nodeAsset";
+import { BabylonAsset } from "../../src/representations/babylonAsset";
+import { NodeGeometryAsset } from "../../src/representations/nodeGeometryAsset";
 
 class TrackedResource {
     public disposeCalls = 0;
@@ -185,6 +190,60 @@ class DisposingPassThroughBlock extends NodeAssetBlock {
         const resource = this.input.value as TrackedResource;
         await resource.dispose();
         this.output.value = resource;
+    }
+}
+
+class OwnedWrapperSourceBlock extends NodeAssetBlock {
+    public readonly output = this._registerOutput("output", NodeAssetConnectionPointType.NODE_GEOMETRY);
+    public value: unknown = null;
+
+    public override async _buildBlockAsync(): Promise<void> {
+        this.output.value = this.value;
+    }
+}
+
+class OwnedWrapperExportBlock extends NodeAssetBlock {
+    public readonly isExportTerminal = true;
+    public readonly input: NodeAssetConnectionPoint;
+    public result: Uint8Array | null = null;
+
+    public constructor(name: string, nodeAsset: NodeAsset) {
+        super(name, nodeAsset);
+        this.input = this._registerInput("input", NodeAssetConnectionPointType.NODE_GEOMETRY);
+    }
+
+    public override async _buildBlockAsync(): Promise<void> {
+        this.result = new Uint8Array([1]);
+    }
+}
+
+class BlockingOwnedWrapperExportBlock extends OwnedWrapperExportBlock {
+    public readonly entered: Promise<void>;
+    public isUnderlyingLive: () => boolean = () => true;
+    public release: () => void = () => {};
+
+    private readonly _markEntered: () => void;
+    private readonly _releaseBuild: Promise<void>;
+
+    public constructor(name: string, nodeAsset: NodeAsset) {
+        super(name, nodeAsset);
+        let markEntered = () => {};
+        this.entered = new Promise<void>((resolve) => {
+            markEntered = resolve;
+        });
+        this._markEntered = markEntered;
+        this._releaseBuild = new Promise<void>((resolve) => {
+            this.release = resolve;
+        });
+    }
+
+    public override async _buildBlockAsync(): Promise<void> {
+        this._markEntered();
+        await this._releaseBuild;
+        if (!this.isUnderlyingLive()) {
+            throw new Error("The shared underlying resource was disposed by another build scope.");
+        }
+        this.result = new Uint8Array([1]);
     }
 }
 
@@ -397,6 +456,67 @@ describe("build scope resource lifecycle", () => {
         firstExporter.release();
         await expect(firstBuild).resolves.toBeInstanceOf(Uint8Array);
         expect(resource.disposeCalls).toBe(1);
+    });
+
+    it("rejects distinct BabylonAsset wrappers that share one live engine and scene", async () => {
+        const engine = new NullEngine();
+        const scene = new Scene(engine);
+        const firstWrapper = new BabylonAsset(engine, scene, { identity: "first", revision: 0, manifest: {} });
+        const secondWrapper = new BabylonAsset(engine, scene, { identity: "second", revision: 0, manifest: {} });
+        const firstAsset = new NodeAsset("first Babylon owner");
+        const firstSource = new OwnedWrapperSourceBlock("first source", firstAsset);
+        firstSource.value = firstWrapper;
+        const firstExporter = new BlockingOwnedWrapperExportBlock("first export", firstAsset);
+        firstExporter.isUnderlyingLive = () => !scene.isDisposed;
+        firstSource.output.connectTo(firstExporter.input);
+        const firstBuild = firstAsset.buildAsync();
+        await firstExporter.entered;
+
+        const secondAsset = new NodeAsset("second Babylon owner");
+        const secondSource = new OwnedWrapperSourceBlock("second source", secondAsset);
+        secondSource.value = secondWrapper;
+        const secondExporter = new OwnedWrapperExportBlock("second export", secondAsset);
+        secondSource.output.connectTo(secondExporter.input);
+        const secondOutcome = await secondAsset.buildAsync().catch((error: unknown) => error);
+        const wasLiveBeforeRelease = !scene.isDisposed;
+        firstExporter.release();
+        const firstOutcome = await firstBuild.catch((error: unknown) => error);
+
+        expect(secondOutcome).toMatchObject<BuildResourceOwnershipError>({ code: "NODE_ASSET_RESOURCE_OWNED" });
+        expect(wasLiveBeforeRelease).toBe(true);
+        expect(firstOutcome).toBeInstanceOf(Uint8Array);
+        expect(scene.isDisposed).toBe(true);
+    });
+
+    it("rejects distinct NodeGeometryAsset wrappers that share one live graph", async () => {
+        const graph = new NodeGeometry("shared graph");
+        graph.setToDefault();
+        const disposeSpy = vi.spyOn(graph, "dispose");
+        const firstWrapper = new NodeGeometryAsset(graph, { identity: "first", revision: 0, manifest: {} });
+        const secondWrapper = new NodeGeometryAsset(graph, { identity: "second", revision: 0, manifest: {} });
+        const firstAsset = new NodeAsset("first NodeGeometry owner");
+        const firstSource = new OwnedWrapperSourceBlock("first source", firstAsset);
+        firstSource.value = firstWrapper;
+        const firstExporter = new BlockingOwnedWrapperExportBlock("first export", firstAsset);
+        firstExporter.isUnderlyingLive = () => disposeSpy.mock.calls.length === 0;
+        firstSource.output.connectTo(firstExporter.input);
+        const firstBuild = firstAsset.buildAsync();
+        await firstExporter.entered;
+
+        const secondAsset = new NodeAsset("second NodeGeometry owner");
+        const secondSource = new OwnedWrapperSourceBlock("second source", secondAsset);
+        secondSource.value = secondWrapper;
+        const secondExporter = new OwnedWrapperExportBlock("second export", secondAsset);
+        secondSource.output.connectTo(secondExporter.input);
+        const secondOutcome = await secondAsset.buildAsync().catch((error: unknown) => error);
+        const wasLiveBeforeRelease = disposeSpy.mock.calls.length === 0;
+        firstExporter.release();
+        const firstOutcome = await firstBuild.catch((error: unknown) => error);
+
+        expect(secondOutcome).toMatchObject<BuildResourceOwnershipError>({ code: "NODE_ASSET_RESOURCE_OWNED" });
+        expect(wasLiveBeforeRelease).toBe(true);
+        expect(firstOutcome).toBeInstanceOf(Uint8Array);
+        expect(disposeSpy).toHaveBeenCalledTimes(1);
     });
 
     it("rejects a disposed resource reused by a later build", async () => {

@@ -2,6 +2,7 @@ import { type NullEngine } from "core/Engines/nullEngine";
 import { type Scene } from "core/scene";
 
 import { type NodeAssetJsonObject } from "../connection/nodeAssetValueMap";
+import { BuildResourceIdentities } from "../evaluation/buildScope";
 import { ValidateAndFreezeAssetMetadata } from "./immutableMetadata";
 
 /** Immutable caller-supplied metadata for a {@link BabylonAsset}. */
@@ -28,6 +29,8 @@ export class BabylonAsset {
     public readonly manifest: Readonly<NodeAssetJsonObject>;
     /** Marks this live representation as affine: implicit fan-out is not permitted. */
     public readonly isAffine = true;
+    /** The engine and scene identities exclusively owned by this wrapper during a build. */
+    public readonly [BuildResourceIdentities]: ReadonlyArray<object>;
 
     private _isDisposed = false;
 
@@ -48,6 +51,7 @@ export class BabylonAsset {
         this.identity = validatedMetadata.identity;
         this.revision = validatedMetadata.revision;
         this.manifest = validatedMetadata.manifest;
+        this[BuildResourceIdentities] = Object.freeze([engine, scene]);
     }
 
     /** Whether this affine representation was disposed by its build scope. */

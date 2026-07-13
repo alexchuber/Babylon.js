@@ -180,6 +180,7 @@ export class NodeAsset {
         try {
             await WaitForBuildTurnAsync(previousBuild, scope.signal);
             scope.throwIfAborted();
+            exportBlock.result = null;
             // A per-build memo so each block is evaluated exactly once even when its output fans out to
             // several consumers. Scoped to this call: a fresh build starts with a fresh memo.
             const evaluated = new Map<NodeAssetBlock, Promise<void>>();

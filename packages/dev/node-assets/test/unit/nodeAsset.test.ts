@@ -53,6 +53,25 @@ class ConcurrentFanInExportBlock extends NodeAssetBlock {
     }
 }
 
+class OneShotExportBlock extends NodeAssetBlock {
+    public readonly isExportTerminal = true;
+    public readonly input: NodeAssetConnectionPoint;
+    public result: Uint8Array | null = null;
+    private _evaluations = 0;
+
+    public constructor(name: string, nodeAsset: NodeAsset) {
+        super(name, nodeAsset);
+        this.input = this._registerInput("input", NodeAssetConnectionPointType.IMAGE);
+    }
+
+    public override async _buildBlockAsync(): Promise<void> {
+        this._evaluations++;
+        if (this._evaluations === 1) {
+            this.result = (this.input.value as { data: Uint8Array }).data;
+        }
+    }
+}
+
 /**
  * Builds a tiny uncompressed glb (one node, one mesh) in code so the roundtrip test does not
  * depend on a bundled binary fixture.
@@ -278,5 +297,15 @@ describe("NodeAsset", () => {
 
         expect(source.evaluations).toBe(1);
         expect(Array.from(result)).toEqual([7]);
+    });
+
+    it("does not reuse terminal bytes when a later build produces no result", async () => {
+        const asset = new NodeAsset("one-shot export");
+        const source = new ConcurrentSourceBlock("source", asset);
+        const exporter = new OneShotExportBlock("export", asset);
+        source.output.connectTo(exporter.input);
+
+        await expect(asset.buildAsync()).resolves.toEqual(new Uint8Array([7]));
+        await expect(asset.buildAsync()).rejects.toThrow('The "one-shot export" node asset produced no result.');
     });
 });

@@ -140,10 +140,15 @@ export interface IResolvedDiagnosticLossContext {
     readonly tags?: ReadonlyArray<string>;
 }
 
+/** Identifies additional object identities exclusively owned by a build-resource wrapper. */
+export const BuildResourceIdentities = Symbol("NodeAssetBuildResourceIdentities");
+
 /** A build-owned value that releases resources synchronously or asynchronously. */
 export interface IBuildResource {
     /** Whether the resource was already disposed before registration. */
     readonly isDisposed?: boolean;
+    /** Additional underlying object identities that this wrapper exclusively owns. */
+    readonly [BuildResourceIdentities]?: ReadonlyArray<object>;
     /** Releases resources owned by this value. */
     dispose(): void | Promise<void>;
 }
@@ -174,6 +179,7 @@ interface IResourceOwnership {
 
 interface IBuildResourceEntry {
     readonly resource: IBuildResource & object;
+    readonly identities: ReadonlyArray<object>;
     readonly producer?: IBuildDiagnosticProducer;
 }
 
@@ -392,13 +398,22 @@ export class BuildScope {
         if (this._registeredResources.has(value)) {
             return;
         }
-        if (ownership) {
-            throw new BuildResourceOwnershipError("NODE_ASSET_RESOURCE_OWNED", "A build resource cannot be shared by concurrent build scopes.");
+        const identities = [...new Set<object>([value, ...(value[BuildResourceIdentities] ?? [])])];
+        for (const identity of identities) {
+            const identityOwnership = ResourceOwnership.get(identity);
+            if (identityOwnership?.disposed) {
+                throw new BuildResourceOwnershipError("NODE_ASSET_RESOURCE_STALE", "A disposed underlying build resource cannot be reused by the same or a later build.");
+            }
+            if (identityOwnership) {
+                throw new BuildResourceOwnershipError("NODE_ASSET_RESOURCE_OWNED", "An underlying build resource cannot be shared by concurrent build scopes.");
+            }
         }
 
         this._registeredResources.add(value);
-        ResourceOwnership.set(value, { disposed: false });
-        this._resources.push({ resource: value, producer });
+        for (const identity of identities) {
+            ResourceOwnership.set(identity, { disposed: false });
+        }
+        this._resources.push({ resource: value, identities, producer });
     }
 
     /**
@@ -464,9 +479,11 @@ export class BuildScope {
         }
 
         const entry = this._resources[index];
-        const ownership = ResourceOwnership.get(entry.resource);
-        if (ownership) {
-            ownership.disposed = true;
+        for (const identity of entry.identities) {
+            const ownership = ResourceOwnership.get(identity);
+            if (ownership) {
+                ownership.disposed = true;
+            }
         }
         if (entry.resource.isDisposed) {
             await this._disposeResourceAtAsync(index - 1);

@@ -218,6 +218,7 @@ describe("typed representations", () => {
 
     it("owns an unevaluated NodeGeometry and an optional frozen VertexData snapshot", () => {
         const nodeGeometry = new NodeGeometry("fixture");
+        const evaluatedNodeGeometry = new NodeGeometry("evaluated fixture");
         const vertexData = new VertexData();
         vertexData.positions = [0, 0, 0, 1, 0, 0, 0, 1, 0];
         vertexData.indices = [0, 1, 2];
@@ -232,7 +233,7 @@ describe("typed representations", () => {
             manifest: { source: "fixture.json" },
         });
         const evaluated = new NodeGeometryAsset(
-            nodeGeometry,
+            evaluatedNodeGeometry,
             {
                 identity: "fixture-node-geometry",
                 revision: 1,
@@ -243,7 +244,7 @@ describe("typed representations", () => {
 
         expect(unevaluated.nodeGeometry).toBe(nodeGeometry);
         expect(unevaluated.evaluatedVertexData).toBeUndefined();
-        expect(evaluated.nodeGeometry).toBe(nodeGeometry);
+        expect(evaluated.nodeGeometry).toBe(evaluatedNodeGeometry);
         expect(evaluated.evaluatedVertexData).not.toBe(vertexData);
         expect(evaluated.evaluatedVertexData?.positions).toEqual(vertexData.positions);
         expect(evaluated.evaluatedVertexData?.colors).toEqual(vertexData.colors);
@@ -256,6 +257,7 @@ describe("typed representations", () => {
         expect(IsNodeGeometryAsset(evaluated)).toBe(true);
         expect(IsNodeGeometryAsset(nodeGeometry)).toBe(false);
 
+        unevaluated.dispose();
         evaluated.dispose();
         evaluated.dispose();
     });
