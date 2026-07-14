@@ -19,6 +19,16 @@ class TestBlock extends NodeAssetBlock {
     public override async _buildBlockAsync(): Promise<void> {}
 }
 
+/** A minimal NUMBER block for exercising cross-kind compatibility. */
+class NumberBlock extends NodeAssetBlock {
+    public static override ClassName = "ReconcilerNumberBlock";
+
+    public readonly input = this._registerInput("input", NodeAssetConnectionPointType.NUMBER);
+    public readonly output = this._registerOutput("output", NodeAssetConnectionPointType.NUMBER);
+
+    public override async _buildBlockAsync(): Promise<void> {}
+}
+
 /** A block whose input arity can grow at runtime, mirroring a variadic block like MergeScenes. */
 class VariadicBlock extends NodeAssetBlock {
     public static override ClassName = "ReconcilerVariadicBlock";
@@ -58,6 +68,20 @@ function WireOutputToInput(from: TestBlock, to: TestBlock): IGraphWire {
 }
 
 describe("NodeAssetReconciler", () => {
+    it("reports whether mapped ports carry compatible connection point types", () => {
+        const asset = new NodeAsset("test");
+        const scene = new TestBlock("scene", asset);
+        const number = new NumberBlock("number", asset);
+        const reconciler = new NodeAssetReconciler(asset);
+        reconciler.registerNode(scene, MakeNode(scene));
+        reconciler.registerNode(number, MakeNode(number));
+
+        expect(reconciler.canConnectPorts(PortIdForPoint(scene, scene.output), PortIdForPoint(scene, scene.input))).toBe(true);
+        expect(reconciler.canConnectPorts(PortIdForPoint(scene, scene.output), PortIdForPoint(number, number.input))).toBe(false);
+        expect(reconciler.canConnectPorts("unknown-output", PortIdForPoint(number, number.input))).toBe(false);
+        expect(reconciler.canConnectPorts(PortIdForPoint(scene, scene.output), "unknown-input")).toBe(false);
+    });
+
     it("rebuilds a domain connection from a visual wire", () => {
         const asset = new NodeAsset("test");
         const source = new TestBlock("source", asset);

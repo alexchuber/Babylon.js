@@ -2,10 +2,11 @@
  * The bridge between the NodeAssets domain and the reusable visual node-graph framework.
  *
  * `NodeAsset` is the source of truth. The controller creates blocks up front (palette drops and
- * {@link load}) and delegates keeping the domain in sync with the visuals to a {@link NodeAssetReconciler}:
- * on every editor change the reconciler removes blocks whose visual node was deleted and rebuilds
- * connections from the visual wires. The controller itself is a thin adapter — it seeds the showcase
- * graph, builds property sections through the block descriptors, serializes, and drives builds.
+ * {@link load}) and delegates keeping the domain in sync with the visuals to a {@link NodeAssetReconciler}.
+ * Content changes trigger reconciliation, which removes blocks whose visual node was deleted and rebuilds
+ * connections from the visual wires; presentation-only changes remain local to the editor. The controller
+ * itself is a thin adapter — it seeds the showcase graph, builds property sections through the block
+ * descriptors, serializes, and drives builds.
  *
  * All NodeAssets/gltf-transform types are confined to this app layer; the framework never imports it.
  */
@@ -155,14 +156,20 @@ export class NodeAssetGraphController {
                 },
             ],
         };
-        this.state = new GraphEditorState(snapshot);
+        this.state = new GraphEditorState(snapshot, {
+            canConnectPorts: (fromPortId, toPortId) => this._reconciler.canConnectPorts(fromPortId, toPortId),
+        });
 
         this.paletteCategories = BuildPaletteCategories(GetAllBlockDescriptors());
 
         // Subscribe only after seeding so the reconcile sees consistent correspondence and state.
         this._reconciler.reconcile(this.state);
         this._buildRelevantSignature = this._createBuildRelevantSignature();
-        this._onChangedObserver = this.state.onChanged.add(() => this._reconcileAndNotifyBuildRelevantChange());
+        this._onChangedObserver = this.state.onChanged.add((kind) => {
+            if (kind === "content") {
+                this._reconcileAndNotifyBuildRelevantChange();
+            }
+        });
     }
 
     /**
@@ -223,8 +230,11 @@ export class NodeAssetGraphController {
                         label: "Name",
                         value: node.title,
                         onChange: (value) => {
+                            if (node.title === value) {
+                                return;
+                            }
                             node.title = value;
-                            this.state.notifyChanged();
+                            this.state.notifyChanged("visual");
                         },
                     },
                 ],
@@ -247,7 +257,7 @@ export class NodeAssetGraphController {
 
     /**
      * Reconciles the domain with the current visuals, then runs the graph and returns the exported
-     * glb bytes. Reconcile also runs on every change, but calling it here makes the build robust to
+     * glb bytes. Content changes also reconcile eagerly, but calling it here makes the build robust to
      * any caller and is idempotent.
      * @returns The exported glb bytes.
      */
