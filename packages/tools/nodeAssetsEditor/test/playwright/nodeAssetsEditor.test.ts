@@ -285,6 +285,21 @@ test.describe("Node Assets Editor — Library", () => {
         await expect(editor.nodeByTitle("Export glTF")).toBeVisible();
     });
 
+    test("builds a preview for every bundled USD graph", async ({ page }) => {
+        test.setTimeout(420_000);
+        const editor = new NodeAssetsEditorPage(page);
+        await editor.goto();
+        await editor.waitForNextSuccessfulPreviewBuild();
+
+        for (const name of ["USD to Optimized glTF", "USD with Custom Textures", "Multi-Source Merge", "USD Preview", "Full Supported Pipeline"]) {
+            await editor.openLibraryButton.click();
+            const dialog = page.getByRole("dialog", { name: "NodeAsset Library" });
+            await dialog.getByRole("button", { name, exact: true }).click();
+            await expect(dialog).toBeHidden();
+            await editor.waitForNextSuccessfulPreviewBuild();
+        }
+    });
+
     test("loads a user-saved graph from browser storage", async ({ page }) => {
         page.on("dialog", (dialog) => void dialog.accept());
         const editor = new NodeAssetsEditorPage(page);

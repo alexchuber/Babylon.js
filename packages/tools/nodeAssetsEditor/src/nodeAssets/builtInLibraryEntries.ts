@@ -14,6 +14,8 @@ import { SetTexture } from "node-assets/Blocks/setTexture";
 import { type NodeAssetBlock } from "node-assets/blockFoundation/nodeAssetBlock";
 import { NodeAsset } from "node-assets/nodeAsset";
 
+import { DecodeBase64ToBinary } from "core/Misc/stringTools";
+
 import { type INodeAssetLibraryEntry } from "./nodeAssetLibrary";
 
 interface ISampleEditorBlock {
@@ -26,6 +28,90 @@ interface ISampleEditorBlock {
 interface ISampleBuilder {
     readonly asset: NodeAsset;
     addBlock<BlockT extends NodeAssetBlock>(block: BlockT, x: number, y: number): BlockT;
+}
+
+const BuiltInUsdData = new TextEncoder().encode(`#usda 1.0
+(
+    defaultPrim = "World"
+    upAxis = "Y"
+)
+
+def Xform "World"
+{
+    def Mesh "Triangle"
+    {
+        int[] faceVertexCounts = [3]
+        int[] faceVertexIndices = [0, 1, 2]
+        point3f[] points = [(-1, 0, 0), (1, 0, 0), (0, 1.5, 0)]
+        normal3f[] primvars:normals = [(0, 0, 1), (0, 0, 1), (0, 0, 1)] (
+            interpolation = "vertex"
+        )
+        texCoord2f[] primvars:st = [(0, 0), (1, 0), (0.5, 1)] (
+            interpolation = "vertex"
+        )
+        rel material:binding = </World/Material>
+    }
+
+    def Material "Material"
+    {
+        token outputs:surface.connect = </World/Material/Shader.outputs:surface>
+        def Shader "Shader"
+        {
+            uniform token info:id = "UsdPreviewSurface"
+            color3f inputs:diffuseColor = (0.15, 0.55, 0.9)
+            float inputs:metallic = 0.1
+            float inputs:roughness = 0.35
+            token outputs:surface
+        }
+    }
+}
+`);
+
+function CreateBuiltInGltfData(): Uint8Array {
+    const json = new TextEncoder().encode(
+        JSON.stringify({
+            asset: { version: "2.0" },
+            scene: 0,
+            scenes: [{ nodes: [0] }],
+            nodes: [{ name: "Built-in glTF source" }],
+        })
+    );
+    const paddedJsonLength = Math.ceil(json.byteLength / 4) * 4;
+    const glb = new Uint8Array(20 + paddedJsonLength);
+    const header = new DataView(glb.buffer);
+    header.setUint32(0, 0x46546c67, true);
+    header.setUint32(4, 2, true);
+    header.setUint32(8, glb.byteLength, true);
+    header.setUint32(12, paddedJsonLength, true);
+    header.setUint32(16, 0x4e4f534a, true);
+    glb.fill(0x20, 20);
+    glb.set(json, 20);
+    return glb;
+}
+
+const BuiltInGltfData = CreateBuiltInGltfData();
+const BuiltInImageData = new Uint8Array(DecodeBase64ToBinary("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAusB9Y9ZQMcAAAAASUVORK5CYII="));
+
+function CreateBuiltInUsdSource(name: string, asset: NodeAsset): ImportUSDBlock {
+    const block = new ImportUSDBlock(name, asset);
+    block.data = BuiltInUsdData;
+    block.source = "built-in-library.usda";
+    return block;
+}
+
+function CreateBuiltInGltfSource(name: string, asset: NodeAsset): ImportGLTFBlock {
+    const block = new ImportGLTFBlock(name, asset);
+    block.data = BuiltInGltfData;
+    block.source = "built-in-library.glb";
+    return block;
+}
+
+function CreateBuiltInImageSource(name: string, asset: NodeAsset): ImportImageBlock {
+    const block = new ImportImageBlock(name, asset);
+    block.data = BuiltInImageData;
+    block.mimeType = "image/png";
+    block.source = "built-in-library.png";
+    return block;
 }
 
 function CreateBuiltInEntry(name: string, configure?: (builder: ISampleBuilder) => void): INodeAssetLibraryEntry {
@@ -56,15 +142,15 @@ function CreateBuiltInEntry(name: string, configure?: (builder: ISampleBuilder) 
 export function CreateBuiltInNodeAssetLibraryEntries(): readonly INodeAssetLibraryEntry[] {
     return [
         CreateBuiltInEntry("USD to Optimized glTF", ({ asset, addBlock }) => {
-            const source = addBlock(new ImportUSDBlock("Import USD", asset), 50, 50);
+            const source = addBlock(CreateBuiltInUsdSource("Import USD", asset), 50, 50);
             const draco = addBlock(new DracoCompressionBlock("Draco Compression", asset), 310, 50);
             const output = addBlock(new ExportGLTFBlock("Export glTF", asset), 570, 50);
             source.output.connectTo(draco.input);
             draco.output.connectTo(output.input);
         }),
         CreateBuiltInEntry("USD with Custom Textures", ({ asset, addBlock }) => {
-            const source = addBlock(new ImportUSDBlock("Import USD", asset), 50, 40);
-            const image = addBlock(new ImportImageBlock("Import Image", asset), 310, 190);
+            const source = addBlock(CreateBuiltInUsdSource("Import USD", asset), 50, 40);
+            const image = addBlock(CreateBuiltInImageSource("Import Image", asset), 310, 190);
             const selector = addBlock(new Selector("Selector", asset), 310, 340);
             const setTexture = addBlock(new SetTexture("Set Texture", asset), 570, 40);
             const output = addBlock(new ExportGLTFBlock("Export glTF", asset), 830, 50);
@@ -75,8 +161,8 @@ export function CreateBuiltInNodeAssetLibraryEntries(): readonly INodeAssetLibra
             setTexture.output.connectTo(output.input);
         }),
         CreateBuiltInEntry("Multi-Source Merge", ({ asset, addBlock }) => {
-            const usd = addBlock(new ImportUSDBlock("Import USD", asset), 50, 30);
-            const gltf = addBlock(new ImportGLTFBlock("Import glTF", asset), 50, 190);
+            const usd = addBlock(CreateBuiltInUsdSource("Import USD", asset), 50, 30);
+            const gltf = addBlock(CreateBuiltInGltfSource("Import glTF", asset), 50, 190);
             const merge = addBlock(new MergeScenes("Merge Scenes", asset), 310, 60);
             const draco = addBlock(new DracoCompressionBlock("Draco Compression", asset), 570, 75);
             const ktx2 = addBlock(new KTX2CompressionBlock("KTX2 Compress", asset), 830, 75);
@@ -136,14 +222,14 @@ export function CreateBuiltInNodeAssetLibraryEntries(): readonly INodeAssetLibra
             setRoughness.output.connectTo(output.input);
         }),
         CreateBuiltInEntry("USD Preview", ({ asset, addBlock }) => {
-            const source = addBlock(new ImportUSDBlock("Import USD", asset), 50, 50);
+            const source = addBlock(CreateBuiltInUsdSource("Import USD", asset), 50, 50);
             const output = addBlock(new ExportGLTFBlock("Export glTF", asset), 310, 50);
             source.output.connectTo(output.input);
         }),
         CreateBuiltInEntry("Full Supported Pipeline", ({ asset, addBlock }) => {
-            const usd = addBlock(new ImportUSDBlock("Import USD", asset), 40, 30);
-            const gltfA = addBlock(new ImportGLTFBlock("Import glTF A", asset), 40, 170);
-            const gltfB = addBlock(new ImportGLTFBlock("Import glTF B", asset), 40, 310);
+            const usd = addBlock(CreateBuiltInUsdSource("Import USD", asset), 40, 30);
+            const gltfA = addBlock(CreateBuiltInGltfSource("Import glTF A", asset), 40, 170);
+            const gltfB = addBlock(CreateBuiltInGltfSource("Import glTF B", asset), 40, 310);
             const mergeSources = addBlock(new MergeScenes("Merge Sources", asset), 310, 60);
             const mergeAssembly = addBlock(new MergeScenes("Merge Assembly", asset), 570, 140);
             const draco = addBlock(new DracoCompressionBlock("Draco Compression", asset), 830, 155);
