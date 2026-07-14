@@ -1,13 +1,17 @@
 import { describe, expect, it, vi } from "vitest";
 
 import { DracoCompressionBlock, DracoEncoderMethod } from "../../src/Blocks/dracoCompressionBlock";
+import { DedupBlock } from "../../src/Blocks/dedupBlock";
 import { ExportGLTFBlock } from "../../src/Blocks/exportGLTFBlock";
 import { ImportGLTFBlock } from "../../src/Blocks/importGLTFBlock";
 import { KTX2CompressionBlock } from "../../src/Blocks/ktx2CompressionBlock";
+import { PruneBlock } from "../../src/Blocks/pruneBlock";
+import { type IExportBlock } from "../../src/blockFoundation/exportBlock";
 import { NodeAssetBlock } from "../../src/blockFoundation/nodeAssetBlock";
 import { type NodeAssetConnectionPoint } from "../../src/connection/nodeAssetConnectionPoint";
 import { NodeAssetConnectionPointType } from "../../src/connection/nodeAssetConnectionPointType";
 import { NodeAsset } from "../../src/nodeAsset";
+import { NodeAssetBuildError } from "../../src/nodeAssetBuildError";
 
 // The import/export blocks register the Draco encoder/decoder, so the roundtrip needs the real
 // draco3dgltf module rather than the stub the global vitest setup installs for @dev/core.
@@ -69,6 +73,15 @@ class OneShotExportBlock extends NodeAssetBlock {
         if (this._evaluations === 1) {
             this.result = (this.input.value as { data: Uint8Array }).data;
         }
+    }
+}
+
+class ThrowingExportBlock extends NodeAssetBlock implements IExportBlock {
+    public readonly isExportTerminal = true;
+    public result: Uint8Array | null = null;
+
+    public override async _buildBlockAsync(): Promise<void> {
+        throw new Error("operator failed");
     }
 }
 
@@ -137,7 +150,46 @@ describe("NodeAsset", () => {
         const exporter = new ExportGLTFBlock("export", asset);
 
         expect(exporter.result).toBeNull();
-        await expect(asset.buildAsync()).rejects.toThrow();
+        await expect(asset.buildAsync()).rejects.toMatchObject({
+            name: "NodeAssetBuildError",
+            blockId: exporter.uniqueId,
+            inputName: "input",
+            message: 'The "input" input of the "export" block is not connected.',
+        });
+    });
+
+    it("rejects a cyclic graph with the block that closes the cycle", async () => {
+        const asset = new NodeAsset("cycle");
+        const first = new DedupBlock("first", asset);
+        const second = new PruneBlock("second", asset);
+        const exporter = new ExportGLTFBlock("export", asset);
+        first.output.connectTo(second.input);
+        second.output.connectTo(first.input);
+        second.output.connectTo(exporter.input);
+
+        const result = Promise.race([
+            asset.buildAsync(),
+            new Promise<Uint8Array>((_, reject) => {
+                setTimeout(() => reject(new Error("Cycle detection timed out.")), 50);
+            }),
+        ]);
+
+        await expect(result).rejects.toMatchObject({
+            name: "NodeAssetBuildError",
+            blockId: second.uniqueId,
+            message: expect.stringContaining("cycle"),
+        });
+    });
+
+    it("attributes a block execution failure to that block", async () => {
+        const asset = new NodeAsset("block-failure");
+        const exporter = new ThrowingExportBlock("broken operator", asset);
+
+        await expect(asset.buildAsync()).rejects.toMatchObject({
+            name: "NodeAssetBuildError",
+            blockId: exporter.uniqueId,
+            message: "operator failed",
+        });
     });
 
     it("disconnects a connected point pair symmetrically", () => {

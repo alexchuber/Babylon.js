@@ -31,6 +31,7 @@ function RenderPropertyLine(descriptor: PropertyDescriptor, key: string): ReactE
                     value={descriptor.value}
                     validator={descriptor.validator}
                     validateOnlyOnBlur={descriptor.validateOnlyOnBlur}
+                    disabled={descriptor.disabled}
                     onChange={descriptor.onChange}
                 />
             );
@@ -86,7 +87,7 @@ export const PropertiesView: FunctionComponent<{ context: EditorContextValue }> 
     const { context } = props;
     const classes = useStyles();
     const getSelectedNode = useCallback(() => ({ node: context.state.primarySelectedNode }), [context]);
-    const selectedNode = useObservableState(getSelectedNode, context.state.onSelectionChanged, context.state.onChanged).node;
+    const selectedNode = useObservableState(getSelectedNode, context.state.onSelectionChanged, context.state.onChanged, context.diagnostics?.onChanged).node;
     const sections: readonly IPropertySection[] = selectedNode ? context.buildPropertySections(selectedNode) : [];
 
     return selectedNode ? (

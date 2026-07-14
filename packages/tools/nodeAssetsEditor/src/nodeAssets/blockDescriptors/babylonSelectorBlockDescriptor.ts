@@ -6,6 +6,8 @@ RegisterBlockDescriptor({
     paletteItemId: "babylon-selector",
     label: "Babylon Selector",
     category: SelectorsCategory,
+    description: "Select a Babylon mesh, light, camera, or node by name.",
+    keywords: ["babylon", "query", "mesh", "light", "camera", "node"],
     headerColor: SelectorsHeaderColor,
     className: BabylonSelectorBlock.ClassName,
     create: (nodeAsset) => new BabylonSelectorBlock("Babylon Selector", nodeAsset),

@@ -1,6 +1,6 @@
 import { test, expect, type Page } from "@playwright/test";
 
-import { NodeAssetsEditorPage } from "./nae.utils";
+import { NodeAssetsEditorPage, useLocalGltfValidator } from "./nae.utils";
 
 // A 1x1 PNG. The IMAGE preview sniffs these bytes' PNG signature to render an <img>; ExportImage is a
 // pass-through, so the previewed bytes are exactly this file.
@@ -34,6 +34,7 @@ function expectColor(actual: readonly number[], expected: readonly number[]): vo
 
 test.describe("Node Assets Editor — image preview", () => {
     test.describe.configure({ timeout: 180_000 });
+    test.beforeEach(async ({ page }) => await useLocalGltfValidator(page));
 
     test("previews the produced image for an ImportImage -> ExportImage pipeline", async ({ page }) => {
         const pageErrors = collectPageErrors(page);
@@ -76,6 +77,9 @@ test.describe("Node Assets Editor — image preview", () => {
         await expect(previewImage).toHaveJSProperty("complete", true);
         expect(await previewImage.getAttribute("src")).toMatch(/^blob:/);
         await expect(previewImageInfo).toContainText("image/png");
+
+        await page.locator('button[value="Validation"]').click();
+        await expect(page.getByText("glTF validation does not apply to image outputs.")).toBeVisible();
 
         expect(pageErrors).toEqual([]);
     });

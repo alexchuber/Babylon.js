@@ -5,6 +5,8 @@ import { OperatorCategory, OperatorHeaderColor, RegisterBlockDescriptor } from "
 RegisterBlockDescriptor({
     paletteItemId: "dedup",
     label: "Dedup",
+    description: "Reuse equivalent scene resources instead of storing duplicates.",
+    keywords: ["optimize", "cleanup", "deduplicate", "reduce size"],
     headerColor: OperatorHeaderColor,
     category: OperatorCategory,
     className: DedupBlock.ClassName,

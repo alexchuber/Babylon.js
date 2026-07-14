@@ -20,6 +20,8 @@ export interface ITextPropertyDescriptor {
     readonly validateOnlyOnBlur?: boolean;
     /** Called with the new value when the user edits the text. */
     readonly onChange: (value: string) => void;
+    /** When true, the value is visible but cannot be edited. */
+    readonly disabled?: boolean;
 }
 
 /**

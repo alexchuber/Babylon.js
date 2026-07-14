@@ -6,6 +6,8 @@ RegisterBlockDescriptor({
     paletteItemId: "get-usd-prim",
     label: "Get USD Prim",
     category: USDCategory,
+    description: "Read a USD prim and its authored properties by absolute path.",
+    keywords: ["usd", "prim", "path", "properties", "lookup"],
     headerColor: USDHeaderColor,
     className: GetUSDPrimBlock.ClassName,
     create: (nodeAsset) => new GetUSDPrimBlock("Get USD Prim", nodeAsset),

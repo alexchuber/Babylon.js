@@ -86,6 +86,10 @@ export interface IBlockDescriptor {
     readonly paletteItemId: string;
     /** Human readable label, used both in the palette and as the new node's title. */
     readonly label: string;
+    /** Concise explanation shown in the palette. */
+    readonly description?: string;
+    /** Workflow terms and aliases used by palette search. */
+    readonly keywords?: readonly string[];
     /** Data-driven node header color. */
     readonly headerColor: string;
     /** The backend class name this descriptor maps to, used to recover the descriptor on load. */

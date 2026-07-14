@@ -25,6 +25,8 @@ async function PromptForUsdAsync(block: ImportUSDBlock, refresh: () => void): Pr
 RegisterBlockDescriptor({
     paletteItemId: "import-usd",
     label: "Import USD",
+    description: "Transcode a USD, USDA, or USDZ source onto the scene spine.",
+    keywords: ["open", "load", "source", "Pixar", "USDZ"],
     category: "Sources",
     headerColor: ImportHeaderColor,
     className: ImportUSDBlock.ClassName,

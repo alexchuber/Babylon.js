@@ -12,6 +12,7 @@ import { type IGraphNode } from "./graphModel";
 import { type IPaletteCategory } from "./paletteModel";
 import { type IPropertySection } from "./propertyModel";
 import { type GraphEditorState } from "./editorState";
+import { type GraphNodeDiagnostics } from "./nodeDiagnostics";
 
 /**
  * Bridges imperative canvas view commands (which live inside the canvas component) to other parts of
@@ -40,6 +41,8 @@ export class CanvasViewController {
 export type EditorContextValue = {
     /** The mutable editor state being edited. */
     readonly state: GraphEditorState;
+    /** Optional ephemeral diagnostics rendered on nodes without entering graph snapshots. */
+    readonly diagnostics?: GraphNodeDiagnostics;
     /** The categorized palette contents shown in the left pane. */
     readonly paletteCategories: readonly IPaletteCategory[];
     /** Builds the property sections shown for a selected node. */

@@ -1,3 +1,5 @@
+import { NodeAssetBuildError } from "node-assets/nodeAssetBuildError";
+
 /** A request sent from the Node Assets Editor app to the build worker. */
 export interface INodeAssetBuildRequest {
     /** Message discriminator. */
@@ -16,6 +18,10 @@ export interface ISerializedNodeAssetBuildError {
     readonly message: string;
     /** Original stack, when available. */
     readonly stack?: string;
+    /** Unique id of the responsible block for a structured NodeAsset build failure. */
+    readonly blockId?: number;
+    /** Required input involved in the failure, when applicable. */
+    readonly inputName?: string;
 }
 
 /** Successful worker response containing the exported glb bytes. */
@@ -48,11 +54,19 @@ export type NodeAssetBuildResponse = INodeAssetBuildSuccessResponse | INodeAsset
  */
 export function SerializeNodeAssetBuildError(error: unknown): ISerializedNodeAssetBuildError {
     if (error instanceof Error) {
-        return {
+        const serialized: ISerializedNodeAssetBuildError = {
             name: error.name || "Error",
             message: error.message,
             stack: error.stack,
         };
+        if (error instanceof NodeAssetBuildError) {
+            return {
+                ...serialized,
+                blockId: error.blockId,
+                inputName: error.inputName,
+            };
+        }
+        return serialized;
     }
 
     return {

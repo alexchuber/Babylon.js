@@ -5,6 +5,8 @@ import { OperatorCategory, OperatorHeaderColor, RegisterBlockDescriptor } from "
 RegisterBlockDescriptor({
     paletteItemId: "normals",
     label: "Normals",
+    description: "Generate or replace vertex normals for scene meshes.",
+    keywords: ["recalculate normals", "shading", "lighting", "mesh repair"],
     headerColor: OperatorHeaderColor,
     category: OperatorCategory,
     className: NormalsBlock.ClassName,

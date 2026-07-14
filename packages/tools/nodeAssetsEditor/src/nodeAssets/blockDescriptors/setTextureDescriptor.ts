@@ -5,6 +5,8 @@ import { RegisterBlockDescriptor, SelectorsCategory, SelectorsHeaderColor } from
 RegisterBlockDescriptor({
     paletteItemId: "set-texture",
     label: "Set Texture",
+    description: "Assign an image to a selected material texture slot.",
+    keywords: ["replace texture", "material", "image", "texture slot", "selector"],
     headerColor: SelectorsHeaderColor,
     category: SelectorsCategory,
     className: SetTexture.ClassName,

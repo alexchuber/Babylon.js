@@ -23,6 +23,7 @@ export {
     type LossRecord,
     type NodeAssetBuildResult,
 } from "./evaluation/buildScope";
+export { NodeAssetBuildError } from "./nodeAssetBuildError";
 export { NodeAssetBlock } from "./blockFoundation/nodeAssetBlock";
 export { NodeAssetConnectionPoint } from "./connection/nodeAssetConnectionPoint";
 export { NodeAssetConnectionPointDirection } from "./connection/nodeAssetConnectionPointDirection";

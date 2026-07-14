@@ -12,6 +12,10 @@ export interface IPaletteItem {
     readonly id: string;
     /** Human readable label shown in the list. */
     readonly label: string;
+    /** Concise explanation shown below the label. */
+    readonly description?: string;
+    /** Workflow terms and aliases used by palette search. */
+    readonly keywords?: readonly string[];
 }
 
 /**
@@ -22,6 +26,21 @@ export interface IPaletteCategory {
     readonly label: string;
     /** The items in this category. */
     readonly items: readonly IPaletteItem[];
+}
+
+/**
+ * Tests whether a palette item matches a user-entered search term.
+ * @param item - Palette item to search.
+ * @param categoryLabel - Category containing the item.
+ * @param filter - User-entered filter text.
+ * @returns Whether any discoverability field contains the normalized filter.
+ */
+export function PaletteItemMatchesFilter(item: IPaletteItem, categoryLabel: string, filter: string): boolean {
+    const normalizedFilter = filter.trim().toLowerCase();
+    if (!normalizedFilter) {
+        return true;
+    }
+    return [item.label, categoryLabel, item.description ?? "", ...(item.keywords ?? [])].some((value) => value.toLowerCase().includes(normalizedFilter));
 }
 
 /**

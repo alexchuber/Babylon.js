@@ -57,6 +57,13 @@ class FakeController implements IBuildOrchestratorController {
     public readonly onBuildRelevantChanged = new TestTriggerSource();
     public readonly buildAsync = vi.fn<() => Promise<Uint8Array>>();
     public readonly loadDefaultImportAsync = vi.fn<() => Promise<void>>();
+    public readonly clearBuildError = vi.fn<() => void>();
+    public readonly reportBuildError = vi.fn<(error: unknown) => void>();
+}
+
+class FakeValidation {
+    public readonly clear = vi.fn<() => void>();
+    public readonly validateBuildResultAsync = vi.fn<(data: Uint8Array) => Promise<void>>().mockResolvedValue(undefined);
 }
 
 function CreateDeferred<T>(): { promise: Promise<T>; resolve: (value: T) => void; reject: (reason: unknown) => void } {
@@ -81,19 +88,22 @@ describe("BuildOrchestrator", () => {
     function Setup(): {
         controller: FakeController;
         preview: FakePreview;
+        validation: FakeValidation;
         exportResult: ReturnType<typeof vi.fn<(data: Uint8Array, fileName: string) => void>>;
         orchestrator: BuildOrchestrator;
     } {
         const controller = new FakeController();
         const preview = new FakePreview();
+        const validation = new FakeValidation();
         const exportResult = vi.fn<(data: Uint8Array, fileName: string) => void>();
         const orchestrator = new BuildOrchestrator({
             controller,
             preview,
+            validation,
             exportResult,
             now: () => clockMs,
         });
-        return { controller, preview, exportResult, orchestrator };
+        return { controller, preview, validation, exportResult, orchestrator };
     }
 
     beforeEach(() => {
@@ -163,6 +173,21 @@ describe("BuildOrchestrator", () => {
         orchestrator.dispose();
     });
 
+    it("validates each successful build result without delaying preview success", async () => {
+        const { controller, preview, validation, orchestrator } = Setup();
+        const bytes = new Uint8Array([0x67, 0x6c, 0x54, 0x46]);
+        controller.loadDefaultImportAsync.mockResolvedValue(undefined);
+        controller.buildAsync.mockResolvedValue(bytes);
+
+        orchestrator.start();
+        await vi.runAllTimersAsync();
+
+        expect(preview.loadedResults).toEqual([bytes]);
+        expect(validation.validateBuildResultAsync).toHaveBeenCalledWith(bytes);
+
+        orchestrator.dispose();
+    });
+
     it("keeps building status until the minimum duration elapses after a fast build", async () => {
         const { controller, preview, orchestrator } = Setup();
         controller.loadDefaultImportAsync.mockResolvedValue(undefined);
@@ -212,6 +237,7 @@ describe("BuildOrchestrator", () => {
 
         expect(errorSpy).toHaveBeenCalledWith(expect.stringContaining("Build failed: build failed"));
         expect(preview.lastStatus).toEqual({ isBuilding: false, errorMessage: "build failed" });
+        expect(controller.reportBuildError).toHaveBeenCalledWith(expect.objectContaining({ message: "build failed" }));
 
         orchestrator.dispose();
     });

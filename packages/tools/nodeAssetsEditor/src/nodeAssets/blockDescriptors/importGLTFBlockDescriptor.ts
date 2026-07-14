@@ -25,6 +25,8 @@ async function PromptForGLTFAsync(block: ImportGLTFBlock, refresh: () => void): 
 RegisterBlockDescriptor({
     paletteItemId: "import-gltf",
     label: "Import glTF",
+    description: "Load a glTF or GLB source scene.",
+    keywords: ["open", "load", "source", "model", "GLB"],
     category: "Sources",
     headerColor: ImportHeaderColor,
     className: ImportGLTFBlock.ClassName,

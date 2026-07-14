@@ -25,7 +25,12 @@ export function BuildPaletteCategories(descriptors: readonly IBlockDescriptor[])
             items = [];
             itemsByCategory.set(label, items);
         }
-        items.push({ id: descriptor.paletteItemId, label: descriptor.label });
+        items.push({
+            id: descriptor.paletteItemId,
+            label: descriptor.label,
+            ...(descriptor.description === undefined ? {} : { description: descriptor.description }),
+            ...(descriptor.keywords === undefined ? {} : { keywords: descriptor.keywords }),
+        });
     }
     return Array.from(itemsByCategory, ([label, items]) => ({ label, items }));
 }

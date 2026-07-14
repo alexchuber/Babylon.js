@@ -5,6 +5,8 @@ import { CompositionCategory, CompositionHeaderColor, RegisterBlockDescriptor } 
 RegisterBlockDescriptor({
     paletteItemId: "merge-scenes",
     label: "Merge Scenes",
+    description: "Compose multiple scene inputs into one output scene.",
+    keywords: ["combine assets", "composition", "assemble", "multi source"],
     headerColor: CompositionHeaderColor,
     category: CompositionCategory,
     className: MergeScenes.ClassName,

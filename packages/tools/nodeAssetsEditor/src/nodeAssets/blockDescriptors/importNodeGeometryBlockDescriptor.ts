@@ -9,6 +9,8 @@ RegisterBlockDescriptor({
     paletteItemId: "import-node-geometry",
     label: "Import Node Geometry",
     category: "Sources",
+    description: "Load a Node Geometry graph from a URL or Playground snippet.",
+    keywords: ["node geometry", "NGE", "procedural geometry", "snippet", "load"],
     headerColor: ImportHeaderColor,
     className: ImportNodeGeometryBlock.ClassName,
     create: (nodeAsset) => ConfigureBlockForEditor(new ImportNodeGeometryBlock("Import Node Geometry", nodeAsset)),

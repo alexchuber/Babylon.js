@@ -2,7 +2,10 @@ import { describe, expect, it, vi } from "vitest";
 
 import { NodeAsset } from "node-assets/nodeAsset";
 
+import { NodeAssetBuildError } from "node-assets/nodeAssetBuildError";
+
 import { type IGraphNode } from "../../src/nodeGraph/graphModel";
+import { PaletteItemMatchesFilter } from "../../src/nodeGraph/paletteModel";
 import { type PropertyDescriptor } from "../../src/nodeGraph/propertyModel";
 import { CreateBuiltInNodeAssetLibraryEntries } from "../../src/nodeAssets/builtInLibraryEntries";
 import { NodeAssetGraphController } from "../../src/nodeAssets/nodeAssetGraphController";
@@ -10,6 +13,13 @@ import { type INodeAssetBuildClient } from "../../src/nodeAssets/nodeAssetBuildW
 import { NodeAssetReconciler } from "../../src/nodeAssets/nodeAssetReconciler";
 
 const BuiltInNodeAssetLibraryEntries = CreateBuiltInNodeAssetLibraryEntries();
+
+type MutableSavedGraph = {
+    graph: {
+        blocks: Array<{ id: number }>;
+        connections: Array<{ fromPoint: string }>;
+    };
+};
 
 function FindNode(controller: NodeAssetGraphController, title: string): IGraphNode {
     const node = controller.state.nodes.find((candidate) => candidate.title === title);
@@ -393,6 +403,80 @@ describe("NodeAssetGraphController", () => {
         }
     });
 
+    it("maps a structured build failure to an ephemeral node diagnostic", () => {
+        const controller = new NodeAssetGraphController();
+        try {
+            const exportNode = FindNode(controller, "Export glTF");
+            const blockId = Number(exportNode.id.slice("node-".length));
+
+            controller.reportBuildError(new NodeAssetBuildError("The export input is not connected.", blockId, "input"));
+
+            expect(controller.diagnostics.get(exportNode.id)).toEqual({
+                severity: "error",
+                message: "The export input is not connected.",
+            });
+            expect(FindProperty(controller, exportNode, "Build error", "text")).toMatchObject({
+                value: "The export input is not connected.",
+                disabled: true,
+            });
+
+            controller.clearBuildError();
+            expect(controller.diagnostics.get(exportNode.id)).toBeNull();
+        } finally {
+            controller.dispose();
+        }
+    });
+
+    it("rejects malformed editor metadata without replacing the current graph", () => {
+        const controller = new NodeAssetGraphController();
+        try {
+            const saved = controller.serialize();
+            const malformed = JSON.parse(saved);
+            malformed.editor.blocks[0].position = null;
+
+            expect(() => controller.load(JSON.stringify(malformed))).toThrow("position");
+            expect(controller.serialize()).toBe(saved);
+        } finally {
+            controller.dispose();
+        }
+    });
+
+    it.each([
+        [
+            "duplicate block ids",
+            (malformed: MutableSavedGraph) => {
+                malformed.graph.blocks[1].id = malformed.graph.blocks[0].id;
+            },
+            "duplicate block id",
+        ],
+        [
+            "unsafe block ids",
+            (malformed: MutableSavedGraph) => {
+                malformed.graph.blocks[0].id = Number.MAX_SAFE_INTEGER + 1;
+            },
+            "safe non-negative integer",
+        ],
+        [
+            "unknown connection points",
+            (malformed: MutableSavedGraph) => {
+                malformed.graph.connections[0].fromPoint = "missing";
+            },
+            "unknown point",
+        ],
+    ])("rejects %s without replacing the current graph", (_name, corrupt, expectedMessage) => {
+        const controller = new NodeAssetGraphController();
+        try {
+            const saved = controller.serialize();
+            const malformed = JSON.parse(saved);
+            corrupt(malformed);
+
+            expect(() => controller.load(JSON.stringify(malformed))).toThrow(expectedMessage);
+            expect(controller.serialize()).toBe(saved);
+        } finally {
+            controller.dispose();
+        }
+    });
+
     it("groups MergeScenes under a Composition palette category", () => {
         const controller = new NodeAssetGraphController();
         try {
@@ -412,6 +496,31 @@ describe("NodeAssetGraphController", () => {
             const selectorsIndex = labels.indexOf("Selectors");
             expect(compositionIndex).toBeGreaterThanOrEqual(0);
             expect(selectorsIndex).toBe(compositionIndex + 1);
+        } finally {
+            controller.dispose();
+        }
+    });
+
+    it("provides discovery metadata for every built-in palette item", () => {
+        const controller = new NodeAssetGraphController();
+        try {
+            const items = controller.paletteCategories.flatMap((category) => category.items);
+            expect(items.length).toBeGreaterThan(0);
+            expect(items.filter((item) => !item.description?.trim()).map((item) => item.label)).toEqual([]);
+            expect(items.filter((item) => !item.keywords?.length).map((item) => item.label)).toEqual([]);
+        } finally {
+            controller.dispose();
+        }
+    });
+
+    it("finds every cleanup-oriented optimization block by intent", () => {
+        const controller = new NodeAssetGraphController();
+        try {
+            const matches = controller.paletteCategories.flatMap((category) =>
+                category.items.filter((item) => PaletteItemMatchesFilter(item, category.label, "cleanup")).map((item) => item.id)
+            );
+
+            expect(matches).toEqual(expect.arrayContaining(["prune", "dedup", "weld", "join", "flatten"]));
         } finally {
             controller.dispose();
         }
@@ -475,6 +584,44 @@ describe("NodeAssetGraphController", () => {
             const reloaded = FindNode(controller, "Merge Scenes");
             expect(reloaded.ports.filter((port) => port.direction === "input")).toHaveLength(3);
             expect(reloaded.ports.filter((port) => port.direction === "output")).toHaveLength(1);
+        } finally {
+            controller.dispose();
+        }
+    });
+
+    it("rejects editor metadata for an unknown block without replacing the current graph", () => {
+        const controller = new NodeAssetGraphController();
+        try {
+            const saved = controller.serialize();
+            const malformed = JSON.parse(saved);
+            malformed.editor.blocks.push({ ...malformed.editor.blocks[0], id: 999_999 });
+
+            expect(() => controller.load(JSON.stringify(malformed))).toThrow("unknown block id");
+            expect(controller.serialize()).toBe(saved);
+        } finally {
+            controller.dispose();
+        }
+    });
+
+    it("rejects a maximum-safe block id before it can exhaust the id generator", () => {
+        const controller = new NodeAssetGraphController();
+        try {
+            const saved = controller.serialize();
+            const malformed = JSON.parse(saved);
+            const originalId = malformed.graph.blocks[0].id;
+            malformed.graph.blocks[0].id = Number.MAX_SAFE_INTEGER;
+            for (const connection of malformed.graph.connections) {
+                if (connection.fromBlock === originalId) {
+                    connection.fromBlock = Number.MAX_SAFE_INTEGER;
+                }
+                if (connection.toBlock === originalId) {
+                    connection.toBlock = Number.MAX_SAFE_INTEGER;
+                }
+            }
+            malformed.editor.blocks.find((block: { id: number }) => block.id === originalId).id = Number.MAX_SAFE_INTEGER;
+
+            expect(() => controller.load(JSON.stringify(malformed))).toThrow("safe non-negative integer");
+            expect(controller.serialize()).toBe(saved);
         } finally {
             controller.dispose();
         }

@@ -1,7 +1,7 @@
 import { type FunctionComponent, type MouseEvent as ReactMouseEvent, type PointerEvent as ReactPointerEvent } from "react";
 
 import { Caption1, makeStyles, mergeClasses, shorthands, tokens } from "@fluentui/react-components";
-import { ChevronDownRegular, ChevronRightRegular } from "@fluentui/react-icons";
+import { ChevronDownRegular, ChevronRightRegular, ErrorCircleRegular } from "@fluentui/react-icons";
 
 import { type IGraphNode } from "../graphModel";
 import { GetNodeSize, NodeHeaderHeight, NodeBodyPaddingTop, PortRowHeight, PartitionPorts } from "../geometry";
@@ -26,6 +26,10 @@ const useStyles = makeStyles({
     },
     nodeSelected: {
         ...shorthands.border(tokens.strokeWidthThick, "solid", tokens.colorBrandStroke1),
+        boxShadow: tokens.shadow8,
+    },
+    nodeError: {
+        ...shorthands.border(tokens.strokeWidthThick, "solid", tokens.colorPaletteRedBorder2),
         boxShadow: tokens.shadow8,
     },
     header: {
@@ -58,6 +62,16 @@ const useStyles = makeStyles({
         color: tokens.colorNeutralForegroundOnBrand,
         cursor: "pointer",
         ...shorthands.borderRadius(tokens.borderRadiusSmall),
+    },
+    headerActions: {
+        alignItems: "center",
+        display: "flex",
+        gap: tokens.spacingHorizontalXS,
+    },
+    errorIcon: {
+        alignItems: "center",
+        color: tokens.colorNeutralForegroundOnBrand,
+        display: "flex",
     },
     portRow: {
         position: "absolute",
@@ -120,6 +134,7 @@ export const GraphNodeView: FunctionComponent<{ node: IGraphNode }> = (props) =>
     const { state } = canvas.editor;
 
     const isSelected = useObservableState(() => state.isNodeSelected(node.id), state.onSelectionChanged);
+    const diagnostic = useObservableState(() => canvas.editor.diagnostics?.get(node.id) ?? null, canvas.editor.diagnostics?.onChanged);
     const size = GetNodeSize(node);
     const { inputs, outputs } = PartitionPorts(node);
 
@@ -157,23 +172,31 @@ export const GraphNodeView: FunctionComponent<{ node: IGraphNode }> = (props) =>
 
     return (
         <div
-            className={mergeClasses(classes.node, isSelected && classes.nodeSelected)}
+            className={mergeClasses(classes.node, isSelected && classes.nodeSelected, !!diagnostic && classes.nodeError)}
             style={{ left: node.position.x, top: node.position.y, width: size.width, height: size.height }}
             data-testid="graph-node"
             data-node-id={node.id}
+            data-node-error={diagnostic ? "true" : undefined}
             onPointerDown={onHeaderPointerDown}
             onContextMenu={onContextMenu}
         >
             <div className={mergeClasses(classes.header, node.collapsed && classes.headerCollapsed)} style={{ backgroundColor: node.headerColor }}>
                 <Caption1 className={classes.headerTitle}>{node.title}</Caption1>
-                <div
-                    className={classes.chevron}
-                    onPointerDown={onChevronPointerDown}
-                    onClick={onChevronClick}
-                    role="button"
-                    aria-label={node.collapsed ? "Expand node" : "Collapse node"}
-                >
-                    {node.collapsed ? <ChevronRightRegular /> : <ChevronDownRegular />}
+                <div className={classes.headerActions}>
+                    {diagnostic && (
+                        <div className={classes.errorIcon} role="img" aria-label={`Error: ${diagnostic.message}`} title={diagnostic.message}>
+                            <ErrorCircleRegular />
+                        </div>
+                    )}
+                    <div
+                        className={classes.chevron}
+                        onPointerDown={onChevronPointerDown}
+                        onClick={onChevronClick}
+                        role="button"
+                        aria-label={node.collapsed ? "Expand node" : "Collapse node"}
+                    >
+                        {node.collapsed ? <ChevronRightRegular /> : <ChevronDownRegular />}
+                    </div>
                 </div>
             </div>
 

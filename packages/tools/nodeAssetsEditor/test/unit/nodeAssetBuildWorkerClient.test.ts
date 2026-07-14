@@ -1,7 +1,9 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
+import { NodeAssetBuildError } from "node-assets/nodeAssetBuildError";
+
 import { NodeAssetBuildSupersededError, NodeAssetBuildTimeoutError, NodeAssetBuildWorkerClient, type INodeAssetBuildWorker } from "../../src/nodeAssets/nodeAssetBuildWorkerClient";
-import { type INodeAssetBuildRequest, type NodeAssetBuildResponse } from "../../src/nodeAssets/nodeAssetBuildMessages";
+import { SerializeNodeAssetBuildError, type INodeAssetBuildRequest, type NodeAssetBuildResponse } from "../../src/nodeAssets/nodeAssetBuildMessages";
 
 class TestBuildWorker implements INodeAssetBuildWorker {
     public readonly postedRequests: INodeAssetBuildRequest[] = [];
@@ -58,6 +60,17 @@ function CreateWorkerFactory(): { readonly workers: TestBuildWorker[]; readonly 
 }
 
 describe("NodeAssetBuildWorkerClient", () => {
+    it("serializes block attribution for worker transport", () => {
+        const error = new NodeAssetBuildError("operator failed", 42, "input");
+
+        expect(SerializeNodeAssetBuildError(error)).toMatchObject({
+            name: "NodeAssetBuildError",
+            message: "operator failed",
+            blockId: 42,
+            inputName: "input",
+        });
+    });
+
     it("posts the serialized graph as a build request and resolves returned glb bytes", async () => {
         const { workers, createWorker } = CreateWorkerFactory();
         const client = new NodeAssetBuildWorkerClient(createWorker);
@@ -103,6 +116,32 @@ describe("NodeAssetBuildWorkerClient", () => {
         workers[0].sendResponse({ type: "error", generation: 1, error: { name: "Error", message: "The graph is not connected." } });
 
         await expect(buildPromise).rejects.toThrow("The graph is not connected.");
+        client.dispose();
+    });
+
+    it("rehydrates block-attributed build errors from the worker", async () => {
+        const { workers, createWorker } = CreateWorkerFactory();
+        const client = new NodeAssetBuildWorkerClient(createWorker);
+
+        const buildPromise = client.buildAsync({ name: "broken" }).catch((error: unknown) => error);
+        workers[0].sendResponse({
+            type: "error",
+            generation: 1,
+            error: {
+                name: "NodeAssetBuildError",
+                message: 'The "input" input is not connected.',
+                blockId: 42,
+                inputName: "input",
+            },
+        });
+
+        await expect(buildPromise).resolves.toMatchObject({
+            name: "NodeAssetBuildError",
+            message: 'The "input" input is not connected.',
+            blockId: 42,
+            inputName: "input",
+        });
+        expect(await buildPromise).toBeInstanceOf(NodeAssetBuildError);
         client.dispose();
     });
 

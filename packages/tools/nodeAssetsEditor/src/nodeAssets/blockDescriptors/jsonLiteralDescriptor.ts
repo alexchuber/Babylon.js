@@ -19,6 +19,8 @@ function IsValidJson(value: string): boolean {
 RegisterBlockDescriptor({
     paletteItemId: "json-literal",
     label: "JSON",
+    description: "Provide a reusable structured JSON value.",
+    keywords: ["literal", "constant", "object", "array", "value"],
     headerColor: ValuesHeaderColor,
     category: ValuesCategory,
     className: JsonLiteral.ClassName,

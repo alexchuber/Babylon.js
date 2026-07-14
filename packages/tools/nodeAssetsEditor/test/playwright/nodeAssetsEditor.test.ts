@@ -1,7 +1,7 @@
 import { test, expect, type Page, type Download } from "@playwright/test";
 import { readFileSync } from "node:fs";
 
-import { NodeAssetsEditorPage } from "./nae.utils";
+import { NodeAssetsEditorPage, useLocalGltfValidator } from "./nae.utils";
 
 type GltfJson = {
     readonly extensionsUsed?: readonly string[];
@@ -18,9 +18,9 @@ const EnergyOrbPipeline: readonly (readonly [string, string])[] = [
     ["Composite Image", "Build PBR Material"],
     ["Import Image", "Build PBR Material"],
     ["Import glTF", "Build PBR Material"],
-    ["Build PBR Material", "KTX2 Compress"],
-    ["KTX2 Compress", "Draco Compression"],
-    ["Draco Compression", "Export glTF"],
+    ["Build PBR Material", "Apply BasisU"],
+    ["Apply BasisU", "Apply Draco"],
+    ["Apply Draco", "Export glTF"],
 ];
 
 /**
@@ -58,6 +58,7 @@ async function readDownloadedGlb(download: Download): Promise<Buffer> {
 
 test.describe("Node Assets Editor — Energy orb showcase", () => {
     test.describe.configure({ timeout: 180_000 });
+    test.beforeEach(async ({ page }) => await useLocalGltfValidator(page));
 
     test("opens to the energy-orb graph and auto-previews the compressed, self-lit orb without console errors", async ({ page }) => {
         const pageErrors = collectPageErrors(page);
@@ -82,8 +83,8 @@ test.describe("Node Assets Editor — Energy orb showcase", () => {
         await expect(editor.nodeByTitle("Import Image")).toHaveCount(2);
         await expect(editor.nodeByTitle("Composite Image")).toBeVisible();
         await expect(editor.nodeByTitle("Build PBR Material")).toBeVisible();
-        await expect(editor.nodeByTitle("KTX2 Compress")).toBeVisible();
-        await expect(editor.nodeByTitle("Draco Compression")).toBeVisible();
+        await expect(editor.nodeByTitle("Apply BasisU")).toBeVisible();
+        await expect(editor.nodeByTitle("Apply Draco")).toBeVisible();
         await expect(editor.nodeByTitle("Export glTF")).toBeVisible();
         await editor.expectWiredPipeline(EnergyOrbPipeline);
 
@@ -140,9 +141,9 @@ test.describe("Node Assets Editor — Energy orb showcase", () => {
             ["Import Image", "Composite Image"],
             ["Composite Image", "Build PBR Material"],
             ["Import glTF", "Build PBR Material"],
-            ["Build PBR Material", "KTX2 Compress"],
-            ["KTX2 Compress", "Draco Compression"],
-            ["Draco Compression", "Export glTF"],
+            ["Build PBR Material", "Apply BasisU"],
+            ["Apply BasisU", "Apply Draco"],
+            ["Apply Draco", "Export glTF"],
         ]);
         await editor.waitForSuccessfulPreviewBuild();
         await expect(editor.previewCanvas).toBeVisible();
@@ -155,6 +156,72 @@ test.describe("Node Assets Editor — Energy orb showcase", () => {
         expect((exported.materials ?? []).length).toBeGreaterThan(0);
         expect(exported.extensionsUsed ?? []).toContain("KHR_texture_basisu");
         expect(exported.extensionsUsed ?? []).toContain("KHR_draco_mesh_compression");
+    });
+
+    test("validates the latest glTF output and exposes the complete report", async ({ page }) => {
+        const editor = new NodeAssetsEditorPage(page);
+        await editor.goto();
+        await editor.waitForNextSuccessfulPreviewBuild();
+
+        await page.locator('button[value="Validation"]').click();
+        await expect(page.getByText(/Your output (is a valid glTF file|has validation issues)/)).toBeVisible({ timeout: 30_000 });
+        await expect(page.getByText("Errors", { exact: true })).toBeVisible();
+        await expect(page.getByText("Warnings", { exact: true })).toBeVisible();
+        await expect(page.getByText("Infos", { exact: true })).toBeVisible();
+        await expect(page.getByText("Hints", { exact: true })).toBeVisible();
+
+        const reportWindowPromise = page.waitForEvent("popup");
+        await page.getByRole("button", { name: "View Report Details" }).click();
+        const reportWindow = await reportWindowPromise;
+        await expect(reportWindow.locator("body")).toContainText('"numErrors"');
+    });
+
+    test("marks the responsible node when a required input is disconnected", async ({ page }) => {
+        const editor = new NodeAssetsEditorPage(page);
+        await editor.goto();
+        await editor.waitForNextSuccessfulPreviewBuild();
+
+        await editor.deleteWire("Apply Draco", "Export glTF");
+        await expect(editor.previewErrorOverlay).toBeVisible({ timeout: 30_000 });
+
+        const exportNode = editor.nodeByTitle("Export glTF");
+        await expect(exportNode).toHaveAttribute("data-node-error", "true");
+        await expect(exportNode.getByRole("img", { name: /Error: The .* input .* is not connected/ })).toBeVisible();
+
+        await editor.selectNode("Export glTF");
+        await expect(page.getByText("BUILD ERROR", { exact: true })).toBeVisible();
+    });
+
+    test("reports a failed load without replacing the current graph or preview", async ({ page }) => {
+        const editor = new NodeAssetsEditorPage(page);
+        await editor.goto();
+        await editor.waitForNextSuccessfulPreviewBuild();
+
+        const fileChooserPromise = page.waitForEvent("filechooser");
+        await page.getByRole("button", { name: "Load" }).click();
+        const fileChooser = await fileChooserPromise;
+        await fileChooser.setFiles({ name: "broken.json", mimeType: "application/json", buffer: Buffer.from("{") });
+
+        await expect(page.getByText(/Could not load the NodeAsset file:/)).toBeVisible();
+        await expect(editor.nodes).toHaveCount(8);
+        await editor.expectWiredPipeline(EnergyOrbPipeline);
+        await expect(editor.previewCanvas).toBeVisible();
+    });
+
+    test("finds nodes by workflow intent and shows their descriptions", async ({ page }) => {
+        const editor = new NodeAssetsEditorPage(page);
+        await editor.goto();
+
+        const search = page.getByPlaceholder("Search palette");
+        for (const [query, label, description] of [
+            ["decimate", "Simplify", "Reduce mesh polygon count to a target ratio."],
+            ["optimize", "Prune", "Remove unused scene resources from the output."],
+            ["compress", "Apply BasisU", "Compress scene textures to KTX2 / Basis Universal."],
+        ]) {
+            await search.fill(query);
+            await expect(page.getByTitle(label, { exact: true })).toBeVisible();
+            await expect(page.getByText(description, { exact: true })).toBeVisible();
+        }
     });
 });
 

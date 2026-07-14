@@ -7,6 +7,8 @@ const AxisOptions: readonly FlipAxis[] = ["horizontal", "vertical"];
 RegisterBlockDescriptor({
     paletteItemId: "flip-image",
     label: "Flip Image",
+    description: "Mirror an image horizontally or vertically.",
+    keywords: ["mirror", "invert", "horizontal", "vertical"],
     headerColor: ImageHeaderColor,
     category: ImageCategory,
     className: FlipImageBlock.ClassName,

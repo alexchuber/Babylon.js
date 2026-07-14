@@ -4,7 +4,7 @@ import { Accordion, AccordionHeader, AccordionItem, AccordionPanel, Body1, Capti
 import { SearchBar } from "shared-ui-components/fluent/primitives/searchBar";
 
 import { type EditorContextValue } from "../editorContext";
-import { type IPaletteCategory, type IPaletteItem, PaletteDragFormat } from "../paletteModel";
+import { type IPaletteCategory, type IPaletteItem, PaletteDragFormat, PaletteItemMatchesFilter } from "../paletteModel";
 
 const useStyles = makeStyles({
     root: {
@@ -32,7 +32,7 @@ const useStyles = makeStyles({
         paddingBottom: tokens.spacingVerticalS,
     },
     row: {
-        alignItems: "center",
+        alignItems: "flex-start",
         backgroundColor: tokens.colorNeutralBackground1,
         border: `${tokens.strokeWidthThin} solid ${tokens.colorNeutralStroke1}`,
         borderRadius: tokens.borderRadiusMedium,
@@ -40,6 +40,7 @@ const useStyles = makeStyles({
         color: tokens.colorNeutralForeground1,
         cursor: "grab",
         display: "flex",
+        flexDirection: "column",
         minHeight: tokens.spacingVerticalXXL,
         padding: `${tokens.spacingVerticalSNudge} ${tokens.spacingHorizontalM}`,
         userSelect: "none",
@@ -52,6 +53,9 @@ const useStyles = makeStyles({
             backgroundColor: tokens.colorNeutralBackground1Pressed,
             cursor: "grabbing",
         },
+    },
+    description: {
+        color: tokens.colorNeutralForeground2,
     },
     empty: {
         color: tokens.colorNeutralForeground3,
@@ -98,7 +102,7 @@ export const PaletteView: FunctionComponent<{ context: EditorContextValue }> = (
     const filteredCategories = useMemo<readonly FilteredPaletteCategory[]>(() => {
         return context.paletteCategories
             .map((category, index) => {
-                const items = isFiltering ? category.items.filter((item) => item.label.toLowerCase().includes(normalizedFilter)) : category.items;
+                const items = isFiltering ? category.items.filter((item) => PaletteItemMatchesFilter(item, category.label, normalizedFilter)) : category.items;
                 return {
                     category,
                     items,
@@ -145,6 +149,7 @@ export const PaletteView: FunctionComponent<{ context: EditorContextValue }> = (
                                     {items.map((item) => (
                                         <div key={item.id} className={classes.row} draggable={true} title={item.label} onDragStart={(event) => onDragStart(event, item)}>
                                             <Body1>{item.label}</Body1>
+                                            {item.description && <Caption1 className={classes.description}>{item.description}</Caption1>}
                                         </div>
                                     ))}
                                 </div>

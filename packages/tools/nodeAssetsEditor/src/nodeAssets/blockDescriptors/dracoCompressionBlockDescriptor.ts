@@ -46,6 +46,8 @@ function ParseQuantizationBits(value: string): Record<string, number> | null {
 RegisterBlockDescriptor({
     paletteItemId: "draco-compression",
     label: "Apply Draco",
+    description: "Compress mesh geometry with Draco during glTF export.",
+    keywords: ["compress", "mesh compression", "geometry", "KHR_draco_mesh_compression"],
     headerColor: DracoHeaderColor,
     className: DracoCompressionBlock.ClassName,
     create: (nodeAsset) => new DracoCompressionBlock("Apply Draco", nodeAsset),

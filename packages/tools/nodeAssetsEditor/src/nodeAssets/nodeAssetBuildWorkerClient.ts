@@ -1,3 +1,5 @@
+import { NodeAssetBuildError } from "node-assets/nodeAssetBuildError";
+
 import { type INodeAssetBuildRequest, type ISerializedNodeAssetBuildError, type NodeAssetBuildResponse } from "./nodeAssetBuildMessages";
 
 type BuildWorkerMessageListener = (event: MessageEvent<NodeAssetBuildResponse>) => void;
@@ -78,7 +80,7 @@ export class NodeAssetBuildTimeoutError extends Error {
     public constructor(timeoutMs: number) {
         super(
             `The build did not finish within ${Math.round(timeoutMs / 1000)}s and was stopped. Firefox compresses ` +
-                `KTX2 / Basis textures far slower than Chromium-based browsers; use Chrome or Edge, or remove the KTX2 Compress node.`
+                `KTX2 / Basis textures far slower than Chromium-based browsers; use Chrome or Edge, or remove the Apply BasisU node.`
         );
         this.name = "NodeAssetBuildTimeoutError";
         this.timeoutMs = timeoutMs;
@@ -90,7 +92,10 @@ function CreateDefaultBuildWorker(): INodeAssetBuildWorker {
 }
 
 function CreateErrorFromSerializedError(serializedError: ISerializedNodeAssetBuildError): Error {
-    const error = new Error(serializedError.message);
+    const error =
+        serializedError.blockId === undefined
+            ? new Error(serializedError.message)
+            : new NodeAssetBuildError(serializedError.message, serializedError.blockId, serializedError.inputName);
     error.name = serializedError.name || "Error";
     if (serializedError.stack) {
         error.stack = serializedError.stack;

@@ -125,7 +125,8 @@ when an output feeds more than one consumer, fan-out policy is **per payload kin
 **GltfAsset** is value-like (clone the `Document`, as milestones 01–06 did for `SCENE`); **UsdAsset** is
 immutable (share the frozen stage; overlays are additive); **BabylonAsset** is **affine** (no implicit
 clone — an explicit lossy fork block); resources and scalars are shared. _Avoid_: memoization cache (as
-a user term), COW.
+a user term), COW. Evaluation rejects cycles against the current ancestry without rejecting valid
+fan-out.
 
 **Evaluate / Bake** _(milestone 07; NodeGeometry)_:
 `NODE_GEOMETRY` imports **unevaluated** as a **NodeGeometryAsset** (a resource wrapper owning a parsed,
@@ -144,6 +145,12 @@ representation contract, the loader/root behavior, and the terminal GLB **Viewer
 the preview may convert coordinates independently of the payload). Representation handedness is never
 inferred from preview rendering; the editor/manifest surface each boundary's mode. _Avoid_: chirality,
 winding (a mesh-level detail), flip (as the whole concept).
+
+**build error** (`NodeAssetBuildError`):
+An actionable build failure carrying the responsible block's stable id and, when relevant, its input
+name. Missing required inputs, cycles, and block execution failures use this type so editor hosts can
+localize the problem while generic callers can continue treating it as an `Error`. _Avoid_: diagnostic
+(the editor's visual state), validation error (reserved for glTF validation).
 
 ## Blocks
 

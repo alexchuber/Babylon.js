@@ -4,6 +4,7 @@ import { type NodeAssetBlock } from "./blockFoundation/nodeAssetBlock";
 import { type NodeAssetConnectionPoint } from "./connection/nodeAssetConnectionPoint";
 import { BuildScope, CreateNodeAssetBuildResult, type INodeAssetBuildOptions, type NodeAssetBuildResult } from "./evaluation/buildScope";
 import { CloneForFanOutAsync } from "./evaluation/fanOutCopy";
+import { NodeAssetBuildError } from "./nodeAssetBuildError";
 import { IsNodeAssetSerializedGraph, type NodeAssetConnectionSerialization, type NodeAssetSerializedGraph } from "./serialization/nodeAssetSerialization";
 import { UniqueIdGenerator } from "./utils/uniqueIdGenerator";
 
@@ -183,7 +184,7 @@ export class NodeAsset {
             // A per-build memo so each block is evaluated exactly once even when its output fans out to
             // several consumers. Scoped to this call: a fresh build starts with a fresh memo.
             const evaluated = new Map<NodeAssetBlock, Promise<void>>();
-            await this._evaluateBlockAsync(exportBlock, evaluated, scope);
+            await this._evaluateBlockAsync(exportBlock, evaluated, scope, []);
             result = exportBlock.result;
             if (!result) {
                 throw new Error(`The "${this.name}" node asset produced no result.`);
@@ -229,9 +230,13 @@ export class NodeAsset {
      * @param block - The block to evaluate.
      * @param evaluated - The per-build memo of block evaluations.
      * @param scope - The per-build owner of diagnostics and lifecycle state.
+     * @param ancestry - Blocks on the current pull path, used to detect cycles without rejecting fan-out.
      * @returns The block's single evaluation promise, shared across all of its consumers.
      */
-    private async _evaluateBlockAsync(block: NodeAssetBlock, evaluated: Map<NodeAssetBlock, Promise<void>>, scope: BuildScope): Promise<void> {
+    private async _evaluateBlockAsync(block: NodeAssetBlock, evaluated: Map<NodeAssetBlock, Promise<void>>, scope: BuildScope, ancestry: readonly NodeAssetBlock[]): Promise<void> {
+        if (ancestry.includes(block)) {
+            throw new NodeAssetBuildError(`The "${this.name}" node asset contains a cycle through the "${block.name}" block.`, block.uniqueId);
+        }
         const existing = evaluated.get(block);
         if (existing) {
             return await existing;
@@ -240,7 +245,7 @@ export class NodeAsset {
         scope.beginEvaluation();
         // Populate the memo synchronously (before the await below) so a sibling branch reaching this
         // same block dedupes onto this promise instead of starting a second evaluation.
-        const promise = this._doEvaluateBlockAsync(block, evaluated, scope);
+        const promise = this._doEvaluateBlockAsync(block, evaluated, scope, [...ancestry, block]);
         evaluated.set(block, promise);
         try {
             return await promise;
@@ -257,8 +262,14 @@ export class NodeAsset {
      * @param block - The block to evaluate.
      * @param evaluated - The per-build memo of block evaluations.
      * @param scope - The per-build owner of diagnostics and lifecycle state.
+     * @param ancestry - Blocks on the current pull path, including this block.
      */
-    private async _doEvaluateBlockAsync(block: NodeAssetBlock, evaluated: Map<NodeAssetBlock, Promise<void>>, scope: BuildScope): Promise<void> {
+    private async _doEvaluateBlockAsync(
+        block: NodeAssetBlock,
+        evaluated: Map<NodeAssetBlock, Promise<void>>,
+        scope: BuildScope,
+        ancestry: readonly NodeAssetBlock[]
+    ): Promise<void> {
         const connections: Array<{ input: NodeAssetConnectionPoint; upstream: NodeAssetConnectionPoint }> = [];
         for (const input of block.inputs) {
             scope._registerConnectionPoint(input);
@@ -270,14 +281,14 @@ export class NodeAsset {
             // An unconnected optional input is a valid "no value" (the block falls back to a default);
             // an unconnected required input is a wiring error.
             if (!input.isOptional) {
-                throw new Error(`The "${input.name}" input of the "${block.name}" block is not connected.`);
+                throw new NodeAssetBuildError(`The "${input.name}" input of the "${block.name}" block is not connected.`, block.uniqueId, input.name);
             }
         }
 
         // Build all upstream blocks first, then propagate their resolved values.
         await this._settleInOrderAsync(
             connections.map(async (connection) => {
-                await this._evaluateBlockAsync(connection.upstream.ownerBlock, evaluated, scope);
+                await this._evaluateBlockAsync(connection.upstream.ownerBlock, evaluated, scope, ancestry);
             }),
             scope
         );
@@ -313,9 +324,13 @@ export class NodeAsset {
         try {
             await block._buildBlockAsync(scope);
         } catch (error) {
+            const attributedError =
+                error instanceof NodeAssetBuildError || scope.isCancellationError(error) || (scope.hasPrimaryError && scope.primaryError === error)
+                    ? error
+                    : new NodeAssetBuildError(error instanceof Error ? error.message : String(error), block.uniqueId, undefined, { cause: error });
             failed = true;
-            primaryError = error;
-            scope.abortForFailure(error);
+            primaryError = attributedError;
+            scope.abortForFailure(attributedError);
         }
 
         const producer = { kind: "block" as const, blockId: block.uniqueId, blockName: block.name };

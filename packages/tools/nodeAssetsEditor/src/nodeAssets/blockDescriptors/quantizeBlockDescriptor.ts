@@ -5,6 +5,8 @@ import { OperatorCategory, OperatorHeaderColor, RegisterBlockDescriptor } from "
 RegisterBlockDescriptor({
     paletteItemId: "quantize",
     label: "Quantize",
+    description: "Reduce vertex attribute precision to shrink scene data.",
+    keywords: ["optimize", "compress", "precision", "mesh size"],
     headerColor: OperatorHeaderColor,
     category: OperatorCategory,
     className: QuantizeBlock.ClassName,

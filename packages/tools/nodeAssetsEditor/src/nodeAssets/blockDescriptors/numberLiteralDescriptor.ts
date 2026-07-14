@@ -5,6 +5,8 @@ import { RegisterBlockDescriptor, ValuesCategory, ValuesHeaderColor } from "../b
 RegisterBlockDescriptor({
     paletteItemId: "number-literal",
     label: "Number",
+    description: "Provide a reusable numeric value to another block.",
+    keywords: ["literal", "constant", "scalar", "value"],
     headerColor: ValuesHeaderColor,
     category: ValuesCategory,
     className: NumberLiteral.ClassName,

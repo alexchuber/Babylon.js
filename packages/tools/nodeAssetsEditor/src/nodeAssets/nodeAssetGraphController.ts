@@ -19,9 +19,11 @@ import { type ImportGLTFBlock } from "node-assets/Blocks/importGLTFBlock";
 import { type ImportImageBlock } from "node-assets/Blocks/importImageBlock";
 import { type KTX2CompressionBlock } from "node-assets/Blocks/ktx2CompressionBlock";
 import { NodeAsset } from "node-assets/nodeAsset";
+import { NodeAssetBuildError } from "node-assets/nodeAssetBuildError";
 import { type NodeAssetBlock } from "node-assets/blockFoundation/nodeAssetBlock";
 
 import { GraphEditorState } from "../nodeGraph/editorState";
+import { GraphNodeDiagnostics } from "../nodeGraph/nodeDiagnostics";
 import { type IGraphNode, type IGraphSnapshot, type IGraphWire, type Vec2 } from "../nodeGraph/graphModel";
 import { type IPaletteCategory } from "../nodeGraph/paletteModel";
 import { type IPropertySection } from "../nodeGraph/propertyModel";
@@ -30,7 +32,7 @@ import { type IPropertySection } from "../nodeGraph/propertyModel";
 // load-time lookups below see every built-in block. (See ./blockDescriptors/index.ts.)
 import "./blockDescriptors";
 import { ConfigureBlockForEditor, GetAllBlockDescriptors, GetBlockDescriptorByPaletteItemId, GetBlockDescriptorForBlock, type IBlockDescriptor } from "./blockCatalog";
-import { BlockToNode, PortIdForPoint } from "./blockNodeMapping";
+import { BlockToNode, NodeIdForBlockId, PortIdForPoint } from "./blockNodeMapping";
 import { BuildPaletteCategories } from "./paletteCategories";
 import { NodeAssetReconciler } from "./nodeAssetReconciler";
 import { NodeAssetBuildWorkerClient, type INodeAssetBuildClient } from "./nodeAssetBuildWorkerClient";
@@ -46,10 +48,143 @@ interface IEditorBlockMetadata {
     readonly fileName?: string;
 }
 
+interface ISerializedNodeAssetBlock extends Record<string, unknown> {
+    readonly id: number;
+}
+
+interface ISerializedNodeAssetConnection extends Record<string, unknown> {
+    readonly fromBlock: number;
+    readonly fromPoint: string;
+    readonly toBlock: number;
+    readonly toPoint: string;
+}
+
+interface ISerializedNodeAssetGraph extends Record<string, unknown> {
+    readonly blocks: readonly ISerializedNodeAssetBlock[];
+    readonly connections: readonly ISerializedNodeAssetConnection[];
+}
+
 /** The full editor save file: the domain graph plus the editor-owned visual metadata. */
 interface INodeAssetEditorFile {
-    readonly graph: ReturnType<NodeAsset["serialize"]>;
+    readonly graph: ISerializedNodeAssetGraph;
     readonly editor: { readonly blocks: readonly IEditorBlockMetadata[] };
+}
+
+function IsRecord(value: unknown): value is Record<string, unknown> {
+    return typeof value === "object" && value !== null;
+}
+
+function ValidateSerializedGraph(graph: Record<string, unknown>): asserts graph is ISerializedNodeAssetGraph {
+    if (graph.name !== undefined && typeof graph.name !== "string") {
+        throw new Error('The NodeAsset save file "graph.name" value must be a string when provided.');
+    }
+    if (!Array.isArray(graph.blocks)) {
+        throw new Error('The NodeAsset save file "graph.blocks" value must be an array.');
+    }
+    if (!Array.isArray(graph.connections)) {
+        throw new Error('The NodeAsset save file "graph.connections" value must be an array.');
+    }
+
+    const blockIds = new Set<number>();
+    for (const [index, block] of graph.blocks.entries()) {
+        if (!IsRecord(block)) {
+            throw new Error(`Serialized graph block at index ${index} must be an object.`);
+        }
+        if (typeof block.id !== "number" || !Number.isSafeInteger(block.id) || block.id < 0 || block.id >= Number.MAX_SAFE_INTEGER) {
+            throw new Error(`Serialized graph block at index ${index} must have an id that is a safe non-negative integer.`);
+        }
+        if (blockIds.has(block.id)) {
+            throw new Error(`Serialized graph contains duplicate block id ${block.id}.`);
+        }
+        blockIds.add(block.id);
+    }
+
+    const connectedInputs = new Map<number, Set<string>>();
+    for (const [index, connection] of graph.connections.entries()) {
+        if (!IsRecord(connection)) {
+            throw new Error(`Serialized graph connection at index ${index} must be an object.`);
+        }
+        const { fromBlock, fromPoint, toBlock, toPoint } = connection;
+        if (typeof fromBlock !== "number" || !Number.isSafeInteger(fromBlock) || !blockIds.has(fromBlock)) {
+            throw new Error(`Serialized graph connection at index ${index} references unknown source block ${String(fromBlock)}.`);
+        }
+        if (typeof toBlock !== "number" || !Number.isSafeInteger(toBlock) || !blockIds.has(toBlock)) {
+            throw new Error(`Serialized graph connection at index ${index} references unknown destination block ${String(toBlock)}.`);
+        }
+        if (typeof fromPoint !== "string" || fromPoint.length === 0) {
+            throw new Error(`Serialized graph connection at index ${index} must name an output.`);
+        }
+        if (typeof toPoint !== "string" || toPoint.length === 0) {
+            throw new Error(`Serialized graph connection at index ${index} must name an input.`);
+        }
+
+        const blockInputs = connectedInputs.get(toBlock) ?? new Set<string>();
+        if (blockInputs.has(toPoint)) {
+            throw new Error(`Serialized graph connects block ${toBlock}'s "${toPoint}" input more than once.`);
+        }
+        blockInputs.add(toPoint);
+        connectedInputs.set(toBlock, blockInputs);
+    }
+}
+
+function ParseEditorFile(json: string): INodeAssetEditorFile {
+    const parsed: unknown = JSON.parse(json);
+    if (!IsRecord(parsed) || !IsRecord(parsed.graph)) {
+        throw new Error("The NodeAsset save file must contain a graph object.");
+    }
+    ValidateSerializedGraph(parsed.graph);
+
+    const rawEditor = parsed.editor;
+    if (rawEditor !== undefined && !IsRecord(rawEditor)) {
+        throw new Error('The NodeAsset save file "editor" value must be an object.');
+    }
+    const rawBlocks = rawEditor?.blocks ?? [];
+    if (!Array.isArray(rawBlocks)) {
+        throw new Error('The NodeAsset save file "editor.blocks" value must be an array.');
+    }
+
+    const graphBlockIds = new Set(parsed.graph.blocks.map((block) => block.id));
+    const editorBlockIds = new Set<number>();
+    const blocks: IEditorBlockMetadata[] = rawBlocks.map((rawBlock, index) => {
+        if (!IsRecord(rawBlock)) {
+            throw new Error(`Editor block metadata at index ${index} must be an object.`);
+        }
+        const { id, position, title, collapsed, fileName } = rawBlock;
+        if (typeof id !== "number" || !Number.isSafeInteger(id) || id < 0 || id >= Number.MAX_SAFE_INTEGER) {
+            throw new Error(`Editor block metadata at index ${index} must have an id that is a safe non-negative integer.`);
+        }
+        if (editorBlockIds.has(id)) {
+            throw new Error(`Editor block metadata contains duplicate id ${id}.`);
+        }
+        if (!graphBlockIds.has(id)) {
+            throw new Error(`Editor block metadata references unknown block id ${id}.`);
+        }
+        editorBlockIds.add(id);
+        if (!IsRecord(position) || typeof position.x !== "number" || !Number.isFinite(position.x) || typeof position.y !== "number" || !Number.isFinite(position.y)) {
+            throw new Error(`Editor block metadata at index ${index} must have a finite x/y position.`);
+        }
+        if (typeof title !== "string") {
+            throw new Error(`Editor block metadata at index ${index} must have a string title.`);
+        }
+        if (typeof collapsed !== "boolean") {
+            throw new Error(`Editor block metadata at index ${index} must have a boolean collapsed value.`);
+        }
+        if (fileName !== undefined && typeof fileName !== "string") {
+            throw new Error(`Editor block metadata at index ${index} must have a string fileName when provided.`);
+        }
+        return {
+            id,
+            position: { x: position.x, y: position.y },
+            title,
+            collapsed,
+            fileName,
+        };
+    });
+
+    return {
+        graph: parsed.graph,
+        editor: { blocks },
+    };
 }
 
 // Human-readable provenance labels for the seeded "energy orb" sample assets, shown in each import
@@ -70,6 +205,9 @@ export class NodeAssetGraphController {
 
     /** The palette contents shown in the left pane, derived from the block catalog. */
     public readonly paletteCategories: readonly IPaletteCategory[];
+
+    /** Ephemeral build diagnostics keyed by visual node id. */
+    public readonly diagnostics = new GraphNodeDiagnostics();
 
     /**
      * Fires when a build (export) is requested from the graph, e.g. the export node's action button.
@@ -240,6 +378,21 @@ export class NodeAssetGraphController {
                 ],
             },
         ];
+        const diagnostic = this.diagnostics.get(node.id);
+        if (diagnostic) {
+            sections.unshift({
+                title: "BUILD ERROR",
+                properties: [
+                    {
+                        kind: "text",
+                        label: "Build error",
+                        value: diagnostic.message,
+                        disabled: true,
+                        onChange: () => undefined,
+                    },
+                ],
+            });
+        }
 
         const block = this._reconciler.getBlock(node.id);
         if (block) {
@@ -264,6 +417,26 @@ export class NodeAssetGraphController {
     public async buildAsync(): Promise<Uint8Array> {
         this._reconcileAndNotifyBuildRelevantChange();
         return await this._buildClient.buildAsync(this._nodeAsset.serialize());
+    }
+
+    /** Clears the node diagnostic produced by the previous build. */
+    public clearBuildError(): void {
+        this.diagnostics.clear();
+    }
+
+    /**
+     * Maps a structured runtime failure to its visual node.
+     * @param error - Build failure reported by the worker.
+     */
+    public reportBuildError(error: unknown): void {
+        this.diagnostics.clear();
+        if (!(error instanceof NodeAssetBuildError)) {
+            return;
+        }
+        const nodeId = NodeIdForBlockId(error.blockId);
+        if (this.state.getNode(nodeId)) {
+            this.diagnostics.set(nodeId, { severity: "error", message: error.message });
+        }
     }
 
     /**
@@ -295,30 +468,29 @@ export class NodeAssetGraphController {
      * @param json - The JSON save file.
      */
     public load(json: string): void {
-        const file = JSON.parse(json) as INodeAssetEditorFile;
+        const file = ParseEditorFile(json);
         const asset = NodeAsset.Parse(file.graph);
 
-        this._nodeAsset = asset;
-        this._reconciler.reset(asset);
-
         const metadataById = new Map<number, IEditorBlockMetadata>();
-        for (const metadata of file.editor?.blocks ?? []) {
+        for (const metadata of file.editor.blocks) {
             metadataById.set(metadata.id, metadata);
         }
 
         const nodes: IGraphNode[] = [];
+        const blockNodes: Array<{ readonly block: NodeAssetBlock; readonly node: IGraphNode }> = [];
         for (const block of asset.attachedBlocks) {
             ConfigureBlockForEditor(block);
             const descriptor = GetBlockDescriptorForBlock(block);
             if (!descriptor) {
-                continue;
+                throw new Error(`The "${block.getClassName()}" block is not supported by this Node Assets Editor.`);
             }
             const metadata = metadataById.get(block.uniqueId);
             if (block instanceof ExportGLTFBlock && metadata?.fileName !== undefined) {
                 block.fileName = metadata.fileName;
             }
-            const node = this._registerBlockNode(block, descriptor, metadata?.position ?? { x: 0, y: 0 }, metadata?.title ?? descriptor.label, metadata?.collapsed ?? false);
+            const node = BlockToNode(block, descriptor, metadata?.position ?? { x: 0, y: 0 }, metadata?.title ?? descriptor.label, metadata?.collapsed ?? false);
             nodes.push(node);
+            blockNodes.push({ block, node });
         }
 
         const wires: IGraphWire[] = [];
@@ -335,7 +507,14 @@ export class NodeAssetGraphController {
             }
         }
 
-        // Correspondence is rebuilt above, so the reconcile fired by reset sees a consistent world.
+        // Commit only after the complete candidate file has parsed and mapped successfully.
+        this._nodeAsset = asset;
+        this._reconciler.reset(asset);
+        for (const { block, node } of blockNodes) {
+            this._reconciler.registerNode(block, node);
+        }
+        this.diagnostics.clear();
+        // Correspondence is committed above, so the reconcile fired by reset sees a consistent world.
         this.state.reset({ nodes, wires, frames: [] });
     }
 

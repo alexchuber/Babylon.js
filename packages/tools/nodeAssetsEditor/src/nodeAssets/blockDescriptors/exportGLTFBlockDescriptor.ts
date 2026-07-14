@@ -8,6 +8,8 @@ const ExportHeaderColor = "#3a6ea5";
 RegisterBlockDescriptor({
     paletteItemId: "export-gltf",
     label: "Export glTF",
+    description: "Write the final scene as a binary glTF (.glb).",
+    keywords: ["save", "download", "output", "GLB"],
     headerColor: ExportHeaderColor,
     className: ExportGLTFBlock.ClassName,
     create: (nodeAsset) => ConfigureBlockForEditor(new ExportGLTFBlock("Export glTF", nodeAsset)),

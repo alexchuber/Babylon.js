@@ -5,6 +5,8 @@ import { OperatorCategory, OperatorHeaderColor, RegisterBlockDescriptor } from "
 RegisterBlockDescriptor({
     paletteItemId: "simplify",
     label: "Simplify",
+    description: "Reduce mesh polygon count to a target ratio.",
+    keywords: ["decimate", "reduce polygons", "LOD", "optimize mesh"],
     headerColor: OperatorHeaderColor,
     category: OperatorCategory,
     className: SimplifyBlock.ClassName,

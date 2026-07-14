@@ -5,6 +5,8 @@ import { OperatorCategory, OperatorHeaderColor, RegisterBlockDescriptor } from "
 RegisterBlockDescriptor({
     paletteItemId: "weld",
     label: "Weld",
+    description: "Merge equivalent vertices to reduce mesh duplication.",
+    keywords: ["optimize", "cleanup", "vertices", "deduplicate", "topology"],
     headerColor: OperatorHeaderColor,
     category: OperatorCategory,
     className: WeldBlock.ClassName,

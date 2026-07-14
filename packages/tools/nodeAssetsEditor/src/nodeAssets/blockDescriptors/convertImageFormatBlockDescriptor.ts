@@ -7,6 +7,8 @@ const FormatOptions: readonly ImageFormat[] = ["png", "jpeg", "webp"];
 RegisterBlockDescriptor({
     paletteItemId: "convert-image-format",
     label: "Convert Image Format",
+    description: "Encode an image as PNG, JPEG, or WebP.",
+    keywords: ["image conversion", "encode", "PNG", "JPEG", "WebP"],
     headerColor: ImageHeaderColor,
     category: ImageCategory,
     className: ConvertImageFormatBlock.ClassName,

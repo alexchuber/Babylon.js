@@ -9,6 +9,8 @@ const MaxDimension = 4096;
 RegisterBlockDescriptor({
     paletteItemId: "resize-image",
     label: "Resize Image",
+    description: "Scale an image to target pixel dimensions.",
+    keywords: ["scale texture", "dimensions", "resolution", "downsample"],
     headerColor: ImageHeaderColor,
     category: ImageCategory,
     className: ResizeImageBlock.ClassName,

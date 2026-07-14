@@ -5,6 +5,8 @@ import { OperatorCategory, OperatorHeaderColor, RegisterBlockDescriptor } from "
 RegisterBlockDescriptor({
     paletteItemId: "prune",
     label: "Prune",
+    description: "Remove unused scene resources from the output.",
+    keywords: ["optimize", "cleanup", "remove unused", "dead assets"],
     headerColor: OperatorHeaderColor,
     category: OperatorCategory,
     className: PruneBlock.ClassName,

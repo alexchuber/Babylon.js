@@ -5,6 +5,8 @@ import { ImageCategory, ImageHeaderColor, RegisterBlockDescriptor } from "../blo
 RegisterBlockDescriptor({
     paletteItemId: "composite-image",
     label: "Composite Image",
+    description: "Layer one image over another with an offset.",
+    keywords: ["combine images", "overlay", "layer", "texture atlas"],
     headerColor: ImageHeaderColor,
     category: ImageCategory,
     className: CompositeImageBlock.ClassName,

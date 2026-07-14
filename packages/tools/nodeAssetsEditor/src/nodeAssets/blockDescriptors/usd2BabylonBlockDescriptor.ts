@@ -6,6 +6,8 @@ RegisterBlockDescriptor({
     paletteItemId: "usd2babylon",
     label: "USD → Babylon",
     category: TranscodersCategory,
+    description: "Convert a USD stage into a Babylon scene.",
+    keywords: ["convert", "transcode", "usd", "babylon", "scene"],
     headerColor: TranscodersHeaderColor,
     className: USD2BabylonBlock.ClassName,
     create: (nodeAsset) => new USD2BabylonBlock("USD → Babylon", nodeAsset),

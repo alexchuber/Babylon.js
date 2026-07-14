@@ -6,6 +6,8 @@ RegisterBlockDescriptor({
     paletteItemId: "evaluate-node-geometry",
     label: "Evaluate Node Geometry",
     category: TranscodersCategory,
+    description: "Evaluate a Node Geometry graph and capture its vertex data.",
+    keywords: ["node geometry", "NGE", "evaluate", "procedural geometry", "vertex data"],
     headerColor: TranscodersHeaderColor,
     className: EvaluateNodeGeometryBlock.ClassName,
     create: (nodeAsset) => new EvaluateNodeGeometryBlock("Evaluate Node Geometry", nodeAsset),

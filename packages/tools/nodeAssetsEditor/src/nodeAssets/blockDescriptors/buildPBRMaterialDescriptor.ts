@@ -17,6 +17,8 @@ function FactorToHex(factor: readonly [number, number, number, ...number[]]): st
 RegisterBlockDescriptor({
     paletteItemId: "build-pbr-material",
     label: "Build PBR Material",
+    description: "Build and assign a metallic-roughness PBR material.",
+    keywords: ["material", "shader", "metallic roughness", "textures"],
     headerColor: CompositionHeaderColor,
     category: CompositionCategory,
     className: BuildPBRMaterial.ClassName,

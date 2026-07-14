@@ -5,6 +5,8 @@ import { RegisterBlockDescriptor, SelectorsCategory, SelectorsHeaderColor } from
 RegisterBlockDescriptor({
     paletteItemId: "selector",
     label: "Selector",
+    description: "Address a scene property with a glTF object-model pointer.",
+    keywords: ["find", "select", "pointer", "path", "KHR_animation_pointer"],
     headerColor: SelectorsHeaderColor,
     category: SelectorsCategory,
     className: Selector.ClassName,

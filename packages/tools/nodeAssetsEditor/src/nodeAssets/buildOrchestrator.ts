@@ -27,6 +27,10 @@ export interface IBuildOrchestratorController {
     buildAsync(): Promise<Uint8Array>;
     /** Loads the editor's default source asset, run once before the first build. */
     loadDefaultImportAsync(): Promise<void>;
+    /** Clears the node-local error produced by an older build. */
+    clearBuildError(): void;
+    /** Routes a failed build to the responsible node when the error carries block identity. */
+    reportBuildError(error: unknown): void;
 }
 
 /** The preview surface the orchestrator updates with build status and results. */
@@ -41,12 +45,22 @@ export interface IBuildOrchestratorPreview {
     loadAssetAsync(data: Uint8Array): Promise<void>;
 }
 
+/** The validation surface that analyzes successful build results. */
+export interface IBuildOrchestratorValidation {
+    /** Clears diagnostics produced by an older build. */
+    clear(): void;
+    /** Validates a successful build result without affecting preview or export success. */
+    validateBuildResultAsync(data: Uint8Array): Promise<void>;
+}
+
 /** Options for {@link BuildOrchestrator}. */
 export interface IBuildOrchestratorOptions {
     /** The graph controller that produces builds. */
     readonly controller: IBuildOrchestratorController;
     /** The preview surface that shows build status and results. */
     readonly preview: IBuildOrchestratorPreview;
+    /** The diagnostics surface that validates successful build results. */
+    readonly validation: IBuildOrchestratorValidation;
     /** Downloads a successful build result. Defaults to a `.glb` browser download named by the export block. */
     readonly exportResult?: (data: Uint8Array, fileName: string) => void;
     /** Monotonic millisecond clock backing the minimum build-status duration. Defaults to `performance.now`. */
@@ -59,6 +73,7 @@ export interface IBuildOrchestratorOptions {
 export class BuildOrchestrator {
     private readonly _controller: IBuildOrchestratorController;
     private readonly _preview: IBuildOrchestratorPreview;
+    private readonly _validation: IBuildOrchestratorValidation;
     private readonly _exportResult: (data: Uint8Array, fileName: string) => void;
     private readonly _now: () => number;
 
@@ -76,6 +91,7 @@ export class BuildOrchestrator {
     public constructor(options: IBuildOrchestratorOptions) {
         this._controller = options.controller;
         this._preview = options.preview;
+        this._validation = options.validation;
         this._exportResult =
             options.exportResult ??
             ((data, fileName) => {
@@ -90,6 +106,8 @@ export class BuildOrchestrator {
      * If the default import fails, surfaces the error in the preview instead of starting builds.
      */
     public start(): void {
+        this._controller.clearBuildError();
+        this._validation.clear();
         this._preview.setStatus(true, null);
         void (async () => {
             try {
@@ -152,15 +170,19 @@ export class BuildOrchestrator {
                     this._finishBuildStatusHandle = null;
                 }
                 this._preview.cancelPendingLoad();
+                this._controller.clearBuildError();
+                this._validation.clear();
                 this._preview.setStatus(true, null);
             },
             onBuildSucceeded: (bytes) => {
                 this._lastSuccessfulBuildBytes = bytes;
+                void this._validation.validateBuildResultAsync(bytes);
                 this._finishBuildStatus(this._buildStatusGeneration, null);
             },
             onBuildFailed: (error) => {
                 const message = GetErrorMessage(error);
                 Logger.Error(`[NodeAssetsEditor] Build failed: ${message}`);
+                this._controller.reportBuildError(error);
                 this._finishBuildStatus(this._buildStatusGeneration, message);
             },
         });

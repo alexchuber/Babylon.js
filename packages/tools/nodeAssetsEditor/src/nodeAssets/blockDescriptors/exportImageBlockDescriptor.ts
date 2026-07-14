@@ -5,6 +5,8 @@ import { ConfigureBlockForEditor, ImageCategory, ImageHeaderColor, RegisterBlock
 RegisterBlockDescriptor({
     paletteItemId: "export-image",
     label: "Export Image",
+    description: "Write the final image pipeline result.",
+    keywords: ["save", "download", "output", "texture"],
     headerColor: ImageHeaderColor,
     category: ImageCategory,
     className: ExportImageBlock.ClassName,

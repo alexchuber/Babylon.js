@@ -62,7 +62,9 @@ model, graph store.
 The left pane's categorized, filterable list of block kinds; dragging an item onto the canvas creates a
 node. As the catalog grows the categories are Sources, Operators, Values, Selectors, Image, and
 Composition; _(milestone 07)_ a **Transcoders** category (USD2glTF, USD2Babylon, glTF2Babylon,
-Babylon2glTF). _Avoid_: toolbox, node list.
+Babylon2glTF). Search includes labels, categories, concise descriptions, and workflow aliases such as
+`decimate`, `optimize`, and `compress`; descriptions appear below item labels. _Avoid_: toolbox, node
+list.
 
 **resource lane** _(milestone 07)_:
 An editor-only **grouping / metadata** axis for organizing nodes and ports by the resource they work on
@@ -96,17 +98,29 @@ The adapter that owns the live `NodeAsset` (the source of truth) and keeps a `Gr
 with it, reconciling visual edits back onto the runtime graph. _Avoid_: bridge, sync manager.
 
 **block descriptor** (`IBlockDescriptor`, the block catalog):
-An app-layer entry naming one real block the palette offers — its label, node color, backend class, and
-how to construct it. As of milestone 02 blocks self-register their descriptor at module load rather
-than being hand-listed in a central table, so adding a block is one local change. _Avoid_: registry,
-factory map.
+An app-layer entry naming one real block the palette offers — its label, discovery description and
+keywords, node color, backend class, and how to construct it. Blocks self-register their descriptor at
+module load rather than being hand-listed in a central table, so adding a block is one local change.
+_Avoid_: registry, factory map.
 
 **preview** (`PreviewController`, `PreviewPane`):
 The right-pane surface showing the built result: the Babylon Viewer V2 loading the exported glb for a
 3D pipeline (glTF is the export terminal), or the produced image for an IMAGE pipeline (milestone 04).
 _Avoid_: viewport, renderer.
 
+**validation** (`GLTFValidationController`, `GLTFValidationPane`):
+Non-blocking Khronos glTF Validator analysis of the latest successful GLB build. The controller
+supersedes stale runs; the pane reports issue counts and exposes the complete report. IMAGE outputs are
+not applicable, and validator failure never replaces the preview or disables export. _Avoid_: build
+validation (runtime graph failures), preflight.
+
+**node diagnostic** (`GraphNodeDiagnostics`):
+Ephemeral, host-provided error state keyed by visual node id. Structured runtime build errors decorate
+the responsible node and appear in its properties; diagnostics are excluded from save files,
+undo/redo, and copy/paste. _Avoid_: graph state, persisted error.
+
 **shell** (`NodeAssetsEditorServiceDefinition`):
 The `MakeModularTool` + `IShellService` root that lays the tool out — canvas as central content;
-palette, properties, and preview as side panes; run / save / load / undo / redo as toolbar items.
-_Avoid_: layout, host.
+palette, properties, preview, and validation as side panes; run / save / load / undo / redo as toolbar
+items. Loads are transactional: malformed or incompatible files produce an error toast without
+replacing the current graph. _Avoid_: layout, host.

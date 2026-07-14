@@ -5,6 +5,8 @@ import { OperatorCategory, OperatorHeaderColor, RegisterBlockDescriptor } from "
 RegisterBlockDescriptor({
     paletteItemId: "join",
     label: "Join",
+    description: "Combine compatible primitives to reduce draw calls.",
+    keywords: ["optimize", "cleanup", "merge meshes", "batch", "draw calls"],
     headerColor: OperatorHeaderColor,
     category: OperatorCategory,
     className: JoinBlock.ClassName,

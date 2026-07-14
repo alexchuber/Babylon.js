@@ -8,6 +8,9 @@ const GlbBytes = new Uint8Array([0x67, 0x6c, 0x54, 0x46, 0x02, 0x00, 0x00, 0x00,
 const PngBytes = new Uint8Array([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 0x00, 0x00, 0x00, 0x0d]);
 const JpegBytes = new Uint8Array([0xff, 0xd8, 0xff, 0xe0, 0x00, 0x10, 0x4a, 0x46, 0x49, 0x46]);
 const WebpBytes = new Uint8Array([0x52, 0x49, 0x46, 0x46, 0x24, 0x00, 0x00, 0x00, 0x57, 0x45, 0x42, 0x50]); // "RIFF" + size + "WEBP"
+const Gif87aBytes = new Uint8Array([0x47, 0x49, 0x46, 0x38, 0x37, 0x61]);
+const Gif89aBytes = new Uint8Array([0x47, 0x49, 0x46, 0x38, 0x39, 0x61]);
+const BmpBytes = new Uint8Array([0x42, 0x4d, 0x46, 0x00, 0x00, 0x00]);
 
 describe("DetectPreviewPayload", () => {
     it("classifies glb (glTF magic) as a scene payload", () => {
@@ -24,6 +27,17 @@ describe("DetectPreviewPayload", () => {
 
     it("classifies a RIFF/WEBP signature as an image/webp payload", () => {
         expect(DetectPreviewPayload(WebpBytes)).toEqual({ kind: "image", mimeType: "image/webp" });
+    });
+
+    it.each([
+        ["GIF87a", Gif87aBytes],
+        ["GIF89a", Gif89aBytes],
+    ])("classifies a %s signature as an image/gif payload", (_name, bytes) => {
+        expect(DetectPreviewPayload(bytes)).toEqual({ kind: "image", mimeType: "image/gif" });
+    });
+
+    it("classifies a BMP signature as an image/bmp payload", () => {
+        expect(DetectPreviewPayload(BmpBytes)).toEqual({ kind: "image", mimeType: "image/bmp" });
     });
 
     it("treats a RIFF container that is not WEBP (e.g. WAV) as a scene payload", () => {

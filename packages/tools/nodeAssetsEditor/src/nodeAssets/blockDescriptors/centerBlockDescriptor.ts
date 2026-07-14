@@ -7,6 +7,8 @@ const PivotOptions: readonly CenterPivot[] = ["center", "above", "below"];
 RegisterBlockDescriptor({
     paletteItemId: "center",
     label: "Center",
+    description: "Move scene content around a chosen bounds pivot.",
+    keywords: ["origin", "pivot", "position", "align", "recenter"],
     headerColor: OperatorHeaderColor,
     category: OperatorCategory,
     className: CenterBlock.ClassName,

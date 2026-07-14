@@ -5,6 +5,8 @@ import { RegisterBlockDescriptor, SelectorsCategory, SelectorsHeaderColor } from
 RegisterBlockDescriptor({
     paletteItemId: "get-property",
     label: "Get Property",
+    description: "Read a scene value selected by a glTF pointer.",
+    keywords: ["read", "inspect", "selector", "pointer", "value"],
     headerColor: SelectorsHeaderColor,
     category: SelectorsCategory,
     className: GetProperty.ClassName,

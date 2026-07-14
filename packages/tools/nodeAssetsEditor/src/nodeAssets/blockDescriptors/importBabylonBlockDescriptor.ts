@@ -25,6 +25,8 @@ RegisterBlockDescriptor({
     paletteItemId: "import-babylon",
     label: "Import Babylon",
     category: "Sources",
+    description: "Load a .babylon scene into a Babylon representation.",
+    keywords: ["babylon", ".babylon", "scene", "load"],
     headerColor: ImportHeaderColor,
     className: ImportBabylonBlock.ClassName,
     create: (nodeAsset) => ConfigureBlockForEditor(new ImportBabylonBlock("Import Babylon", nodeAsset)),

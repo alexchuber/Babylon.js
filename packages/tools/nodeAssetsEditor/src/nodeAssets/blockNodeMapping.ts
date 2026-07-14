@@ -12,7 +12,17 @@ import { type NodeAssetBlock } from "node-assets/blockFoundation/nodeAssetBlock"
 import { type NodeAssetConnectionPoint } from "node-assets/connection/nodeAssetConnectionPoint";
 
 import { type IGraphNode, type IGraphPort, type Vec2 } from "../nodeGraph/graphModel";
-import { BabylonScenePortColor, ImagePortColor, JsonPortColor, NodeGeometryPortColor, NumberPortColor, ScenePortColor, StringPortColor, UsdStagePortColor, type IBlockDescriptor } from "./blockCatalog";
+import {
+    BabylonScenePortColor,
+    ImagePortColor,
+    JsonPortColor,
+    NodeGeometryPortColor,
+    NumberPortColor,
+    ScenePortColor,
+    StringPortColor,
+    UsdStagePortColor,
+    type IBlockDescriptor,
+} from "./blockCatalog";
 
 /**
  * The visual node id for a block, stable across reconciles for a given block instance.
@@ -20,7 +30,16 @@ import { BabylonScenePortColor, ImagePortColor, JsonPortColor, NodeGeometryPortC
  * @returns The node id.
  */
 export function NodeIdForBlock(block: NodeAssetBlock): string {
-    return `node-${block.uniqueId}`;
+    return NodeIdForBlockId(block.uniqueId);
+}
+
+/**
+ * The visual node id for a serialized block id.
+ * @param blockId - Runtime block id.
+ * @returns The corresponding visual node id.
+ */
+export function NodeIdForBlockId(blockId: number): string {
+    return `node-${blockId}`;
 }
 
 /**

@@ -24,6 +24,8 @@ async function PromptForImageAsync(block: ImportImageBlock, refresh: () => void)
 RegisterBlockDescriptor({
     paletteItemId: "import-image",
     label: "Import Image",
+    description: "Load a PNG, JPEG, WebP, GIF, or BMP source image.",
+    keywords: ["open", "load", "source", "texture", "PNG", "JPEG", "WebP", "GIF", "BMP"],
     headerColor: ImageHeaderColor,
     category: ImageCategory,
     className: ImportImageBlock.ClassName,

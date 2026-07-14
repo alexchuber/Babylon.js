@@ -5,6 +5,8 @@ import { OperatorCategory, OperatorHeaderColor, RegisterBlockDescriptor } from "
 RegisterBlockDescriptor({
     paletteItemId: "flatten",
     label: "Flatten",
+    description: "Bake scene transforms and simplify node hierarchy.",
+    keywords: ["optimize", "cleanup", "bake transforms", "hierarchy"],
     headerColor: OperatorHeaderColor,
     category: OperatorCategory,
     className: FlattenBlock.ClassName,

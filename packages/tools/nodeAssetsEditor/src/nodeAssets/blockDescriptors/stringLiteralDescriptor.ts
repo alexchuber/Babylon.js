@@ -5,6 +5,8 @@ import { RegisterBlockDescriptor, ValuesCategory, ValuesHeaderColor } from "../b
 RegisterBlockDescriptor({
     paletteItemId: "string-literal",
     label: "String",
+    description: "Provide reusable text to selector or property inputs.",
+    keywords: ["text", "literal", "constant", "value"],
     headerColor: ValuesHeaderColor,
     category: ValuesCategory,
     className: StringLiteral.ClassName,

@@ -1,5 +1,6 @@
 import { type Page, type Locator, expect } from "@playwright/test";
 import { getGlobalConfig } from "@tools/test-tools";
+import { resolve } from "node:path";
 
 /** Narrows a title lookup to a single node when several share the title: an index, or "last" for the most recently added. */
 type NodeOccurrence = number | "last";
@@ -17,6 +18,21 @@ export function getNaeUrl(): string {
         return process.env.NAE_BASE_URL;
     }
     return getGlobalConfig().baseUrl.replace(":1337", process.env.NAE_PORT || ":1348");
+}
+
+/**
+ * Serves the checked-in Khronos glTF Validator to the editor, keeping validation tests independent
+ * of the public Babylon.js CDN.
+ * @param page - Playwright page whose validator requests should be intercepted.
+ */
+export async function useLocalGltfValidator(page: Page): Promise<void> {
+    await page.route("**/gltf_validator.js", async (route) => {
+        await route.fulfill({
+            path: resolve(__dirname, "../../../babylonServer/public/gltf_validator.js"),
+            contentType: "application/javascript",
+            headers: { "access-control-allow-origin": "*" },
+        });
+    });
 }
 
 /**
@@ -102,7 +118,7 @@ export class NodeAssetsEditorPage {
     /**
      * Locate a connection port of a node, optionally disambiguated by direction. Boundary nodes have a
      * single port (Import: one output, Export: one input), so the direction is optional; blocks with both
-     * an input and an output (e.g. KTX2 Compress) need it to pick the right side.
+     * an input and an output (e.g. Apply BasisU) need it to pick the right side.
      * @param title - The node's visible title.
      * @param direction - Optional port direction to filter to ("in" or "out").
      * @param occurrence - Optional disambiguator when several nodes share the title (see {@link nodeByTitle}).
@@ -134,7 +150,7 @@ export class NodeAssetsEditorPage {
      * The app drops each node at exactly the cursor with no collision offset, so dropping several nodes at
      * the same point stacks them and makes their ports unhittable. Pass distinct `at` points to lay out
      * nodes that must be wired together.
-     * @param label - The palette item's label, e.g. "KTX2 Compress".
+     * @param label - The palette item's label, e.g. "Apply BasisU".
      * @param at - Drop point as canvas-rect fractions (0..1); defaults to the center.
      */
     async dropPaletteItem(label: string, at: CanvasPoint = { x: 0.5, y: 0.5 }): Promise<void> {
