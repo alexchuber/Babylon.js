@@ -69,19 +69,19 @@ new work: say **representation** (or the specific kind) instead.
 
 **import block** _(milestone 07 vocabulary)_:
 A source block (**0 representation inputs, 1 representation output**) that turns foreign **bytes → one
-representation** (e.g. `ImportGLTF` → GLTF_DOCUMENT, `ImportUSD` → USD_STAGE). The bytes→representation
-boundary; format lives only here and at export. _Avoid_: loader (reserve for the glTF boundary block),
+representation** (e.g. `ImportGLTF` → GLTF*DOCUMENT, `ImportUSD` → USD_STAGE). The bytes→representation
+boundary; format lives only here and at export. \_Avoid*: loader (reserve for the glTF boundary block),
 reader, decoder, transcoder (that is mid-graph, no bytes).
 
 **transcoder** _(redefined in milestone 07)_:
 A **mid-graph** block (**1 representation input, 1 representation output, no bytes**) that converts **one
 representation → another representation**. v1 ships four explicit, named transcoders and no others:
-**USD2glTF** (USD_STAGE → GLTF_DOCUMENT, a direct resolved-stage→`Document` mapper, not routed through
+**USD2glTF** (USD*STAGE → GLTF_DOCUMENT, a direct resolved-stage→`Document` mapper, not routed through
 Babylon), **USD2Babylon** (USD_STAGE → BABYLON_SCENE, via the USD loader's `AdaptResolvedStageToScene`),
 **glTF2Babylon** (GLTF_DOCUMENT → BABYLON_SCENE, via the mature glTF 2.0 loader), and **Babylon2glTF**
 (BABYLON_SCENE → GLTF_DOCUMENT, via the glTF serializer). Every transcoder is a lossy funnel and reports
 what it dropped as a **LossRecord**. There is no implicit conversion, generic representation wire,
-union/`Switch`, mandatory hub, or path planner in v1. _Avoid_: converter (too generic), adapter (that is
+union/`Switch`, mandatory hub, or path planner in v1. \_Avoid*: converter (too generic), adapter (that is
 the USD loader's internal step), import block (that is bytes→representation, 0-in/1-out).
 
 **build scope** _(milestone 07)_:
@@ -148,16 +148,18 @@ winding (a mesh-level detail), flip (as the whole concept).
 
 **build error** (`NodeAssetBuildError`):
 An actionable build failure carrying the responsible block's stable id and, when relevant, its input
-name. Missing required inputs, cycles, and block execution failures use this type so editor hosts can
-localize the problem while generic callers can continue treating it as an `Error`. _Avoid_: diagnostic
-(the editor's visual state), validation error (reserved for glTF validation).
+name. Missing required inputs and cycles use this type directly. Ordinary block exceptions preserve
+their exact thrown object for compatibility and expose the same identity through
+`GetNodeAssetBuildErrorContext`; worker hosts rehydrate that context as a `NodeAssetBuildError` so the
+editor can localize the problem. _Avoid_: diagnostic (the editor's visual state), validation error
+(reserved for glTF validation).
 
 ## Blocks
 
 **ImportGLTFBlock / ExportGLTFBlock**:
 The glTF boundary blocks. Import turns source `.glb`/`.gltf` bytes into a **GLTF_DOCUMENT** (the glTF
-representation; `SCENE` is the legacy alias); Export consumes a GLTF_DOCUMENT and produces the
-deliverable glb bytes. _Avoid_: loader/saver, reader/writer.
+representation; `SCENE` is the legacy alias); Export consumes a GLTF*DOCUMENT and produces the
+deliverable glb bytes. \_Avoid*: loader/saver, reader/writer.
 
 **ImportUSDBlock**:
 A source block that imports USD (`.usd`/`.usda`/`.usdz`). _(Milestone 07)_ new USD graphs use the
@@ -195,14 +197,14 @@ home of wildcard/query syntax. _Avoid_: query block (until multi-target), finder
 
 **GetProperty / SetProperty**:
 The generic selector triad's operations. GetProperty reads the value at a pointer out of a
-**GLTF_DOCUMENT** (output JSON); SetProperty writes a value at a pointer into a GLTF_DOCUMENT (output
+**GLTF_DOCUMENT** (output JSON); SetProperty writes a value at a pointer into a GLTF*DOCUMENT (output
 GLTF_DOCUMENT). Together they subsume set-extras, placement, and (typed for IMAGE) texture extraction.
-_Avoid_: read/write node, mutate.
+\_Avoid*: read/write node, mutate.
 
 **MergeScenes**:
-A composition block folding N **GLTF_DOCUMENT** inputs into one GLTF_DOCUMENT (wrapping gltf-transform's
+A composition block folding N **GLTF_DOCUMENT** inputs into one GLTF*DOCUMENT (wrapping gltf-transform's
 document merge), preserving each source's hierarchy under the combined roots so per-source pointers stay
-addressable. _Avoid_: combine, union, join (that is an operator block).
+addressable. \_Avoid*: combine, union, join (that is an operator block).
 
 **ExtractTexture / SetTexture**:
 The IMAGE-typed members of the selector family. ExtractTexture resolves a texture-slot pointer and

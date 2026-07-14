@@ -4,7 +4,7 @@ import { type NodeAssetBlock } from "./blockFoundation/nodeAssetBlock";
 import { type NodeAssetConnectionPoint } from "./connection/nodeAssetConnectionPoint";
 import { BuildScope, CreateNodeAssetBuildResult, type INodeAssetBuildOptions, type NodeAssetBuildResult } from "./evaluation/buildScope";
 import { CloneForFanOutAsync } from "./evaluation/fanOutCopy";
-import { NodeAssetBuildError } from "./nodeAssetBuildError";
+import { _SetNodeAssetBuildErrorContext, NodeAssetBuildError } from "./nodeAssetBuildError";
 import { IsNodeAssetSerializedGraph, type NodeAssetConnectionSerialization, type NodeAssetSerializedGraph } from "./serialization/nodeAssetSerialization";
 import { UniqueIdGenerator } from "./utils/uniqueIdGenerator";
 
@@ -324,13 +324,10 @@ export class NodeAsset {
         try {
             await block._buildBlockAsync(scope);
         } catch (error) {
-            const attributedError =
-                error instanceof NodeAssetBuildError || scope.isCancellationError(error) || (scope.hasPrimaryError && scope.primaryError === error)
-                    ? error
-                    : new NodeAssetBuildError(error instanceof Error ? error.message : String(error), block.uniqueId, undefined, { cause: error });
+            _SetNodeAssetBuildErrorContext(error, block.uniqueId);
             failed = true;
-            primaryError = attributedError;
-            scope.abortForFailure(attributedError);
+            primaryError = error;
+            scope.abortForFailure(error);
         }
 
         const producer = { kind: "block" as const, blockId: block.uniqueId, blockName: block.name };

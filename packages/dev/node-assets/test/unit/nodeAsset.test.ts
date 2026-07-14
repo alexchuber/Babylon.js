@@ -11,7 +11,7 @@ import { NodeAssetBlock } from "../../src/blockFoundation/nodeAssetBlock";
 import { type NodeAssetConnectionPoint } from "../../src/connection/nodeAssetConnectionPoint";
 import { NodeAssetConnectionPointType } from "../../src/connection/nodeAssetConnectionPointType";
 import { NodeAsset } from "../../src/nodeAsset";
-import { NodeAssetBuildError } from "../../src/nodeAssetBuildError";
+import { GetNodeAssetBuildErrorContext } from "../../src/nodeAssetBuildError";
 
 // The import/export blocks register the Draco encoder/decoder, so the roundtrip needs the real
 // draco3dgltf module rather than the stub the global vitest setup installs for @dev/core.
@@ -79,9 +79,10 @@ class OneShotExportBlock extends NodeAssetBlock {
 class ThrowingExportBlock extends NodeAssetBlock implements IExportBlock {
     public readonly isExportTerminal = true;
     public result: Uint8Array | null = null;
+    public readonly error = new Error("operator failed");
 
     public override async _buildBlockAsync(): Promise<void> {
-        throw new Error("operator failed");
+        throw this.error;
     }
 }
 
@@ -185,10 +186,12 @@ describe("NodeAsset", () => {
         const asset = new NodeAsset("block-failure");
         const exporter = new ThrowingExportBlock("broken operator", asset);
 
-        await expect(asset.buildAsync()).rejects.toMatchObject({
-            name: "NodeAssetBuildError",
+        const thrown = await asset.buildAsync().catch((error: unknown) => error);
+
+        expect(thrown).toBe(exporter.error);
+        expect(GetNodeAssetBuildErrorContext(thrown)).toEqual({
             blockId: exporter.uniqueId,
-            message: "operator failed",
+            inputName: undefined,
         });
     });
 

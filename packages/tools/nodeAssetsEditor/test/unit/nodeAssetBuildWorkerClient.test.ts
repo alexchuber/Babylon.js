@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-import { NodeAssetBuildError } from "node-assets/nodeAssetBuildError";
+import { _SetNodeAssetBuildErrorContext, NodeAssetBuildError } from "node-assets/nodeAssetBuildError";
 
 import { NodeAssetBuildSupersededError, NodeAssetBuildTimeoutError, NodeAssetBuildWorkerClient, type INodeAssetBuildWorker } from "../../src/nodeAssets/nodeAssetBuildWorkerClient";
 import { SerializeNodeAssetBuildError, type INodeAssetBuildRequest, type NodeAssetBuildResponse } from "../../src/nodeAssets/nodeAssetBuildMessages";
@@ -68,6 +68,17 @@ describe("NodeAssetBuildWorkerClient", () => {
             message: "operator failed",
             blockId: 42,
             inputName: "input",
+        });
+    });
+
+    it("serializes block attribution without replacing the original error", () => {
+        const error = new Error("operator failed");
+        _SetNodeAssetBuildErrorContext(error, 42);
+
+        expect(SerializeNodeAssetBuildError(error)).toMatchObject({
+            name: "Error",
+            message: "operator failed",
+            blockId: 42,
         });
     });
 

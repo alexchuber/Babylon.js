@@ -1,4 +1,4 @@
-import { NodeAssetBuildError } from "node-assets/nodeAssetBuildError";
+import { GetNodeAssetBuildErrorContext } from "node-assets/nodeAssetBuildError";
 
 /** A request sent from the Node Assets Editor app to the build worker. */
 export interface INodeAssetBuildRequest {
@@ -53,24 +53,32 @@ export type NodeAssetBuildResponse = INodeAssetBuildSuccessResponse | INodeAsset
  * @returns A serializable error payload.
  */
 export function SerializeNodeAssetBuildError(error: unknown): ISerializedNodeAssetBuildError {
+    const context = GetNodeAssetBuildErrorContext(error);
     if (error instanceof Error) {
         const serialized: ISerializedNodeAssetBuildError = {
             name: error.name || "Error",
             message: error.message,
             stack: error.stack,
         };
-        if (error instanceof NodeAssetBuildError) {
+        if (context) {
             return {
                 ...serialized,
-                blockId: error.blockId,
-                inputName: error.inputName,
+                blockId: context.blockId,
+                inputName: context.inputName,
             };
         }
         return serialized;
     }
 
-    return {
+    const serialized: ISerializedNodeAssetBuildError = {
         name: "Error",
         message: String(error),
     };
+    return context
+        ? {
+              ...serialized,
+              blockId: context.blockId,
+              inputName: context.inputName,
+          }
+        : serialized;
 }
