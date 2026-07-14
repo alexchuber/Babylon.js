@@ -9,6 +9,7 @@ import { SetProperty } from "../../src/Blocks/setProperty";
 import { StringLiteral } from "../../src/Blocks/stringLiteral";
 import { NodeAsset } from "../../src/nodeAsset";
 import { NodeAssetConnectionPointType } from "../../src/connection/nodeAssetConnectionPointType";
+import { CreateTestGltfAsset } from "./testGltfAsset";
 
 // The import/export blocks register the Draco encoder/decoder, so use the real module rather than the
 // stub the global vitest setup installs for @dev/core.
@@ -82,16 +83,16 @@ async function RunSetPropertyGraphAsync(pointer: string, value: unknown): Promis
 }
 
 describe("SetProperty", () => {
-    it("registers SCENE + STRING + JSON inputs and a SCENE output", () => {
+    it("registers GLTF_DOCUMENT + STRING + JSON inputs and a GLTF_DOCUMENT output", () => {
         const asset = new NodeAsset("shape");
         const setter = new SetProperty("set", asset);
 
         expect(setter.inputs).toHaveLength(3);
         expect(setter.outputs).toHaveLength(1);
-        expect(setter.scene.type).toBe(NodeAssetConnectionPointType.SCENE);
+        expect(setter.scene.type).toBe(NodeAssetConnectionPointType.GLTF_DOCUMENT);
         expect(setter.pointer.type).toBe(NodeAssetConnectionPointType.STRING);
         expect(setter.value.type).toBe(NodeAssetConnectionPointType.JSON);
-        expect(setter.output.type).toBe(NodeAssetConnectionPointType.SCENE);
+        expect(setter.output.type).toBe(NodeAssetConnectionPointType.GLTF_DOCUMENT);
     });
 
     it("recolours a material factor end-to-end (import -> set -> export -> reparse)", async () => {
@@ -115,14 +116,15 @@ describe("SetProperty", () => {
         document.createMaterial("mat0").setEmissiveFactor([0, 0, 0]);
 
         const setter = new SetProperty("set", new NodeAsset("passthrough"));
-        setter.scene.value = document;
+        const gltf = CreateTestGltfAsset(document);
+        setter.scene.value = gltf;
         setter.pointer.value = "/materials/0/emissiveFactor";
         setter.value.value = [1, 0, 0];
         await setter._buildBlockAsync();
 
-        // Same reference, mutated in place (no clone / copy-on-fan-out yet).
-        expect(setter.output.value).toBe(document);
-        expect(setter.output.type).toBe(NodeAssetConnectionPointType.SCENE);
+        // Same reference, mutated in place; fan-out isolation happens in the evaluator, not this block.
+        expect(setter.output.value).toBe(gltf);
+        expect(setter.output.type).toBe(NodeAssetConnectionPointType.GLTF_DOCUMENT);
         expect(document.getRoot().listMaterials()[0].getEmissiveFactor()).toEqual([1, 0, 0]);
     });
 
@@ -215,12 +217,28 @@ describe("SetProperty", () => {
         document.createNode("node0");
 
         const setter = new SetProperty("set", new NodeAsset("bad-pointer"));
-        setter.scene.value = document;
+        setter.scene.value = CreateTestGltfAsset(document);
         setter.pointer.value = "/nodes/99/translation";
         setter.value.value = [1, 2, 3];
 
         await expect(setter._buildBlockAsync()).rejects.toThrow("/nodes/99/translation");
         await expect(setter._buildBlockAsync()).rejects.toThrow(/out of range/);
+    });
+
+    it("rejects texture accessors and non-JSON runtime values", async () => {
+        const { Document } = await import("@gltf-transform/core");
+        const document = new Document();
+        document.createMaterial("mat0");
+
+        const setter = new SetProperty("set", new NodeAsset("non-json"));
+        setter.scene.value = CreateTestGltfAsset(document);
+        setter.pointer.value = "/materials/0/pbrMetallicRoughness/baseColorTexture";
+        setter.value.value = null;
+        await expect(setter._buildBlockAsync()).rejects.toThrow(/JSON-compatible/);
+
+        setter.pointer.value = "/materials/0/extras/value";
+        setter.value.value = undefined;
+        await expect(setter._buildBlockAsync()).rejects.toThrow(/JSON-compatible/);
     });
 
     it("throws when the input document is missing", async () => {

@@ -8,7 +8,10 @@ the `@babylonjs/node-assets` runtime. The runtime terms it visualizes live in
 
 > **Scope note.** Milestone 01 (the editor scaffolding) is built. Forward references below to image
 > preview and the growing palette categories are the agreed vocabulary for the 02–06 slice PRDs and
-> may not all be implemented yet. See `.scratch/0N-*/PRD.md`.
+> may not all be implemented yet. Terms tagged _(milestone 07)_ (the three representations, transcoder
+> nodes, resource lanes, the gallery, diagnostics surfacing) are the agreed vocabulary for the
+> scene-representation-platform work — see `.scratch/07-scene-representation-platform/` and
+> `docs/adr/0004`–`0006`. See `.scratch/0N-*/PRD.md`.
 
 ## Language
 
@@ -34,8 +37,11 @@ runtime block. _Avoid_: block (that is the runtime's word), card.
 
 **port** (`IGraphPort`):
 The visual input/output dot on a node. The editor's render of a runtime connection point; its kind
-reflects the connection point type (SCENE, IMAGE, NUMBER, STRING, JSON, BYTES). _Avoid_:
-connection point (runtime's word), socket, pin.
+reflects the connection point type. Milestone 01–06 kinds are SCENE, IMAGE, NUMBER, STRING, JSON;
+_(milestone 07)_ the three **representation** kinds GLTF_DOCUMENT, USD_STAGE, BABYLON_SCENE (each with
+its own port color) plus the NODE_GEOMETRY resource kind. There is no generic "representation" port —
+each representation is its own colored kind, so a lossy transcode is a visible node, never an implicit
+wire. _Avoid_: connection point (runtime's word), socket, pin.
 
 **wire** (`IGraphWire`):
 The visual bezier link from an output port to an input port. The editor's render of a runtime
@@ -55,7 +61,24 @@ model, graph store.
 **palette** (`IPaletteCategory` / `IPaletteItem`, `PaletteView`):
 The left pane's categorized, filterable list of block kinds; dragging an item onto the canvas creates a
 node. As the catalog grows the categories are Sources, Operators, Values, Selectors, Image, and
-Composition. _Avoid_: toolbox, node list.
+Composition; _(milestone 07)_ a **Transcoders** category (USD2glTF, USD2Babylon, glTF2Babylon,
+Babylon2glTF). _Avoid_: toolbox, node list.
+
+**resource lane** _(milestone 07)_:
+An editor-only **grouping / metadata** axis for organizing nodes and ports by the resource they work on
+(e.g. an image lane, a geometry lane). It is a presentation aid **only** — it is **not** a type-system
+or selection axis and never changes which representation a port carries or which domain owns a
+selection. _Avoid_: lane as a type, channel, track (animation's word).
+
+**gallery** _(milestone 07)_:
+The editor's built-in collection of ready-made example graphs (the eight demos of the
+scene-representation-platform PRD) a user can open and adapt. _Avoid_: samples browser (informally
+fine), templates, examples pane (reserve "examples" for the runtime's example graphs).
+
+**diagnostics surfacing** _(milestone 07)_:
+How the editor presents build-scope diagnostics and **LossRecord**s (what a transcoder dropped) on the
+offending node and in a diagnostics list, so lossy conversions are visible rather than silent. _Avoid_:
+error list (fatals differ), console, log.
 
 **properties pane** (`IPropertySection` / `PropertyDescriptor`, `PropertiesView`):
 The right pane showing editable property lines (text, dropdown, slider, switch, color, button) for the
@@ -80,8 +103,8 @@ factory map.
 
 **preview** (`PreviewController`, `PreviewPane`):
 The right-pane surface showing the built result: the Babylon Viewer V2 loading the exported glb for a
-SCENE pipeline, or the produced image for an IMAGE pipeline (milestone 04). _Avoid_: viewport,
-renderer.
+3D pipeline (glTF is the export terminal), or the produced image for an IMAGE pipeline (milestone 04).
+_Avoid_: viewport, renderer.
 
 **shell** (`NodeAssetsEditorServiceDefinition`):
 The `MakeModularTool` + `IShellService` root that lays the tool out — canvas as central content;

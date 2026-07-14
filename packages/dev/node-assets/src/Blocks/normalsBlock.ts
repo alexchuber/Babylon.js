@@ -3,6 +3,7 @@ import { NodeAssetBlock } from "../blockFoundation/nodeAssetBlock";
 import { type NodeAssetConnectionPoint } from "../connection/nodeAssetConnectionPoint";
 import { NodeAssetConnectionPointType } from "../connection/nodeAssetConnectionPointType";
 import { type NodeAsset } from "../nodeAsset";
+import { GetSerializedBoolean, type NodeAssetBlockSerialization } from "../serialization/nodeAssetSerialization";
 import { ApplyOperatorTransformsAsync } from "./operatorSupport";
 
 /**
@@ -29,8 +30,8 @@ export class NormalsBlock extends NodeAssetBlock {
      */
     public constructor(name: string, nodeAsset: NodeAsset) {
         super(name, nodeAsset);
-        this.input = this._registerInput("input", NodeAssetConnectionPointType.SCENE);
-        this.output = this._registerOutput("output", NodeAssetConnectionPointType.SCENE);
+        this.input = this._registerInput("input", NodeAssetConnectionPointType.GLTF_DOCUMENT);
+        this.output = this._registerOutput("output", NodeAssetConnectionPointType.GLTF_DOCUMENT);
     }
 
     /**
@@ -45,7 +46,7 @@ export class NormalsBlock extends NodeAssetBlock {
      * Serializes this block's build-affecting options.
      * @returns The serialization object.
      */
-    public override serialize(): any {
+    public override serialize(): NodeAssetBlockSerialization {
         const serializationObject = super.serialize();
         serializationObject.overwrite = this.overwrite;
         return serializationObject;
@@ -55,9 +56,9 @@ export class NormalsBlock extends NodeAssetBlock {
      * Restores this block's build-affecting options.
      * @param serializationObject - The serialization object.
      */
-    public override _deserialize(serializationObject: any): void {
+    public override _deserialize(serializationObject: NodeAssetBlockSerialization): void {
         super._deserialize(serializationObject);
-        this.overwrite = serializationObject.overwrite ?? false;
+        this.overwrite = GetSerializedBoolean(serializationObject, "overwrite", false);
     }
 }
 

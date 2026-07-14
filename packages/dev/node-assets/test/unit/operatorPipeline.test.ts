@@ -14,8 +14,9 @@ import { QuantizeBlock } from "../../src/Blocks/quantizeBlock";
 import { SimplifyBlock } from "../../src/Blocks/simplifyBlock";
 import { WeldBlock } from "../../src/Blocks/weldBlock";
 import { NodeAsset } from "../../src/nodeAsset";
+import { GetTestGltfDocument } from "./testGltfAsset";
 
-/** A SCENE-to-SCENE operator block, viewed only through its input and output ports. */
+/** A GLTF_DOCUMENT operator block, viewed only through its input and output ports. */
 type OperatorBlock = { input: NodeAssetConnectionPoint; output: NodeAssetConnectionPoint };
 
 // The global vitest setup stubs draco3dgltf (it is optional for @dev/core). The import/export blocks
@@ -82,7 +83,7 @@ async function ReimportAsync(glb: Uint8Array): Promise<Document> {
     const importer = new ImportGLTFBlock("reimport", new NodeAsset("reimport"));
     importer.data = glb;
     await importer._buildBlockAsync();
-    return importer.output.value as Document;
+    return GetTestGltfDocument(importer.output.value);
 }
 
 function GetGeometryCounts(document: Document): { vertexCount: number; indexCount: number } {

@@ -8,6 +8,9 @@ export class UniqueIdGenerator {
      * Gets a unique (relative to the current session) id.
      */
     public static get UniqueId(): number {
+        if (!Number.isSafeInteger(this._NextUniqueId)) {
+            throw new RangeError("The NodeAsset unique id range is exhausted.");
+        }
         const result = this._NextUniqueId;
         this._NextUniqueId++;
         return result;
@@ -19,6 +22,9 @@ export class UniqueIdGenerator {
      * @param id - The id that future ids must exceed.
      */
     public static EnsureIdsGreaterThan(id: number): void {
+        if (!Number.isSafeInteger(id) || id < 0 || id >= Number.MAX_SAFE_INTEGER) {
+            throw new RangeError("A restored NodeAsset id must be a non-negative safe integer with room for a subsequent id.");
+        }
         if (this._NextUniqueId <= id) {
             this._NextUniqueId = id + 1;
         }

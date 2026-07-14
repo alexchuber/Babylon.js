@@ -54,6 +54,29 @@ export const ImageHeaderColor = "#a0568f";
 export const SelectorsCategory = "Selectors";
 export const SelectorsHeaderColor = "#b0506a";
 
+/** Data-driven dot color for USD_STAGE-typed ports. */
+export const UsdStagePortColor = "#C4A265";
+
+/** Data-driven dot color for BABYLON_SCENE-typed ports. */
+export const BabylonScenePortColor = "#4A90D9";
+
+/** Data-driven dot color for NODE_GEOMETRY-typed ports. */
+export const NodeGeometryPortColor = "#7B68EE";
+
+/** Palette category and shared node header color for the transcoder block family. */
+export const TranscodersCategory = "Transcoders";
+export const TranscodersHeaderColor = "#6B4C8A";
+
+/** Palette category and shared node header color for the Babylon operator block family. */
+export const BabylonCategory = "Babylon";
+export const BabylonHeaderColor = "#4A90D9";
+
+/** Palette category and shared node header color for the USD operator block family. */
+// eslint-disable-next-line @typescript-eslint/naming-convention
+export const USDCategory = "USD";
+// eslint-disable-next-line @typescript-eslint/naming-convention
+export const USDHeaderColor = "#C4A265";
+
 /**
  * Describes one palette entry: its id and label, its node header color, the backend class it maps to,
  * and how to construct that block.

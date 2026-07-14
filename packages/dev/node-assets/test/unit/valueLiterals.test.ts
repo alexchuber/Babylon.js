@@ -16,7 +16,7 @@ type LiteralBlock = NumberLiteral | StringLiteral | JsonLiteral;
 class ScalarConsumer extends NodeAssetBlock {
     public static override ClassName = "ScalarConsumer_test";
 
-    public readonly scene = this._registerInput("scene", NodeAssetConnectionPointType.SCENE);
+    public readonly scene = this._registerInput("scene", NodeAssetConnectionPointType.GLTF_DOCUMENT);
     public readonly number = this._registerInput("number", NodeAssetConnectionPointType.NUMBER);
     public readonly string = this._registerInput("string", NodeAssetConnectionPointType.STRING);
     public readonly json = this._registerInput("json", NodeAssetConnectionPointType.JSON);

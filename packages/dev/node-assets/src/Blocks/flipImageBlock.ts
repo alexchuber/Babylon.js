@@ -5,6 +5,7 @@ import { NodeAssetBlock } from "../blockFoundation/nodeAssetBlock";
 import { type NodeAssetConnectionPoint } from "../connection/nodeAssetConnectionPoint";
 import { NodeAssetConnectionPointType } from "../connection/nodeAssetConnectionPointType";
 import { type NodeAsset } from "../nodeAsset";
+import { GetSerializedStringUnion, type NodeAssetBlockSerialization } from "../serialization/nodeAssetSerialization";
 import { type ImagePayload } from "./imagePayload";
 
 /** The axis an image is mirrored across. */
@@ -59,7 +60,7 @@ export class FlipImageBlock extends NodeAssetBlock {
      * Serializes this block's flip axis.
      * @returns The serialization object.
      */
-    public override serialize(): any {
+    public override serialize(): NodeAssetBlockSerialization {
         const serializationObject = super.serialize();
         serializationObject.axis = this.axis;
         return serializationObject;
@@ -69,9 +70,9 @@ export class FlipImageBlock extends NodeAssetBlock {
      * Restores this block's flip axis.
      * @param serializationObject - The serialization object.
      */
-    public override _deserialize(serializationObject: any): void {
+    public override _deserialize(serializationObject: NodeAssetBlockSerialization): void {
         super._deserialize(serializationObject);
-        this.axis = serializationObject.axis ?? "horizontal";
+        this.axis = GetSerializedStringUnion(serializationObject, "axis", ["horizontal", "vertical"], "horizontal");
     }
 }
 

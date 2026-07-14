@@ -155,7 +155,7 @@ function ConvertMaterial(document: Document, native: ITinyUsdzLoaderNative, mate
 /**
  * Converts one tinyusdz render-scene node (and its geometry-bearing descendants) into a gltf-transform
  * node subtree. Nodes that neither carry geometry nor have any geometry below them — USD material and
- * shader prim scopes, empty grouping xforms — are pruned so only renderable hierarchy reaches the SCENE.
+ * shader prim scopes, empty grouping xforms — are pruned so only renderable hierarchy reaches the glTF document.
  * @param document - The document nodes and meshes are created in.
  * @param native - The tinyusdz loader holding the parsed stage.
  * @param usdNode - The USD node to convert.
@@ -213,7 +213,7 @@ function ConvertNode(document: Document, native: ITinyUsdzLoaderNative, usdNode:
 
 /**
  * Transcodes real USD content (`.usda`, binary `.usdc`, or zipped `.usdz`) onto a fresh gltf-transform
- * `Document` (the SCENE spine) using the tinyusdz WebAssembly parser.
+ * `Document` using the tinyusdz WebAssembly parser.
  *
  * tinyusdz parses the container, resolves composition (references, payloads, variant selection), and
  * triangulates geometry; this function walks the resulting render scene and maps geometry, node

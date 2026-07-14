@@ -1,13 +1,12 @@
-import { type Document } from "@gltf-transform/core";
 import { type KTX2Options } from "ktx2-encoder/gltf-transform";
-
-import { type Nullable } from "core/types";
 
 import { RegisterBlock } from "../blockFoundation/blockRegistry";
 import { NodeAssetBlock } from "../blockFoundation/nodeAssetBlock";
 import { type NodeAssetConnectionPoint } from "../connection/nodeAssetConnectionPoint";
 import { NodeAssetConnectionPointType } from "../connection/nodeAssetConnectionPointType";
 import { type NodeAsset } from "../nodeAsset";
+import { GetSerializedBoolean, type NodeAssetBlockSerialization } from "../serialization/nodeAssetSerialization";
+import { GetGltfAsset } from "../representations/gltfAsset";
 
 /**
  * Compresses a glTF `Document`'s textures to KTX2 / Basis Universal in place and flags the
@@ -71,18 +70,18 @@ export class KTX2CompressionBlock extends NodeAssetBlock {
      */
     public constructor(name: string, nodeAsset: NodeAsset) {
         super(name, nodeAsset);
-        this.input = this._registerInput("input", NodeAssetConnectionPointType.SCENE);
-        this.output = this._registerOutput("output", NodeAssetConnectionPointType.SCENE);
+        this.input = this._registerInput("input", NodeAssetConnectionPointType.GLTF_DOCUMENT);
+        this.output = this._registerOutput("output", NodeAssetConnectionPointType.GLTF_DOCUMENT);
     }
 
     /**
      * Compresses the input `Document`'s textures to KTX2 in place and sets it as the output value.
      */
     public override async _buildBlockAsync(): Promise<void> {
-        const document = this.input.value as Nullable<Document>;
-        if (!document) {
+        if (this.input.value == null) {
             throw new Error(`The "${this.name}" KTX2 block has no input document to compress.`);
         }
+        const asset = GetGltfAsset(this.input.value, this.input.name);
 
         const { ktx2 } = await import("ktx2-encoder/gltf-transform");
 
@@ -116,16 +115,16 @@ export class KTX2CompressionBlock extends NodeAssetBlock {
         });
         /* eslint-enable @typescript-eslint/naming-convention */
 
-        await document.transform(compressColor, compressData);
+        await asset.document.transform(compressColor, compressData);
 
-        this.output.value = document;
+        this.output.value = asset;
     }
 
     /**
      * Serializes this block's build-affecting options.
      * @returns The serialization object.
      */
-    public override serialize(): any {
+    public override serialize(): NodeAssetBlockSerialization {
         const serializationObject = super.serialize();
         serializationObject.generateMipmaps = this.generateMipmaps;
         return serializationObject;
@@ -135,9 +134,9 @@ export class KTX2CompressionBlock extends NodeAssetBlock {
      * Restores this block's build-affecting options.
      * @param serializationObject - The serialization object.
      */
-    public override _deserialize(serializationObject: any): void {
+    public override _deserialize(serializationObject: NodeAssetBlockSerialization): void {
         super._deserialize(serializationObject);
-        this.generateMipmaps = serializationObject.generateMipmaps ?? false;
+        this.generateMipmaps = GetSerializedBoolean(serializationObject, "generateMipmaps", false);
     }
 }
 

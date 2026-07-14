@@ -4,6 +4,7 @@ import { describe, expect, it } from "vitest";
 import { DedupBlock } from "../../src/Blocks/dedupBlock";
 import { NodeAsset } from "../../src/nodeAsset";
 import { NodeAssetConnectionPointType } from "../../src/connection/nodeAssetConnectionPointType";
+import { CreateTestGltfAsset } from "./testGltfAsset";
 
 /**
  * Builds a document with two structurally identical materials on two primitives, plus a duplicate
@@ -39,14 +40,14 @@ async function CreateDuplicateHeavyDocumentAsync(): Promise<Document> {
 }
 
 describe("DedupBlock", () => {
-    it("registers a SCENE input and output on construction", () => {
+    it("registers a GLTF_DOCUMENT input and output on construction", () => {
         const asset = new NodeAsset("dedup");
         const block = new DedupBlock("dedup", asset);
 
         expect(block.inputs).toHaveLength(1);
         expect(block.outputs).toHaveLength(1);
-        expect(block.input.type).toBe(NodeAssetConnectionPointType.SCENE);
-        expect(block.output.type).toBe(NodeAssetConnectionPointType.SCENE);
+        expect(block.input.type).toBe(NodeAssetConnectionPointType.GLTF_DOCUMENT);
+        expect(block.output.type).toBe(NodeAssetConnectionPointType.GLTF_DOCUMENT);
     });
 
     it("collapses duplicate materials and meshes, passing the same document through", async () => {
@@ -56,11 +57,12 @@ describe("DedupBlock", () => {
 
         const asset = new NodeAsset("dedup");
         const block = new DedupBlock("dedup", asset);
-        block.input.value = document;
+        const gltf = CreateTestGltfAsset(document);
+        block.input.value = gltf;
 
         await block._buildBlockAsync();
 
-        expect(block.output.value).toBe(document);
+        expect(block.output.value).toBe(gltf);
         expect(document.getRoot().listMaterials()).toHaveLength(1);
         expect(document.getRoot().listMeshes()).toHaveLength(1);
     });
@@ -73,7 +75,7 @@ describe("DedupBlock", () => {
         const asset = new NodeAsset("dedup");
         const block = new DedupBlock("dedup", asset);
         block.keepUniqueNames = true;
-        block.input.value = document;
+        block.input.value = CreateTestGltfAsset(document);
 
         await block._buildBlockAsync();
 

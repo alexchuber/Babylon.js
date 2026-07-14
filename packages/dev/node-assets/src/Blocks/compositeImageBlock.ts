@@ -5,6 +5,7 @@ import { NodeAssetBlock } from "../blockFoundation/nodeAssetBlock";
 import { type NodeAssetConnectionPoint } from "../connection/nodeAssetConnectionPoint";
 import { NodeAssetConnectionPointType } from "../connection/nodeAssetConnectionPointType";
 import { type NodeAsset } from "../nodeAsset";
+import { GetSerializedNumber, type NodeAssetBlockSerialization } from "../serialization/nodeAssetSerialization";
 import { type ImagePayload } from "./imagePayload";
 
 /**
@@ -71,7 +72,7 @@ export class CompositeImageBlock extends NodeAssetBlock {
      * Serializes this block's overlay offset.
      * @returns The serialization object.
      */
-    public override serialize(): any {
+    public override serialize(): NodeAssetBlockSerialization {
         const serializationObject = super.serialize();
         serializationObject.offsetX = this.offsetX;
         serializationObject.offsetY = this.offsetY;
@@ -82,10 +83,10 @@ export class CompositeImageBlock extends NodeAssetBlock {
      * Restores this block's overlay offset.
      * @param serializationObject - The serialization object.
      */
-    public override _deserialize(serializationObject: any): void {
+    public override _deserialize(serializationObject: NodeAssetBlockSerialization): void {
         super._deserialize(serializationObject);
-        this.offsetX = serializationObject.offsetX ?? 0;
-        this.offsetY = serializationObject.offsetY ?? 0;
+        this.offsetX = GetSerializedNumber(serializationObject, "offsetX", 0);
+        this.offsetY = GetSerializedNumber(serializationObject, "offsetY", 0);
     }
 }
 

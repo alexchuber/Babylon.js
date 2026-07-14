@@ -8,18 +8,22 @@ import { PruneBlock } from "../../src/Blocks/pruneBlock";
 import { NodeAssetBlock } from "../../src/blockFoundation/nodeAssetBlock";
 import { NodeAssetConnectionPointType } from "../../src/connection/nodeAssetConnectionPointType";
 import { NodeAsset } from "../../src/nodeAsset";
+import { GetGltfAsset, type GltfAsset } from "../../src/representations/gltfAsset";
+import { CreateTestGltfAsset, GetTestGltfDocument } from "./testGltfAsset";
 
 /** A SCENE source with no inputs: emits a fresh `Document` (via its factory) each build. */
 class SceneSourceBlock extends NodeAssetBlock {
     public static override ClassName = "SceneSourceBlock";
 
-    public readonly output = this._registerOutput("output", NodeAssetConnectionPointType.SCENE);
+    public readonly output = this._registerOutput("output", NodeAssetConnectionPointType.GLTF_DOCUMENT);
 
     // Produces the `Document` this source emits; each build calls it once.
     public documentFactory: () => Document = () => new Document();
+    public lastOutput: GltfAsset | null = null;
 
     public override async _buildBlockAsync(): Promise<void> {
-        this.output.value = this.documentFactory();
+        this.lastOutput = CreateTestGltfAsset(this.documentFactory(), this.name);
+        this.output.value = this.lastOutput;
     }
 }
 
@@ -27,11 +31,15 @@ class SceneSourceBlock extends NodeAssetBlock {
 class SceneReaderBlock extends NodeAssetBlock {
     public static override ClassName = "SceneReaderBlock";
 
-    public readonly input = this._registerInput("input", NodeAssetConnectionPointType.SCENE);
-    public readonly output = this._registerOutput("output", NodeAssetConnectionPointType.SCENE);
+    public readonly input = this._registerInput("input", NodeAssetConnectionPointType.GLTF_DOCUMENT);
+    public readonly output = this._registerOutput("output", NodeAssetConnectionPointType.GLTF_DOCUMENT);
+    public lastInput: unknown = null;
+    public lastOutput: unknown = null;
 
     public override async _buildBlockAsync(): Promise<void> {
+        this.lastInput = this.input.value;
         this.output.value = this.input.value;
+        this.lastOutput = this.output.value;
     }
 }
 
@@ -39,16 +47,18 @@ class SceneReaderBlock extends NodeAssetBlock {
 class SetNodeTranslationBlock extends NodeAssetBlock {
     public static override ClassName = "SetNodeTranslationBlock";
 
-    public readonly input = this._registerInput("input", NodeAssetConnectionPointType.SCENE);
-    public readonly output = this._registerOutput("output", NodeAssetConnectionPointType.SCENE);
+    public readonly input = this._registerInput("input", NodeAssetConnectionPointType.GLTF_DOCUMENT);
+    public readonly output = this._registerOutput("output", NodeAssetConnectionPointType.GLTF_DOCUMENT);
 
     /** The translation to write onto the first node of the input `Document`. */
     public translation: [number, number, number] = [0, 0, 0];
+    public lastOutput: unknown = null;
 
     public override async _buildBlockAsync(): Promise<void> {
-        const document = this.input.value as Document;
-        document.getRoot().listNodes()[0].setTranslation(this.translation);
-        this.output.value = document;
+        const asset = GetGltfAsset(this.input.value, this.input.name);
+        asset.document.getRoot().listNodes()[0].setTranslation(this.translation);
+        this.output.value = asset;
+        this.lastOutput = asset;
     }
 }
 
@@ -56,11 +66,15 @@ class SetNodeTranslationBlock extends NodeAssetBlock {
 class SceneMergeSinkBlock extends NodeAssetBlock {
     public static override ClassName = "SceneMergeSinkBlock";
 
-    public readonly inputA = this._registerInput("inputA", NodeAssetConnectionPointType.SCENE);
-    public readonly inputB = this._registerInput("inputB", NodeAssetConnectionPointType.SCENE);
-    public readonly output = this._registerOutput("output", NodeAssetConnectionPointType.SCENE);
+    public readonly inputA = this._registerInput("inputA", NodeAssetConnectionPointType.GLTF_DOCUMENT);
+    public readonly inputB = this._registerInput("inputB", NodeAssetConnectionPointType.GLTF_DOCUMENT);
+    public readonly output = this._registerOutput("output", NodeAssetConnectionPointType.GLTF_DOCUMENT);
+    public lastInputA: unknown = null;
+    public lastInputB: unknown = null;
 
     public override async _buildBlockAsync(): Promise<void> {
+        this.lastInputA = this.inputA.value;
+        this.lastInputB = this.inputB.value;
         this.output.value = this.inputA.value;
     }
 }
@@ -85,10 +99,14 @@ class ScalarPairToSceneBlock extends NodeAssetBlock {
 
     public readonly inputA = this._registerInput("inputA", NodeAssetConnectionPointType.JSON);
     public readonly inputB = this._registerInput("inputB", NodeAssetConnectionPointType.JSON);
-    public readonly output = this._registerOutput("output", NodeAssetConnectionPointType.SCENE);
+    public readonly output = this._registerOutput("output", NodeAssetConnectionPointType.GLTF_DOCUMENT);
+    public lastInputA: unknown = null;
+    public lastInputB: unknown = null;
 
     public override async _buildBlockAsync(): Promise<void> {
-        this.output.value = new Document();
+        this.lastInputA = this.inputA.value;
+        this.lastInputB = this.inputB.value;
+        this.output.value = CreateTestGltfAsset(new Document(), this.name);
     }
 }
 
@@ -172,12 +190,12 @@ describe("copy-on-fan-out (SCENE payloads)", () => {
         await asset.buildAsync();
 
         // Each consumer holds its own clone, so none of them holds the canonical evaluated Document.
-        const canonical = source.output.value as Document;
-        expect(branchA.input.value).not.toBe(canonical);
-        expect(branchB.input.value).not.toBe(canonical);
-        expect(branchA.input.value).not.toBe(branchB.input.value);
+        const canonical = source.lastOutput;
+        expect(branchA.lastInput).not.toBe(canonical);
+        expect(branchB.lastInput).not.toBe(canonical);
+        expect(branchA.lastInput).not.toBe(branchB.lastInput);
         // The clone is a faithful copy of the source scene.
-        expect((branchA.input.value as Document).getRoot().listNodes()).toHaveLength(1);
+        expect(GetTestGltfDocument(branchA.lastInput).getRoot().listNodes()).toHaveLength(1);
     });
 
     it("isolates in-place mutations across a same-source diamond (regression)", async () => {
@@ -201,8 +219,8 @@ describe("copy-on-fan-out (SCENE payloads)", () => {
 
         await asset.buildAsync();
 
-        const docA = branchA.output.value as Document;
-        const docB = branchB.output.value as Document;
+        const docA = GetTestGltfDocument(branchA.lastOutput);
+        const docB = GetTestGltfDocument(branchB.lastOutput);
         expect(docA).not.toBe(docB);
         expect(docA.getRoot().listNodes()[0].getTranslation()).toEqual([1, 0, 0]);
         expect(docB.getRoot().listNodes()[0].getTranslation()).toEqual([2, 0, 0]);
@@ -227,8 +245,8 @@ describe("copy-on-fan-out (SCENE payloads)", () => {
 
         await asset.buildAsync();
 
-        const centered = centerBranch.output.value as Document;
-        const pruned = pruneBranch.output.value as Document;
+        const centered = GetTestGltfDocument(sink.lastInputA);
+        const pruned = GetTestGltfDocument(sink.lastInputB);
         expect(centered).not.toBe(pruned);
         // The center branch recentered its geometry and kept the (unpruned) orphan material.
         expect(SceneCenterX(centered)).toBeCloseTo(0, 4);
@@ -253,9 +271,9 @@ describe("copy-on-fan-out (SCENE payloads)", () => {
         await asset.buildAsync();
 
         // Immutable scalars are never cloned: every consumer sees the very same reference.
-        expect(consumer.inputA.value).toBe(payload);
-        expect(consumer.inputB.value).toBe(payload);
-        expect(consumer.inputA.value).toBe(source.output.value);
+        expect(consumer.lastInputA).toBe(payload);
+        expect(consumer.lastInputB).toBe(payload);
+        expect(consumer.lastInputA).toBe(source.payload);
     });
 
     it("does not clone a single-consumer SCENE edge", async () => {
@@ -271,7 +289,7 @@ describe("copy-on-fan-out (SCENE payloads)", () => {
         await asset.buildAsync();
 
         // A sole consumer shares the one Document; a linear edge is never cloned.
-        expect(reader.input.value).toBe(source.output.value);
+        expect(reader.lastInput).toBe(source.lastOutput);
     });
 
     it("evaluates a fanned-out upstream once and clones at propagation, not by re-evaluating it", async () => {
@@ -297,6 +315,6 @@ describe("copy-on-fan-out (SCENE payloads)", () => {
         expect(buildSpy).toHaveBeenCalledTimes(1);
         // ...yet each branch still received its own clone, so the clone happens at value propagation
         // rather than by re-running the upstream: the two inputs are distinct Documents.
-        expect(branchA.input.value).not.toBe(branchB.input.value);
+        expect(branchA.lastInput).not.toBe(branchB.lastInput);
     });
 });

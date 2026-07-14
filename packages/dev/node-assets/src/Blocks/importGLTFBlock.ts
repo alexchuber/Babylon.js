@@ -1,5 +1,3 @@
-import { type Document } from "@gltf-transform/core";
-
 import { type Nullable } from "core/types";
 import { DecodeBase64ToBinary, EncodeArrayBufferToBase64 } from "core/Misc/stringTools";
 
@@ -7,11 +5,14 @@ import { RegisterBlock } from "../blockFoundation/blockRegistry";
 import { NodeAssetBlock } from "../blockFoundation/nodeAssetBlock";
 import { type NodeAssetConnectionPoint } from "../connection/nodeAssetConnectionPoint";
 import { NodeAssetConnectionPointType } from "../connection/nodeAssetConnectionPointType";
+import { type BuildScope } from "../evaluation/buildScope";
 import { type NodeAsset } from "../nodeAsset";
+import { GltfAsset } from "../representations/gltfAsset";
+import { GetSerializedNullableString, type NodeAssetBlockSerialization } from "../serialization/nodeAssetSerialization";
 import { GetDracoModuleOptions, ResolveDraco3DGltfModule } from "./dracoWasm";
 
 /**
- * Imports glTF/glb bytes into a gltf-transform `Document` and exposes it on its output.
+ * Imports glTF/glb bytes into a {@link GltfAsset} and exposes it on its output.
  */
 export class ImportGLTFBlock extends NodeAssetBlock {
     /** The class name, used for identification and safe under minification. */
@@ -27,7 +28,7 @@ export class ImportGLTFBlock extends NodeAssetBlock {
      */
     public source: Nullable<string> = null;
 
-    /** The imported gltf-transform `Document`. */
+    /** The imported glTF representation. */
     public readonly output: NodeAssetConnectionPoint;
 
     /**
@@ -43,16 +44,19 @@ export class ImportGLTFBlock extends NodeAssetBlock {
      */
     public constructor(name: string, nodeAsset: NodeAsset) {
         super(name, nodeAsset);
-        this.output = this._registerOutput("output", NodeAssetConnectionPointType.SCENE);
+        this.output = this._registerOutput("output", NodeAssetConnectionPointType.GLTF_DOCUMENT);
     }
 
     /**
-     * Reads {@link data} into a gltf-transform `Document` and sets it as the output value.
+     * Reads {@link data} into a glTF representation and sets it as the output value.
+     * @param scope The optional build scope used to account source bytes before parsing.
      */
-    public override async _buildBlockAsync(): Promise<void> {
-        if (!this.data) {
+    public override async _buildBlockAsync(scope?: BuildScope): Promise<void> {
+        const data = this.data;
+        if (!data) {
             throw new Error(`The "${this.name}" import block has no data to import.`);
         }
+        scope?.accountSourceBytes(data.byteLength);
 
         const { WebIO } = await import("@gltf-transform/core");
         const { ALL_EXTENSIONS } = await import("@gltf-transform/extensions");
@@ -63,8 +67,15 @@ export class ImportGLTFBlock extends NodeAssetBlock {
         // eslint-disable-next-line @typescript-eslint/naming-convention -- gltf-transform dependency key
         const dependencies = { "draco3d.decoder": dracoModuleOptions ? await draco3d.createDecoderModule(dracoModuleOptions) : await draco3d.createDecoderModule() };
         const io = new WebIO().registerExtensions(ALL_EXTENSIONS).registerDependencies(dependencies);
-        const document: Document = await io.readBinary(this.data);
-        this.output.value = document;
+        const document = await io.readBinary(data);
+        this.output.value = new GltfAsset(document, {
+            identity: this.source ?? this.name,
+            revision: 0,
+            manifest: {
+                format: "gltf",
+                source: this.source,
+            },
+        });
     }
 
     /**
@@ -72,7 +83,7 @@ export class ImportGLTFBlock extends NodeAssetBlock {
      * through save/load, alongside its {@link source} label.
      * @returns The serialization object.
      */
-    public override serialize(): any {
+    public override serialize(): NodeAssetBlockSerialization {
         const serializationObject = super.serialize();
         serializationObject.data = this.data ? EncodeArrayBufferToBase64(this.data) : null;
         serializationObject.source = this.source;
@@ -83,10 +94,11 @@ export class ImportGLTFBlock extends NodeAssetBlock {
      * Restores this block's {@link data} bytes from a base64 string produced by {@link serialize}.
      * @param serializationObject - The serialization object.
      */
-    public override _deserialize(serializationObject: any): void {
+    public override _deserialize(serializationObject: NodeAssetBlockSerialization): void {
         super._deserialize(serializationObject);
-        this.data = serializationObject.data ? new Uint8Array(DecodeBase64ToBinary(serializationObject.data)) : null;
-        this.source = serializationObject.source ?? null;
+        const data = GetSerializedNullableString(serializationObject, "data");
+        this.data = data ? new Uint8Array(DecodeBase64ToBinary(data)) : null;
+        this.source = GetSerializedNullableString(serializationObject, "source");
     }
 }
 

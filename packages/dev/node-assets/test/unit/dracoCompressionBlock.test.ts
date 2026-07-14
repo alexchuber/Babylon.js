@@ -5,6 +5,7 @@ import { DracoCompressionBlock } from "../../src/Blocks/dracoCompressionBlock";
 import { ExportGLTFBlock } from "../../src/Blocks/exportGLTFBlock";
 import { ImportGLTFBlock } from "../../src/Blocks/importGLTFBlock";
 import { NodeAsset } from "../../src/nodeAsset";
+import { CreateTestGltfAsset, GetTestGltfDocument } from "./testGltfAsset";
 
 // The global vitest setup stubs draco3dgltf (it is optional for @dev/core). Node assets depends on it
 // for real, so use the actual encoder/decoder here.
@@ -95,7 +96,7 @@ async function ReimportAsync(glb: Uint8Array): Promise<Document> {
     const importer = new ImportGLTFBlock("reimport", new NodeAsset("reimport"));
     importer.data = glb;
     await importer._buildBlockAsync();
-    return importer.output.value as Document;
+    return GetTestGltfDocument(importer.output.value);
 }
 
 /**
@@ -112,7 +113,7 @@ function GetGeometryCounts(document: Document): { vertexCount: number; indexCoun
 }
 
 describe("DracoCompressionBlock", () => {
-    it("registers a SCENE input and output on construction", () => {
+    it("registers a GLTF_DOCUMENT input and output on construction", () => {
         const asset = new NodeAsset("draco");
         const block = new DracoCompressionBlock("draco", asset);
 
@@ -182,11 +183,12 @@ describe("DracoCompressionBlock", () => {
 
         const asset = new NodeAsset("tag");
         const block = new DracoCompressionBlock("draco", asset);
-        block.input.value = document;
+        const gltf = CreateTestGltfAsset(document);
+        block.input.value = gltf;
 
         await block._buildBlockAsync();
 
-        expect(block.output.value).toBe(document);
+        expect(block.output.value).toBe(gltf);
         const used = document
             .getRoot()
             .listExtensionsUsed()

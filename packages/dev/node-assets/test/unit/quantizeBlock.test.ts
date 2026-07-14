@@ -4,6 +4,7 @@ import { describe, expect, it } from "vitest";
 import { NodeAsset } from "../../src/nodeAsset";
 import { NodeAssetConnectionPointType } from "../../src/connection/nodeAssetConnectionPointType";
 import { QuantizeBlock } from "../../src/Blocks/quantizeBlock";
+import { CreateTestGltfAsset } from "./testGltfAsset";
 
 const KHR_MESH_QUANTIZATION = "KHR_mesh_quantization";
 // glTF accessor component type for 32-bit float, i.e. un-quantized vertex data.
@@ -40,14 +41,14 @@ function GetPositionComponentType(document: Document): number {
 }
 
 describe("QuantizeBlock", () => {
-    it("registers a SCENE input and output on construction", () => {
+    it("registers a GLTF_DOCUMENT input and output on construction", () => {
         const asset = new NodeAsset("quantize");
         const block = new QuantizeBlock("quantize", asset);
 
         expect(block.inputs).toHaveLength(1);
         expect(block.outputs).toHaveLength(1);
-        expect(block.input.type).toBe(NodeAssetConnectionPointType.SCENE);
-        expect(block.output.type).toBe(NodeAssetConnectionPointType.SCENE);
+        expect(block.input.type).toBe(NodeAssetConnectionPointType.GLTF_DOCUMENT);
+        expect(block.output.type).toBe(NodeAssetConnectionPointType.GLTF_DOCUMENT);
     });
 
     it("quantizes attributes and declares KHR_mesh_quantization, passing the same document through", async () => {
@@ -57,11 +58,12 @@ describe("QuantizeBlock", () => {
 
         const asset = new NodeAsset("quantize");
         const block = new QuantizeBlock("quantize", asset);
-        block.input.value = document;
+        const gltf = CreateTestGltfAsset(document);
+        block.input.value = gltf;
 
         await block._buildBlockAsync();
 
-        expect(block.output.value).toBe(document);
+        expect(block.output.value).toBe(gltf);
         expect(
             document
                 .getRoot()

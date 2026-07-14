@@ -4,6 +4,7 @@ import { describe, expect, it } from "vitest";
 import { NodeAsset } from "../../src/nodeAsset";
 import { NodeAssetConnectionPointType } from "../../src/connection/nodeAssetConnectionPointType";
 import { PruneBlock } from "../../src/Blocks/pruneBlock";
+import { CreateTestGltfAsset } from "./testGltfAsset";
 
 /**
  * Builds a document that carries dead weight: an unused material referenced by nothing, and an empty
@@ -34,14 +35,14 @@ async function CreateDocumentWithUnusedDataAsync(): Promise<Document> {
 }
 
 describe("PruneBlock", () => {
-    it("registers a SCENE input and output on construction", () => {
+    it("registers a GLTF_DOCUMENT input and output on construction", () => {
         const asset = new NodeAsset("prune");
         const block = new PruneBlock("prune", asset);
 
         expect(block.inputs).toHaveLength(1);
         expect(block.outputs).toHaveLength(1);
-        expect(block.input.type).toBe(NodeAssetConnectionPointType.SCENE);
-        expect(block.output.type).toBe(NodeAssetConnectionPointType.SCENE);
+        expect(block.input.type).toBe(NodeAssetConnectionPointType.GLTF_DOCUMENT);
+        expect(block.output.type).toBe(NodeAssetConnectionPointType.GLTF_DOCUMENT);
     });
 
     it("removes unused materials and empty leaf nodes, passing the same document through", async () => {
@@ -51,11 +52,12 @@ describe("PruneBlock", () => {
 
         const asset = new NodeAsset("prune");
         const block = new PruneBlock("prune", asset);
-        block.input.value = document;
+        const gltf = CreateTestGltfAsset(document);
+        block.input.value = gltf;
 
         await block._buildBlockAsync();
 
-        expect(block.output.value).toBe(document);
+        expect(block.output.value).toBe(gltf);
         expect(document.getRoot().listMaterials()).toHaveLength(0);
         expect(document.getRoot().listNodes()).toHaveLength(1);
     });
@@ -66,7 +68,7 @@ describe("PruneBlock", () => {
         const asset = new NodeAsset("prune");
         const block = new PruneBlock("prune", asset);
         block.keepLeaves = true;
-        block.input.value = document;
+        block.input.value = CreateTestGltfAsset(document);
 
         await block._buildBlockAsync();
 

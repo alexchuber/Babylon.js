@@ -5,11 +5,14 @@ import { RegisterBlock } from "../blockFoundation/blockRegistry";
 import { NodeAssetBlock } from "../blockFoundation/nodeAssetBlock";
 import { type NodeAssetConnectionPoint } from "../connection/nodeAssetConnectionPoint";
 import { NodeAssetConnectionPointType } from "../connection/nodeAssetConnectionPointType";
+import { type BuildScope } from "../evaluation/buildScope";
 import { type NodeAsset } from "../nodeAsset";
+import { GltfAsset } from "../representations/gltfAsset";
+import { GetSerializedNullableString, type NodeAssetBlockSerialization } from "../serialization/nodeAssetSerialization";
 import { SniffUsdFormat } from "./tinyUsdzTranscoder";
 
 /**
- * Imports USD content onto a fresh gltf-transform `Document` (the SCENE spine) and exposes it on its
+ * Imports USD content onto a fresh gltf-transform `Document` and exposes it on its glTF representation
  * output. This is the first non-glTF entry point (a **Sources** block).
  *
  * ## Parser: tinyusdz (real USD)
@@ -46,6 +49,12 @@ export class ImportUSDBlock extends NodeAssetBlock {
     /** The source USD bytes to import (set by the caller / editor file picker). */
     public data: Nullable<Uint8Array> = null;
 
+    /**
+     * A human-readable label for where {@link data} came from: the uploaded file name or a source URL.
+     * Used by the editor's property panel to show the current file status.
+     */
+    public source: Nullable<string> = null;
+
     /** The imported gltf-transform `Document`. */
     public readonly output: NodeAssetConnectionPoint;
 
@@ -62,40 +71,57 @@ export class ImportUSDBlock extends NodeAssetBlock {
      */
     public constructor(name: string, nodeAsset: NodeAsset) {
         super(name, nodeAsset);
-        this.output = this._registerOutput("output", NodeAssetConnectionPointType.SCENE);
+        this.output = this._registerOutput("output", NodeAssetConnectionPointType.GLTF_DOCUMENT);
     }
 
     /**
      * Sniffs {@link data}'s USD format, transcodes it onto a gltf-transform `Document`, and sets that
      * document as the output value.
+     * @param scope The optional build scope used to account source bytes before parsing.
      */
-    public override async _buildBlockAsync(): Promise<void> {
-        if (!this.data) {
+    public override async _buildBlockAsync(scope?: BuildScope): Promise<void> {
+        const data = this.data;
+        if (!data) {
             throw new Error(`The "${this.name}" USD import block has no data to import.`);
         }
+        scope?.accountSourceBytes(data.byteLength);
 
         const { TranscodeUsdToDocumentAsync } = await import("./tinyUsdzTranscoder");
-        this.output.value = await TranscodeUsdToDocumentAsync(this.data, { sourceFormat: SniffUsdFormat(this.data), wasmUrl: this.usdWasmUrl });
+        const sourceFormat = SniffUsdFormat(data);
+        const document = await TranscodeUsdToDocumentAsync(data, { sourceFormat, wasmUrl: this.usdWasmUrl });
+        this.output.value = new GltfAsset(document, {
+            identity: this.name,
+            revision: 0,
+            manifest: {
+                format: "gltf",
+                importedFrom: "usd",
+                sourceFormat,
+            },
+        });
     }
 
     /**
      * Serializes this block, encoding its {@link data} bytes as base64 so the source USD roundtrips
-     * through save/load.
+     * through save/load, alongside its {@link source} label.
      * @returns The serialization object.
      */
-    public override serialize(): any {
+    public override serialize(): NodeAssetBlockSerialization {
         const serializationObject = super.serialize();
         serializationObject.data = this.data ? EncodeArrayBufferToBase64(this.data) : null;
+        serializationObject.source = this.source;
         return serializationObject;
     }
 
     /**
-     * Restores this block's {@link data} bytes from a base64 string produced by {@link serialize}.
+     * Restores this block's {@link data} bytes and {@link source} label from a serialization object
+     * produced by {@link serialize}.
      * @param serializationObject - The serialization object.
      */
-    public override _deserialize(serializationObject: any): void {
+    public override _deserialize(serializationObject: NodeAssetBlockSerialization): void {
         super._deserialize(serializationObject);
-        this.data = serializationObject.data ? new Uint8Array(DecodeBase64ToBinary(serializationObject.data)) : null;
+        const data = GetSerializedNullableString(serializationObject, "data");
+        this.data = data ? new Uint8Array(DecodeBase64ToBinary(data)) : null;
+        this.source = GetSerializedNullableString(serializationObject, "source");
     }
 }
 

@@ -1,18 +1,15 @@
-import { type Document } from "@gltf-transform/core";
-
-import { type Nullable } from "core/types";
-
 import { RegisterBlock } from "../blockFoundation/blockRegistry";
 import { NodeAssetBlock } from "../blockFoundation/nodeAssetBlock";
 import { type NodeAssetConnectionPoint } from "../connection/nodeAssetConnectionPoint";
 import { NodeAssetConnectionPointType } from "../connection/nodeAssetConnectionPointType";
 import { type NodeAsset } from "../nodeAsset";
+import { GetGltfAsset } from "../representations/gltfAsset";
 import { type ImagePayload } from "./imagePayload";
 import { ResolvePointerToImageAccessor } from "../selector/pointerToAccessor";
 
 /**
  * Writes an IMAGE into the material texture slot addressed by a glTF Object Model JSON Pointer within a
- * SCENE and passes the (same, in-place-mutated) SCENE through. It resolves the texture-slot pointer to
+ * glTF representation and passes that same in-place-mutated representation through. It resolves the texture-slot pointer to
  * an image accessor via NAE's path→accessor converter and calls `accessor.set(image)`, which replaces
  * the slot texture's image bytes and mime type, creating the `Texture` and wiring it into the slot when
  * the slot is empty. Together with `ExtractTexture` it closes the extract → process → set round-trip:
@@ -27,7 +24,7 @@ export class SetTexture extends NodeAssetBlock {
     /** The class name, used for identification and safe under minification. */
     public static override ClassName = "SetTexture";
 
-    /** The SCENE `Document` to write the texture into. */
+    /** The glTF representation to write the texture into. */
     public readonly scene: NodeAssetConnectionPoint;
 
     /** The glTF Object Model JSON Pointer naming the material texture slot to write. */
@@ -36,7 +33,7 @@ export class SetTexture extends NodeAssetBlock {
     /** The IMAGE payload to write into the texture slot. */
     public readonly image: NodeAssetConnectionPoint;
 
-    /** The same SCENE `Document`, mutated in place. */
+    /** The same glTF representation, mutated in place. */
     public readonly output: NodeAssetConnectionPoint;
 
     /**
@@ -46,10 +43,10 @@ export class SetTexture extends NodeAssetBlock {
      */
     public constructor(name: string, nodeAsset: NodeAsset) {
         super(name, nodeAsset);
-        this.scene = this._registerInput("scene", NodeAssetConnectionPointType.SCENE);
+        this.scene = this._registerInput("scene", NodeAssetConnectionPointType.GLTF_DOCUMENT);
         this.pointer = this._registerInput("pointer", NodeAssetConnectionPointType.STRING);
         this.image = this._registerInput("image", NodeAssetConnectionPointType.IMAGE);
-        this.output = this._registerOutput("output", NodeAssetConnectionPointType.SCENE);
+        this.output = this._registerOutput("output", NodeAssetConnectionPointType.GLTF_DOCUMENT);
     }
 
     /**
@@ -59,15 +56,15 @@ export class SetTexture extends NodeAssetBlock {
      * texture slot.
      */
     public override async _buildBlockAsync(): Promise<void> {
-        const document = this.scene.value as Nullable<Document>;
-        if (!document) {
+        if (this.scene.value == null) {
             throw new Error(`The "${this.name}" SetTexture block has no input document to write.`);
         }
+        const asset = GetGltfAsset(this.scene.value, this.scene.name);
 
-        const accessor = ResolvePointerToImageAccessor(document, this.pointer.value as string);
+        const accessor = ResolvePointerToImageAccessor(asset.document, this.pointer.value as string);
         accessor.set(this.image.value as ImagePayload);
         // In-place mutation: emit the same reference (copy-on-fan-out is handled by the evaluator).
-        this.output.value = document;
+        this.output.value = asset;
     }
 }
 

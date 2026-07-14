@@ -3,6 +3,7 @@ import { NodeAssetBlock } from "../blockFoundation/nodeAssetBlock";
 import { type NodeAssetConnectionPoint } from "../connection/nodeAssetConnectionPoint";
 import { NodeAssetConnectionPointType } from "../connection/nodeAssetConnectionPointType";
 import { type NodeAsset } from "../nodeAsset";
+import { GetSerializedString, type NodeAssetBlockSerialization } from "../serialization/nodeAssetSerialization";
 
 /**
  * A source block with no inputs and a single STRING output carrying a constant text value, edited
@@ -40,7 +41,7 @@ export class StringLiteral extends NodeAssetBlock {
      * Serializes this block's literal value.
      * @returns The serialization object.
      */
-    public override serialize(): any {
+    public override serialize(): NodeAssetBlockSerialization {
         const serializationObject = super.serialize();
         serializationObject.value = this.value;
         return serializationObject;
@@ -50,9 +51,9 @@ export class StringLiteral extends NodeAssetBlock {
      * Restores this block's literal value.
      * @param serializationObject - The serialization object.
      */
-    public override _deserialize(serializationObject: any): void {
+    public override _deserialize(serializationObject: NodeAssetBlockSerialization): void {
         super._deserialize(serializationObject);
-        this.value = serializationObject.value ?? "";
+        this.value = GetSerializedString(serializationObject, "value", "");
     }
 }
 

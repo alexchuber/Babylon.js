@@ -5,7 +5,9 @@ import { RegisterBlock } from "../blockFoundation/blockRegistry";
 import { NodeAssetBlock } from "../blockFoundation/nodeAssetBlock";
 import { type NodeAssetConnectionPoint } from "../connection/nodeAssetConnectionPoint";
 import { NodeAssetConnectionPointType } from "../connection/nodeAssetConnectionPointType";
+import { type BuildScope } from "../evaluation/buildScope";
 import { type NodeAsset } from "../nodeAsset";
+import { GetSerializedNullableString, GetSerializedString, type NodeAssetBlockSerialization } from "../serialization/nodeAssetSerialization";
 import { type ImagePayload } from "./imagePayload";
 
 /**
@@ -46,12 +48,15 @@ export class ImportImageBlock extends NodeAssetBlock {
     /**
      * Wraps {@link data} and {@link mimeType} into an {@link ImagePayload} and sets it as the output
      * value. The bytes are carried encoded; `width`/`height` are decoded by a later op, not here.
+     * @param scope The optional build scope used to account source bytes.
      */
-    public override async _buildBlockAsync(): Promise<void> {
-        if (!this.data) {
+    public override async _buildBlockAsync(scope?: BuildScope): Promise<void> {
+        const data = this.data;
+        if (!data) {
             throw new Error(`The "${this.name}" import block has no data to import.`);
         }
-        const payload: ImagePayload = { data: this.data, mimeType: this.mimeType };
+        scope?.accountSourceBytes(data.byteLength);
+        const payload: ImagePayload = { data, mimeType: this.mimeType };
         this.output.value = payload;
     }
 
@@ -60,7 +65,7 @@ export class ImportImageBlock extends NodeAssetBlock {
      * through save/load, alongside its {@link mimeType} and {@link source} label.
      * @returns The serialization object.
      */
-    public override serialize(): any {
+    public override serialize(): NodeAssetBlockSerialization {
         const serializationObject = super.serialize();
         serializationObject.data = this.data ? EncodeArrayBufferToBase64(this.data) : null;
         serializationObject.mimeType = this.mimeType;
@@ -72,11 +77,12 @@ export class ImportImageBlock extends NodeAssetBlock {
      * Restores this block's {@link data} bytes (from base64) and {@link mimeType}.
      * @param serializationObject - The serialization object.
      */
-    public override _deserialize(serializationObject: any): void {
+    public override _deserialize(serializationObject: NodeAssetBlockSerialization): void {
         super._deserialize(serializationObject);
-        this.data = serializationObject.data ? new Uint8Array(DecodeBase64ToBinary(serializationObject.data)) : null;
-        this.mimeType = serializationObject.mimeType ?? "image/png";
-        this.source = serializationObject.source ?? null;
+        const data = GetSerializedNullableString(serializationObject, "data");
+        this.data = data ? new Uint8Array(DecodeBase64ToBinary(data)) : null;
+        this.mimeType = GetSerializedString(serializationObject, "mimeType", "image/png");
+        this.source = GetSerializedNullableString(serializationObject, "source");
     }
 }
 

@@ -7,6 +7,7 @@ import { ImportUSDBlock } from "../../src/Blocks/importUSDBlock";
 import { SniffUsdFormat } from "../../src/Blocks/tinyUsdzTranscoder";
 import { NodeAssetConnectionPointType } from "../../src/connection/nodeAssetConnectionPointType";
 import { NodeAsset } from "../../src/nodeAsset";
+import { GetTestGltfDocument } from "./testGltfAsset";
 
 // ExportGLTFBlock resolves the real Draco encoder and ImportGLTFBlock the decoder; the global vitest
 // setup stubs draco3dgltf for @dev/core, so restore the real module for the export/re-import roundtrip.
@@ -119,7 +120,7 @@ async function ImportUsdAsync(bytes: Uint8Array): Promise<Document> {
     const block = new ImportUSDBlock("usd", new NodeAsset("usd"));
     block.data = bytes;
     await block._buildBlockAsync();
-    return block.output.value as Document;
+    return GetTestGltfDocument(block.output.value);
 }
 
 /**
@@ -205,7 +206,7 @@ function BuildUsdz(name: string, data: Uint8Array): Uint8Array {
 }
 
 describe("ImportUSDBlock", () => {
-    it("registers no inputs and a single SCENE output", () => {
+    it("keeps the legacy tinyusdz importer on a single GLTF_DOCUMENT output", () => {
         const asset = new NodeAsset("usd");
         const block = new ImportUSDBlock("usd", asset);
 
@@ -213,7 +214,7 @@ describe("ImportUSDBlock", () => {
         expect(block.inputs).toHaveLength(0);
         expect(block.outputs).toHaveLength(1);
         expect(block.output).toBe(block.outputs[0]);
-        expect(block.output.type).toBe(NodeAssetConnectionPointType.SCENE);
+        expect(block.output.type).toBe(NodeAssetConnectionPointType.GLTF_DOCUMENT);
     });
 
     it("transcodes geometry, materials, and the node hierarchy onto the SCENE", async () => {
@@ -332,7 +333,7 @@ describe("ImportUSDBlock", () => {
         const reimporter = new ImportGLTFBlock("reimport", new NodeAsset("reimport"));
         reimporter.data = glb;
         await reimporter._buildBlockAsync();
-        const reimported = reimporter.output.value as Document;
+        const reimported = GetTestGltfDocument(reimporter.output.value);
 
         expect(reimported.getRoot().listMeshes()).toHaveLength(1);
         expect(reimported.getRoot().listMaterials()).toHaveLength(1);

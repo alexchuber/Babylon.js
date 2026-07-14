@@ -13,6 +13,7 @@ import { SetTexture } from "../../src/Blocks/setTexture";
 import { StringLiteral } from "../../src/Blocks/stringLiteral";
 import { NodeAssetConnectionPointType } from "../../src/connection/nodeAssetConnectionPointType";
 import { NodeAsset } from "../../src/nodeAsset";
+import { CreateTestGltfAsset, GetTestGltfDocument } from "./testGltfAsset";
 
 // ImportGLTFBlock registers the Draco decoder, so use the real module rather than the stub the global
 // vitest setup installs for @dev/core.
@@ -99,31 +100,32 @@ describe("SetTexture", () => {
         });
     });
 
-    it("registers SCENE + STRING + IMAGE inputs and a SCENE output", () => {
+    it("registers GLTF_DOCUMENT + STRING + IMAGE inputs and a GLTF_DOCUMENT output", () => {
         const asset = new NodeAsset("shape");
         const setter = new SetTexture("set", asset);
 
         expect(setter.inputs).toHaveLength(3);
         expect(setter.outputs).toHaveLength(1);
-        expect(setter.scene.type).toBe(NodeAssetConnectionPointType.SCENE);
+        expect(setter.scene.type).toBe(NodeAssetConnectionPointType.GLTF_DOCUMENT);
         expect(setter.pointer.type).toBe(NodeAssetConnectionPointType.STRING);
         expect(setter.image.type).toBe(NodeAssetConnectionPointType.IMAGE);
-        expect(setter.output.type).toBe(NodeAssetConnectionPointType.SCENE);
+        expect(setter.output.type).toBe(NodeAssetConnectionPointType.GLTF_DOCUMENT);
     });
 
     it("writes an IMAGE into an existing slot; a readback via ExtractTexture returns the new bytes and mime", async () => {
         const asset = new NodeAsset("existing-slot");
         const { document, material } = CreateFixture();
+        const gltf = CreateTestGltfAsset(document);
 
         const setter = new SetTexture("set", asset);
-        setter.scene.value = document;
+        setter.scene.value = gltf;
         setter.pointer.value = BaseColorPointer;
         setter.image.value = { data: ImportedPng, mimeType: "image/png" } satisfies ImagePayload;
         await setter._buildBlockAsync();
 
         // Read the slot back through the converter's get side (ExtractTexture): set and get are symmetric.
         const extract = new ExtractTexture("extract", asset);
-        extract.scene.value = document;
+        extract.scene.value = gltf;
         extract.pointer.value = BaseColorPointer;
         await extract._buildBlockAsync();
         const payload = extract.output.value as ImagePayload;
@@ -141,10 +143,11 @@ describe("SetTexture", () => {
     it("creates the texture when the slot is empty, then writes the image into it", async () => {
         const asset = new NodeAsset("create-on-empty");
         const { document, material } = CreateFixture();
+        const gltf = CreateTestGltfAsset(document);
         expect(material.getMetallicRoughnessTexture()).toBeNull();
 
         const setter = new SetTexture("set", asset);
-        setter.scene.value = document;
+        setter.scene.value = gltf;
         setter.pointer.value = MetallicRoughnessPointer;
         setter.image.value = { data: ImportedPng, mimeType: "image/png" } satisfies ImagePayload;
         await setter._buildBlockAsync();
@@ -160,16 +163,17 @@ describe("SetTexture", () => {
     it("passes the same in-place-mutated Document reference through on its output", async () => {
         const asset = new NodeAsset("passthrough");
         const { document } = CreateFixture();
+        const gltf = CreateTestGltfAsset(document);
 
         const setter = new SetTexture("set", asset);
-        setter.scene.value = document;
+        setter.scene.value = gltf;
         setter.pointer.value = BaseColorPointer;
         setter.image.value = { data: ImportedPng, mimeType: "image/png" } satisfies ImagePayload;
         await setter._buildBlockAsync();
 
         // Same reference, mutated in place (no clone / copy-on-fan-out in the block itself).
-        expect(setter.output.value).toBe(document);
-        expect(setter.output.type).toBe(NodeAssetConnectionPointType.SCENE);
+        expect(setter.output.value).toBe(gltf);
+        expect(setter.output.type).toBe(NodeAssetConnectionPointType.GLTF_DOCUMENT);
     });
 
     it("sets a texture from an ImportImage end-to-end (import -> set -> export -> reparse)", async () => {
@@ -226,11 +230,21 @@ describe("SetTexture", () => {
         resize.output.connectTo(setter.image);
         setPointer.output.connectTo(setter.pointer);
         setter.output.connectTo(exporter.input);
+        let readDocument: Document | undefined;
+        let writeDocument: Document | undefined;
+        let importedDocument: Document | undefined;
+        const buildExportAsync = exporter._buildBlockAsync;
+        vi.spyOn(exporter, "_buildBlockAsync").mockImplementation(async () => {
+            readDocument = GetTestGltfDocument(extract.scene.value);
+            writeDocument = GetTestGltfDocument(setter.output.value);
+            importedDocument = GetTestGltfDocument(importer.output.value);
+            await buildExportAsync.call(exporter);
+        });
 
         const reparsed = await ReparseAsync(await asset.buildAsync());
 
         // The resize ran on the extracted texture and set its target dimensions on the new payload.
-        const resized = resize.output.value as ImagePayload;
+        const resized = await (processImageMock.mock.results[0].value as Promise<ImagePayload>);
         expect(resized.data).toEqual(ResizedBytes);
         expect(resized.width).toBe(8);
         expect(resized.height).toBe(8);
@@ -243,15 +257,13 @@ describe("SetTexture", () => {
         expect(reparsedMaterial.getBaseColorFactor()).toEqual([0.2, 0.4, 0.6, 1]);
 
         // Diamond isolation: each branch got its own Document clone (copy-on-fan-out)...
-        const readDocument = extract.scene.value as Document;
-        const writeDocument = setter.output.value as Document;
         expect(readDocument).not.toBe(writeDocument);
         // ...the read branch's clone still holds the ORIGINAL texture (the write did not stomp it)...
-        expect(readDocument.getRoot().listMaterials()[0].getBaseColorTexture()!.getImage()).toEqual(OriginalBaseColorPng);
+        expect(readDocument!.getRoot().listMaterials()[0].getBaseColorTexture()!.getImage()).toEqual(OriginalBaseColorPng);
         // ...the write branch's clone holds the resized texture...
-        expect(writeDocument.getRoot().listMaterials()[0].getBaseColorTexture()!.getImage()).toEqual(ResizedBytes);
+        expect(writeDocument!.getRoot().listMaterials()[0].getBaseColorTexture()!.getImage()).toEqual(ResizedBytes);
         // ...and the canonical imported Document is never mutated by either branch.
-        expect((importer.output.value as Document).getRoot().listMaterials()[0].getBaseColorTexture()!.getImage()).toEqual(OriginalBaseColorPng);
+        expect(importedDocument!.getRoot().listMaterials()[0].getBaseColorTexture()!.getImage()).toEqual(OriginalBaseColorPng);
     });
 
     it("fails the build with the converter's clear error when the pointer does not name a texture slot", async () => {
@@ -259,7 +271,7 @@ describe("SetTexture", () => {
         const { document } = CreateFixture();
 
         const setter = new SetTexture("set", asset);
-        setter.scene.value = document;
+        setter.scene.value = CreateTestGltfAsset(document);
         setter.pointer.value = "/materials/0/pbrMetallicRoughness/baseColorFactor";
         setter.image.value = { data: ImportedPng, mimeType: "image/png" } satisfies ImagePayload;
 
@@ -271,7 +283,7 @@ describe("SetTexture", () => {
         const { document } = CreateFixture();
 
         const setter = new SetTexture("set", asset);
-        setter.scene.value = document;
+        setter.scene.value = CreateTestGltfAsset(document);
         setter.pointer.value = "/materials/9/pbrMetallicRoughness/baseColorTexture";
         setter.image.value = { data: ImportedPng, mimeType: "image/png" } satisfies ImagePayload;
 

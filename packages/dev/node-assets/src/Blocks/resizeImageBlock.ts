@@ -5,6 +5,7 @@ import { NodeAssetBlock } from "../blockFoundation/nodeAssetBlock";
 import { type NodeAssetConnectionPoint } from "../connection/nodeAssetConnectionPoint";
 import { NodeAssetConnectionPointType } from "../connection/nodeAssetConnectionPointType";
 import { type NodeAsset } from "../nodeAsset";
+import { GetSerializedNumber, type NodeAssetBlockSerialization } from "../serialization/nodeAssetSerialization";
 import { type ImagePayload } from "./imagePayload";
 
 /**
@@ -57,7 +58,7 @@ export class ResizeImageBlock extends NodeAssetBlock {
      * Serializes this block's target dimensions.
      * @returns The serialization object.
      */
-    public override serialize(): any {
+    public override serialize(): NodeAssetBlockSerialization {
         const serializationObject = super.serialize();
         serializationObject.width = this.width;
         serializationObject.height = this.height;
@@ -68,10 +69,10 @@ export class ResizeImageBlock extends NodeAssetBlock {
      * Restores this block's target dimensions.
      * @param serializationObject - The serialization object.
      */
-    public override _deserialize(serializationObject: any): void {
+    public override _deserialize(serializationObject: NodeAssetBlockSerialization): void {
         super._deserialize(serializationObject);
-        this.width = serializationObject.width ?? 256;
-        this.height = serializationObject.height ?? 256;
+        this.width = GetSerializedNumber(serializationObject, "width", 256);
+        this.height = GetSerializedNumber(serializationObject, "height", 256);
     }
 }
 

@@ -9,6 +9,7 @@ import { ImportGLTFBlock } from "../../src/Blocks/importGLTFBlock";
 import { StringLiteral } from "../../src/Blocks/stringLiteral";
 import { NodeAssetConnectionPointType } from "../../src/connection/nodeAssetConnectionPointType";
 import { NodeAsset } from "../../src/nodeAsset";
+import { CreateTestGltfAsset } from "./testGltfAsset";
 
 // ImportGLTFBlock registers the Draco decoder, so use the real module rather than the stub the global
 // vitest setup installs for @dev/core.
@@ -61,13 +62,13 @@ async function CreateTexturedGlbAsync(): Promise<Uint8Array> {
 }
 
 describe("ExtractTexture", () => {
-    it("registers SCENE + STRING inputs and an IMAGE output", () => {
+    it("registers GLTF_DOCUMENT + STRING inputs and an IMAGE output", () => {
         const asset = new NodeAsset("shape");
         const extract = new ExtractTexture("extract", asset);
 
         expect(extract.inputs).toHaveLength(2);
         expect(extract.outputs).toHaveLength(1);
-        expect(extract.scene.type).toBe(NodeAssetConnectionPointType.SCENE);
+        expect(extract.scene.type).toBe(NodeAssetConnectionPointType.GLTF_DOCUMENT);
         expect(extract.pointer.type).toBe(NodeAssetConnectionPointType.STRING);
         expect(extract.output.type).toBe(NodeAssetConnectionPointType.IMAGE);
     });
@@ -77,7 +78,7 @@ describe("ExtractTexture", () => {
         const { document } = CreateFixture();
 
         const extract = new ExtractTexture("extract", asset);
-        extract.scene.value = document;
+        extract.scene.value = CreateTestGltfAsset(document);
         extract.pointer.value = BaseColorPointer;
         await extract._buildBlockAsync();
 
@@ -92,7 +93,7 @@ describe("ExtractTexture", () => {
         const { document } = CreateFixture();
 
         const extract = new ExtractTexture("extract", asset);
-        extract.scene.value = document;
+        extract.scene.value = CreateTestGltfAsset(document);
         extract.pointer.value = "/materials/0/emissiveTexture";
         await extract._buildBlockAsync();
 
@@ -126,7 +127,7 @@ describe("ExtractTexture", () => {
         const { document, material } = CreateFixture();
 
         const extract = new ExtractTexture("extract", asset);
-        extract.scene.value = document;
+        extract.scene.value = CreateTestGltfAsset(document);
         extract.pointer.value = BaseColorPointer;
         await extract._buildBlockAsync();
 
@@ -145,7 +146,7 @@ describe("ExtractTexture", () => {
         const { document } = CreateFixture();
 
         const extract = new ExtractTexture("extract", asset);
-        extract.scene.value = document;
+        extract.scene.value = CreateTestGltfAsset(document);
         extract.pointer.value = "/materials/0/normalTexture";
 
         await expect(extract._buildBlockAsync()).rejects.toThrow("/materials/0/normalTexture");
@@ -157,7 +158,7 @@ describe("ExtractTexture", () => {
         const { document } = CreateFixture();
 
         const extract = new ExtractTexture("extract", asset);
-        extract.scene.value = document;
+        extract.scene.value = CreateTestGltfAsset(document);
         extract.pointer.value = "/materials/0/pbrMetallicRoughness/baseColorFactor";
 
         await expect(extract._buildBlockAsync()).rejects.toThrow(/texture slot/i);
@@ -168,7 +169,7 @@ describe("ExtractTexture", () => {
         const { document } = CreateFixture();
 
         const extract = new ExtractTexture("extract", asset);
-        extract.scene.value = document;
+        extract.scene.value = CreateTestGltfAsset(document);
         extract.pointer.value = "/materials/9/pbrMetallicRoughness/baseColorTexture";
 
         await expect(extract._buildBlockAsync()).rejects.toThrow("/materials/9/pbrMetallicRoughness/baseColorTexture");

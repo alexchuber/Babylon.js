@@ -179,7 +179,7 @@ const ExtrasSegment = "extras";
  *
  * The converter borrows only the loader's pointer grammar and accessor concept; it resolves against
  * gltf-transform properties, never the glTF loader or Babylon scene objects.
- * @param document - The gltf-transform `Document` (the SCENE spine) to resolve against.
+ * @param document - The gltf-transform `Document` to resolve against.
  * @param pointer - The glTF Object Model JSON Pointer string.
  * @returns An accessor bound to the resolved property.
  * @throws If the pointer is malformed, names an unknown collection or property, or its index is not a
@@ -218,7 +218,7 @@ export function ResolvePointerToAccessor(document: Document, pointer: string): I
  * (baseColor, metallicRoughness, normal, occlusion, emissive); any other property throws. The image
  * bytes stay encoded end to end (no pixel decode / canvas); only gltf-transform `Texture` image APIs
  * are used.
- * @param document - The gltf-transform `Document` (the SCENE spine) to resolve against.
+ * @param document - The gltf-transform `Document` to resolve against.
  * @param pointer - The glTF Object Model JSON Pointer string naming a material texture slot.
  * @returns An IMAGE-typed accessor over the slot texture's image payload.
  * @throws If the pointer is malformed or out of range (the same errors as {@link ResolvePointerToAccessor}),

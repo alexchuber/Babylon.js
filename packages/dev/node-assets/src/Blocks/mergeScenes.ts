@@ -1,18 +1,17 @@
-import { type Document } from "@gltf-transform/core";
-
-import { type Nullable } from "core/types";
-
 import { RegisterBlock } from "../blockFoundation/blockRegistry";
 import { NodeAssetBlock } from "../blockFoundation/nodeAssetBlock";
 import { type NodeAssetConnectionPoint } from "../connection/nodeAssetConnectionPoint";
 import { NodeAssetConnectionPointType } from "../connection/nodeAssetConnectionPointType";
 import { type NodeAsset } from "../nodeAsset";
+import { GetGltfAsset, GltfAsset } from "../representations/gltfAsset";
+import { GetSerializedIntegerInRange, type NodeAssetBlockSerialization } from "../serialization/nodeAssetSerialization";
 
-/** The number of SCENE inputs a freshly created MergeScenes block starts with. */
+/** The number of glTF representation inputs a freshly created MergeScenes block starts with. */
 const DefaultInputCount = 2;
+const MaxInputCount = 256;
 
 /**
- * A composition block that folds several SCENE inputs into one combined SCENE, wrapping
+ * A composition block that folds several glTF representation inputs into one combined representation, wrapping
  * `@gltf-transform/functions`' `mergeDocuments`. Each connected input `Document` is folded, in port
  * order, into a fresh target `Document`; the sources are copied, never mutated. The merged scenes are
  * then combined under a single scene (`/scenes/0`) so every source's node hierarchy stays addressable
@@ -31,25 +30,25 @@ export class MergeScenes extends NodeAssetBlock {
     public readonly output: NodeAssetConnectionPoint;
 
     /**
-     * Creates a new merge-scenes block with {@link DefaultInputCount} SCENE inputs and one SCENE output.
+     * Creates a new merge-scenes block with {@link DefaultInputCount} glTF inputs and one glTF output.
      * @param name - The display name of the block.
      * @param nodeAsset - The node asset that owns this block.
      */
     public constructor(name: string, nodeAsset: NodeAsset) {
         super(name, nodeAsset);
-        this.output = this._registerOutput("output", NodeAssetConnectionPointType.SCENE);
+        this.output = this._registerOutput("output", NodeAssetConnectionPointType.GLTF_DOCUMENT);
         for (let index = 0; index < DefaultInputCount; index++) {
             this.addInput();
         }
     }
 
     /**
-     * Appends one more SCENE input to the variadic input set. Inputs are named `input0`, `input1`, …
+     * Appends one more glTF representation input to the variadic input set. Inputs are named `input0`, `input1`, …
      * so their wiring survives {@link serialize}/{@link NodeAsset.Parse} by point name.
      * @returns The newly created input connection point.
      */
     public addInput(): NodeAssetConnectionPoint {
-        return this._registerInput(`input${this.inputs.length}`, NodeAssetConnectionPointType.SCENE);
+        return this._registerInput(`input${this.inputs.length}`, NodeAssetConnectionPointType.GLTF_DOCUMENT);
     }
 
     /**
@@ -61,14 +60,16 @@ export class MergeScenes extends NodeAssetBlock {
         const { mergeDocuments, unpartition } = await import("@gltf-transform/functions");
 
         const target = new Document();
+        const sources: GltfAsset[] = [];
         for (const input of this.inputs) {
-            const source = input.value as Nullable<Document>;
             // Tolerate an unwired/empty input so partial graphs still produce a (possibly empty) scene.
-            if (!source) {
+            if (input.value == null) {
                 continue;
             }
+            const source = GetGltfAsset(input.value, input.name);
+            sources.push(source);
             // Folds source INTO target without mutating source, so fan-out isolation is not needed here.
-            mergeDocuments(target, source);
+            mergeDocuments(target, source.document);
         }
 
         const root = target.getRoot();
@@ -95,14 +96,22 @@ export class MergeScenes extends NodeAssetBlock {
             await target.transform(unpartition());
         }
 
-        this.output.value = target;
+        const sourceIdentities = sources.map((source) => source.identity);
+        this.output.value = new GltfAsset(target, {
+            identity: `merge:${sourceIdentities.join("|")}`,
+            revision: sources.reduce((revision, source) => Math.max(revision, source.revision), 0),
+            manifest: {
+                format: "gltf",
+                mergedSources: sourceIdentities,
+            },
+        });
     }
 
     /**
      * Serializes this block's variadic input count so a saved N-input merge reloads with N inputs.
      * @returns The serialization object.
      */
-    public override serialize(): any {
+    public override serialize(): NodeAssetBlockSerialization {
         const serializationObject = super.serialize();
         serializationObject.inputCount = this.inputs.length;
         return serializationObject;
@@ -113,9 +122,9 @@ export class MergeScenes extends NodeAssetBlock {
      * its wiring reconnects by point name.
      * @param serializationObject - The serialization object.
      */
-    public override _deserialize(serializationObject: any): void {
+    public override _deserialize(serializationObject: NodeAssetBlockSerialization): void {
         super._deserialize(serializationObject);
-        const inputCount = serializationObject.inputCount ?? DefaultInputCount;
+        const inputCount = GetSerializedIntegerInRange(serializationObject, "inputCount", DefaultInputCount, MaxInputCount, DefaultInputCount);
         while (this.inputs.length < inputCount) {
             this.addInput();
         }

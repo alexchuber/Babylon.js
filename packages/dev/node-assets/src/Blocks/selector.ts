@@ -3,6 +3,7 @@ import { NodeAssetBlock } from "../blockFoundation/nodeAssetBlock";
 import { type NodeAssetConnectionPoint } from "../connection/nodeAssetConnectionPoint";
 import { NodeAssetConnectionPointType } from "../connection/nodeAssetConnectionPointType";
 import { type NodeAsset } from "../nodeAsset";
+import { GetSerializedString, type NodeAssetBlockSerialization } from "../serialization/nodeAssetSerialization";
 
 /**
  * Checks that a string is a well-formed glTF Object Model JSON Pointer by **shape**: it must start
@@ -28,7 +29,7 @@ function IsWellFormedPointer(pointer: string): boolean {
  * by an upstream STRING input.
  *
  * The block validates only the pointer's **shape** (a well-formed JSON Pointer); it does not resolve
- * it against a SCENE `Document` — that is the converter's job, invoked by Get/Set. Pointers are
+ * it against a glTF representation — that is the converter's job, invoked by Get/Set. Pointers are
  * single-target and index-based; wildcard/query syntax is a later, additive extension.
  */
 export class Selector extends NodeAssetBlock {
@@ -72,7 +73,7 @@ export class Selector extends NodeAssetBlock {
      * Serializes this block's authored {@link pointer}.
      * @returns The serialization object.
      */
-    public override serialize(): any {
+    public override serialize(): NodeAssetBlockSerialization {
         const serializationObject = super.serialize();
         serializationObject.pointer = this.pointer;
         return serializationObject;
@@ -82,9 +83,9 @@ export class Selector extends NodeAssetBlock {
      * Restores this block's authored {@link pointer}.
      * @param serializationObject - The serialization object.
      */
-    public override _deserialize(serializationObject: any): void {
+    public override _deserialize(serializationObject: NodeAssetBlockSerialization): void {
         super._deserialize(serializationObject);
-        this.pointer = serializationObject.pointer ?? "";
+        this.pointer = GetSerializedString(serializationObject, "pointer", "");
     }
 }
 

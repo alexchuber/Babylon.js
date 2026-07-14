@@ -10,7 +10,7 @@ import "../../src/nodeAssets/nodeAssetBuildWorkerCore";
 import { CreateBlockByClassName, GetRegisteredBlockClassNames } from "node-assets/blockFoundation/blockRegistry";
 import { NodeAsset } from "node-assets/nodeAsset";
 
-// The 30 built-in block ClassNames, hardcoded (not derived from the package barrel) so this test fails
+// The 45 built-in block ClassNames, hardcoded (not derived from the package barrel) so this test fails
 // if the worker realm ever registers a different set than the package publishes. Keep in sync with
 // packages/dev/node-assets/test/unit/blockRegistry.test.ts.
 const ExpectedBlockClassNames = [
@@ -44,6 +44,21 @@ const ExpectedBlockClassNames = [
     "FlipImageBlock",
     "ExtractTexture",
     "CompositeImageBlock",
+    "ImportBabylonBlock",
+    "ImportNodeGeometryBlock",
+    "USD2GLTFBlock",
+    "USD2BabylonBlock",
+    "GLTF2BabylonBlock",
+    "Babylon2GLTFBlock",
+    "EvaluateNodeGeometryBlock",
+    "DecomposeGLTFMaterialBlock",
+    "ComposeGLTFMaterialBlock",
+    "GetBabylonMeshBlock",
+    "SetBabylonPropertyBlock",
+    "GetUSDPrimBlock",
+    "GLTFSelectorBlock",
+    "USDSelectorBlock",
+    "BabylonSelectorBlock",
 ] as const;
 
 // The energy-orb showcase graph the editor seeds on open: a dark-metal base and a cyan pattern composite

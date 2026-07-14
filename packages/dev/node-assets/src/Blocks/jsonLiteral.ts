@@ -2,7 +2,9 @@ import { RegisterBlock } from "../blockFoundation/blockRegistry";
 import { NodeAssetBlock } from "../blockFoundation/nodeAssetBlock";
 import { type NodeAssetConnectionPoint } from "../connection/nodeAssetConnectionPoint";
 import { NodeAssetConnectionPointType } from "../connection/nodeAssetConnectionPointType";
+import { type NodeAssetJsonValue } from "../connection/nodeAssetValueMap";
 import { type NodeAsset } from "../nodeAsset";
+import { GetSerializedJsonValue, type NodeAssetBlockSerialization } from "../serialization/nodeAssetSerialization";
 
 /**
  * A source block with no inputs and a single JSON output carrying a constant JSON-serialisable
@@ -14,7 +16,7 @@ export class JsonLiteral extends NodeAssetBlock {
     public static override ClassName = "JsonLiteral";
 
     /** The constant JSON-serialisable value emitted on the {@link output}. */
-    public value: unknown = null;
+    public value: NodeAssetJsonValue = null;
 
     /** The output carrying {@link value} as JSON. */
     public readonly output: NodeAssetConnectionPoint;
@@ -41,7 +43,7 @@ export class JsonLiteral extends NodeAssetBlock {
      * stored as-is.
      * @returns The serialization object.
      */
-    public override serialize(): any {
+    public override serialize(): NodeAssetBlockSerialization {
         const serializationObject = super.serialize();
         serializationObject.value = this.value;
         return serializationObject;
@@ -51,9 +53,9 @@ export class JsonLiteral extends NodeAssetBlock {
      * Restores this block's literal value.
      * @param serializationObject - The serialization object.
      */
-    public override _deserialize(serializationObject: any): void {
+    public override _deserialize(serializationObject: NodeAssetBlockSerialization): void {
         super._deserialize(serializationObject);
-        this.value = serializationObject.value ?? null;
+        this.value = GetSerializedJsonValue(serializationObject, "value", null);
     }
 }
 

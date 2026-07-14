@@ -3,6 +3,7 @@ import { describe, expect, it, beforeEach, vi } from "vitest";
 import { ExportGLTFBlock } from "../../src/Blocks/exportGLTFBlock";
 import { ImportGLTFBlock } from "../../src/Blocks/importGLTFBlock";
 import { NodeAsset } from "../../src/nodeAsset";
+import { GltfAsset } from "../../src/representations/gltfAsset";
 
 const mocks = vi.hoisted(() => {
     const document = { asset: "document" };
@@ -77,13 +78,18 @@ describe("Draco wasm location injection", () => {
 
         const options = mocks.createDecoderModule.mock.calls[0][0] as { locateFile: (path: string, prefix: string) => string };
         expect(options.locateFile("draco_decoder_gltf.wasm", "/fallback/")).toBe("/assets/draco_decoder_gltf.wasm");
-        expect(importer.output.value).toBe(mocks.document);
+        expect(importer.output.value).toBeInstanceOf(GltfAsset);
+        expect((importer.output.value as GltfAsset).document).toBe(mocks.document);
         expect(mocks.webIOInstances[0].dependencies).toEqual({ "draco3d.decoder": { decoder: true } });
     });
 
     it("exports glTF using the injected Draco encoder wasm URL", async () => {
         const exporter = new ExportGLTFBlock("export", new NodeAsset("export"));
-        exporter.input.value = mocks.document;
+        exporter.input.value = new GltfAsset(mocks.document as never, {
+            identity: "mock",
+            revision: 0,
+            manifest: {},
+        });
         exporter.dracoEncoderWasmUrl = "/assets/draco_encoder.wasm";
 
         await exporter._buildBlockAsync();
