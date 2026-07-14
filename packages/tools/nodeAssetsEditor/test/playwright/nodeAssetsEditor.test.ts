@@ -157,3 +157,107 @@ test.describe("Node Assets Editor — Energy orb showcase", () => {
         expect(exported.extensionsUsed ?? []).toContain("KHR_draco_mesh_compression");
     });
 });
+
+test.describe("Node Assets Editor — Library", () => {
+    test.describe.configure({ timeout: 180_000 });
+
+    test("keeps the library controls horizontal at the canvas top-right and lists bundled graphs", async ({ page }) => {
+        const editor = new NodeAssetsEditorPage(page);
+        await editor.goto();
+
+        const [canvasBox, saveBox, openBox] = await Promise.all([editor.canvas.boundingBox(), editor.saveToLibraryButton.boundingBox(), editor.openLibraryButton.boundingBox()]);
+        expect(canvasBox).not.toBeNull();
+        expect(saveBox).not.toBeNull();
+        expect(openBox).not.toBeNull();
+        expect(Math.abs(saveBox!.y - openBox!.y)).toBeLessThan(2);
+        expect(saveBox!.x).toBeLessThan(openBox!.x);
+        expect(openBox!.x + openBox!.width).toBeLessThanOrEqual(canvasBox!.x + canvasBox!.width);
+        expect(canvasBox!.x + canvasBox!.width - (openBox!.x + openBox!.width)).toBeLessThan(40);
+        expect(saveBox!.y - canvasBox!.y).toBeLessThan(40);
+
+        await editor.openLibraryButton.click();
+        const dialog = page.getByRole("dialog", { name: "NodeAsset Library" });
+        await expect(dialog).toBeVisible();
+        for (const name of ["USD to Optimized glTF", "USD with Custom Textures", "Multi-Source Merge", "Material Decomposition", "USD Preview", "Full Supported Pipeline"]) {
+            await expect(dialog.getByRole("button", { name, exact: true })).toBeVisible();
+        }
+    });
+
+    test("persists saves with incrementing names and shows the exact confirmation", async ({ page }) => {
+        const confirmations: string[] = [];
+        page.on("dialog", (dialog) => {
+            confirmations.push(dialog.message());
+            void dialog.accept();
+        });
+        const editor = new NodeAssetsEditorPage(page);
+        await editor.goto();
+
+        await editor.saveToLibraryButton.click();
+        await editor.saveToLibraryButton.click();
+
+        expect(confirmations).toEqual(["Saved to library", "Saved to library"]);
+        await page.reload({ waitUntil: "load" });
+        await expect(editor.canvas).toBeVisible({ timeout: 30_000 });
+        await editor.openLibraryButton.click();
+        const dialog = page.getByRole("dialog", { name: "NodeAsset Library" });
+        await expect(dialog.getByRole("button", { name: "nodeAsset", exact: true })).toBeVisible();
+        await expect(dialog.getByRole("button", { name: "nodeAsset 2", exact: true })).toBeVisible();
+    });
+
+    test("loads a selected library graph into the canvas", async ({ page }) => {
+        const editor = new NodeAssetsEditorPage(page);
+        await editor.goto();
+
+        await editor.openLibraryButton.click();
+        const dialog = page.getByRole("dialog", { name: "NodeAsset Library" });
+        await dialog.getByRole("button", { name: "USD Preview", exact: true }).click();
+
+        await expect(dialog).toBeHidden();
+        await expect(editor.nodes).toHaveCount(2);
+        await expect(editor.nodeByTitle("Import USD")).toBeVisible();
+        await expect(editor.nodeByTitle("Export glTF")).toBeVisible();
+    });
+
+    test("loads a user-saved graph from browser storage", async ({ page }) => {
+        page.on("dialog", (dialog) => void dialog.accept());
+        const editor = new NodeAssetsEditorPage(page);
+        await editor.goto();
+
+        await editor.openLibraryButton.click();
+        let dialog = page.getByRole("dialog", { name: "NodeAsset Library" });
+        await dialog.getByRole("button", { name: "USD Preview", exact: true }).click();
+        await editor.saveToLibraryButton.click();
+
+        await editor.openLibraryButton.click();
+        dialog = page.getByRole("dialog", { name: "NodeAsset Library" });
+        await dialog.getByRole("button", { name: "USD to Optimized glTF", exact: true }).click();
+        await expect(editor.nodes).toHaveCount(3);
+
+        await editor.openLibraryButton.click();
+        dialog = page.getByRole("dialog", { name: "NodeAsset Library" });
+        await dialog.getByRole("button", { name: "USD Preview 2", exact: true }).click();
+        await expect(editor.nodes).toHaveCount(2);
+        await expect(editor.nodeByTitle("Import USD")).toBeVisible();
+        await expect(editor.nodeByTitle("Export glTF")).toBeVisible();
+    });
+
+    test("keeps bundled samples available when browser storage access is blocked", async ({ page }) => {
+        await page.addInitScript(() => {
+            Object.defineProperty(window, "localStorage", {
+                configurable: true,
+                get: () => {
+                    throw new DOMException("Storage blocked", "SecurityError");
+                },
+            });
+        });
+        const editor = new NodeAssetsEditorPage(page);
+
+        await page.goto(editor.baseUrl, { waitUntil: "load" });
+        await expect(editor.openLibraryButton).toBeVisible({ timeout: 15_000 });
+        await editor.openLibraryButton.click();
+
+        const dialog = page.getByRole("dialog", { name: "NodeAsset Library" });
+        await expect(dialog.getByRole("button", { name: "USD Preview", exact: true })).toBeVisible();
+        await expect(dialog.getByText("Storage blocked", { exact: true })).toBeVisible();
+    });
+});

@@ -42,6 +42,10 @@ export class NodeAssetsEditorPage {
     readonly previewBuildingOverlay: Locator;
     /** The preview pane's non-fatal build error overlay. */
     readonly previewErrorOverlay: Locator;
+    /** Saves the current graph to browser storage. */
+    readonly saveToLibraryButton: Locator;
+    /** Opens the modal list of bundled and user-saved graphs. */
+    readonly openLibraryButton: Locator;
 
     constructor(page: Page, baseUrl?: string) {
         this.page = page;
@@ -54,6 +58,8 @@ export class NodeAssetsEditorPage {
         this.previewCanvas = page.locator('[data-testid="preview-canvas"]');
         this.previewBuildingOverlay = page.locator('[data-testid="preview-building-overlay"]');
         this.previewErrorOverlay = page.locator('[data-testid="preview-error-overlay"]');
+        this.saveToLibraryButton = page.getByRole("button", { name: "Save to Library" });
+        this.openLibraryButton = page.getByRole("button", { name: "Open Library" });
     }
 
     /**

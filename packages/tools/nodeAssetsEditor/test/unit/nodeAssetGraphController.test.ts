@@ -4,9 +4,12 @@ import { NodeAsset } from "node-assets/nodeAsset";
 
 import { type IGraphNode } from "../../src/nodeGraph/graphModel";
 import { type PropertyDescriptor } from "../../src/nodeGraph/propertyModel";
+import { CreateBuiltInNodeAssetLibraryEntries } from "../../src/nodeAssets/builtInLibraryEntries";
 import { NodeAssetGraphController } from "../../src/nodeAssets/nodeAssetGraphController";
 import { type INodeAssetBuildClient } from "../../src/nodeAssets/nodeAssetBuildWorkerClient";
 import { NodeAssetReconciler } from "../../src/nodeAssets/nodeAssetReconciler";
+
+const BuiltInNodeAssetLibraryEntries = CreateBuiltInNodeAssetLibraryEntries();
 
 function FindNode(controller: NodeAssetGraphController, title: string): IGraphNode {
     const node = controller.state.nodes.find((candidate) => candidate.title === title);
@@ -43,6 +46,16 @@ function CountBuildRelevantChanges(controller: NodeAssetGraphController): { read
     };
 }
 
+function GetWireTitles(controller: NodeAssetGraphController): readonly string[] {
+    return controller.state.wires
+        .map((wire) => {
+            const from = controller.state.getPortNode(wire.fromPortId);
+            const to = controller.state.getPortNode(wire.toPortId);
+            return `${from?.title}->${to?.title}`;
+        })
+        .sort();
+}
+
 describe("NodeAssetGraphController", () => {
     it("rejects incompatible NodeAsset port kinds before adding a wire", () => {
         const controller = new NodeAssetGraphController();
@@ -67,6 +80,161 @@ describe("NodeAssetGraphController", () => {
             } finally {
                 changes.dispose();
             }
+        } finally {
+            controller.dispose();
+        }
+    });
+
+    it("offers the supported demo pipelines as uniquely named bundled library entries", () => {
+        const names = BuiltInNodeAssetLibraryEntries.map((entry) => entry.name);
+
+        expect(names).toEqual(["USD to Optimized glTF", "USD with Custom Textures", "Multi-Source Merge", "Material Decomposition", "USD Preview", "Full Supported Pipeline"]);
+        expect(new Set(names).size).toBe(names.length);
+    });
+
+    it("loads the bundled USD optimization pipeline through the normal graph load path", () => {
+        const controller = new NodeAssetGraphController();
+        try {
+            const entry = BuiltInNodeAssetLibraryEntries.find((candidate) => candidate.name === "USD to Optimized glTF")!;
+
+            controller.load(entry.serializedGraph);
+
+            expect(controller.state.nodes.map((node) => node.title)).toEqual(["Import USD", "Draco Compression", "Export glTF"]);
+            expect(GetWireTitles(controller)).toEqual(["Draco Compression->Export glTF", "Import USD->Draco Compression"]);
+        } finally {
+            controller.dispose();
+        }
+    });
+
+    it("loads the bundled USD texture replacement pipeline through the normal graph load path", () => {
+        const controller = new NodeAssetGraphController();
+        try {
+            const entry = BuiltInNodeAssetLibraryEntries.find((candidate) => candidate.name === "USD with Custom Textures")!;
+
+            controller.load(entry.serializedGraph);
+
+            expect(controller.state.nodes.map((node) => node.title)).toEqual(["Import USD", "Import Image", "Selector", "Set Texture", "Export glTF"]);
+            expect(GetWireTitles(controller)).toEqual(["Import Image->Set Texture", "Import USD->Set Texture", "Selector->Set Texture", "Set Texture->Export glTF"]);
+        } finally {
+            controller.dispose();
+        }
+    });
+
+    it("loads the bundled multi-source merge pipeline through the normal graph load path", () => {
+        const controller = new NodeAssetGraphController();
+        try {
+            const entry = BuiltInNodeAssetLibraryEntries.find((candidate) => candidate.name === "Multi-Source Merge")!;
+
+            controller.load(entry.serializedGraph);
+
+            expect(controller.state.nodes.map((node) => node.title)).toEqual(["Import USD", "Import glTF", "Merge Scenes", "Draco Compression", "KTX2 Compress", "Export glTF"]);
+            expect(GetWireTitles(controller)).toEqual([
+                "Draco Compression->KTX2 Compress",
+                "Import USD->Merge Scenes",
+                "Import glTF->Merge Scenes",
+                "KTX2 Compress->Export glTF",
+                "Merge Scenes->Draco Compression",
+            ]);
+        } finally {
+            controller.dispose();
+        }
+    });
+
+    it("loads the bundled material decomposition pipeline through the normal graph load path", () => {
+        const controller = new NodeAssetGraphController();
+        try {
+            const entry = BuiltInNodeAssetLibraryEntries.find((candidate) => candidate.name === "Material Decomposition")!;
+
+            controller.load(entry.serializedGraph);
+
+            expect(controller.state.nodes.map((node) => node.title)).toEqual([
+                "Import glTF",
+                "Base Color Selector",
+                "Normal Selector",
+                "ORM Selector",
+                "Extract Base Color",
+                "Extract Normal",
+                "Extract ORM",
+                "Resize Base Color",
+                "Resize Normal",
+                "Resize ORM",
+                "Set Base Color",
+                "Set Normal",
+                "Set ORM",
+                "Roughness Selector",
+                "Roughness Value",
+                "Set Roughness",
+                "Export glTF",
+            ]);
+            expect(GetWireTitles(controller)).toEqual([
+                "Base Color Selector->Extract Base Color",
+                "Base Color Selector->Set Base Color",
+                "Extract Base Color->Resize Base Color",
+                "Extract Normal->Resize Normal",
+                "Extract ORM->Resize ORM",
+                "Import glTF->Extract Base Color",
+                "Import glTF->Extract Normal",
+                "Import glTF->Extract ORM",
+                "Import glTF->Set Base Color",
+                "Normal Selector->Extract Normal",
+                "Normal Selector->Set Normal",
+                "ORM Selector->Extract ORM",
+                "ORM Selector->Set ORM",
+                "Resize Base Color->Set Base Color",
+                "Resize Normal->Set Normal",
+                "Resize ORM->Set ORM",
+                "Roughness Selector->Set Roughness",
+                "Roughness Value->Set Roughness",
+                "Set Base Color->Set Normal",
+                "Set Normal->Set ORM",
+                "Set ORM->Set Roughness",
+                "Set Roughness->Export glTF",
+            ]);
+        } finally {
+            controller.dispose();
+        }
+    });
+
+    it("loads the bundled USD preview pipeline through the normal graph load path", () => {
+        const controller = new NodeAssetGraphController();
+        try {
+            const entry = BuiltInNodeAssetLibraryEntries.find((candidate) => candidate.name === "USD Preview")!;
+
+            controller.load(entry.serializedGraph);
+
+            expect(controller.state.nodes.map((node) => node.title)).toEqual(["Import USD", "Export glTF"]);
+            expect(GetWireTitles(controller)).toEqual(["Import USD->Export glTF"]);
+        } finally {
+            controller.dispose();
+        }
+    });
+
+    it("loads the bundled full supported pipeline through the normal graph load path", () => {
+        const controller = new NodeAssetGraphController();
+        try {
+            const entry = BuiltInNodeAssetLibraryEntries.find((candidate) => candidate.name === "Full Supported Pipeline")!;
+
+            controller.load(entry.serializedGraph);
+
+            expect(controller.state.nodes.map((node) => node.title)).toEqual([
+                "Import USD",
+                "Import glTF A",
+                "Import glTF B",
+                "Merge Sources",
+                "Merge Assembly",
+                "Draco Compression",
+                "KTX2 Compress",
+                "Export glTF",
+            ]);
+            expect(GetWireTitles(controller)).toEqual([
+                "Draco Compression->KTX2 Compress",
+                "Import USD->Merge Sources",
+                "Import glTF A->Merge Sources",
+                "Import glTF B->Merge Assembly",
+                "KTX2 Compress->Export glTF",
+                "Merge Assembly->Draco Compression",
+                "Merge Sources->Merge Assembly",
+            ]);
         } finally {
             controller.dispose();
         }

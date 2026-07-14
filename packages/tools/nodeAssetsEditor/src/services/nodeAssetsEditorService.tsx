@@ -21,15 +21,22 @@ import { Logger } from "core/Misc/logger";
 
 import { type GraphEditorState } from "../nodeGraph/editorState";
 import { CanvasViewController, type EditorContextValue } from "../nodeGraph/editorContext";
-import { GraphCanvas } from "../nodeGraph/components/GraphCanvas";
 import { PaletteView } from "../nodeGraph/components/PaletteView";
 import { PropertiesView } from "../nodeGraph/components/PropertiesView";
 
 import { BuildOrchestrator } from "../nodeAssets/buildOrchestrator";
 import { NodeAssetGraphController } from "../nodeAssets/nodeAssetGraphController";
 import { PreviewController } from "../nodeAssets/previewController";
+import { CreateBuiltInNodeAssetLibraryEntries } from "../nodeAssets/builtInLibraryEntries";
+import { LibraryControls } from "../nodeAssets/components/LibraryControls";
 import { PreviewPane } from "../nodeAssets/components/PreviewPane";
 import { DownloadBlob, PromptForFileAsync } from "../nodeAssets/browserFiles";
+import { type INodeAssetLibraryEntry, type INodeAssetLibraryStorage, NodeAssetLibrary } from "../nodeAssets/nodeAssetLibrary";
+
+const BrowserNodeAssetLibraryStorage: INodeAssetLibraryStorage = {
+    getItem: (key) => window.localStorage.getItem(key),
+    setItem: (key, value) => window.localStorage.setItem(key, value),
+};
 
 // Toolbar button that reflects the store's undo availability.
 const UndoButton: FunctionComponent<{ state: GraphEditorState }> = (props) => {
@@ -56,8 +63,10 @@ export const NodeAssetsEditorServiceDefinition: ServiceDefinition<[], [IShellSer
     factory: (shellService) => {
         const controller = new NodeAssetGraphController();
         const preview = new PreviewController();
+        const library = new NodeAssetLibrary({ builtInEntries: CreateBuiltInNodeAssetLibraryEntries(), storage: BrowserNodeAssetLibraryStorage });
         const state = controller.state;
         const view = new CanvasViewController();
+        let currentLibraryBaseName: string | undefined;
 
         const context: EditorContextValue = {
             state,
@@ -75,6 +84,19 @@ export const NodeAssetsEditorServiceDefinition: ServiceDefinition<[], [IShellSer
             DownloadBlob(controller.serialize(), "nodeAsset.json", "application/json");
         };
 
+        const load = (json: string, libraryBaseName?: string): void => {
+            controller.load(json);
+            currentLibraryBaseName = libraryBaseName;
+        };
+
+        const saveToLibrary = (): INodeAssetLibraryEntry => {
+            return library.save(controller.serialize(), currentLibraryBaseName);
+        };
+
+        const loadFromLibrary = (entry: INodeAssetLibraryEntry): void => {
+            load(entry.serializedGraph, entry.baseName);
+        };
+
         // Prompts for a saved JSON file and loads it into the editor.
         const loadAsync = async (): Promise<void> => {
             const file = await PromptForFileAsync("application/json,.json");
@@ -82,7 +104,7 @@ export const NodeAssetsEditorServiceDefinition: ServiceDefinition<[], [IShellSer
                 return;
             }
             try {
-                controller.load(await file.text());
+                load(await file.text());
             } catch (error) {
                 Logger.Error(`[NodeAssetsEditor] Load failed: ${(error as Error).message}`);
             }
@@ -93,7 +115,7 @@ export const NodeAssetsEditorServiceDefinition: ServiceDefinition<[], [IShellSer
         const registrations = [
             shellService.addCentralContent({
                 key: "Graph Canvas",
-                component: () => <GraphCanvas context={context} />,
+                component: () => <LibraryControls context={context} library={library} onSave={saveToLibrary} onLoad={loadFromLibrary} />,
             }),
             shellService.addSidePane({
                 key: "Palette",
