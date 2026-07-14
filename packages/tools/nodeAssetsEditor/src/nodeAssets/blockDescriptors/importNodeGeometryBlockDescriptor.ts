@@ -12,4 +12,21 @@ RegisterBlockDescriptor({
     headerColor: ImportHeaderColor,
     className: ImportNodeGeometryBlock.ClassName,
     create: (nodeAsset) => ConfigureBlockForEditor(new ImportNodeGeometryBlock("Import Node Geometry", nodeAsset)),
+    getPropertySection: (block, { refresh }) => {
+        const importBlock = block as ImportNodeGeometryBlock;
+        return {
+            title: "IMPORT",
+            properties: [
+                {
+                    kind: "text",
+                    label: "URL or #snippetId",
+                    value: (importBlock.url.value as string) ?? "",
+                    onChange: (value: string) => {
+                        importBlock.url.value = value;
+                        refresh();
+                    },
+                },
+            ],
+        };
+    },
 });
