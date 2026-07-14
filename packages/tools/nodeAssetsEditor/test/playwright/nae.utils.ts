@@ -108,6 +108,18 @@ export class NodeAssetsEditorPage {
     }
 
     /**
+     * Locate a connection port by its runtime connection-point name.
+     * @param title - The node's visible title.
+     * @param direction - The port direction ("in" or "out").
+     * @param connectionPointName - The runtime connection-point name encoded in the visual port id.
+     * @param occurrence - Optional disambiguator when several nodes share the title (see {@link nodeByTitle}).
+     * @returns The named port locator.
+     */
+    namedPortOfNode(title: string, direction: "in" | "out", connectionPointName: string, occurrence?: NodeOccurrence): Locator {
+        return this.nodeByTitle(title, occurrence).locator(`[data-port-id$="-${direction}-${connectionPointName}"]`);
+    }
+
+    /**
      * Drag a palette item onto the canvas to create a node. The palette uses native HTML5 drag-and-drop
      * (a `draggable` row that sets the drag data on `dragstart`, and a canvas that reads it on `drop`),
      * which a synthetic mouse drag does not trigger. This dispatches the drag/drop events with a single

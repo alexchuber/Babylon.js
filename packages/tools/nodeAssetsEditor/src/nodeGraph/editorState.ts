@@ -23,6 +23,20 @@ export type GraphClipboard = {
     readonly wires: readonly IGraphWire[];
 };
 
+/** Host-specific editor-state behavior that remains opaque to the reusable node-graph framework. */
+export type GraphEditorStateOptions = {
+    /** Additional compatibility rule applied after the framework's generic wire checks pass. */
+    readonly canConnectPorts?: (fromPortId: string, toPortId: string) => boolean;
+};
+
+/** Whether an editor-state change affects only presentation or the graph's authored content. */
+export type GraphChangeKind = "visual" | "content";
+
+type GraphHistoryEntry = {
+    readonly snapshot: IGraphSnapshot;
+    readonly kind: GraphChangeKind;
+};
+
 function CloneSnapshot(snapshot: IGraphSnapshot): IGraphSnapshot {
     return structuredClone(snapshot) as IGraphSnapshot;
 }
@@ -39,8 +53,8 @@ export class GraphEditorState {
     private _selectedWireId: string | null = null;
     private _primaryNodeId: string | null = null;
 
-    private readonly _undoStack: IGraphSnapshot[] = [];
-    private readonly _redoStack: IGraphSnapshot[] = [];
+    private readonly _undoStack: GraphHistoryEntry[] = [];
+    private readonly _redoStack: GraphHistoryEntry[] = [];
     private _interactionSnapshot: IGraphSnapshot | null = null;
 
     private _idCounter = 0;
@@ -48,22 +62,25 @@ export class GraphEditorState {
     private _changeVersion = 0;
     private _selectionVersion = 0;
 
-    private readonly _onChanged = new Observable<void>();
+    private readonly _canConnectPorts: (fromPortId: string, toPortId: string) => boolean;
+    private readonly _onChanged = new Observable<GraphChangeKind>();
     private readonly _onSelectionChanged = new Observable<void>();
 
     /**
      * Creates a new editor state seeded from the given snapshot.
      * @param initial The initial graph contents.
+     * @param options Optional host-specific editor-state behavior.
      */
-    public constructor(initial: IGraphSnapshot) {
+    public constructor(initial: IGraphSnapshot, options: GraphEditorStateOptions = {}) {
         const cloned = CloneSnapshot(initial);
         this._nodes = [...cloned.nodes];
         this._wires = [...cloned.wires];
         this._frames = [...cloned.frames];
+        this._canConnectPorts = options.canConnectPorts ?? (() => true);
     }
 
     /** Fires whenever the graph contents (nodes, wires, frames) change. */
-    public get onChanged(): IReadonlyObservable<void> {
+    public get onChanged(): IReadonlyObservable<GraphChangeKind> {
         return this._onChanged;
     }
 
@@ -73,7 +90,7 @@ export class GraphEditorState {
     }
 
     /**
-     * A monotonically increasing counter bumped on every content change. Read it from an accessor so
+     * A monotonically increasing counter bumped on every graph change. Read it from an accessor so
      * `useObservableState` re-renders even when the underlying array references are mutated in place.
      */
     public get changeVersion(): number {
@@ -85,9 +102,9 @@ export class GraphEditorState {
         return this._selectionVersion;
     }
 
-    private _notifyChanged(): void {
+    private _notifyChanged(kind: GraphChangeKind = "content"): void {
         this._changeVersion++;
-        this._onChanged.notifyObservers();
+        this._onChanged.notifyObservers(kind);
     }
 
     private _notifySelectionChanged(): void {
@@ -113,9 +130,10 @@ export class GraphEditorState {
     /**
      * Notifies observers that the graph contents changed. Call this after mutating a node field in
      * place (e.g. from a property editor) without going through a dedicated mutation method.
+     * @param kind Whether the mutation affects only presentation or authored graph content.
      */
-    public notifyChanged(): void {
-        this._notifyChanged();
+    public notifyChanged(kind: GraphChangeKind = "content"): void {
+        this._notifyChanged(kind);
     }
 
     // #region Lookups
@@ -261,7 +279,7 @@ export class GraphEditorState {
      */
     public removeNodes(ids: readonly string[]): void {
         const idSet = new Set(ids);
-        if (idSet.size === 0) {
+        if (idSet.size === 0 || !this._nodes.some((node) => idSet.has(node.id))) {
             return;
         }
         this._recordUndo();
@@ -335,9 +353,9 @@ export class GraphEditorState {
      * @param frame The frame to add.
      */
     public addFrame(frame: IGraphFrame): void {
-        this._recordUndo();
+        this._recordUndo("visual");
         this._frames.push(frame);
-        this._notifyChanged();
+        this._notifyChanged("visual");
     }
 
     /**
@@ -350,9 +368,9 @@ export class GraphEditorState {
         if (!node || node.collapsed === collapsed) {
             return;
         }
-        this._recordUndo();
+        this._recordUndo("visual");
         node.collapsed = collapsed;
-        this._notifyChanged();
+        this._notifyChanged("visual");
     }
 
     /**
@@ -365,9 +383,9 @@ export class GraphEditorState {
         if (!frame || frame.collapsed === collapsed) {
             return;
         }
-        this._recordUndo();
+        this._recordUndo("visual");
         frame.collapsed = collapsed;
-        this._notifyChanged();
+        this._notifyChanged("visual");
     }
 
     // #endregion
@@ -387,12 +405,12 @@ export class GraphEditorState {
      */
     public endInteraction(commit: boolean): void {
         if (commit && this._interactionSnapshot) {
-            this._undoStack.push(this._interactionSnapshot);
+            this._undoStack.push({ snapshot: this._interactionSnapshot, kind: "visual" });
             this._redoStack.length = 0;
             this._interactionSnapshot = null;
             // Notify so undo/redo availability (e.g. the toolbar buttons) refreshes now that this
             // gesture became an undo entry; the moves themselves already notified during the drag.
-            this._notifyChanged();
+            this._notifyChanged("visual");
             return;
         }
         this._interactionSnapshot = null;
@@ -405,13 +423,20 @@ export class GraphEditorState {
      * @param delta The movement in graph units.
      */
     public translateNodes(ids: readonly string[], delta: Vec2): void {
+        if (ids.length === 0 || (delta.x === 0 && delta.y === 0)) {
+            return;
+        }
         const idSet = new Set(ids);
+        let changed = false;
         for (const node of this._nodes) {
             if (idSet.has(node.id)) {
                 node.position = { x: node.position.x + delta.x, y: node.position.y + delta.y };
+                changed = true;
             }
         }
-        this._notifyChanged();
+        if (changed) {
+            this._notifyChanged("visual");
+        }
     }
 
     /**
@@ -422,11 +447,15 @@ export class GraphEditorState {
      */
     public translateFrame(frameId: string, delta: Vec2): void {
         const frame = this._frames.find((candidate) => candidate.id === frameId);
-        if (!frame) {
+        if (!frame || (delta.x === 0 && delta.y === 0)) {
             return;
         }
+        const changeVersionBeforeTranslation = this._changeVersion;
         frame.position = { x: frame.position.x + delta.x, y: frame.position.y + delta.y };
         this.translateNodes(frame.nodeIds, delta);
+        if (this._changeVersion === changeVersionBeforeTranslation) {
+            this._notifyChanged("visual");
+        }
     }
 
     // #endregion
@@ -549,8 +578,8 @@ export class GraphEditorState {
         if (!previous) {
             return;
         }
-        this._redoStack.push(this.snapshot());
-        this._applySnapshot(previous);
+        this._redoStack.push({ snapshot: this.snapshot(), kind: previous.kind });
+        this._applySnapshot(previous.snapshot, previous.kind);
     }
 
     /** Re-applies the most recently undone change. */
@@ -559,8 +588,8 @@ export class GraphEditorState {
         if (!next) {
             return;
         }
-        this._undoStack.push(this.snapshot());
-        this._applySnapshot(next);
+        this._undoStack.push({ snapshot: this.snapshot(), kind: next.kind });
+        this._applySnapshot(next.snapshot, next.kind);
     }
 
     // #endregion
@@ -596,21 +625,21 @@ export class GraphEditorState {
         this._selectedNodeIds.clear();
         this._selectedWireId = null;
         this._primaryNodeId = null;
-        this._applySnapshot(snapshot);
+        this._applySnapshot(snapshot, "content");
         this._notifySelectionChanged();
     }
 
-    private _applySnapshot(snapshot: IGraphSnapshot): void {
+    private _applySnapshot(snapshot: IGraphSnapshot, kind: GraphChangeKind): void {
         const cloned = CloneSnapshot(snapshot);
         this._nodes = [...cloned.nodes];
         this._wires = [...cloned.wires];
         this._frames = [...cloned.frames];
         this._pruneSelection();
-        this._notifyChanged();
+        this._notifyChanged(kind);
     }
 
-    private _recordUndo(): void {
-        this._undoStack.push(this.snapshot());
+    private _recordUndo(kind: GraphChangeKind = "content"): void {
+        this._undoStack.push({ snapshot: this.snapshot(), kind });
         this._redoStack.length = 0;
     }
 
@@ -650,7 +679,10 @@ export class GraphEditorState {
             return false;
         }
         // Reject duplicates and any input that is already driven by a wire.
-        return !this._wires.some((wire) => wire.toPortId === toPortId);
+        if (this._wires.some((wire) => wire.toPortId === toPortId)) {
+            return false;
+        }
+        return this._canConnectPorts(fromPortId, toPortId);
     }
 
     // #endregion

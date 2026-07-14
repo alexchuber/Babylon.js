@@ -1,8 +1,12 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
+
+import { NodeAsset } from "node-assets/nodeAsset";
 
 import { type IGraphNode } from "../../src/nodeGraph/graphModel";
 import { type PropertyDescriptor } from "../../src/nodeGraph/propertyModel";
 import { NodeAssetGraphController } from "../../src/nodeAssets/nodeAssetGraphController";
+import { type INodeAssetBuildClient } from "../../src/nodeAssets/nodeAssetBuildWorkerClient";
+import { NodeAssetReconciler } from "../../src/nodeAssets/nodeAssetReconciler";
 
 function FindNode(controller: NodeAssetGraphController, title: string): IGraphNode {
     const node = controller.state.nodes.find((candidate) => candidate.title === title);
@@ -40,9 +44,41 @@ function CountBuildRelevantChanges(controller: NodeAssetGraphController): { read
 }
 
 describe("NodeAssetGraphController", () => {
+    it("rejects incompatible NodeAsset port kinds before adding a wire", () => {
+        const controller = new NodeAssetGraphController();
+        try {
+            const exportImage = controller.createNodeFromPaletteItem("export-image", { x: 1800, y: 320 });
+            controller.state.addNode(exportImage);
+            const buildPbr = FindNode(controller, "Build PBR Material");
+            const sceneOutput = buildPbr.ports.find((port) => port.direction === "output");
+            const imageInput = exportImage.ports.find((port) => port.direction === "input");
+            if (!sceneOutput || !imageInput) {
+                throw new Error("Could not find the SCENE output and IMAGE input for the compatibility test.");
+            }
+            const serializedBefore = controller.serialize();
+            const wireCountBefore = controller.state.wires.length;
+            const changes = CountBuildRelevantChanges(controller);
+
+            try {
+                expect(controller.state.addWire(sceneOutput.id, imageInput.id)).toBeUndefined();
+                expect(controller.state.wires).toHaveLength(wireCountBefore);
+                expect(controller.serialize()).toBe(serializedBefore);
+                expect(changes.count()).toBe(0);
+            } finally {
+                changes.dispose();
+            }
+        } finally {
+            controller.dispose();
+        }
+    });
+
     it("does not emit build-relevant changes for cosmetic editor edits", () => {
+        const reconcileSpy = vi.spyOn(NodeAssetReconciler.prototype, "reconcile");
+        const serializeSpy = vi.spyOn(NodeAsset.prototype, "serialize");
         const controller = new NodeAssetGraphController();
         const changes = CountBuildRelevantChanges(controller);
+        reconcileSpy.mockClear();
+        serializeSpy.mockClear();
         try {
             const importNode = FindNode(controller, "Import glTF");
 
@@ -62,9 +98,73 @@ describe("NodeAssetGraphController", () => {
             controller.state.redo();
 
             expect(changes.count()).toBe(0);
+            expect(reconcileSpy).not.toHaveBeenCalled();
+            expect(serializeSpy).not.toHaveBeenCalled();
         } finally {
             changes.dispose();
             controller.dispose();
+            reconcileSpy.mockRestore();
+            serializeSpy.mockRestore();
+        }
+    });
+
+    it("checks build identity once for a block property edit", () => {
+        const reconcileSpy = vi.spyOn(NodeAssetReconciler.prototype, "reconcile");
+        const serializeSpy = vi.spyOn(NodeAsset.prototype, "serialize");
+        const controller = new NodeAssetGraphController();
+        const changes = CountBuildRelevantChanges(controller);
+        reconcileSpy.mockClear();
+        serializeSpy.mockClear();
+        try {
+            const buildNode = FindNode(controller, "Build PBR Material");
+
+            FindProperty(controller, buildNode, "Metallic", "slider").onChange(0.25);
+
+            expect(changes.count()).toBe(1);
+            expect(reconcileSpy).toHaveBeenCalledOnce();
+            expect(serializeSpy).toHaveBeenCalledOnce();
+        } finally {
+            changes.dispose();
+            controller.dispose();
+            reconcileSpy.mockRestore();
+            serializeSpy.mockRestore();
+        }
+    });
+
+    it("keeps content changes build-relevant through undo and redo", () => {
+        const controller = new NodeAssetGraphController();
+        const changes = CountBuildRelevantChanges(controller);
+        try {
+            controller.state.removeWire(controller.state.wires[0].id);
+            controller.state.undo();
+            controller.state.redo();
+
+            expect(changes.count()).toBe(3);
+        } finally {
+            changes.dispose();
+            controller.dispose();
+        }
+    });
+
+    it("reconciles defensively before serialization and builds", async () => {
+        const buildClient: INodeAssetBuildClient = {
+            buildAsync: vi.fn(async () => new Uint8Array([1, 2, 3])),
+            dispose: vi.fn(),
+        };
+        const reconcileSpy = vi.spyOn(NodeAssetReconciler.prototype, "reconcile");
+        const controller = new NodeAssetGraphController(buildClient);
+        reconcileSpy.mockClear();
+        try {
+            controller.serialize();
+            expect(reconcileSpy).toHaveBeenCalledOnce();
+
+            reconcileSpy.mockClear();
+            await controller.buildAsync();
+            expect(reconcileSpy).toHaveBeenCalledOnce();
+            expect(buildClient.buildAsync).toHaveBeenCalledOnce();
+        } finally {
+            controller.dispose();
+            reconcileSpy.mockRestore();
         }
     });
 

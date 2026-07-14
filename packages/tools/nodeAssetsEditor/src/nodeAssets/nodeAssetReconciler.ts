@@ -69,6 +69,18 @@ export class NodeAssetReconciler {
     }
 
     /**
+     * Whether two visual ports map to connection points carrying the same payload kind.
+     * @param fromPortId - The candidate output port id.
+     * @param toPortId - The candidate input port id.
+     * @returns True when both ports are mapped and their connection point types match.
+     */
+    public canConnectPorts(fromPortId: string, toPortId: string): boolean {
+        const from = this._pointByPortId.get(fromPortId);
+        const to = this._pointByPortId.get(toPortId);
+        return from !== undefined && to !== undefined && from.type === to.type;
+    }
+
+    /**
      * Clears every correspondence and retargets a new domain graph, for a fresh load.
      * @param nodeAsset - The new domain graph.
      */
