@@ -49,6 +49,12 @@ export class ImportUSDBlock extends NodeAssetBlock {
     /** The source USD bytes to import (set by the caller / editor file picker). */
     public data: Nullable<Uint8Array> = null;
 
+    /**
+     * A human-readable label for where {@link data} came from: the uploaded file name or a source URL.
+     * Used by the editor's property panel to show the current file status.
+     */
+    public source: Nullable<string> = null;
+
     /** The imported gltf-transform `Document`. */
     public readonly output: NodeAssetConnectionPoint;
 
@@ -96,23 +102,26 @@ export class ImportUSDBlock extends NodeAssetBlock {
 
     /**
      * Serializes this block, encoding its {@link data} bytes as base64 so the source USD roundtrips
-     * through save/load.
+     * through save/load, alongside its {@link source} label.
      * @returns The serialization object.
      */
     public override serialize(): NodeAssetBlockSerialization {
         const serializationObject = super.serialize();
         serializationObject.data = this.data ? EncodeArrayBufferToBase64(this.data) : null;
+        serializationObject.source = this.source;
         return serializationObject;
     }
 
     /**
-     * Restores this block's {@link data} bytes from a base64 string produced by {@link serialize}.
+     * Restores this block's {@link data} bytes and {@link source} label from a serialization object
+     * produced by {@link serialize}.
      * @param serializationObject - The serialization object.
      */
     public override _deserialize(serializationObject: NodeAssetBlockSerialization): void {
         super._deserialize(serializationObject);
         const data = GetSerializedNullableString(serializationObject, "data");
         this.data = data ? new Uint8Array(DecodeBase64ToBinary(data)) : null;
+        this.source = GetSerializedNullableString(serializationObject, "source");
     }
 }
 
