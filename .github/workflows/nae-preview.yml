@@ -1,0 +1,82 @@
+name: Publish Node Assets Editor Preview
+
+on:
+    push:
+        branches:
+            - alexchuber-publishing-node-asset-editor
+
+permissions:
+    contents: read
+
+concurrency:
+    group: github-pages
+    cancel-in-progress: false
+
+jobs:
+    build:
+        name: Build Preview
+        runs-on: ubuntu-latest
+        timeout-minutes: 30
+        permissions:
+            contents: read
+            pages: read
+
+        steps:
+            - name: Check Out Preview Branch
+              uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6
+              with:
+                  persist-credentials: false
+
+            - name: Set Up Node.js
+              uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444 # v5
+              with:
+                  node-version: "22.20.0"
+                  cache: npm
+                  cache-dependency-path: package-lock.json
+
+            - name: Install Locked Dependencies
+              run: npm ci --ignore-scripts --no-audit --no-fund
+
+            - name: Build Repository Tools
+              run: npm run build -w @dev/build-tools
+
+            - name: Generate Shader Modules
+              run: node packages/dev/buildTools/dist/index.js -c build-shaders --global
+
+            - name: Build Viewer
+              run: npm run build:viewer -w @tools/node-assets-editor
+
+            - name: Build Node Assets Editor
+              run: npm run build:deployment -w @tools/node-assets-editor
+
+            - name: Prepare Public Artifact
+              run: |
+                  find packages/tools/nodeAssetsEditor/dist -type f -name "*.map" -delete
+                  cp license.md NOTICE.md packages/tools/nodeAssetsEditor/dist/
+                  test -f packages/tools/nodeAssetsEditor/dist/index.html
+                  test -z "$(find packages/tools/nodeAssetsEditor/dist -type f -name "*.map" -print -quit)"
+
+            - name: Configure GitHub Pages
+              uses: actions/configure-pages@983d7736d9b0ae728b81ab479565c72886d7745b # v5
+
+            - name: Upload GitHub Pages Artifact
+              uses: actions/upload-pages-artifact@7b1f4a764d45c48632c6b24a0339c27f5614fb0b # v4
+              with:
+                  path: packages/tools/nodeAssetsEditor/dist
+
+    deploy:
+        name: Deploy Preview
+        needs: build
+        runs-on: ubuntu-latest
+        timeout-minutes: 10
+        permissions:
+            pages: write
+            id-token: write
+        environment:
+            name: github-pages
+            url: ${{ steps.deployment.outputs.page_url }}
+
+        steps:
+            - name: Deploy GitHub Pages Artifact
+              id: deployment
+              uses: actions/deploy-pages@d6db90164ac5ed86f2b6aed7e0febac5b3c0c03e # v4
