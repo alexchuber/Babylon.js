@@ -56,13 +56,22 @@ jobs:
                   test -f packages/tools/nodeAssetsEditor/dist/index.html
                   test -z "$(find packages/tools/nodeAssetsEditor/dist -type f -name "*.map" -print -quit)"
 
+            - name: Stage GitHub Pages Site
+              env:
+                  PAGES_ARTIFACT_DIR: ${{ runner.temp }}/nae-pages
+              run: |
+                  mkdir -p "$PAGES_ARTIFACT_DIR/nae"
+                  cp -R packages/tools/nodeAssetsEditor/dist/. "$PAGES_ARTIFACT_DIR/nae/"
+                  test ! -e "$PAGES_ARTIFACT_DIR/index.html"
+                  test -f "$PAGES_ARTIFACT_DIR/nae/index.html"
+
             - name: Configure GitHub Pages
               uses: actions/configure-pages@45bfe0192ca1faeb007ade9deae92b16b8254a0d # v6
 
             - name: Upload GitHub Pages Artifact
               uses: actions/upload-pages-artifact@fc324d3547104276b827a68afc52ff2a11cc49c9 # v5
               with:
-                  path: packages/tools/nodeAssetsEditor/dist
+                  path: ${{ runner.temp }}/nae-pages
 
     deploy:
         name: Deploy Preview
