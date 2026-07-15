@@ -3,7 +3,7 @@ name: Publish Node Assets Editor Preview
 on:
     push:
         branches:
-            - alexchuber-publishing-node-asset-editor
+            - preview/nae
 
 permissions:
     contents: read
