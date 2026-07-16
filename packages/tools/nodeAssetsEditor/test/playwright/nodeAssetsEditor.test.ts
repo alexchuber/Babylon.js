@@ -158,6 +158,18 @@ test.describe("Node Assets Editor — Energy orb showcase", () => {
         expect(exported.extensionsUsed ?? []).toContain("KHR_draco_mesh_compression");
     });
 
+    test("replaces an occupied input connection when a new wire is dropped on it", async ({ page }) => {
+        const editor = new NodeAssetsEditorPage(page);
+        await editor.goto();
+        await editor.waitForNextSuccessfulPreviewBuild();
+
+        await editor.connectPorts(editor.portOfNode("Build PBR Material", "out"), editor.portOfNode("Export glTF", "in"));
+
+        await expect(page.locator('[data-testid="graph-wire"][data-from-node-title="Apply Draco"][data-to-node-title="Export glTF"]')).toHaveCount(0);
+        await expect(page.locator('[data-testid="graph-wire"][data-from-node-title="Build PBR Material"][data-to-node-title="Export glTF"]')).toHaveCount(1);
+        await editor.waitForSuccessfulPreviewBuild();
+    });
+
     test("validates the latest glTF output and exposes the complete report", async ({ page }) => {
         const editor = new NodeAssetsEditorPage(page);
         await editor.goto();
@@ -223,6 +235,52 @@ test.describe("Node Assets Editor — Energy orb showcase", () => {
             await expect(page.getByText(description, { exact: true })).toBeVisible();
         }
     });
+
+    test("extends node selection with the platform multi-select modifier", async ({ page }) => {
+        const editor = new NodeAssetsEditorPage(page);
+        await editor.goto();
+
+        await editor.selectNode("Import glTF");
+        await editor.nodeByTitle("Build PBR Material").getByText("Build PBR Material", { exact: true }).click({
+            modifiers: [process.platform === "darwin" ? "Meta" : "Control"],
+        });
+        await page.keyboard.press("Delete");
+
+        await expect(editor.nodeByTitle("Import glTF")).toHaveCount(0);
+        await expect(editor.nodeByTitle("Build PBR Material")).toHaveCount(0);
+        await expect(editor.nodes).toHaveCount(6);
+    });
+
+    test("reorganizes overlapping nodes into a left-to-right data flow", async ({ page }) => {
+        const editor = new NodeAssetsEditorPage(page);
+        await editor.goto();
+
+        await editor.dropPaletteItem("String", { x: 0.5, y: 0.5 });
+        await editor.dropPaletteItem("Number", { x: 0.5, y: 0.5 });
+        const stringNode = editor.nodeByTitle("String");
+        const numberNode = editor.nodeByTitle("Number");
+        const overlaps = async () => {
+            const [stringBox, numberBox] = await Promise.all([stringNode.boundingBox(), numberNode.boundingBox()]);
+            if (!stringBox || !numberBox) {
+                return true;
+            }
+            return (
+                stringBox.x < numberBox.x + numberBox.width &&
+                stringBox.x + stringBox.width > numberBox.x &&
+                stringBox.y < numberBox.y + numberBox.height &&
+                stringBox.y + stringBox.height > numberBox.y
+            );
+        };
+        expect(await overlaps()).toBe(true);
+
+        await page.getByRole("button", { name: "Reorganize" }).click();
+
+        await expect.poll(overlaps).toBe(false);
+        const pipelineX = await Promise.all(
+            ["Import glTF", "Build PBR Material", "Apply BasisU", "Apply Draco", "Export glTF"].map(async (title) => (await editor.nodeByTitle(title).boundingBox())?.x ?? 0)
+        );
+        expect(pipelineX).toEqual([...pipelineX].sort((left, right) => left - right));
+    });
 });
 
 test.describe("Node Assets Editor — Library", () => {
@@ -250,19 +308,21 @@ test.describe("Node Assets Editor — Library", () => {
         }
     });
 
-    test("persists saves with incrementing names and shows the exact confirmation", async ({ page }) => {
-        const confirmations: string[] = [];
+    test("persists saves with incrementing names and non-blocking confirmations", async ({ page }) => {
+        const unexpectedDialogs: string[] = [];
         page.on("dialog", (dialog) => {
-            confirmations.push(dialog.message());
-            void dialog.accept();
+            unexpectedDialogs.push(dialog.message());
+            void dialog.dismiss();
         });
         const editor = new NodeAssetsEditorPage(page);
         await editor.goto();
 
         await editor.saveToLibraryButton.click();
+        await expect(page.getByLabel('Saved "nodeAsset" to the library.')).toBeVisible();
         await editor.saveToLibraryButton.click();
+        await expect(page.getByLabel('Saved "nodeAsset 2" to the library.')).toBeVisible();
 
-        expect(confirmations).toEqual(["Saved to library", "Saved to library"]);
+        expect(unexpectedDialogs).toEqual([]);
         await page.reload({ waitUntil: "load" });
         await expect(editor.canvas).toBeVisible({ timeout: 30_000 });
         await editor.openLibraryButton.click();

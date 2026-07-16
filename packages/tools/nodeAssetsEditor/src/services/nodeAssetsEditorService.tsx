@@ -119,7 +119,9 @@ export const NodeAssetsEditorServiceDefinition: ServiceDefinition<[], [IShellSer
         };
 
         const saveToLibrary = (): INodeAssetLibraryEntry => {
-            return library.save(controller.serialize(), currentLibraryBaseName);
+            const entry = library.save(controller.serialize(), currentLibraryBaseName);
+            toastService.showToast(`Saved "${entry.name}" to the library.`, { intent: "success" });
+            return entry;
         };
 
         const loadFromLibrary = (entry: INodeAssetLibraryEntry): void => {
@@ -211,8 +213,18 @@ export const NodeAssetsEditorServiceDefinition: ServiceDefinition<[], [IShellSer
                 verticalLocation: "top",
                 order: 3,
                 teachingMoment: false,
-                // Auto-layout is intentionally the one hollow control in this skeleton.
-                component: () => <Button appearance="transparent" icon={TextExpandRegular} title="Reorganize (not implemented)" ariaLabel="Reorganize" onClick={() => undefined} />,
+                component: () => (
+                    <Button
+                        appearance="transparent"
+                        icon={TextExpandRegular}
+                        title="Reorganize"
+                        ariaLabel="Reorganize"
+                        onClick={() => {
+                            state.reorganize();
+                            view.zoomToFit();
+                        }}
+                    />
+                ),
             }),
             shellService.addToolbarItem({
                 key: "Save",

@@ -95,7 +95,6 @@ export const LibraryControls: FunctionComponent<ILibraryControlsProps> = (props)
         try {
             onSave();
             refreshEntries();
-            window.alert("Saved to library");
         } catch (error) {
             reportError(error);
             setIsOpen(true);

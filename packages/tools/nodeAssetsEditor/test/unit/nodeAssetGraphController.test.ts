@@ -589,6 +589,100 @@ describe("NodeAssetGraphController", () => {
         }
     });
 
+    it("preserves editor frames and their node membership through save and load", () => {
+        const controller = new NodeAssetGraphController();
+        try {
+            const importNode = FindNode(controller, "Import glTF");
+            const frame = controller.state.groupNodesIntoFrame([importNode.id], "Sources", "#123456", {
+                position: { x: 40, y: 480 },
+                size: { width: 280, height: 220 },
+            });
+            controller.state.setFrameCollapsed(frame.id, true);
+
+            controller.load(controller.serialize());
+
+            expect(controller.state.frames).toContainEqual({
+                id: frame.id,
+                label: "Sources",
+                color: "#123456",
+                position: { x: 40, y: 480 },
+                size: { width: 280, height: 220 },
+                nodeIds: [importNode.id],
+                collapsed: true,
+            });
+            expect(controller.state.frames).toContainEqual({
+                id: "frame-compression",
+                label: "Compression",
+                color: "#8a5cf6",
+                position: { x: 940, y: 220 },
+                size: { width: 500, height: 260 },
+                nodeIds: expect.arrayContaining([expect.any(String), expect.any(String)]),
+                collapsed: false,
+            });
+        } finally {
+            controller.dispose();
+        }
+    });
+
+    it("avoids frame id collisions after loading a graph saved by another editor", () => {
+        const sourceController = new NodeAssetGraphController();
+        let serialized: string;
+        try {
+            const importNode = FindNode(sourceController, "Import glTF");
+            sourceController.state.groupNodesIntoFrame([importNode.id], "Sources", "#123456", {
+                position: { x: 40, y: 480 },
+                size: { width: 280, height: 220 },
+            });
+            serialized = sourceController.serialize();
+        } finally {
+            sourceController.dispose();
+        }
+
+        const targetController = new NodeAssetGraphController();
+        try {
+            targetController.load(serialized);
+            const loadedFrameIds = targetController.state.frames.map((frame) => frame.id);
+            const importNode = FindNode(targetController, "Import glTF");
+
+            const newFrame = targetController.state.groupNodesIntoFrame([importNode.id], "More sources", "#654321", {
+                position: { x: 80, y: 520 },
+                size: { width: 300, height: 240 },
+            });
+
+            expect(loadedFrameIds).not.toContain(newFrame.id);
+        } finally {
+            targetController.dispose();
+        }
+    });
+
+    it("loads save files written before frame metadata was introduced", () => {
+        const controller = new NodeAssetGraphController();
+        try {
+            const legacyFile = JSON.parse(controller.serialize());
+            delete legacyFile.editor.frames;
+
+            controller.load(JSON.stringify(legacyFile));
+
+            expect(controller.state.frames).toEqual([]);
+        } finally {
+            controller.dispose();
+        }
+    });
+
+    it("rejects malformed frame membership without replacing the current graph", () => {
+        const controller = new NodeAssetGraphController();
+        try {
+            const saved = controller.serialize();
+            const malformed = JSON.parse(saved);
+            malformed.editor.frames[0].blockIds = [999_999];
+
+            expect(() => controller.load(JSON.stringify(malformed))).toThrow("unknown block id");
+            expect(controller.serialize()).toBe(saved);
+        } finally {
+            controller.dispose();
+        }
+    });
+
     it("rejects editor metadata for an unknown block without replacing the current graph", () => {
         const controller = new NodeAssetGraphController();
         try {
