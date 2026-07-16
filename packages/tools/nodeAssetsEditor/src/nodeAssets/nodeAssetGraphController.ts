@@ -24,7 +24,7 @@ import { type NodeAssetBlock } from "node-assets/blockFoundation/nodeAssetBlock"
 
 import { GraphEditorState } from "../nodeGraph/editorState";
 import { GraphNodeDiagnostics } from "../nodeGraph/nodeDiagnostics";
-import { type IGraphNode, type IGraphSnapshot, type IGraphWire, type Vec2 } from "../nodeGraph/graphModel";
+import { type IGraphFrame, type IGraphNode, type IGraphSnapshot, type IGraphWire, type Vec2 } from "../nodeGraph/graphModel";
 import { type IPaletteCategory } from "../nodeGraph/paletteModel";
 import { type IPropertySection } from "../nodeGraph/propertyModel";
 
@@ -48,6 +48,17 @@ interface IEditorBlockMetadata {
     readonly fileName?: string;
 }
 
+/** Editor-owned frame metadata stored in terms of runtime block ids so membership survives reconstruction. */
+interface IEditorFrameMetadata {
+    readonly id: string;
+    readonly label: string;
+    readonly color: string;
+    readonly position: Vec2;
+    readonly size: { readonly width: number; readonly height: number };
+    readonly blockIds: readonly number[];
+    readonly collapsed: boolean;
+}
+
 interface ISerializedNodeAssetBlock extends Record<string, unknown> {
     readonly id: number;
 }
@@ -67,7 +78,10 @@ interface ISerializedNodeAssetGraph extends Record<string, unknown> {
 /** The full editor save file: the domain graph plus the editor-owned visual metadata. */
 interface INodeAssetEditorFile {
     readonly graph: ISerializedNodeAssetGraph;
-    readonly editor: { readonly blocks: readonly IEditorBlockMetadata[] };
+    readonly editor: {
+        readonly blocks: readonly IEditorBlockMetadata[];
+        readonly frames: readonly IEditorFrameMetadata[];
+    };
 }
 
 function IsRecord(value: unknown): value is Record<string, unknown> {
@@ -142,6 +156,10 @@ function ParseEditorFile(json: string): INodeAssetEditorFile {
     if (!Array.isArray(rawBlocks)) {
         throw new Error('The NodeAsset save file "editor.blocks" value must be an array.');
     }
+    const rawFrames = rawEditor?.frames ?? [];
+    if (!Array.isArray(rawFrames)) {
+        throw new Error('The NodeAsset save file "editor.frames" value must be an array.');
+    }
 
     const graphBlockIds = new Set(parsed.graph.blocks.map((block) => block.id));
     const editorBlockIds = new Set<number>();
@@ -181,9 +199,69 @@ function ParseEditorFile(json: string): INodeAssetEditorFile {
         };
     });
 
+    const frameIds = new Set<string>();
+    const frames: IEditorFrameMetadata[] = rawFrames.map((rawFrame, index) => {
+        if (!IsRecord(rawFrame)) {
+            throw new Error(`Editor frame metadata at index ${index} must be an object.`);
+        }
+        const { id, label, color, position, size, blockIds, collapsed } = rawFrame;
+        if (typeof id !== "string" || id.length === 0) {
+            throw new Error(`Editor frame metadata at index ${index} must have a non-empty string id.`);
+        }
+        if (frameIds.has(id)) {
+            throw new Error(`Editor frame metadata contains duplicate id "${id}".`);
+        }
+        frameIds.add(id);
+        if (typeof label !== "string") {
+            throw new Error(`Editor frame metadata at index ${index} must have a string label.`);
+        }
+        if (typeof color !== "string") {
+            throw new Error(`Editor frame metadata at index ${index} must have a string color.`);
+        }
+        if (!IsRecord(position) || typeof position.x !== "number" || !Number.isFinite(position.x) || typeof position.y !== "number" || !Number.isFinite(position.y)) {
+            throw new Error(`Editor frame metadata at index ${index} must have a finite x/y position.`);
+        }
+        if (
+            !IsRecord(size) ||
+            typeof size.width !== "number" ||
+            !Number.isFinite(size.width) ||
+            size.width <= 0 ||
+            typeof size.height !== "number" ||
+            !Number.isFinite(size.height) ||
+            size.height <= 0
+        ) {
+            throw new Error(`Editor frame metadata at index ${index} must have a positive finite width/height size.`);
+        }
+        if (!Array.isArray(blockIds)) {
+            throw new Error(`Editor frame metadata at index ${index} must have a blockIds array.`);
+        }
+        const frameBlockIds = new Set<number>();
+        for (const blockId of blockIds) {
+            if (typeof blockId !== "number" || !Number.isSafeInteger(blockId) || !graphBlockIds.has(blockId)) {
+                throw new Error(`Editor frame metadata at index ${index} references unknown block id ${String(blockId)}.`);
+            }
+            if (frameBlockIds.has(blockId)) {
+                throw new Error(`Editor frame metadata at index ${index} contains duplicate block id ${blockId}.`);
+            }
+            frameBlockIds.add(blockId);
+        }
+        if (typeof collapsed !== "boolean") {
+            throw new Error(`Editor frame metadata at index ${index} must have a boolean collapsed value.`);
+        }
+        return {
+            id,
+            label,
+            color,
+            position: { x: position.x, y: position.y },
+            size: { width: size.width, height: size.height },
+            blockIds: [...frameBlockIds],
+            collapsed,
+        };
+    });
+
     return {
         graph: parsed.graph,
-        editor: { blocks },
+        editor: { blocks, frames },
     };
 }
 
@@ -440,7 +518,7 @@ export class NodeAssetGraphController {
     }
 
     /**
-     * Serializes the graph plus the editor-owned visual metadata (positions, titles) to a JSON string.
+     * Serializes the graph plus editor-owned node and frame presentation metadata to a JSON string.
      * @returns The JSON save file.
      */
     public serialize(): string {
@@ -458,13 +536,31 @@ export class NodeAssetGraphController {
                 });
             }
         }
-        const file: INodeAssetEditorFile = { graph: this._nodeAsset.serialize(), editor: { blocks } };
+        const frames: IEditorFrameMetadata[] = this.state.frames.map((frame) => {
+            const blockIds = frame.nodeIds.map((nodeId) => {
+                const block = this._reconciler.getBlock(nodeId);
+                if (!block) {
+                    throw new Error(`Cannot serialize frame "${frame.label}" because it references unknown node "${nodeId}".`);
+                }
+                return block.uniqueId;
+            });
+            return {
+                id: frame.id,
+                label: frame.label,
+                color: frame.color,
+                position: frame.position,
+                size: frame.size,
+                blockIds,
+                collapsed: frame.collapsed,
+            };
+        });
+        const file: INodeAssetEditorFile = { graph: this._nodeAsset.serialize(), editor: { blocks, frames } };
         return JSON.stringify(file, null, 2);
     }
 
     /**
      * Replaces the current graph with one parsed from a JSON string produced by {@link serialize},
-     * restoring blocks, connections, and visual positions/titles.
+     * restoring blocks, connections, node presentation, frames, and frame membership.
      * @param json - The JSON save file.
      */
     public load(json: string): void {
@@ -478,6 +574,7 @@ export class NodeAssetGraphController {
 
         const nodes: IGraphNode[] = [];
         const blockNodes: Array<{ readonly block: NodeAssetBlock; readonly node: IGraphNode }> = [];
+        const nodeIdByBlockId = new Map<number, string>();
         for (const block of asset.attachedBlocks) {
             ConfigureBlockForEditor(block);
             const descriptor = GetBlockDescriptorForBlock(block);
@@ -491,6 +588,7 @@ export class NodeAssetGraphController {
             const node = BlockToNode(block, descriptor, metadata?.position ?? { x: 0, y: 0 }, metadata?.title ?? descriptor.label, metadata?.collapsed ?? false);
             nodes.push(node);
             blockNodes.push({ block, node });
+            nodeIdByBlockId.set(block.uniqueId, node.id);
         }
 
         const wires: IGraphWire[] = [];
@@ -507,6 +605,22 @@ export class NodeAssetGraphController {
             }
         }
 
+        const frames: IGraphFrame[] = file.editor.frames.map((frame) => ({
+            id: frame.id,
+            label: frame.label,
+            color: frame.color,
+            position: frame.position,
+            size: frame.size,
+            nodeIds: frame.blockIds.map((blockId) => {
+                const nodeId = nodeIdByBlockId.get(blockId);
+                if (!nodeId) {
+                    throw new Error(`Editor frame "${frame.label}" references block ${blockId}, which could not be loaded as a node.`);
+                }
+                return nodeId;
+            }),
+            collapsed: frame.collapsed,
+        }));
+
         // Commit only after the complete candidate file has parsed and mapped successfully.
         this._nodeAsset = asset;
         this._reconciler.reset(asset);
@@ -515,7 +629,7 @@ export class NodeAssetGraphController {
         }
         this.diagnostics.clear();
         // Correspondence is committed above, so the reconcile fired by reset sees a consistent world.
-        this.state.reset({ nodes, wires, frames: [] });
+        this.state.reset({ nodes, wires, frames });
     }
 
     /** Releases the state subscription. */

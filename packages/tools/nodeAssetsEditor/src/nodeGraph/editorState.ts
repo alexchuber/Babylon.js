@@ -11,6 +11,7 @@ import { type IReadonlyObservable } from "core/index";
 import { Observable } from "core/Misc/observable";
 
 import { type IGraphFrame, type IGraphNode, type IGraphSnapshot, type IGraphWire, type Vec2 } from "./graphModel";
+import { ComputeGraphLayout } from "./graphLayout";
 
 /**
  * The data produced by copying a set of nodes: the nodes themselves plus any wires whose endpoints
@@ -304,7 +305,7 @@ export class GraphEditorState {
     }
 
     /**
-     * Connects an output port to an input port, if the pair is compatible and not already connected.
+     * Connects an output port to an input port, replacing any existing wire to that input.
      * @param fromPortId The originating (output) port id.
      * @param toPortId The destination (input) port id.
      * @returns The new wire, or undefined if the connection was rejected.
@@ -314,6 +315,14 @@ export class GraphEditorState {
             return undefined;
         }
         this._recordUndo();
+        const replacedWireIds = new Set(this._wires.filter((wire) => wire.toPortId === toPortId).map((wire) => wire.id));
+        if (replacedWireIds.size > 0) {
+            this._wires = this._wires.filter((wire) => !replacedWireIds.has(wire.id));
+            if (this._selectedWireId && replacedWireIds.has(this._selectedWireId)) {
+                this._selectedWireId = null;
+                this._notifySelectionChanged();
+            }
+        }
         const wire: IGraphWire = { id: this.generateId("wire"), fromPortId, toPortId };
         this._wires.push(wire);
         this._notifyChanged();
@@ -339,7 +348,8 @@ export class GraphEditorState {
     }
 
     /**
-     * Determines whether a directed connection from one port to another would be accepted by {@link addWire}.
+     * Determines whether a directed connection from one port to another would be accepted by {@link addWire},
+     * including when it would replace the destination input's current wire.
      * @param fromPortId The candidate originating (output) port id.
      * @param toPortId The candidate destination (input) port id.
      * @returns True if the connection is valid and would create a wire.
@@ -456,6 +466,44 @@ export class GraphEditorState {
         if (this._changeVersion === changeVersionBeforeTranslation) {
             this._notifyChanged("visual");
         }
+    }
+
+    /**
+     * Organizes nodes into a left-to-right data flow and refits frames around their members.
+     * The complete layout is recorded as one visual undo step.
+     */
+    public reorganize(): void {
+        const layout = ComputeGraphLayout(this._nodes, this._wires, this._frames);
+        const changedNodes = this._nodes.some((node) => {
+            const position = layout.nodePositions.get(node.id);
+            return position !== undefined && (position.x !== node.position.x || position.y !== node.position.y);
+        });
+        const changedFrames = this._frames.some((frame) => {
+            const bounds = layout.frameBounds.get(frame.id);
+            return (
+                bounds !== undefined &&
+                (bounds.position.x !== frame.position.x ||
+                    bounds.position.y !== frame.position.y ||
+                    bounds.size.width !== frame.size.width ||
+                    bounds.size.height !== frame.size.height)
+            );
+        });
+        if (!changedNodes && !changedFrames) {
+            return;
+        }
+
+        this._recordUndo("visual");
+        for (const node of this._nodes) {
+            node.position = layout.nodePositions.get(node.id) ?? node.position;
+        }
+        for (const frame of this._frames) {
+            const bounds = layout.frameBounds.get(frame.id);
+            if (bounds) {
+                frame.position = bounds.position;
+                frame.size = bounds.size;
+            }
+        }
+        this._notifyChanged("visual");
     }
 
     // #endregion
@@ -610,7 +658,15 @@ export class GraphEditorState {
      * @returns A new unique id.
      */
     public generateId(prefix: string): string {
-        return `${prefix}-${++this._idCounter}`;
+        let id: string;
+        do {
+            id = `${prefix}-${++this._idCounter}`;
+        } while (
+            this._nodes.some((node) => node.id === id || node.ports.some((port) => port.id === id)) ||
+            this._wires.some((wire) => wire.id === id) ||
+            this._frames.some((frame) => frame.id === id)
+        );
+        return id;
     }
 
     /**
@@ -678,8 +734,9 @@ export class GraphEditorState {
         if (!fromNode || !toNode || fromNode.id === toNode.id) {
             return false;
         }
-        // Reject duplicates and any input that is already driven by a wire.
-        if (this._wires.some((wire) => wire.toPortId === toPortId)) {
+        // Dropping the same connection again is a no-op. A different wire may replace the input's
+        // current connection, matching the established node editors' rewiring gesture.
+        if (this._wires.some((wire) => wire.fromPortId === fromPortId && wire.toPortId === toPortId)) {
             return false;
         }
         return this._canConnectPorts(fromPortId, toPortId);

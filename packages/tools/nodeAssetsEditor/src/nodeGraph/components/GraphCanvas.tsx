@@ -353,7 +353,7 @@ export const GraphCanvas: FunctionComponent<{ context: EditorContextValue }> = (
             beginNodeInteraction: (nodeId, event) => {
                 const { gesture, actions } = BeginNodeGesture({
                     nodeId,
-                    additive: event.shiftKey,
+                    additive: event.shiftKey || event.ctrlKey || event.metaKey,
                     isSelected: state.isNodeSelected(nodeId),
                     world: screenToWorld(event.clientX, event.clientY),
                 });
@@ -394,7 +394,13 @@ export const GraphCanvas: FunctionComponent<{ context: EditorContextValue }> = (
         containerRef.current?.focus();
 
         const { world, local } = pointerCoords(event.clientX, event.clientY);
-        const { gesture, actions } = BeginBackgroundGesture({ button: event.button, spaceHeld: spaceHeldRef.current, additive: event.shiftKey, world, local });
+        const { gesture, actions } = BeginBackgroundGesture({
+            button: event.button,
+            spaceHeld: spaceHeldRef.current,
+            additive: event.shiftKey || event.ctrlKey || event.metaKey,
+            world,
+            local,
+        });
         if (gesture.kind === "pan") {
             event.preventDefault();
         }

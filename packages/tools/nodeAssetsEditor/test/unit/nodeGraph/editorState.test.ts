@@ -152,6 +152,66 @@ describe("GraphEditorState", () => {
         expect(state.wires).toHaveLength(1);
     });
 
+    it("replaces every stale wire on an occupied input as one undoable edit", () => {
+        const state = new GraphEditorState({
+            nodes: [CreateNode("source-a", "output"), CreateNode("source-b", "output"), CreateNode("source-c", "output"), CreateNode("target", "input")],
+            wires: [
+                { id: "wire-a", fromPortId: "source-a-output", toPortId: "target-input" },
+                { id: "wire-b", fromPortId: "source-b-output", toPortId: "target-input" },
+            ],
+            frames: [],
+        });
+        state.selectWire("wire-b");
+
+        const replacement = state.addWire("source-c-output", "target-input");
+
+        expect(state.wires).toEqual([replacement]);
+        expect(state.selectedWireId).toBeNull();
+
+        state.undo();
+        expect(state.wires).toEqual([
+            { id: "wire-a", fromPortId: "source-a-output", toPortId: "target-input" },
+            { id: "wire-b", fromPortId: "source-b-output", toPortId: "target-input" },
+        ]);
+    });
+
+    it("records reorganization as one visual undo step and refits member frames", () => {
+        const source = CreateNode("source", "output");
+        source.position = { x: 500, y: 300 };
+        const target = CreateNode("target", "input");
+        target.position = { x: 20, y: 400 };
+        const initialFrame = {
+            id: "frame",
+            label: "Target",
+            color: "#ffffff",
+            position: { x: 0, y: 0 },
+            size: { width: 100, height: 100 },
+            nodeIds: [target.id],
+            collapsed: false,
+        };
+        const state = new GraphEditorState({
+            nodes: [source, target],
+            wires: [{ id: "wire", fromPortId: "source-output", toPortId: "target-input" }],
+            frames: [initialFrame],
+        });
+        const changes: unknown[] = [];
+        const observer = state.onChanged.add((kind) => changes.push(kind));
+
+        state.reorganize();
+
+        expect(state.getNode(source.id)!.position.x).toBeLessThan(state.getNode(target.id)!.position.x);
+        expect(state.frames[0].position.x).toBeLessThan(state.getNode(target.id)!.position.x);
+        expect(state.frames[0].position.y).toBeLessThan(state.getNode(target.id)!.position.y);
+        expect(changes).toEqual(["visual"]);
+
+        state.undo();
+        expect(state.getNode(source.id)!.position).toEqual({ x: 500, y: 300 });
+        expect(state.getNode(target.id)!.position).toEqual({ x: 20, y: 400 });
+        expect(state.frames[0]).toEqual(initialFrame);
+        expect(changes).toEqual(["visual", "visual"]);
+        observer.remove();
+    });
+
     it("asks the host about normalized ports only after generic wire checks pass", () => {
         const canConnectPorts = vi.fn(() => true);
         const state = new GraphEditorState(
