@@ -27,13 +27,17 @@ import "./selectorDescriptor";
 import "./getPropertyDescriptor";
 import "./setPropertyDescriptor";
 import "./gltfSelectorBlockDescriptor";
+import "./gltf2BabylonBlockDescriptor";
 
 import "./getUSDPrimBlockDescriptor";
 import "./usdSelectorBlockDescriptor";
+import "./usd2GLTFBlockDescriptor";
+import "./usd2BabylonBlockDescriptor";
 
 import "./getBabylonMeshBlockDescriptor";
 import "./setBabylonPropertyBlockDescriptor";
 import "./babylonSelectorBlockDescriptor";
+import "./babylon2GLTFBlockDescriptor";
 
 import "./exportImageBlockDescriptor";
 import "./resizeImageBlockDescriptor";
@@ -44,11 +48,6 @@ import "./compositeImageBlockDescriptor";
 import "./setTextureDescriptor";
 
 import "./evaluateNodeGeometryBlockDescriptor";
-
-import "./usd2GLTFBlockDescriptor";
-import "./usd2BabylonBlockDescriptor";
-import "./gltf2BabylonBlockDescriptor";
-import "./babylon2GLTFBlockDescriptor";
 
 import "./numberLiteralDescriptor";
 import "./stringLiteralDescriptor";

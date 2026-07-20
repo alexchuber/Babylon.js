@@ -63,10 +63,6 @@ export const NodeGeometryPortColor = "#7B68EE";
 export const NodeGeometryCategory = "Node Geometry";
 export const NodeGeometryHeaderColor = "#7B68EE";
 
-/** Palette category and shared node header color for the transcoder block family. */
-export const TranscodersCategory = "Transcoders";
-export const TranscodersHeaderColor = "#6B4C8A";
-
 /** Palette category and shared node header color for blocks that operate on Babylon scenes. */
 export const BabylonCategory = "Babylon";
 export const BabylonHeaderColor = "#4A90D9";

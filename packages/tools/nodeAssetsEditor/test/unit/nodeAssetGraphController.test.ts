@@ -477,51 +477,55 @@ describe("NodeAssetGraphController", () => {
         }
     });
 
-    it("exposes every built-in block in domain-oriented palette order", () => {
+    it("groups every built-in block by input-domain palette order", () => {
         const controller = new NodeAssetGraphController();
         try {
-            expect(
-                controller.paletteCategories.map((category) => ({
+            expect({
+                categories: controller.paletteCategories.map((category) => ({
                     label: category.label,
                     itemIds: category.items.map((item) => item.id),
-                }))
-            ).toEqual([
-                {
-                    label: "Inputs",
-                    itemIds: ["import-gltf", "import-usd", "import-image", "import-babylon", "import-node-geometry"],
-                },
-                {
-                    label: "glTF",
-                    itemIds: [
-                        "draco-compression",
-                        "export-gltf",
-                        "ktx2-compression",
-                        "weld",
-                        "dedup",
-                        "prune",
-                        "quantize",
-                        "simplify",
-                        "flatten",
-                        "join",
-                        "normals",
-                        "center",
-                        "merge-scenes",
-                        "selector",
-                        "get-property",
-                        "set-property",
-                        "gltf-selector",
-                    ],
-                },
-                { label: "USD", itemIds: ["get-usd-prim", "usd-selector"] },
-                { label: "Babylon", itemIds: ["get-babylon-mesh", "set-babylon-property", "babylon-selector"] },
-                {
-                    label: "Image",
-                    itemIds: ["export-image", "resize-image", "convert-image-format", "flip-image", "extract-texture", "composite-image", "set-texture"],
-                },
-                { label: "Node Geometry", itemIds: ["evaluate-node-geometry"] },
-                { label: "Transcoders", itemIds: ["usd2gltf", "usd2babylon", "gltf2babylon", "babylon2gltf"] },
-                { label: "Values", itemIds: ["number-literal", "string-literal", "json-literal"] },
-            ]);
+                })),
+                hasTranscodersCategory: controller.paletteCategories.some((category) => category.label === "Transcoders"),
+            }).toEqual({
+                categories: [
+                    {
+                        label: "Inputs",
+                        itemIds: ["import-gltf", "import-usd", "import-image", "import-babylon", "import-node-geometry"],
+                    },
+                    {
+                        label: "glTF",
+                        itemIds: [
+                            "draco-compression",
+                            "export-gltf",
+                            "ktx2-compression",
+                            "weld",
+                            "dedup",
+                            "prune",
+                            "quantize",
+                            "simplify",
+                            "flatten",
+                            "join",
+                            "normals",
+                            "center",
+                            "merge-scenes",
+                            "selector",
+                            "get-property",
+                            "set-property",
+                            "gltf-selector",
+                            "gltf2babylon",
+                        ],
+                    },
+                    { label: "USD", itemIds: ["get-usd-prim", "usd-selector", "usd2gltf", "usd2babylon"] },
+                    { label: "Babylon", itemIds: ["get-babylon-mesh", "set-babylon-property", "babylon-selector", "babylon2gltf"] },
+                    {
+                        label: "Image",
+                        itemIds: ["export-image", "resize-image", "convert-image-format", "flip-image", "extract-texture", "composite-image", "set-texture"],
+                    },
+                    { label: "Node Geometry", itemIds: ["evaluate-node-geometry"] },
+                    { label: "Values", itemIds: ["number-literal", "string-literal", "json-literal"] },
+                ],
+                hasTranscodersCategory: false,
+            });
         } finally {
             controller.dispose();
         }
@@ -606,7 +610,6 @@ describe("NodeAssetGraphController", () => {
                 Babylon: "#4A90D9",
                 Image: "#a0568f",
                 "Node Geometry": "#7B68EE",
-                Transcoders: "#6B4C8A",
                 Values: "#5a5fb0",
             };
 
