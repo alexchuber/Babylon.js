@@ -124,6 +124,33 @@ describe("NodeAssetGraphController", () => {
         }
     });
 
+    it("removes an aggregate's external wire when its exposed primitive is deleted", () => {
+        const controller = new NodeAssetGraphController();
+        try {
+            const importNode = FindNode(controller, "Import glTF");
+            const exposedOutputId = importNode.ports.find((port) => port.direction === "output")?.id;
+            controller.setAggregateExpanded(importNode.id, true);
+            const aggregateFrame = controller.state.frames.find((frame) => frame.kind === "aggregate" && frame.aggregateNodeId === importNode.id);
+            const transcoderNode = controller.state.nodes.find((node) => aggregateFrame?.nodeIds.includes(node.id) && node.title === "glTF to Universal");
+            if (!exposedOutputId || !transcoderNode) {
+                throw new Error("Could not find the Import glTF aggregate's exposed transcoder.");
+            }
+
+            controller.state.removeNodes([transcoderNode.id]);
+
+            expect(controller.state.wires.some((wire) => wire.fromPortId === exposedOutputId || wire.toPortId === exposedOutputId)).toBe(false);
+            const saved = controller.serialize();
+            const reloaded = new NodeAssetGraphController();
+            try {
+                expect(() => reloaded.load(saved)).not.toThrow();
+            } finally {
+                reloaded.dispose();
+            }
+        } finally {
+            controller.dispose();
+        }
+    });
+
     it("offers the supported demo pipelines as uniquely named bundled library entries", () => {
         const names = BuiltInNodeAssetLibraryEntries.map((entry) => entry.name);
 

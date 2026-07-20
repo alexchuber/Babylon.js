@@ -56,6 +56,30 @@ export abstract class AggregateBlock extends NodeAssetBlock {
     }
 
     /**
+     * Removes an owned block and any public ports exposed from it.
+     * @param block The owned block to remove.
+     * @returns The public ports removed with the block.
+     * @internal
+     */
+    public _removeOwnedBlock(block: NodeAssetBlock): readonly NodeAssetConnectionPoint[] {
+        if (!this._subgraph.attachedBlocks.includes(block)) {
+            return [];
+        }
+        const removedInputs = this._inputExposures.filter((exposure) => exposure.internalPoint.ownerBlock === block);
+        const removedOutputs = this._outputExposures.filter((exposure) => exposure.internalPoint.ownerBlock === block);
+        this._inputExposures = this._inputExposures.filter((exposure) => exposure.internalPoint.ownerBlock !== block);
+        this._outputExposures = this._outputExposures.filter((exposure) => exposure.internalPoint.ownerBlock !== block);
+        for (const exposure of removedInputs) {
+            this._unregisterInput(exposure.publicPoint);
+        }
+        for (const exposure of removedOutputs) {
+            this._unregisterOutput(exposure.publicPoint);
+        }
+        this._subgraph.removeBlock(block);
+        return [...removedInputs, ...removedOutputs].map((exposure) => exposure.publicPoint);
+    }
+
+    /**
      * Exposes an internal input as a public aggregate input.
      * @param internalPoint The internal connection point.
      * @param publicName The public connection point name.

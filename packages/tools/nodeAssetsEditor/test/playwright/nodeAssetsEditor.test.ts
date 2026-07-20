@@ -1,5 +1,6 @@
 import { test, expect, type Page, type Download } from "@playwright/test";
 import { readFileSync } from "node:fs";
+import { resolve } from "node:path";
 
 import { NodeAssetsEditorPage, useLocalGltfValidator } from "./nae.utils";
 
@@ -8,6 +9,22 @@ type GltfJson = {
     readonly extensionsRequired?: readonly string[];
     readonly images?: readonly { readonly mimeType?: string }[];
     readonly materials?: readonly unknown[];
+};
+
+type SavedBlock = {
+    readonly customType: string;
+    readonly name: string;
+    readonly source?: string | null;
+    readonly subgraph?: {
+        readonly blocks: readonly SavedBlock[];
+        readonly connections: readonly unknown[];
+    };
+};
+
+type SavedEditorGraph = {
+    readonly graph: {
+        readonly blocks: readonly SavedBlock[];
+    };
 };
 
 // The energy-orb showcase composites a metal base and a cyan pattern into the base color, fans the same
@@ -24,6 +41,7 @@ const EnergyOrbPipeline: readonly (readonly [string, string])[] = [
     ["Apply Draco", "glTF to Universal"],
     ["glTF to Universal", "Export glTF"],
 ];
+const OrbGlbPath = resolve(__dirname, "../../src/nodeAssets/sampleAssets/orb.glb");
 
 /**
  * Parses the JSON chunk of a glb without any glTF dependency, so assertions can inspect the exported
@@ -56,6 +74,13 @@ async function readDownloadedGlb(download: Download, expectedFileName = "scene.g
     expect(exported.length).toBeGreaterThan(0);
     expect(exported.subarray(0, 4).toString("ascii")).toBe("glTF");
     return exported;
+}
+
+async function saveEditorGraph(page: Page): Promise<SavedEditorGraph> {
+    const downloadPromise = page.waitForEvent("download");
+    await page.getByRole("button", { name: "Save", exact: true }).click();
+    const downloadPath = await (await downloadPromise).path();
+    return JSON.parse(readFileSync(downloadPath, "utf8")) as SavedEditorGraph;
 }
 
 test.describe("Node Assets Editor — Energy orb showcase", () => {
@@ -354,6 +379,121 @@ test.describe("Node Assets Editor — Universal glTF aggregates", () => {
         await readDownloadedGlb(await downloadPromise, "custom-output.glb");
     });
 
+    test("preserves a detached aggregate's internal wire when it is collapsed", async ({ page }) => {
+        const editor = new NodeAssetsEditorPage(page);
+        await editor.goto();
+        await editor.waitForNextSuccessfulPreviewBuild();
+
+        await editor.nodeByTitle("Export glTF").getByRole("button", { name: "Expand aggregate" }).click();
+        await editor.selectNode("Write glTF");
+        await page.getByRole("textbox").nth(2).fill("collapsed-custom-output");
+        await editor.selectNode("Export glTF");
+        await expect(page.getByRole("textbox").nth(1)).toHaveValue("CustomAggregateBlock");
+
+        const aggregateFrame = page.locator('[data-testid="aggregate-frame"]').filter({ hasText: "Export glTF" });
+        await aggregateFrame.getByRole("button", { name: "Collapse aggregate" }).click();
+        await editor.waitForSuccessfulPreviewBuild();
+
+        const saved = await saveEditorGraph(page);
+        const exported = saved.graph.blocks.find((block) => block.name === "Export glTF");
+        expect(exported?.customType).toBe("CustomAggregateBlock");
+        expect(exported?.subgraph?.connections).toHaveLength(1);
+    });
+
+    test("detaches before deleting an aggregate primitive and persists the deletion", async ({ page }) => {
+        const editor = new NodeAssetsEditorPage(page);
+        await editor.goto();
+        await editor.waitForNextSuccessfulPreviewBuild();
+
+        await editor.nodeByTitle("Import glTF").getByRole("button", { name: "Expand aggregate" }).click();
+        await editor.selectNode("Read glTF");
+        await page.keyboard.press("Delete");
+
+        await expect(editor.nodeByTitle("Read glTF")).toHaveCount(0);
+        await editor.selectNode("Import glTF");
+        await expect(page.getByRole("textbox").nth(1)).toHaveValue("CustomAggregateBlock");
+        const saved = await saveEditorGraph(page);
+        const imported = saved.graph.blocks.find((block) => block.name === "Import glTF");
+        expect(imported?.subgraph?.blocks.map((block) => block.customType)).not.toContain("ReadGLTFBlock");
+    });
+
+    test("deletes an expanded aggregate root together with its projected subgraph", async ({ page }) => {
+        const editor = new NodeAssetsEditorPage(page);
+        await editor.goto();
+
+        await editor.nodeByTitle("Export glTF").getByRole("button", { name: "Expand aggregate" }).click();
+        await editor.selectNode("Export glTF");
+        await page.keyboard.press("Delete");
+
+        await expect(editor.nodeByTitle("Export glTF")).toHaveCount(0);
+        await expect(editor.nodeByTitle("Write glTF")).toHaveCount(0);
+        await expect(page.locator('[data-testid="aggregate-frame"]').filter({ hasText: "Export glTF" })).toHaveCount(0);
+    });
+
+    test("applies a delayed URL completion to the Read primitive after detachment", async ({ page }) => {
+        const delayedUrl = "https://example.test/delayed.glb";
+        let markRequestStarted: () => void = () => undefined;
+        let releaseResponse: () => void = () => undefined;
+        const requestStarted = new Promise<void>((resolve) => {
+            markRequestStarted = resolve;
+        });
+        const responseReleased = new Promise<void>((resolve) => {
+            releaseResponse = resolve;
+        });
+        await page.route(delayedUrl, async (route) => {
+            markRequestStarted();
+            await responseReleased;
+            await route.fulfill({
+                path: OrbGlbPath,
+                contentType: "model/gltf-binary",
+            });
+        });
+        const editor = new NodeAssetsEditorPage(page);
+        await editor.goto();
+        await editor.waitForNextSuccessfulPreviewBuild();
+
+        await editor.nodeByTitle("Import glTF").getByRole("button", { name: "Expand aggregate" }).click();
+        await editor.selectNode("Read glTF");
+        await page.getByRole("textbox").nth(2).fill(delayedUrl);
+        await page.getByRole("textbox").nth(2).blur();
+        await requestStarted;
+        await page.getByRole("textbox").nth(0).fill("Renamed Read glTF");
+        await editor.selectNode("Import glTF");
+        await expect(page.getByRole("textbox").nth(1)).toHaveValue("CustomAggregateBlock");
+
+        releaseResponse();
+        await expect(page.getByRole("textbox").nth(3)).toHaveValue(delayedUrl);
+        const saved = await saveEditorGraph(page);
+        const imported = saved.graph.blocks.find((block) => block.name === "Import glTF");
+        expect(imported?.subgraph?.blocks.find((block) => block.customType === "ReadGLTFBlock")?.source).toBe(delayedUrl);
+    });
+
+    test("applies an upload chosen after detachment to the active Read primitive", async ({ page }) => {
+        const editor = new NodeAssetsEditorPage(page);
+        await editor.goto();
+        await editor.waitForNextSuccessfulPreviewBuild();
+        await editor.selectNode("Import glTF");
+
+        const fileChooserPromise = page.waitForEvent("filechooser");
+        await page.getByRole("button", { name: "Upload glTF…" }).click();
+        const fileChooser = await fileChooserPromise;
+        await editor.nodeByTitle("Import glTF").getByRole("button", { name: "Expand aggregate" }).click();
+        await editor.selectNode("Read glTF");
+        await page.getByRole("textbox").nth(0).fill("Renamed Read glTF");
+        await fileChooser.setFiles({
+            name: "detached-upload.glb",
+            mimeType: "model/gltf-binary",
+            buffer: readFileSync(OrbGlbPath),
+        });
+
+        await editor.selectNode("Import glTF");
+        await expect(page.getByRole("textbox").nth(1)).toHaveValue("CustomAggregateBlock");
+        await expect(page.getByRole("textbox").nth(3)).toHaveValue("detached-upload.glb");
+        const saved = await saveEditorGraph(page);
+        const imported = saved.graph.blocks.find((block) => block.name === "Import glTF");
+        expect(imported?.subgraph?.blocks.find((block) => block.customType === "ReadGLTFBlock")?.source).toBe("detached-upload.glb");
+    });
+
     test("shares a successful upload between the compact Import aggregate and its Read primitive", async ({ page }) => {
         const editor = new NodeAssetsEditorPage(page);
         await editor.goto();
@@ -366,7 +506,7 @@ test.describe("Node Assets Editor — Universal glTF aggregates", () => {
         await fileChooser.setFiles({
             name: "uploaded-orb.glb",
             mimeType: "model/gltf-binary",
-            buffer: readFileSync("packages/tools/nodeAssetsEditor/src/nodeAssets/sampleAssets/orb.glb"),
+            buffer: readFileSync(OrbGlbPath),
         });
         await expect(page.getByRole("textbox").nth(3)).toHaveValue("uploaded-orb.glb");
 

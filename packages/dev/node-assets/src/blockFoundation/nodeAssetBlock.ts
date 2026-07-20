@@ -78,6 +78,32 @@ export abstract class NodeAssetBlock {
     }
 
     /**
+     * Removes an input owned by this block.
+     * @param point The input to remove.
+     * @internal
+     */
+    protected _unregisterInput(point: NodeAssetConnectionPoint): void {
+        point.disconnect();
+        const index = this._inputs.indexOf(point);
+        if (index !== -1) {
+            this._inputs.splice(index, 1);
+        }
+    }
+
+    /**
+     * Removes an output owned by this block.
+     * @param point The output to remove.
+     * @internal
+     */
+    protected _unregisterOutput(point: NodeAssetConnectionPoint): void {
+        point.disconnect();
+        const index = this._outputs.indexOf(point);
+        if (index !== -1) {
+            this._outputs.splice(index, 1);
+        }
+    }
+
+    /**
      * Runtime hook invoked by {@link NodeAsset.buildAsync}. This block's inputs' values are
      * already resolved; read them and set this block's outputs' values.
      * @param scope The build scope. Existing direct callers may omit it.

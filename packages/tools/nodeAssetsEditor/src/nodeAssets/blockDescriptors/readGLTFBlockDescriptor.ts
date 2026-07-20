@@ -7,24 +7,26 @@ import { PromptForFileAsync } from "../browserFiles";
 const ReadHeaderColor = "#3f7d4e";
 const SourceErrors = new WeakMap<ReadGLTFBlock, string>();
 
-async function PromptForGLTFAsync(block: ReadGLTFBlock, refresh: () => void): Promise<void> {
+async function PromptForGLTFAsync(block: ReadGLTFBlock, context: IPropertySectionContext): Promise<void> {
+    const authoredBlock = context.prepareEdit(block);
     const file = await PromptForFileAsync(".glb,.gltf");
     if (!file) {
         return;
     }
-    block.setUploadedSource(new Uint8Array(await file.arrayBuffer()), file.name);
-    SourceErrors.delete(block);
-    refresh();
+    authoredBlock.setUploadedSource(new Uint8Array(await file.arrayBuffer()), file.name);
+    SourceErrors.delete(authoredBlock);
+    context.refresh();
 }
 
-async function SetGLTFUrlAsync(block: ReadGLTFBlock, url: string, refresh: () => void): Promise<void> {
+async function SetGLTFUrlAsync(block: ReadGLTFBlock, url: string, context: IPropertySectionContext): Promise<void> {
+    const authoredBlock = context.prepareEdit(block);
     try {
-        await block.setUrlAsync(url);
-        SourceErrors.delete(block);
+        await authoredBlock.setUrlAsync(url);
+        SourceErrors.delete(authoredBlock);
     } catch (error) {
-        SourceErrors.set(block, error instanceof Error ? error.message : String(error));
+        SourceErrors.set(authoredBlock, error instanceof Error ? error.message : String(error));
     }
-    refresh();
+    context.refresh();
 }
 
 /**
@@ -46,14 +48,15 @@ export function CreateReadGLTFPropertySection(block: ReadGLTFBlock, context: IPr
                 validateOnlyOnBlur: true,
                 onChange: (value) => {
                     if (!value) {
-                        block.data = null;
-                        block.source = null;
-                        block.sourceKind = null;
-                        SourceErrors.delete(block);
+                        const authoredBlock = context.prepareEdit(block);
+                        authoredBlock.data = null;
+                        authoredBlock.source = null;
+                        authoredBlock.sourceKind = null;
+                        SourceErrors.delete(authoredBlock);
                         context.refresh();
                         return;
                     }
-                    void SetGLTFUrlAsync(block, value, context.refresh);
+                    void SetGLTFUrlAsync(block, value, context);
                 },
             },
             {
@@ -67,7 +70,7 @@ export function CreateReadGLTFPropertySection(block: ReadGLTFBlock, context: IPr
                 kind: "button",
                 label: "Upload glTF\u2026",
                 onClick: () => {
-                    void PromptForGLTFAsync(block, context.refresh);
+                    void PromptForGLTFAsync(block, context);
                 },
             },
             ...(sourceError

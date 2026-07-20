@@ -30,6 +30,15 @@ export type GraphEditorStateOptions = {
     readonly canConnectPorts?: (fromPortId: string, toPortId: string) => boolean;
     /** Lets a host prepare domain state before a committed wire edit touches the visual graph. */
     readonly beforeWireChange?: (nodeIds: readonly string[]) => void;
+    /** Lets a host prepare domain state and include owned nodes or frames in one removal transaction. */
+    readonly prepareNodeRemoval?: (nodeIds: readonly string[]) => GraphNodeRemovalPlan;
+};
+
+/** The complete visual set removed by one node-deletion transaction. */
+export type GraphNodeRemovalPlan = {
+    readonly nodeIds: readonly string[];
+    readonly frameIds?: readonly string[];
+    readonly wireIds?: readonly string[];
 };
 
 /** Whether an editor-state change affects only presentation or the graph's authored content. */
@@ -67,6 +76,7 @@ export class GraphEditorState {
 
     private readonly _canConnectPorts: (fromPortId: string, toPortId: string) => boolean;
     private readonly _beforeWireChange: (nodeIds: readonly string[]) => void;
+    private readonly _prepareNodeRemoval: (nodeIds: readonly string[]) => GraphNodeRemovalPlan;
     private readonly _onChanged = new Observable<GraphChangeKind>();
     private readonly _onSelectionChanged = new Observable<void>();
 
@@ -82,6 +92,7 @@ export class GraphEditorState {
         this._frames = [...cloned.frames];
         this._canConnectPorts = options.canConnectPorts ?? (() => true);
         this._beforeWireChange = options.beforeWireChange ?? (() => undefined);
+        this._prepareNodeRemoval = options.prepareNodeRemoval ?? ((nodeIds) => ({ nodeIds }));
     }
 
     /** Fires whenever the graph contents (nodes, wires, frames) change. */
@@ -283,8 +294,11 @@ export class GraphEditorState {
      * @param ids The node ids to remove.
      */
     public removeNodes(ids: readonly string[]): void {
-        const idSet = new Set(ids);
-        if (idSet.size === 0 || !this._nodes.some((node) => idSet.has(node.id))) {
+        const removal = this._prepareNodeRemoval(ids);
+        const idSet = new Set(removal.nodeIds);
+        const frameIdSet = new Set(removal.frameIds ?? []);
+        const wireIdSet = new Set(removal.wireIds ?? []);
+        if ((idSet.size === 0 || !this._nodes.some((node) => idSet.has(node.id))) && (frameIdSet.size === 0 || !this._frames.some((frame) => frameIdSet.has(frame.id)))) {
             return;
         }
         this._recordUndo();
@@ -299,7 +313,8 @@ export class GraphEditorState {
         }
 
         this._nodes = this._nodes.filter((node) => !idSet.has(node.id));
-        this._wires = this._wires.filter((wire) => !removedPortIds.has(wire.fromPortId) && !removedPortIds.has(wire.toPortId));
+        this._wires = this._wires.filter((wire) => !wireIdSet.has(wire.id) && !removedPortIds.has(wire.fromPortId) && !removedPortIds.has(wire.toPortId));
+        this._frames = this._frames.filter((frame) => !frameIdSet.has(frame.id));
         for (const frame of this._frames) {
             frame.nodeIds = frame.nodeIds.filter((nodeId) => !idSet.has(nodeId));
         }
