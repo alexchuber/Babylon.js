@@ -1,12 +1,16 @@
 import { describe, expect, it, vi } from "vitest";
 
 import { NodeAsset } from "node-assets/nodeAsset";
+import { CustomAggregateBlock } from "node-assets/blockFoundation/customAggregateBlock";
+import { KTX2CompressionBlock } from "node-assets/Blocks/ktx2CompressionBlock";
+import { StringLiteral } from "node-assets/Blocks/stringLiteral";
 
 import { NodeAssetBuildError } from "node-assets/nodeAssetBuildError";
 
 import { type IGraphNode } from "../../src/nodeGraph/graphModel";
 import { PaletteItemMatchesFilter } from "../../src/nodeGraph/paletteModel";
 import { type PropertyDescriptor } from "../../src/nodeGraph/propertyModel";
+import { NodeIdForBlockId } from "../../src/nodeAssets/blockNodeMapping";
 import { CreateBuiltInNodeAssetLibraryEntries } from "../../src/nodeAssets/builtInLibraryEntries";
 import { NodeAssetGraphController } from "../../src/nodeAssets/nodeAssetGraphController";
 import { type INodeAssetBuildClient, Ktx2EncoderResourceConflictError } from "../../src/nodeAssets/nodeAssetBuildWorkerClient";
@@ -480,6 +484,97 @@ describe("NodeAssetGraphController", () => {
             controller.clearBuildError();
             expect(controller.diagnostics.get(importNode.id)).toBeNull();
             expect(controller.diagnostics.get(exportNode.id)).toBeNull();
+        } finally {
+            controller.dispose();
+        }
+    });
+
+    it("attributes a KTX2 conflict inside a collapsed aggregate to the compact aggregate root, without masking unrelated nodes", () => {
+        // Build a scratch graph with: a top-level KTX2 block, a COLLAPSED custom aggregate that owns
+        // a nested KTX2 block in its subgraph (so the nested block has no visual node of its own), and
+        // an unrelated top-level block that must not receive a diagnostic.
+        const asset = new NodeAsset("scratch");
+        const topLevelKtx2 = new KTX2CompressionBlock("top-level ktx2", asset);
+        const aggregate = new CustomAggregateBlock("aggregate", asset);
+        const nestedKtx2 = new KTX2CompressionBlock("nested ktx2", aggregate.subgraph);
+        const unrelated = new StringLiteral("unrelated", asset);
+
+        const file = JSON.stringify({
+            graph: asset.serialize(),
+            editor: {
+                blocks: [
+                    { id: topLevelKtx2.uniqueId, position: { x: 0, y: 0 }, title: topLevelKtx2.name, collapsed: false },
+                    { id: aggregate.uniqueId, position: { x: 200, y: 0 }, title: aggregate.name, collapsed: false, aggregateExpanded: false },
+                    { id: unrelated.uniqueId, position: { x: 400, y: 0 }, title: unrelated.name, collapsed: false },
+                ],
+                frames: [],
+            },
+        });
+
+        const controller = new NodeAssetGraphController();
+        try {
+            controller.load(file);
+
+            const topLevelNodeId = NodeIdForBlockId(topLevelKtx2.uniqueId);
+            const aggregateRootNodeId = NodeIdForBlockId(aggregate.uniqueId);
+            const unrelatedNodeId = NodeIdForBlockId(unrelated.uniqueId);
+            const nestedNodeId = NodeIdForBlockId(nestedKtx2.uniqueId);
+
+            // The aggregate starts collapsed: no visual node exists for the nested block.
+            expect(controller.state.getNode(nestedNodeId)).toBeUndefined();
+            expect(controller.state.getNode(aggregateRootNodeId)).not.toBeUndefined();
+
+            const message = "Multiple Compress Textures (KTX2) blocks author different encoder resource URLs.";
+            controller.reportBuildError(new Ktx2EncoderResourceConflictError(message, [topLevelKtx2.uniqueId, nestedKtx2.uniqueId]));
+
+            expect(controller.diagnostics.get(topLevelNodeId)).toEqual({ severity: "error", message });
+            expect(controller.diagnostics.get(aggregateRootNodeId)).toEqual({ severity: "error", message });
+            expect(controller.diagnostics.get(unrelatedNodeId)).toBeNull();
+
+            controller.clearBuildError();
+            expect(controller.diagnostics.get(topLevelNodeId)).toBeNull();
+            expect(controller.diagnostics.get(aggregateRootNodeId)).toBeNull();
+        } finally {
+            controller.dispose();
+        }
+    });
+
+    it("attributes a KTX2 conflict to the nearest visible ancestor when a collapsed aggregate is nested inside an expanded one", () => {
+        // Three-level nesting: aggregate A (expanded) owns aggregate B (collapsed), which owns KTX2
+        // block C. C has no node of its own (B is collapsed), but B DOES have a projected child node
+        // (A is expanded), so the diagnostic must land on B's node, not skip further out to A's.
+        const asset = new NodeAsset("scratch-nested");
+        const aggregateA = new CustomAggregateBlock("aggregate A", asset);
+        const aggregateB = new CustomAggregateBlock("aggregate B", aggregateA.subgraph);
+        const nestedKtx2C = new KTX2CompressionBlock("nested ktx2 C", aggregateB.subgraph);
+
+        const file = JSON.stringify({
+            graph: asset.serialize(),
+            editor: {
+                blocks: [{ id: aggregateA.uniqueId, position: { x: 0, y: 0 }, title: aggregateA.name, collapsed: false, aggregateExpanded: true }],
+                frames: [],
+            },
+        });
+
+        const controller = new NodeAssetGraphController();
+        try {
+            controller.load(file);
+
+            const aggregateANodeId = NodeIdForBlockId(aggregateA.uniqueId);
+            const aggregateBNodeId = NodeIdForBlockId(aggregateB.uniqueId);
+            const nestedCNodeId = NodeIdForBlockId(nestedKtx2C.uniqueId);
+
+            // A is expanded, so B is projected as a visible child node; B itself stays collapsed, so C
+            // (owned by B) has no node of its own.
+            expect(controller.state.getNode(aggregateANodeId)).not.toBeUndefined();
+            expect(controller.state.getNode(aggregateBNodeId)).not.toBeUndefined();
+            expect(controller.state.getNode(nestedCNodeId)).toBeUndefined();
+
+            const message = "Multiple Compress Textures (KTX2) blocks author different encoder resource URLs.";
+            controller.reportBuildError(new Ktx2EncoderResourceConflictError(message, [nestedKtx2C.uniqueId]));
+
+            expect(controller.diagnostics.get(aggregateBNodeId)).toEqual({ severity: "error", message });
+            expect(controller.diagnostics.get(aggregateANodeId)).toBeNull();
         } finally {
             controller.dispose();
         }

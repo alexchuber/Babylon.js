@@ -632,8 +632,8 @@ export class NodeAssetGraphController {
         this.diagnostics.clear();
         if (error instanceof Ktx2EncoderResourceConflictError) {
             for (const blockId of error.blockIds) {
-                const nodeId = NodeIdForBlockId(blockId);
-                if (this.state.getNode(nodeId)) {
+                const nodeId = this._findAttributionNodeId(blockId);
+                if (nodeId) {
                     this.diagnostics.set(nodeId, { severity: "error", message: error.message });
                 }
             }
@@ -646,6 +646,52 @@ export class NodeAssetGraphController {
         if (this.state.getNode(nodeId)) {
             this.diagnostics.set(nodeId, { severity: "error", message: error.message });
         }
+    }
+
+    /**
+     * Resolves the visual node that should carry a diagnostic for a runtime block, walking outward
+     * from the block itself through its aggregate ownership chain (nearest ancestor first) until a
+     * node that currently exists in the visual state is found. A top-level block, or one exposed by an
+     * expanded aggregate's projected children, has its own node and resolves directly; a block owned
+     * by a collapsed aggregate has no node of its own, so this falls back to the aggregate root's node
+     * (which always exists, since every top-level block gets a node regardless of expansion state).
+     * @param blockId - The runtime block id to attribute.
+     * @returns The visual node id to flag, or undefined if the block is not reachable from the current graph.
+     */
+    private _findAttributionNodeId(blockId: number): string | undefined {
+        for (const candidateId of this._ownershipChain(blockId)) {
+            const nodeId = NodeIdForBlockId(candidateId);
+            if (this.state.getNode(nodeId)) {
+                return nodeId;
+            }
+        }
+        return undefined;
+    }
+
+    /**
+     * Computes a block's aggregate ownership chain: the block's own id, followed by its immediate
+     * owning aggregate's id, then that aggregate's owner, and so on up to the top-level graph. Resolved
+     * from the authored runtime graph (recursing into aggregate-owned subgraphs), not from the current
+     * visual child-node mapping, so it is correct regardless of whether any aggregate is expanded.
+     * @param targetBlockId - The runtime block id to locate.
+     * @returns The ownership chain from nearest to outermost; just `[targetBlockId]` if not found.
+     */
+    private _ownershipChain(targetBlockId: number): readonly number[] {
+        const search = (blocks: ReadonlyArray<NodeAssetBlock>, ancestors: readonly number[]): number[] | undefined => {
+            for (const block of blocks) {
+                if (block.uniqueId === targetBlockId) {
+                    return [targetBlockId, ...ancestors];
+                }
+                if (block instanceof AggregateBlock) {
+                    const found = search(block.subgraph.attachedBlocks, [block.uniqueId, ...ancestors]);
+                    if (found) {
+                        return found;
+                    }
+                }
+            }
+            return undefined;
+        };
+        return search(this._nodeAsset.attachedBlocks, []) ?? [targetBlockId];
     }
 
     /**

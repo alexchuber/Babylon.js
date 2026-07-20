@@ -3,6 +3,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { _SetNodeAssetBuildErrorContext, NodeAssetBuildError } from "node-assets/nodeAssetBuildError";
 
 import {
+    DefaultNodeAssetBuildTimeoutMs,
     Ktx2EncoderResourceConflictError,
     NodeAssetBuildSupersededError,
     NodeAssetBuildTimeoutError,
@@ -62,6 +63,28 @@ function CreateWorkerFactory(): { readonly workers: TestBuildWorker[]; readonly 
             workers.push(worker);
             return worker;
         },
+    };
+}
+
+function GraphWithKtx2Urls(jsUrl: string | null, wasmUrl: string | null): { name: string; blocks: unknown[]; connections: unknown[] } {
+    return {
+        name: "nodeAsset",
+        blocks: [{ customType: "KTX2CompressionBlock", id: 1, name: "ktx2", jsUrl, wasmUrl }],
+        connections: [],
+    };
+}
+
+function GraphWithTwoKtx2Blocks(
+    first: { jsUrl: string | null; wasmUrl: string | null },
+    second: { jsUrl: string | null; wasmUrl: string | null }
+): { name: string; blocks: unknown[]; connections: unknown[] } {
+    return {
+        name: "nodeAsset",
+        blocks: [
+            { customType: "KTX2CompressionBlock", id: 1, name: "ktx2 A", jsUrl: first.jsUrl, wasmUrl: first.wasmUrl },
+            { customType: "KTX2CompressionBlock", id: 2, name: "ktx2 B", jsUrl: second.jsUrl, wasmUrl: second.wasmUrl },
+        ],
+        connections: [],
     };
 }
 
@@ -163,14 +186,6 @@ describe("NodeAssetBuildWorkerClient", () => {
     });
 
     describe("authored KTX2 encoder resource URLs", () => {
-        function GraphWithKtx2Urls(jsUrl: string | null, wasmUrl: string | null): { name: string; blocks: unknown[]; connections: unknown[] } {
-            return {
-                name: "nodeAsset",
-                blocks: [{ customType: "KTX2CompressionBlock", id: 1, name: "ktx2", jsUrl, wasmUrl }],
-                connections: [],
-            };
-        }
-
         it("reuses the worker across builds when authored KTX2 jsUrl/wasmUrl are unchanged", async () => {
             const { workers, createWorker } = CreateWorkerFactory();
             const client = new NodeAssetBuildWorkerClient(createWorker);
@@ -299,20 +314,6 @@ describe("NodeAssetBuildWorkerClient", () => {
     });
 
     describe("authored KTX2 encoder resource URL conflicts", () => {
-        function GraphWithTwoKtx2Blocks(
-            first: { jsUrl: string; wasmUrl: string },
-            second: { jsUrl: string; wasmUrl: string }
-        ): { name: string; blocks: unknown[]; connections: unknown[] } {
-            return {
-                name: "nodeAsset",
-                blocks: [
-                    { customType: "KTX2CompressionBlock", id: 1, name: "ktx2 A", jsUrl: first.jsUrl, wasmUrl: first.wasmUrl },
-                    { customType: "KTX2CompressionBlock", id: 2, name: "ktx2 B", jsUrl: second.jsUrl, wasmUrl: second.wasmUrl },
-                ],
-                connections: [],
-            };
-        }
-
         it("rejects a build with two top-level KTX2 blocks authoring different encoder resource URLs", async () => {
             const { workers, createWorker } = CreateWorkerFactory();
             const client = new NodeAssetBuildWorkerClient(createWorker);
@@ -383,6 +384,159 @@ describe("NodeAssetBuildWorkerClient", () => {
             const error = await client.buildAsync(graph).catch((rejection: unknown) => rejection);
             expect(error).toBeInstanceOf(Ktx2EncoderResourceConflictError);
             expect((error as Ktx2EncoderResourceConflictError).blockIds.slice().sort()).toEqual([1, 3]);
+
+            client.dispose();
+        });
+    });
+
+    describe("KTX2 encoder resource fallback normalization", () => {
+        // Mirrors the real Basis encoder fallback URLs `ConfigureNodeAssetBuildResources` applies
+        // inside the worker (see `nodeAssetBuildResources.ts`): a block whose jsUrl/wasmUrl is left
+        // null/undefined ends up using these exact URLs once the worker actually configures it. The
+        // pre-flight client-side checks below run BEFORE that configuration step, so they must resolve
+        // each authored URL against the same fallback values to avoid false-positive conflicts/restarts.
+        const TestKtx2Fallbacks = { jsUrl: "/fallback/basis.js", wasmUrl: "/fallback/basis.wasm" };
+
+        it("allows an unauthored (null) pair alongside an explicit pair matching the configured fallback URLs", async () => {
+            const { workers, createWorker } = CreateWorkerFactory();
+            const client = new NodeAssetBuildWorkerClient(createWorker, DefaultNodeAssetBuildTimeoutMs, TestKtx2Fallbacks);
+
+            const graph = GraphWithTwoKtx2Blocks({ jsUrl: null, wasmUrl: null }, { jsUrl: TestKtx2Fallbacks.jsUrl, wasmUrl: TestKtx2Fallbacks.wasmUrl });
+
+            const buildPromise = client.buildAsync(graph);
+            expect(workers).toHaveLength(1);
+            workers[0].sendResponse({ type: "success", generation: 1, bytes: new Uint8Array([1]).buffer });
+
+            await expect(buildPromise).resolves.toEqual(new Uint8Array([1]));
+            client.dispose();
+        });
+
+        it("resolves jsUrl and wasmUrl against the fallback independently before comparing effective pairs", async () => {
+            const { workers, createWorker } = CreateWorkerFactory();
+            const client = new NodeAssetBuildWorkerClient(createWorker, DefaultNodeAssetBuildTimeoutMs, TestKtx2Fallbacks);
+
+            // Block A: jsUrl unauthored (falls back), wasmUrl explicitly authored to a custom value.
+            // Block B: jsUrl explicitly authored to A's effective (fallback) jsUrl, but wasmUrl is
+            // unauthored and so falls back to a value that differs from A's custom wasmUrl. The
+            // effective wasmUrl genuinely diverges, so this must still be rejected.
+            const divergentGraph = GraphWithTwoKtx2Blocks({ jsUrl: null, wasmUrl: "/custom.wasm" }, { jsUrl: TestKtx2Fallbacks.jsUrl, wasmUrl: null });
+            await expect(client.buildAsync(divergentGraph)).rejects.toBeInstanceOf(Ktx2EncoderResourceConflictError);
+            expect(workers).toHaveLength(0);
+
+            // Now both blocks' effective jsUrl and wasmUrl agree (each resolved independently), so the
+            // pair is allowed even though neither block explicitly authors the full matching pair.
+            const agreeingGraph = GraphWithTwoKtx2Blocks({ jsUrl: null, wasmUrl: TestKtx2Fallbacks.wasmUrl }, { jsUrl: TestKtx2Fallbacks.jsUrl, wasmUrl: null });
+            const buildPromise = client.buildAsync(agreeingGraph);
+            expect(workers).toHaveLength(1);
+            workers[0].sendResponse({ type: "success", generation: 1, bytes: new Uint8Array([1]).buffer });
+            await expect(buildPromise).resolves.toEqual(new Uint8Array([1]));
+
+            client.dispose();
+        });
+
+        it("still rejects genuinely divergent effective pairs despite fallback normalization", async () => {
+            const { workers, createWorker } = CreateWorkerFactory();
+            const client = new NodeAssetBuildWorkerClient(createWorker, DefaultNodeAssetBuildTimeoutMs, TestKtx2Fallbacks);
+
+            const graph = GraphWithTwoKtx2Blocks({ jsUrl: "/a.js", wasmUrl: "/a.wasm" }, { jsUrl: "/b.js", wasmUrl: "/b.wasm" });
+
+            await expect(client.buildAsync(graph)).rejects.toBeInstanceOf(Ktx2EncoderResourceConflictError);
+            expect(workers).toHaveLength(0);
+
+            client.dispose();
+        });
+
+        it("rejects a divergent effective pair nested inside an aggregate-owned subgraph", async () => {
+            const { workers, createWorker } = CreateWorkerFactory();
+            const client = new NodeAssetBuildWorkerClient(createWorker, DefaultNodeAssetBuildTimeoutMs, TestKtx2Fallbacks);
+
+            const graph = {
+                name: "nodeAsset",
+                blocks: [
+                    { customType: "KTX2CompressionBlock", id: 1, name: "top-level ktx2", jsUrl: null, wasmUrl: null },
+                    {
+                        customType: "CustomAggregateBlock",
+                        id: 2,
+                        name: "aggregate",
+                        subgraph: {
+                            name: "aggregate subgraph",
+                            blocks: [{ customType: "KTX2CompressionBlock", id: 3, name: "nested ktx2", jsUrl: "/nested.js", wasmUrl: "/nested.wasm" }],
+                            connections: [],
+                        },
+                    },
+                ],
+                connections: [],
+            };
+
+            // Top-level block's effective pair (fallback) genuinely differs from the nested block's
+            // explicit custom pair, so this must be rejected even after fallback normalization.
+            await expect(client.buildAsync(graph)).rejects.toBeInstanceOf(Ktx2EncoderResourceConflictError);
+            expect(workers).toHaveLength(0);
+
+            client.dispose();
+        });
+
+        it("allows an aggregate-nested pair matching the fallback alongside an unauthored top-level pair", async () => {
+            const { workers, createWorker } = CreateWorkerFactory();
+            const client = new NodeAssetBuildWorkerClient(createWorker, DefaultNodeAssetBuildTimeoutMs, TestKtx2Fallbacks);
+
+            const graph = {
+                name: "nodeAsset",
+                blocks: [
+                    { customType: "KTX2CompressionBlock", id: 1, name: "top-level ktx2", jsUrl: null, wasmUrl: null },
+                    {
+                        customType: "CustomAggregateBlock",
+                        id: 2,
+                        name: "aggregate",
+                        subgraph: {
+                            name: "aggregate subgraph",
+                            blocks: [{ customType: "KTX2CompressionBlock", id: 3, name: "nested ktx2", jsUrl: TestKtx2Fallbacks.jsUrl, wasmUrl: TestKtx2Fallbacks.wasmUrl }],
+                            connections: [],
+                        },
+                    },
+                ],
+                connections: [],
+            };
+
+            const buildPromise = client.buildAsync(graph);
+            expect(workers).toHaveLength(1);
+            workers[0].sendResponse({ type: "success", generation: 1, bytes: new Uint8Array([1]).buffer });
+            await expect(buildPromise).resolves.toEqual(new Uint8Array([1]));
+
+            client.dispose();
+        });
+
+        it("does not restart the worker between builds when a KTX2 URL changes from null to its exact configured fallback value", async () => {
+            const { workers, createWorker } = CreateWorkerFactory();
+            const client = new NodeAssetBuildWorkerClient(createWorker, DefaultNodeAssetBuildTimeoutMs, TestKtx2Fallbacks);
+
+            const firstBuild = client.buildAsync(GraphWithKtx2Urls(null, null));
+            workers[0].sendResponse({ type: "success", generation: 1, bytes: new Uint8Array([1]).buffer });
+            await expect(firstBuild).resolves.toEqual(new Uint8Array([1]));
+
+            const secondBuild = client.buildAsync(GraphWithKtx2Urls(TestKtx2Fallbacks.jsUrl, TestKtx2Fallbacks.wasmUrl));
+            expect(workers).toHaveLength(1);
+            expect(workers[0].terminated).toBe(false);
+            workers[0].sendResponse({ type: "success", generation: 2, bytes: new Uint8Array([2]).buffer });
+            await expect(secondBuild).resolves.toEqual(new Uint8Array([2]));
+
+            client.dispose();
+        });
+
+        it("still restarts the worker when a KTX2 URL changes to a genuinely different resource despite fallback normalization", async () => {
+            const { workers, createWorker } = CreateWorkerFactory();
+            const client = new NodeAssetBuildWorkerClient(createWorker, DefaultNodeAssetBuildTimeoutMs, TestKtx2Fallbacks);
+
+            const firstBuild = client.buildAsync(GraphWithKtx2Urls(null, null));
+            workers[0].sendResponse({ type: "success", generation: 1, bytes: new Uint8Array([1]).buffer });
+            await expect(firstBuild).resolves.toEqual(new Uint8Array([1]));
+
+            const secondBuild = client.buildAsync(GraphWithKtx2Urls("/different.js", "/different.wasm"));
+            workers[1]?.sendResponse({ type: "success", generation: 2, bytes: new Uint8Array([2]).buffer });
+
+            expect(workers).toHaveLength(2);
+            expect(workers[0].terminated).toBe(true);
+            await expect(secondBuild).resolves.toEqual(new Uint8Array([2]));
 
             client.dispose();
         });
