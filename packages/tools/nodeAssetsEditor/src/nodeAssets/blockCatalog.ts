@@ -43,6 +43,10 @@ export const OperatorHeaderColor = "#2f8f83";
 /** Palette category for source-independent Universal operators. */
 export const UniversalCategory = "Universal";
 
+/** Palette category and shared node header color for blocks that operate on glTF documents. */
+export const GltfCategory = "glTF";
+export const GltfHeaderColor = "#2f8f83";
+
 /** Palette family for Universal cleanup decisions. */
 export const CleanupFamily = "Cleanup";
 
@@ -91,6 +95,10 @@ export const BabylonScenePortColor = "#4A90D9";
 
 /** Data-driven dot color for NODE_GEOMETRY-typed ports. */
 export const NodeGeometryPortColor = "#7B68EE";
+
+/** Palette category and shared node header color for Node Geometry resource blocks. */
+export const NodeGeometryCategory = "Node Geometry";
+export const NodeGeometryHeaderColor = "#7B68EE";
 
 /** Palette category and shared node header color for the transcoder block family. */
 export const TranscodersCategory = "Transcoders";

@@ -245,6 +245,41 @@ export class NodeAssetsEditorPage {
         await this.page.waitForTimeout(1_000);
     }
 
+    async getPreviewCanvasState(): Promise<{ readonly colorCount: number; readonly fingerprint: number }> {
+        return await this.previewCanvas.evaluate((canvas: HTMLCanvasElement) => {
+            const sample = document.createElement("canvas");
+            sample.width = 32;
+            sample.height = 32;
+            const context = sample.getContext("2d", { willReadFrequently: true });
+            if (!context || canvas.width === 0 || canvas.height === 0) {
+                return { colorCount: 0, fingerprint: 0 };
+            }
+
+            context.drawImage(canvas, 0, 0, sample.width, sample.height);
+            const pixels = context.getImageData(0, 0, sample.width, sample.height).data;
+            const colors = new Set<number>();
+            let fingerprint = 2166136261;
+            for (let index = 0; index < pixels.length; index += 4) {
+                colors.add((pixels[index] << 24) | (pixels[index + 1] << 16) | (pixels[index + 2] << 8) | pixels[index + 3]);
+                for (let channel = 0; channel < 4; channel++) {
+                    fingerprint ^= pixels[index + channel];
+                    fingerprint = Math.imul(fingerprint, 16777619);
+                }
+            }
+            return { colorCount: colors.size, fingerprint: fingerprint >>> 0 };
+        });
+    }
+
+    async expectPreviewToHaveRenderedContent(): Promise<void> {
+        await expect(this.previewCanvas).toBeVisible();
+        await expect
+            .poll(async () => (await this.getPreviewCanvasState()).colorCount, {
+                message: "Expected the preview canvas to contain a rendered scene.",
+                timeout: 15_000,
+            })
+            .toBeGreaterThan(8);
+    }
+
     private async getWireEndpointKeys(): Promise<readonly string[]> {
         const pairs = await this.page
             .locator('[data-testid="graph-wire"]')

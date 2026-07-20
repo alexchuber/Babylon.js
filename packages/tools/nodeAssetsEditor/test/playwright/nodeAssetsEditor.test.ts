@@ -352,6 +352,70 @@ test.describe("Node Assets Editor — maintained default pipeline", () => {
         expect(pageErrors).toEqual([]);
     });
 
+    test("restores the rendered preview across repeated Validation tab visits", async ({ page }) => {
+        const editor = new NodeAssetsEditorPage(page);
+
+        await editor.goto();
+        await editor.expectPreviewToHaveRenderedContent();
+        const initialCanvas = await editor.previewCanvas.elementHandle();
+        if (!initialCanvas) {
+            throw new Error("Could not resolve the rendered preview canvas.");
+        }
+
+        for (let visit = 0; visit < 2; visit++) {
+            await page.locator('button[value="Validation"]').click();
+            await expect(page.getByText(/Your output (is a valid glTF file|has validation issues)/)).toBeVisible({ timeout: 30_000 });
+            await expect(editor.previewCanvas).toHaveCount(1);
+            await expect(editor.previewCanvas).toBeHidden();
+
+            await page.locator('button[value="Preview"]').click();
+            expect(await editor.previewCanvas.evaluate((canvas, originalCanvas) => canvas === originalCanvas, initialCanvas)).toBe(true);
+            await editor.expectPreviewToHaveRenderedContent();
+        }
+    });
+
+    test("renders a newer successful preview built while Validation is selected", async ({ page }) => {
+        const editor = new NodeAssetsEditorPage(page);
+
+        await editor.goto();
+        await editor.expectPreviewToHaveRenderedContent();
+        const initialPreview = await editor.getPreviewCanvasState();
+
+        await page.locator('button[value="Validation"]').click();
+        const validationReport = page.getByText(/Your output (is a valid glTF file|has validation issues)/);
+        await expect(validationReport).toBeVisible({ timeout: 30_000 });
+        const initialReport = await validationReport.elementHandle();
+        if (!initialReport) {
+            throw new Error("Could not resolve the initial validation report.");
+        }
+
+        await editor.openLibraryButton.click();
+        const dialog = page.getByRole("dialog", { name: "NodeAsset Library" });
+        await dialog.getByRole("button", { name: "Node Geometry to glTF", exact: true }).click();
+        await expect(editor.nodeByTitle("Import Node Geometry")).toBeVisible();
+        await expect
+            .poll(
+                async () => {
+                    const currentReport = await validationReport.elementHandle();
+                    return currentReport ? await currentReport.evaluate((element, previousReport) => element !== previousReport, initialReport) : false;
+                },
+                {
+                    message: "Expected validation to publish the newly loaded graph's build result.",
+                    timeout: 120_000,
+                }
+            )
+            .toBe(true);
+
+        await page.locator('button[value="Preview"]').click();
+        await expect
+            .poll(async () => (await editor.getPreviewCanvasState()).fingerprint, {
+                message: "Expected Preview to render the graph built while it was hidden.",
+                timeout: 120_000,
+            })
+            .not.toBe(initialPreview.fingerprint);
+        await editor.expectPreviewToHaveRenderedContent();
+    });
+
     test("exports the optimized catalog triangle the preview rendered", async ({ page }) => {
         const editor = new NodeAssetsEditorPage(page);
         await editor.goto();
@@ -466,6 +530,10 @@ test.describe("Node Assets Editor — maintained default pipeline", () => {
 
         await editor.selectNode("Export glTF");
         await expect(page.getByText("BUILD ERROR", { exact: true })).toBeVisible();
+
+        await page.locator('button[value="Validation"]').click();
+        await page.locator('button[value="Preview"]').click();
+        await expect(editor.previewErrorOverlay).toBeVisible();
     });
 
     test("reports a failed load without replacing the current graph or preview", async ({ page }) => {

@@ -168,6 +168,7 @@ export const NodeAssetsEditorServiceDefinition: ServiceDefinition<[], [IShellSer
                 horizontalLocation: "right",
                 verticalLocation: "bottom",
                 teachingMoment: false,
+                keepMounted: true,
                 content: () => <PreviewPane controller={preview} />,
             }),
             shellService.addSidePane({
