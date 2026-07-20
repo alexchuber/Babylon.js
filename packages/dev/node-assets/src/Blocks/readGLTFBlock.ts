@@ -70,19 +70,36 @@ export class ReadGLTFBlock extends NodeAssetBlock {
         this.sourceKind = "upload";
     }
 
+    /** Clears the active source and prevents older pending URL requests from replacing it. */
+    public clearSource(): void {
+        this._lastSuccessfulSourceAttempt = ++this._sourceAttempt;
+        this.data = null;
+        this.source = null;
+        this.sourceKind = null;
+    }
+
     /**
      * Loads a URL and makes it active only after the request succeeds.
      * @param url The glTF or GLB URL.
      * @param fetcher The fetch-compatible loader.
+     * @param canApplyResult Optional ownership guard checked immediately before resolved bytes become active.
      */
-    public async setUrlAsync(url: string, fetcher: GLTFSourceFetcher = async (sourceUrl) => await fetch(sourceUrl)): Promise<void> {
+    public async setUrlAsync(url: string, fetcher: GLTFSourceFetcher = async (sourceUrl) => await fetch(sourceUrl), canApplyResult: () => boolean = () => true): Promise<void> {
         const sourceAttempt = ++this._sourceAttempt;
-        const response = await fetcher(url);
-        if (!response.ok) {
-            throw new Error(`Could not load glTF from "${url}" (${response.status} ${response.statusText}).`);
+        let data: Uint8Array;
+        try {
+            const response = await fetcher(url);
+            if (!response.ok) {
+                throw new Error(`Could not load glTF from "${url}" (${response.status} ${response.statusText}).`);
+            }
+            data = new Uint8Array(await response.arrayBuffer());
+        } catch (error) {
+            if (!canApplyResult() || sourceAttempt < this._lastSuccessfulSourceAttempt) {
+                return;
+            }
+            throw error;
         }
-        const data = new Uint8Array(await response.arrayBuffer());
-        if (sourceAttempt < this._lastSuccessfulSourceAttempt) {
+        if (!canApplyResult() || sourceAttempt < this._lastSuccessfulSourceAttempt) {
             return;
         }
         this._lastSuccessfulSourceAttempt = sourceAttempt;

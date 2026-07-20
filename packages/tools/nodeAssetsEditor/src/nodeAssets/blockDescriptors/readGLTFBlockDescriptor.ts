@@ -6,19 +6,38 @@ import { PromptForFileAsync } from "../browserFiles";
 
 const ReadHeaderColor = "#3f7d4e";
 const SourceErrors = new WeakMap<ReadGLTFBlock, string>();
+const PendingSourceRequests = new WeakMap<ReadGLTFBlock, Promise<unknown>>();
 
 async function PromptForGLTFAsync(block: ReadGLTFBlock, context: IPropertySectionContext): Promise<void> {
-    const authoredBlock = context.prepareEdit(block);
-    if (!authoredBlock) {
-        return;
-    }
     const file = await PromptForFileAsync(".glb,.gltf");
     if (!file) {
         return;
     }
-    authoredBlock.setUploadedSource(new Uint8Array(await file.arrayBuffer()), file.name);
-    SourceErrors.delete(authoredBlock);
-    context.refresh();
+    const authoredBlock = context.prepareEdit(block);
+    if (!authoredBlock) {
+        return;
+    }
+    const request = file.arrayBuffer();
+    PendingSourceRequests.set(authoredBlock, request);
+    try {
+        const data = new Uint8Array(await request);
+        if (context.prepareEdit(authoredBlock) !== authoredBlock || PendingSourceRequests.get(authoredBlock) !== request) {
+            return;
+        }
+        authoredBlock.setUploadedSource(data, file.name);
+        SourceErrors.delete(authoredBlock);
+    } catch (error) {
+        if (context.prepareEdit(authoredBlock) === authoredBlock && PendingSourceRequests.get(authoredBlock) === request) {
+            SourceErrors.set(authoredBlock, error instanceof Error ? error.message : String(error));
+        }
+    } finally {
+        if (PendingSourceRequests.get(authoredBlock) === request) {
+            PendingSourceRequests.delete(authoredBlock);
+        }
+    }
+    if (context.prepareEdit(authoredBlock) === authoredBlock) {
+        context.refresh();
+    }
 }
 
 async function SetGLTFUrlAsync(block: ReadGLTFBlock, url: string, context: IPropertySectionContext): Promise<void> {
@@ -26,13 +45,25 @@ async function SetGLTFUrlAsync(block: ReadGLTFBlock, url: string, context: IProp
     if (!authoredBlock) {
         return;
     }
+    const request = authoredBlock.setUrlAsync(url, undefined, () => context.prepareEdit(authoredBlock) === authoredBlock);
+    PendingSourceRequests.set(authoredBlock, request);
     try {
-        await authoredBlock.setUrlAsync(url);
-        SourceErrors.delete(authoredBlock);
+        await request;
+        if (context.prepareEdit(authoredBlock) === authoredBlock && PendingSourceRequests.get(authoredBlock) === request) {
+            SourceErrors.delete(authoredBlock);
+        }
     } catch (error) {
-        SourceErrors.set(authoredBlock, error instanceof Error ? error.message : String(error));
+        if (context.prepareEdit(authoredBlock) === authoredBlock && PendingSourceRequests.get(authoredBlock) === request) {
+            SourceErrors.set(authoredBlock, error instanceof Error ? error.message : String(error));
+        }
+    } finally {
+        if (PendingSourceRequests.get(authoredBlock) === request) {
+            PendingSourceRequests.delete(authoredBlock);
+        }
     }
-    context.refresh();
+    if (context.prepareEdit(authoredBlock) === authoredBlock) {
+        context.refresh();
+    }
 }
 
 /**
@@ -58,9 +89,8 @@ export function CreateReadGLTFPropertySection(block: ReadGLTFBlock, context: IPr
                         if (!authoredBlock) {
                             return;
                         }
-                        authoredBlock.data = null;
-                        authoredBlock.source = null;
-                        authoredBlock.sourceKind = null;
+                        authoredBlock.clearSource();
+                        PendingSourceRequests.delete(authoredBlock);
                         SourceErrors.delete(authoredBlock);
                         context.refresh();
                         return;

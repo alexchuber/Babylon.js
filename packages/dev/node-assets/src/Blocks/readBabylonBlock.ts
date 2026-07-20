@@ -76,8 +76,9 @@ export class ReadBabylonBlock extends NodeAssetBlock {
      * Loads a URL and makes it active only after the request succeeds.
      * @param url The `.babylon` URL.
      * @param fetcher The fetch-compatible loader.
+     * @param canApplyResult Optional ownership guard checked immediately before resolved bytes become active.
      */
-    public async setUrlAsync(url: string, fetcher: BabylonSourceFetcher = async (sourceUrl) => await fetch(sourceUrl)): Promise<void> {
+    public async setUrlAsync(url: string, fetcher: BabylonSourceFetcher = async (sourceUrl) => await fetch(sourceUrl), canApplyResult: () => boolean = () => true): Promise<void> {
         const sourceAttempt = ++this._sourceAttempt;
         let data: Uint8Array;
         try {
@@ -87,12 +88,12 @@ export class ReadBabylonBlock extends NodeAssetBlock {
             }
             data = new Uint8Array(await response.arrayBuffer());
         } catch (error) {
-            if (sourceAttempt < this._lastSuccessfulSourceAttempt) {
+            if (!canApplyResult() || sourceAttempt < this._lastSuccessfulSourceAttempt) {
                 return;
             }
             throw error;
         }
-        if (sourceAttempt < this._lastSuccessfulSourceAttempt) {
+        if (!canApplyResult() || sourceAttempt < this._lastSuccessfulSourceAttempt) {
             return;
         }
         this._lastSuccessfulSourceAttempt = sourceAttempt;

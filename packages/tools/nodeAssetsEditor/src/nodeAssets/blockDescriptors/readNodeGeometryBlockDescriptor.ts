@@ -6,29 +6,64 @@ import { PromptForFileAsync } from "../browserFiles";
 
 const ReadHeaderColor = "#3f7d4e";
 const SourceErrors = new WeakMap<ReadNodeGeometryBlock, string>();
+const PendingSourceRequests = new WeakMap<ReadNodeGeometryBlock, Promise<unknown>>();
 
-async function PromptForNodeGeometryAsync(block: ReadNodeGeometryBlock, refresh: () => void): Promise<void> {
+async function PromptForNodeGeometryAsync(block: ReadNodeGeometryBlock, context: IPropertySectionContext): Promise<void> {
     const file = await PromptForFileAsync("application/json,.json");
     if (!file) {
         return;
     }
-    try {
-        await block.setUploadedSourceAsync(new Uint8Array(await file.arrayBuffer()), file.name);
-        SourceErrors.delete(block);
-    } catch (error) {
-        SourceErrors.set(block, error instanceof Error ? error.message : String(error));
+    const authoredBlock = context.prepareEdit(block);
+    if (!authoredBlock) {
+        return;
     }
-    refresh();
+    const request = file.arrayBuffer();
+    PendingSourceRequests.set(authoredBlock, request);
+    try {
+        const data = new Uint8Array(await request);
+        if (context.prepareEdit(authoredBlock) !== authoredBlock || PendingSourceRequests.get(authoredBlock) !== request) {
+            return;
+        }
+        await authoredBlock.setUploadedSourceAsync(data, file.name);
+        SourceErrors.delete(authoredBlock);
+    } catch (error) {
+        if (context.prepareEdit(authoredBlock) === authoredBlock && PendingSourceRequests.get(authoredBlock) === request) {
+            SourceErrors.set(authoredBlock, error instanceof Error ? error.message : String(error));
+        }
+    } finally {
+        if (PendingSourceRequests.get(authoredBlock) === request) {
+            PendingSourceRequests.delete(authoredBlock);
+        }
+    }
+    if (context.prepareEdit(authoredBlock) === authoredBlock) {
+        context.refresh();
+    }
 }
 
-async function SetSnippetIdAsync(block: ReadNodeGeometryBlock, snippetId: string, refresh: () => void): Promise<void> {
-    try {
-        await block.setSnippetIdAsync(snippetId);
-        SourceErrors.delete(block);
-    } catch (error) {
-        SourceErrors.set(block, error instanceof Error ? error.message : String(error));
+async function SetSnippetIdAsync(block: ReadNodeGeometryBlock, snippetId: string, context: IPropertySectionContext): Promise<void> {
+    const authoredBlock = context.prepareEdit(block);
+    if (!authoredBlock) {
+        return;
     }
-    refresh();
+    const request = authoredBlock.setSnippetIdAsync(snippetId, undefined, () => context.prepareEdit(authoredBlock) === authoredBlock);
+    PendingSourceRequests.set(authoredBlock, request);
+    try {
+        await request;
+        if (context.prepareEdit(authoredBlock) === authoredBlock && PendingSourceRequests.get(authoredBlock) === request) {
+            SourceErrors.delete(authoredBlock);
+        }
+    } catch (error) {
+        if (context.prepareEdit(authoredBlock) === authoredBlock && PendingSourceRequests.get(authoredBlock) === request) {
+            SourceErrors.set(authoredBlock, error instanceof Error ? error.message : String(error));
+        }
+    } finally {
+        if (PendingSourceRequests.get(authoredBlock) === request) {
+            PendingSourceRequests.delete(authoredBlock);
+        }
+    }
+    if (context.prepareEdit(authoredBlock) === authoredBlock) {
+        context.refresh();
+    }
 }
 
 /**
@@ -50,14 +85,17 @@ export function CreateReadNodeGeometryPropertySection(block: ReadNodeGeometryBlo
                 validateOnlyOnBlur: true,
                 onChange: (value) => {
                     if (!value) {
-                        block.data = null;
-                        block.source = null;
-                        block.sourceKind = null;
-                        SourceErrors.delete(block);
+                        const authoredBlock = context.prepareEdit(block);
+                        if (!authoredBlock) {
+                            return;
+                        }
+                        authoredBlock.clearSource();
+                        PendingSourceRequests.delete(authoredBlock);
+                        SourceErrors.delete(authoredBlock);
                         context.refresh();
                         return;
                     }
-                    void SetSnippetIdAsync(block, value, context.refresh);
+                    void SetSnippetIdAsync(block, value, context);
                 },
             },
             {
@@ -71,7 +109,7 @@ export function CreateReadNodeGeometryPropertySection(block: ReadNodeGeometryBlo
                 kind: "button",
                 label: "Upload Node Geometry\u2026",
                 onClick: () => {
-                    void PromptForNodeGeometryAsync(block, context.refresh);
+                    void PromptForNodeGeometryAsync(block, context);
                 },
             },
             ...(sourceError

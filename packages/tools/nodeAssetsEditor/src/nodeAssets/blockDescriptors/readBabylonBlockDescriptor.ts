@@ -5,25 +5,64 @@ import { PromptForFileAsync } from "../browserFiles";
 import { BabylonHeaderColor, ConfigureBlockForEditor, type IPropertySectionContext, RegisterBlockDescriptor } from "../blockCatalog";
 
 const SourceErrors = new WeakMap<ReadBabylonBlock, string>();
+const PendingSourceRequests = new WeakMap<ReadBabylonBlock, Promise<unknown>>();
 
-async function PromptForBabylonAsync(block: ReadBabylonBlock, refresh: () => void): Promise<void> {
+async function PromptForBabylonAsync(block: ReadBabylonBlock, context: IPropertySectionContext): Promise<void> {
     const file = await PromptForFileAsync(".babylon");
     if (!file) {
         return;
     }
-    block.setUploadedSource(new Uint8Array(await file.arrayBuffer()), file.name);
-    SourceErrors.delete(block);
-    refresh();
+    const authoredBlock = context.prepareEdit(block);
+    if (!authoredBlock) {
+        return;
+    }
+    const request = file.arrayBuffer();
+    PendingSourceRequests.set(authoredBlock, request);
+    try {
+        const data = new Uint8Array(await request);
+        if (context.prepareEdit(authoredBlock) !== authoredBlock || PendingSourceRequests.get(authoredBlock) !== request) {
+            return;
+        }
+        authoredBlock.setUploadedSource(data, file.name);
+        SourceErrors.delete(authoredBlock);
+    } catch (error) {
+        if (context.prepareEdit(authoredBlock) === authoredBlock && PendingSourceRequests.get(authoredBlock) === request) {
+            SourceErrors.set(authoredBlock, error instanceof Error ? error.message : String(error));
+        }
+    } finally {
+        if (PendingSourceRequests.get(authoredBlock) === request) {
+            PendingSourceRequests.delete(authoredBlock);
+        }
+    }
+    if (context.prepareEdit(authoredBlock) === authoredBlock) {
+        context.refresh();
+    }
 }
 
-async function SetBabylonUrlAsync(block: ReadBabylonBlock, url: string, refresh: () => void): Promise<void> {
-    try {
-        await block.setUrlAsync(url);
-        SourceErrors.delete(block);
-    } catch (error) {
-        SourceErrors.set(block, error instanceof Error ? error.message : String(error));
+async function SetBabylonUrlAsync(block: ReadBabylonBlock, url: string, context: IPropertySectionContext): Promise<void> {
+    const authoredBlock = context.prepareEdit(block);
+    if (!authoredBlock) {
+        return;
     }
-    refresh();
+    const request = authoredBlock.setUrlAsync(url, undefined, () => context.prepareEdit(authoredBlock) === authoredBlock);
+    PendingSourceRequests.set(authoredBlock, request);
+    try {
+        await request;
+        if (context.prepareEdit(authoredBlock) === authoredBlock && PendingSourceRequests.get(authoredBlock) === request) {
+            SourceErrors.delete(authoredBlock);
+        }
+    } catch (error) {
+        if (context.prepareEdit(authoredBlock) === authoredBlock && PendingSourceRequests.get(authoredBlock) === request) {
+            SourceErrors.set(authoredBlock, error instanceof Error ? error.message : String(error));
+        }
+    } finally {
+        if (PendingSourceRequests.get(authoredBlock) === request) {
+            PendingSourceRequests.delete(authoredBlock);
+        }
+    }
+    if (context.prepareEdit(authoredBlock) === authoredBlock) {
+        context.refresh();
+    }
 }
 
 /**
@@ -45,12 +84,17 @@ export function CreateReadBabylonPropertySection(block: ReadBabylonBlock, contex
                 validateOnlyOnBlur: true,
                 onChange: (value) => {
                     if (!value) {
-                        block.clearSource();
-                        SourceErrors.delete(block);
+                        const authoredBlock = context.prepareEdit(block);
+                        if (!authoredBlock) {
+                            return;
+                        }
+                        authoredBlock.clearSource();
+                        PendingSourceRequests.delete(authoredBlock);
+                        SourceErrors.delete(authoredBlock);
                         context.refresh();
                         return;
                     }
-                    void SetBabylonUrlAsync(block, value, context.refresh);
+                    void SetBabylonUrlAsync(block, value, context);
                 },
             },
             {
@@ -64,7 +108,7 @@ export function CreateReadBabylonPropertySection(block: ReadBabylonBlock, contex
                 kind: "button",
                 label: "Upload Babylon\u2026",
                 onClick: () => {
-                    void PromptForBabylonAsync(block, context.refresh);
+                    void PromptForBabylonAsync(block, context);
                 },
             },
             ...(sourceError

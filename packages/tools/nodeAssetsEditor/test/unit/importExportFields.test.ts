@@ -1,6 +1,8 @@
 import { describe, expect, it, vi } from "vitest";
 
 import { ImportImageBlock } from "node-assets/Blocks/importImageBlock";
+import { ReadBabylonBlock } from "node-assets/Blocks/readBabylonBlock";
+import { ReadNodeGeometryBlock } from "node-assets/Blocks/readNodeGeometryBlock";
 import { ReadUSDBlock, type USDSourceFetcher } from "node-assets/Blocks/readUSDBlock";
 import { NodeAsset } from "node-assets/nodeAsset";
 
@@ -264,6 +266,111 @@ describe("Import block source label", () => {
             const canceledUpload = JSON.parse(controller.serialize()) as { graph: { blocks: Array<{ name: string; customType: string }> } };
             expect(canceledUpload.graph.blocks.find((block) => block.name === "Import USD")?.customType).toBe("ImportUSDAggregateBlock");
         } finally {
+            controller.dispose();
+        }
+    });
+
+    it("keeps an expanded Import glTF built in and preserves its source when the upload picker is canceled", async () => {
+        const controller = new NodeAssetGraphController();
+        vi.mocked(PromptForFileAsync).mockResolvedValueOnce(null);
+        try {
+            const importNode = FindNode(controller, "Import glTF");
+            controller.setAggregateExpanded(importNode.id, true);
+            const readNode = FindNode(controller, "Read glTF");
+
+            FindPropertyInSection(controller, readNode, "SOURCE", ImportFileButtonLabel, "button").onClick();
+            await vi.waitFor(() => {
+                expect(PromptForFileAsync).toHaveBeenCalled();
+            });
+            await Promise.resolve();
+
+            const canceledUpload = JSON.parse(controller.serialize()) as {
+                graph: { blocks: Array<{ name: string; customType: string; subgraph?: { blocks: Array<{ customType: string; source?: string }> } }> };
+            };
+            const authoredImport = canceledUpload.graph.blocks.find((block) => block.name === "Import glTF");
+            expect(authoredImport?.customType).toBe("ImportGLTFAggregateBlock");
+            expect(authoredImport?.subgraph?.blocks).toContainEqual(expect.objectContaining({ customType: "ReadGLTFBlock", source: "catalog-triangle.glb" }));
+        } finally {
+            controller.dispose();
+        }
+    });
+
+    it("shows an active glTF upload read failure as a source error", async () => {
+        const controller = new NodeAssetGraphController();
+        vi.mocked(PromptForFileAsync).mockResolvedValueOnce({
+            name: "unreadable.glb",
+            arrayBuffer: async () => {
+                throw new Error("Could not read unreadable.glb");
+            },
+        } as unknown as File);
+        try {
+            const importNode = FindNode(controller, "Import glTF");
+            FindPropertyInSection(controller, importNode, "READ GLTF", ImportFileButtonLabel, "button").onClick();
+
+            await vi.waitFor(() => {
+                expect(FindPropertyInSection(controller, importNode, "READ GLTF", "Source error", "text").value).toBe("Could not read unreadable.glb");
+            });
+            expect(FindPropertyInSection(controller, importNode, "READ GLTF", "Active source", "text").value).toBe("catalog-triangle.glb");
+        } finally {
+            controller.dispose();
+        }
+    });
+
+    it("does not show a stale glTF URL failure after a newer URL succeeds", async () => {
+        const controller = new NodeAssetGraphController();
+        let resolveStaleResponse: ((response: Response) => void) | undefined;
+        let resolveFailureObserved: (() => void) | undefined;
+        const failureObserved = new Promise<void>((resolve) => {
+            resolveFailureObserved = resolve;
+        });
+        const staleResponse = new Promise<Response>((resolve) => {
+            resolveStaleResponse = resolve;
+        });
+        const currentUrl = "https://example.com/current.glb";
+        const fetchMock = vi
+            .fn()
+            .mockImplementationOnce(async () => await staleResponse)
+            .mockResolvedValueOnce({
+                ok: true,
+                status: 200,
+                statusText: "OK",
+                arrayBuffer: async () => new Uint8Array([4, 5, 6]).buffer,
+            } as Response);
+        vi.stubGlobal("fetch", fetchMock);
+        try {
+            const importNode = FindNode(controller, "Import glTF");
+            FindPropertyInSection(controller, importNode, "READ GLTF", "URL", "text").onChange("https://example.com/stale.glb");
+            await vi.waitFor(() => {
+                expect(fetchMock).toHaveBeenCalledTimes(1);
+            });
+
+            FindPropertyInSection(controller, importNode, "READ GLTF", "URL", "text").onChange(currentUrl);
+            await vi.waitFor(() => {
+                expect(FindPropertyInSection(controller, importNode, "READ GLTF", "Active source", "text").value).toBe(currentUrl);
+            });
+
+            resolveStaleResponse?.({
+                ok: false,
+                status: 404,
+                get statusText() {
+                    resolveFailureObserved?.();
+                    return "Not Found";
+                },
+                arrayBuffer: async () => new ArrayBuffer(0),
+            } as Response);
+            await failureObserved;
+            await Promise.resolve();
+            await Promise.resolve();
+
+            expect(FindPropertyInSection(controller, importNode, "READ GLTF", "Active source", "text").value).toBe(currentUrl);
+            expect(
+                controller
+                    .buildPropertySections(importNode)
+                    .flatMap((section) => section.properties)
+                    .find((property) => property.label === "Source error")
+            ).toBeUndefined();
+        } finally {
+            vi.unstubAllGlobals();
             controller.dispose();
         }
     });
@@ -849,6 +956,261 @@ describe("Import block source label", () => {
                 reloaded.dispose();
             }
         } finally {
+            controller.dispose();
+        }
+    });
+
+    it("shows an active Babylon upload read failure as a source error", async () => {
+        const controller = new NodeAssetGraphController();
+        vi.mocked(PromptForFileAsync).mockResolvedValueOnce({
+            name: "unreadable.babylon",
+            arrayBuffer: async () => {
+                throw new Error("Could not read unreadable.babylon");
+            },
+        } as unknown as File);
+        try {
+            const importNode = AddPaletteNode(controller, "import-babylon");
+            FindPropertyInSection(controller, importNode, "READ BABYLON", BabylonImportFileButtonLabel, "button").onClick();
+
+            await vi.waitFor(() => {
+                expect(FindPropertyInSection(controller, importNode, "READ BABYLON", "Source error", "text").value).toBe("Could not read unreadable.babylon");
+            });
+            expect(FindPropertyInSection(controller, importNode, "READ BABYLON", "Active source", "text").value).toBe("No source loaded");
+        } finally {
+            controller.dispose();
+        }
+    });
+
+    it("keeps the latest Babylon URL error when an older request later completes as a no-op", async () => {
+        const controller = new NodeAssetGraphController();
+        let resolveOldestResponse: ((response: Response) => void) | undefined;
+        let resolveOldestCompletion: (() => void) | undefined;
+        const oldestCompletion = new Promise<void>((resolve) => {
+            resolveOldestCompletion = resolve;
+        });
+        const oldestResponse = new Promise<Response>((resolve) => {
+            resolveOldestResponse = resolve;
+        });
+        const currentUrl = "https://example.com/current.babylon";
+        const failedUrl = "https://example.com/missing.babylon";
+        const fetchMock = vi
+            .fn()
+            .mockImplementationOnce(async () => await oldestResponse)
+            .mockResolvedValueOnce({
+                ok: true,
+                status: 200,
+                statusText: "OK",
+                arrayBuffer: async () => new TextEncoder().encode('{"meshes":[]}').buffer,
+            } as Response)
+            .mockResolvedValueOnce({
+                ok: false,
+                status: 404,
+                statusText: "Not Found",
+                arrayBuffer: async () => new ArrayBuffer(0),
+            } as Response);
+        vi.stubGlobal("fetch", fetchMock);
+        try {
+            const importNode = AddPaletteNode(controller, "import-babylon");
+            FindPropertyInSection(controller, importNode, "READ BABYLON", "URL", "text").onChange("https://example.com/oldest.babylon");
+            await vi.waitFor(() => {
+                expect(fetchMock).toHaveBeenCalledTimes(1);
+            });
+
+            FindPropertyInSection(controller, importNode, "READ BABYLON", "URL", "text").onChange(currentUrl);
+            await vi.waitFor(() => {
+                expect(FindPropertyInSection(controller, importNode, "READ BABYLON", "Active source", "text").value).toBe(currentUrl);
+            });
+
+            FindPropertyInSection(controller, importNode, "READ BABYLON", "URL", "text").onChange(failedUrl);
+            await vi.waitFor(() => {
+                expect(FindPropertyInSection(controller, importNode, "READ BABYLON", "Source error", "text").value).toContain("404 Not Found");
+            });
+
+            resolveOldestResponse?.({
+                ok: true,
+                status: 200,
+                statusText: "OK",
+                arrayBuffer: async () => {
+                    resolveOldestCompletion?.();
+                    return new TextEncoder().encode('{"meshes":[]}').buffer;
+                },
+            } as Response);
+            await oldestCompletion;
+            await Promise.resolve();
+            await Promise.resolve();
+
+            expect(FindPropertyInSection(controller, importNode, "READ BABYLON", "Active source", "text").value).toBe(currentUrl);
+            expect(FindPropertyInSection(controller, importNode, "READ BABYLON", "Source error", "text").value).toContain("404 Not Found");
+        } finally {
+            vi.unstubAllGlobals();
+            controller.dispose();
+        }
+    });
+
+    it("does not apply a delayed Babylon URL result after aggregate detachment and graph replacement", async () => {
+        const controller = new NodeAssetGraphController();
+        let resolveResponse: ((response: Response) => void) | undefined;
+        let resolveCompletionObserved: (() => void) | undefined;
+        const completionObserved = new Promise<void>((resolve) => {
+            resolveCompletionObserved = resolve;
+        });
+        const fetchMock = vi.fn(
+            async () =>
+                await new Promise<Response>((resolve) => {
+                    resolveResponse = resolve;
+                })
+        );
+        const setUrlSpy = vi.spyOn(ReadBabylonBlock.prototype, "setUrlAsync");
+        vi.stubGlobal("fetch", fetchMock);
+        try {
+            const importNode = AddPaletteNode(controller, "import-babylon");
+            controller.setAggregateExpanded(importNode.id, true);
+            const savedBuiltInGraph = controller.serialize();
+            const readNode = FindNode(controller, "Read Babylon");
+            FindPropertyInSection(controller, readNode, "SOURCE", "URL", "text").onChange("https://example.com/delayed.babylon");
+            await vi.waitFor(() => {
+                expect(fetchMock).toHaveBeenCalledTimes(1);
+            });
+            const obsoleteBlock = setUrlSpy.mock.instances[0];
+            const detachedGraph = JSON.parse(controller.serialize()) as { graph: { blocks: Array<{ name: string; customType: string }> } };
+            expect(detachedGraph.graph.blocks.find((block) => block.name === "Import Babylon")?.customType).toBe("CustomAggregateBlock");
+
+            controller.load(savedBuiltInGraph);
+            resolveResponse?.({
+                ok: true,
+                status: 200,
+                statusText: "OK",
+                arrayBuffer: async () => {
+                    resolveCompletionObserved?.();
+                    return new TextEncoder().encode('{"meshes":[]}').buffer;
+                },
+            } as Response);
+            await completionObserved;
+            await Promise.resolve();
+            await Promise.resolve();
+
+            expect(obsoleteBlock?.data).toBeNull();
+            expect(obsoleteBlock?.source).toBeNull();
+            const reloadedImport = FindNode(controller, "Import Babylon");
+            expect(FindPropertyInSection(controller, reloadedImport, "READ BABYLON", "Active source", "text").value).toBe("No source loaded");
+        } finally {
+            setUrlSpy.mockRestore();
+            vi.unstubAllGlobals();
+            controller.dispose();
+        }
+    });
+
+    it("does not apply a delayed Node Geometry snippet result after aggregate detachment and graph replacement", async () => {
+        const controller = new NodeAssetGraphController();
+        let resolveResponse: ((response: Response) => void) | undefined;
+        let resolveCompletionObserved: (() => void) | undefined;
+        const completionObserved = new Promise<void>((resolve) => {
+            resolveCompletionObserved = resolve;
+        });
+        const fetchMock = vi.fn(
+            async () =>
+                await new Promise<Response>((resolve) => {
+                    resolveResponse = resolve;
+                })
+        );
+        const setSnippetSpy = vi.spyOn(ReadNodeGeometryBlock.prototype, "setSnippetIdAsync");
+        vi.stubGlobal("fetch", fetchMock);
+        try {
+            const importNode = AddPaletteNode(controller, "import-node-geometry");
+            controller.setAggregateExpanded(importNode.id, true);
+            const savedBuiltInGraph = controller.serialize();
+            const readNode = FindNode(controller, "Read Node Geometry");
+            FindPropertyInSection(controller, readNode, "SOURCE", "Snippet ID", "text").onChange("#BOX#1");
+            await vi.waitFor(() => {
+                expect(fetchMock).toHaveBeenCalledTimes(1);
+            });
+            const obsoleteBlock = setSnippetSpy.mock.instances[0];
+            const detachedGraph = JSON.parse(controller.serialize()) as { graph: { blocks: Array<{ name: string; customType: string }> } };
+            expect(detachedGraph.graph.blocks.find((block) => block.name === "Import Node Geometry")?.customType).toBe("CustomAggregateBlock");
+
+            controller.load(savedBuiltInGraph);
+            resolveResponse?.({
+                ok: true,
+                status: 200,
+                statusText: "OK",
+                json: async () => {
+                    resolveCompletionObserved?.();
+                    return {
+                        jsonPayload: JSON.stringify({ nodeGeometry: JSON.stringify({ blocks: [] }) }),
+                    };
+                },
+            } as Response);
+            await completionObserved;
+            await Promise.resolve();
+            await Promise.resolve();
+
+            expect(obsoleteBlock?.data).toBeNull();
+            expect(obsoleteBlock?.source).toBeNull();
+            const reloadedImport = FindNode(controller, "Import Node Geometry");
+            expect(FindPropertyInSection(controller, reloadedImport, "READ NODE GEOMETRY", "Active source", "text").value).toBe("No source loaded");
+        } finally {
+            setSnippetSpy.mockRestore();
+            vi.unstubAllGlobals();
+            controller.dispose();
+        }
+    });
+
+    it("does not show a stale Node Geometry snippet failure after a newer snippet succeeds", async () => {
+        const controller = new NodeAssetGraphController();
+        let resolveStaleResponse: ((response: Response) => void) | undefined;
+        let resolveFailureObserved: (() => void) | undefined;
+        const failureObserved = new Promise<void>((resolve) => {
+            resolveFailureObserved = resolve;
+        });
+        const staleResponse = new Promise<Response>((resolve) => {
+            resolveStaleResponse = resolve;
+        });
+        const fetchMock = vi
+            .fn()
+            .mockImplementationOnce(async () => await staleResponse)
+            .mockResolvedValueOnce({
+                ok: true,
+                status: 200,
+                statusText: "OK",
+                json: async () => ({
+                    jsonPayload: JSON.stringify({ nodeGeometry: JSON.stringify({ blocks: [] }) }),
+                }),
+            } as Response);
+        vi.stubGlobal("fetch", fetchMock);
+        try {
+            const importNode = AddPaletteNode(controller, "import-node-geometry");
+            FindPropertyInSection(controller, importNode, "READ NODE GEOMETRY", "Snippet ID", "text").onChange("#STALE#1");
+            await vi.waitFor(() => {
+                expect(fetchMock).toHaveBeenCalledTimes(1);
+            });
+
+            FindPropertyInSection(controller, importNode, "READ NODE GEOMETRY", "Snippet ID", "text").onChange("#CURRENT#1");
+            await vi.waitFor(() => {
+                expect(FindPropertyInSection(controller, importNode, "READ NODE GEOMETRY", "Active source", "text").value).toBe("CURRENT#1");
+            });
+
+            resolveStaleResponse?.({
+                ok: false,
+                status: 404,
+                get statusText() {
+                    resolveFailureObserved?.();
+                    return "Not Found";
+                },
+                json: async () => ({}),
+            } as Response);
+            await failureObserved;
+            await Promise.resolve();
+            await Promise.resolve();
+
+            expect(FindPropertyInSection(controller, importNode, "READ NODE GEOMETRY", "Active source", "text").value).toBe("CURRENT#1");
+            expect(
+                controller
+                    .buildPropertySections(importNode)
+                    .flatMap((section) => section.properties)
+                    .find((property) => property.label === "Source error")
+            ).toBeUndefined();
+        } finally {
+            vi.unstubAllGlobals();
             controller.dispose();
         }
     });

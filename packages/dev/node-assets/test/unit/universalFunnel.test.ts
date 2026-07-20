@@ -30,7 +30,11 @@ async function CreateCodecFixtureGlbAsync(): Promise<Uint8Array> {
         .setType("VEC3")
         .setArray(new Float32Array([-1, -1, 0, 1, -1, 0, 1, 1, 0, -1, 1, 0]))
         .setBuffer(buffer);
-    const indices = document.createAccessor().setType("SCALAR").setArray(new Uint16Array([0, 1, 2, 0, 2, 3])).setBuffer(buffer);
+    const indices = document
+        .createAccessor()
+        .setType("SCALAR")
+        .setArray(new Uint16Array([0, 1, 2, 0, 2, 3]))
+        .setBuffer(buffer);
     const baseColor = document.createTexture("baseColor").setImage(new Uint8Array(32).fill(1)).setMimeType("image/png");
     const normal = document.createTexture("normal").setImage(new Uint8Array(32).fill(2)).setMimeType("image/png");
     const material = document.createMaterial("material").setBaseColorTexture(baseColor).setNormalTexture(normal);
@@ -299,5 +303,31 @@ describe("Universal glTF funnel", () => {
         expect(importer.source).toBe("uploaded.glb");
         expect(importer.sourceKind).toBe("upload");
         expect(importer.data).toEqual(uploaded);
+    });
+
+    it("keeps a glTF source cleared when an earlier URL request succeeds later", async () => {
+        const asset = new NodeAsset("cleared-gltf-source");
+        const read = new ReadGLTFBlock("Read glTF", asset);
+        let resolveResponse: ((response: { ok: boolean; status: number; statusText: string; arrayBuffer: () => Promise<ArrayBuffer> }) => void) | undefined;
+        const pendingUrl = read.setUrlAsync(
+            "https://example.com/delayed.glb",
+            async () =>
+                await new Promise((resolve) => {
+                    resolveResponse = resolve;
+                })
+        );
+
+        read.clearSource();
+        resolveResponse?.({
+            ok: true,
+            status: 200,
+            statusText: "OK",
+            arrayBuffer: async () => new Uint8Array([1, 2, 3]).buffer,
+        });
+        await pendingUrl;
+
+        expect(read.data).toBeNull();
+        expect(read.source).toBeNull();
+        expect(read.sourceKind).toBeNull();
     });
 });

@@ -3,6 +3,8 @@ import { describe, expect, it, vi } from "vitest";
 import { NodeAsset } from "node-assets/nodeAsset";
 import { CustomAggregateBlock } from "node-assets/blockFoundation/customAggregateBlock";
 import { DracoCompressionBlock } from "node-assets/Blocks/dracoCompressionBlock";
+import { ExportGLTFAggregateBlock } from "node-assets/Blocks/exportGLTFAggregateBlock";
+import { ImportGLTFAggregateBlock } from "node-assets/Blocks/importGLTFAggregateBlock";
 import { KTX2CompressionBlock } from "node-assets/Blocks/ktx2CompressionBlock";
 import { StringLiteral } from "node-assets/Blocks/stringLiteral";
 
@@ -147,6 +149,61 @@ describe("NodeAssetGraphController", () => {
             const detached = saved.graph.blocks.find((block) => block.name === "Export glTF");
             expect(detached?.customType).toBe("CustomAggregateBlock");
             expect(detached?.subgraph?.connections).toEqual([]);
+        } finally {
+            controller.dispose();
+        }
+    });
+
+    it("detaches a nested built-in aggregate inside its authored owning subgraph", () => {
+        const asset = new NodeAsset("nested-detachment");
+        const outer = new CustomAggregateBlock("outer aggregate", asset);
+        const innerImport = new ImportGLTFAggregateBlock("inner import", outer.subgraph);
+        const innerExport = new ExportGLTFAggregateBlock("inner export", outer.subgraph);
+        innerImport.output.connectTo(innerExport.input);
+        const file = JSON.stringify({
+            graph: asset.serialize(),
+            editor: {
+                blocks: [{ id: outer.uniqueId, position: { x: 0, y: 0 }, title: outer.name, collapsed: false, aggregateExpanded: true }],
+                frames: [],
+            },
+        });
+
+        const controller = new NodeAssetGraphController();
+        try {
+            controller.load(file);
+            const innerImportNode = FindNode(controller, "inner import");
+            controller.setAggregateExpanded(innerImportNode.id, true);
+            const readNode = FindNode(controller, "Read glTF");
+
+            FindProperty(controller, readNode, "Name", "text").onChange("Authored Read glTF");
+
+            const saved = JSON.parse(controller.serialize()) as {
+                graph: {
+                    blocks: Array<{
+                        id: number;
+                        name: string;
+                        customType: string;
+                        subgraph?: {
+                            blocks: Array<{ id: number; name: string; customType: string; subgraph?: { connections: unknown[] } }>;
+                            connections: Array<{ fromBlock: number; toBlock: number }>;
+                        };
+                    }>;
+                };
+            };
+            expect(saved.graph.blocks).toHaveLength(1);
+            const savedOuter = saved.graph.blocks.find((block) => block.name === "outer aggregate");
+            const savedInner = savedOuter?.subgraph?.blocks.find((block) => block.name === "inner import");
+            expect(savedInner?.customType).toBe("CustomAggregateBlock");
+            expect(savedInner?.subgraph?.connections).toHaveLength(1);
+            expect(savedOuter?.subgraph?.connections).toContainEqual(expect.objectContaining({ fromBlock: innerImport.uniqueId, toBlock: innerExport.uniqueId }));
+
+            const reloaded = new NodeAssetGraphController();
+            try {
+                expect(() => reloaded.load(controller.serialize())).not.toThrow();
+                expect(FindNode(reloaded, "inner import")).toBeDefined();
+            } finally {
+                reloaded.dispose();
+            }
         } finally {
             controller.dispose();
         }

@@ -701,6 +701,21 @@ export class NodeAssetGraphController {
         return search(this._nodeAsset.attachedBlocks, []) ?? [targetBlockId];
     }
 
+    private _findOwningNodeAsset(targetBlockId: number, nodeAsset: NodeAsset = this._nodeAsset): NodeAsset | undefined {
+        if (nodeAsset.attachedBlocks.some((block) => block.uniqueId === targetBlockId)) {
+            return nodeAsset;
+        }
+        for (const block of nodeAsset.attachedBlocks) {
+            if (block instanceof AggregateBlock) {
+                const owner = this._findOwningNodeAsset(targetBlockId, block.subgraph);
+                if (owner) {
+                    return owner;
+                }
+            }
+        }
+        return undefined;
+    }
+
     /**
      * Serializes the graph plus editor-owned node and frame presentation metadata to a JSON string.
      * @returns The JSON save file.
@@ -878,9 +893,13 @@ export class NodeAssetGraphController {
             return;
         }
 
-        const custom = CustomAggregateBlock.FromAggregate(aggregate, aggregate.name, this._nodeAsset);
+        const owningNodeAsset = this._findOwningNodeAsset(aggregate.uniqueId);
+        if (!owningNodeAsset) {
+            throw new Error(`Cannot detach aggregate "${aggregate.name}" because its authored owner is missing.`);
+        }
+        const custom = CustomAggregateBlock.FromAggregate(aggregate, aggregate.name, owningNodeAsset);
         custom.uniqueId = aggregate.uniqueId;
-        this._nodeAsset.removeBlock(aggregate);
+        owningNodeAsset.removeBlock(aggregate);
 
         const rootNode = this.state.getNode(rootNodeId);
         if (!rootNode) {
@@ -902,8 +921,13 @@ export class NodeAssetGraphController {
             return this._reconciler.getBlock(nodeId) === block ? block : undefined;
         }
         const currentAggregate = this._reconciler.getBlock(rootNodeId);
-        if (!(currentAggregate instanceof AggregateBlock) || !currentAggregate.subgraph.attachedBlocks.some((candidate) => candidate.uniqueId === block.uniqueId)) {
+        const currentBlock =
+            currentAggregate instanceof AggregateBlock ? currentAggregate.subgraph.attachedBlocks.find((candidate) => candidate.uniqueId === block.uniqueId) : undefined;
+        if (!currentBlock) {
             return undefined;
+        }
+        if (nodeId === rootNodeId) {
+            return currentBlock as BlockT;
         }
 
         this._detachAggregate(rootNodeId);

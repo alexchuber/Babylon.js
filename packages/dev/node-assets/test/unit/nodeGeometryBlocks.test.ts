@@ -177,6 +177,28 @@ describe("Node Geometry to Universal funnel", () => {
         expect(importer.data).toEqual(source);
     });
 
+    it("keeps a Node Geometry source cleared when an earlier snippet request succeeds later", async () => {
+        const source = CreateSerializedNodeGeometry();
+        const asset = new NodeAsset("cleared-node-geometry-source");
+        const read = new ReadNodeGeometryBlock("Read Node Geometry", asset);
+        let resolveSnippet: ((data: Uint8Array) => void) | undefined;
+        const pendingSnippet = read.setSnippetIdAsync(
+            "BOX#1",
+            async () =>
+                await new Promise<Uint8Array>((resolve) => {
+                    resolveSnippet = resolve;
+                })
+        );
+
+        read.clearSource();
+        resolveSnippet?.(source);
+        await pendingSnippet;
+
+        expect(read.data).toBeNull();
+        expect(read.source).toBeNull();
+        expect(read.sourceKind).toBeNull();
+    });
+
     it("rejects unrelated-domain wiring from the distinct Node Geometry payload kind", () => {
         expect(() =>
             NodeAsset.Parse({

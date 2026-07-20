@@ -56,16 +56,40 @@ export class ReadNodeGeometryBlock extends NodeAssetBlock {
      * Resolves and activates a Node Geometry snippet.
      * @param snippetId The snippet ID, with or without a leading hash.
      * @param fetcher The snippet resolver.
+     * @param canApplyResult Optional ownership guard checked immediately before resolved bytes become active.
      */
-    public async setSnippetIdAsync(snippetId: string, fetcher: NodeGeometrySnippetFetcher = FetchNodeGeometrySnippetAsync): Promise<void> {
+    public async setSnippetIdAsync(
+        snippetId: string,
+        fetcher: NodeGeometrySnippetFetcher = FetchNodeGeometrySnippetAsync,
+        canApplyResult: () => boolean = () => true
+    ): Promise<void> {
         const sourceAttempt = ++this._sourceAttempt;
         const normalizedSnippetId = snippetId.replace(/^#/, "");
         if (!normalizedSnippetId) {
             throw new Error("A Node Geometry snippet ID is required.");
         }
-        const data = await fetcher(normalizedSnippetId);
-        ValidateSerializedNodeGeometry(data);
+        let data: Uint8Array;
+        try {
+            data = await fetcher(normalizedSnippetId);
+            ValidateSerializedNodeGeometry(data);
+        } catch (error) {
+            if (!canApplyResult() || sourceAttempt < this._lastSuccessfulSourceAttempt) {
+                return;
+            }
+            throw error;
+        }
+        if (!canApplyResult()) {
+            return;
+        }
         this._activateSource(sourceAttempt, data, normalizedSnippetId, "snippet");
+    }
+
+    /** Clears the active source and prevents older pending snippet requests from replacing it. */
+    public clearSource(): void {
+        this._lastSuccessfulSourceAttempt = ++this._sourceAttempt;
+        this.data = null;
+        this.source = null;
+        this.sourceKind = null;
     }
 
     /**
