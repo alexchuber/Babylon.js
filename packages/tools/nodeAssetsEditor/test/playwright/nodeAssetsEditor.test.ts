@@ -2,6 +2,7 @@ import { test, expect, type Page, type Download } from "@playwright/test";
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 
+import { CreateBuiltInNodeAssetLibraryEntries } from "../../src/nodeAssets/builtInLibraryEntries";
 import { BuiltInLibraryFixtures } from "../../src/nodeAssets/builtInLibraryFixtures";
 import { NodeAssetsEditorPage, useLocalGltfValidator } from "./nae.utils";
 
@@ -18,6 +19,7 @@ const DefaultOptimizationPipeline: readonly (readonly [string, string])[] = [
     ["Weld Vertices", "Remove Unused Resources"],
     ["Remove Unused Resources", "Export glTF"],
 ];
+const BuiltInPipelineNames = CreateBuiltInNodeAssetLibraryEntries().map((entry) => entry.name);
 
 /**
  * Parses the JSON chunk of a glb without any glTF dependency, so assertions can inspect the exported
@@ -583,9 +585,9 @@ test.describe("Node Assets Editor — Universal glTF aggregates", () => {
         await editor.waitForSuccessfulPreviewBuild();
 
         await editor.saveToLibraryButton.click();
-        await expect(page.getByLabel('Saved "nodeAsset" to the library.')).toBeVisible();
+        await expect(page.getByLabel('Saved "glTF Optimization 2" to the library.')).toBeVisible();
         await editor.openLibraryButton.click();
-        await page.getByRole("dialog", { name: "NodeAsset Library" }).getByRole("button", { name: "nodeAsset", exact: true }).click();
+        await page.getByRole("dialog", { name: "NodeAsset Library" }).getByRole("button", { name: "glTF Optimization 2", exact: true }).click();
 
         await expect(page.locator('[data-testid="aggregate-frame"]').filter({ hasText: "Export glTF" })).toBeVisible();
         await editor.selectNode("Export glTF");
@@ -895,7 +897,7 @@ test.describe("Node Assets Editor — Library", () => {
         await editor.openLibraryButton.click();
         const dialog = page.getByRole("dialog", { name: "NodeAsset Library" });
         await expect(dialog).toBeVisible();
-        for (const name of ["USD to Optimized glTF", "USD with Custom Textures", "Multi-Source Merge", "Material Decomposition", "USD Preview", "Full Supported Pipeline"]) {
+        for (const name of BuiltInPipelineNames) {
             await expect(dialog.getByRole("button", { name, exact: true })).toBeVisible();
         }
     });
@@ -910,17 +912,17 @@ test.describe("Node Assets Editor — Library", () => {
         await editor.goto();
 
         await editor.saveToLibraryButton.click();
-        await expect(page.getByLabel('Saved "nodeAsset" to the library.')).toBeVisible();
+        await expect(page.getByLabel('Saved "glTF Optimization 2" to the library.')).toBeVisible();
         await editor.saveToLibraryButton.click();
-        await expect(page.getByLabel('Saved "nodeAsset 2" to the library.')).toBeVisible();
+        await expect(page.getByLabel('Saved "glTF Optimization 3" to the library.')).toBeVisible();
 
         expect(unexpectedDialogs).toEqual([]);
         await page.reload({ waitUntil: "load" });
         await expect(editor.canvas).toBeVisible({ timeout: 30_000 });
         await editor.openLibraryButton.click();
         const dialog = page.getByRole("dialog", { name: "NodeAsset Library" });
-        await expect(dialog.getByRole("button", { name: "nodeAsset", exact: true })).toBeVisible();
-        await expect(dialog.getByRole("button", { name: "nodeAsset 2", exact: true })).toBeVisible();
+        await expect(dialog.getByRole("button", { name: "glTF Optimization 2", exact: true })).toBeVisible();
+        await expect(dialog.getByRole("button", { name: "glTF Optimization 3", exact: true })).toBeVisible();
     });
 
     test("loads a selected library graph into the canvas", async ({ page }) => {
@@ -929,26 +931,28 @@ test.describe("Node Assets Editor — Library", () => {
 
         await editor.openLibraryButton.click();
         const dialog = page.getByRole("dialog", { name: "NodeAsset Library" });
-        await dialog.getByRole("button", { name: "USD Preview", exact: true }).click();
+        await dialog.getByRole("button", { name: "USD to Optimized glTF", exact: true }).click();
 
         await expect(dialog).toBeHidden();
-        await expect(editor.nodes).toHaveCount(2);
+        await expect(editor.nodes).toHaveCount(3);
         await expect(editor.nodeByTitle("Import USD")).toBeVisible();
+        await expect(editor.nodeByTitle("Remove Unused Resources")).toBeVisible();
         await expect(editor.nodeByTitle("Export glTF")).toBeVisible();
     });
 
-    test("builds a preview for every bundled USD graph", async ({ page }) => {
+    test("builds a preview for every production catalog graph", async ({ page }) => {
         test.setTimeout(420_000);
         const editor = new NodeAssetsEditorPage(page);
         await editor.goto();
         await editor.waitForNextSuccessfulPreviewBuild();
 
-        for (const name of ["USD to Optimized glTF", "USD with Custom Textures", "Multi-Source Merge", "USD Preview", "Full Supported Pipeline"]) {
+        for (const name of BuiltInPipelineNames.slice(1)) {
             await editor.openLibraryButton.click();
             const dialog = page.getByRole("dialog", { name: "NodeAsset Library" });
+            const previewBuildPromise = editor.waitForNextSuccessfulPreviewBuild();
             await dialog.getByRole("button", { name, exact: true }).click();
             await expect(dialog).toBeHidden();
-            await editor.waitForNextSuccessfulPreviewBuild();
+            await previewBuildPromise;
         }
     });
 
@@ -959,7 +963,7 @@ test.describe("Node Assets Editor — Library", () => {
 
         await editor.openLibraryButton.click();
         let dialog = page.getByRole("dialog", { name: "NodeAsset Library" });
-        await dialog.getByRole("button", { name: "USD Preview", exact: true }).click();
+        await dialog.getByRole("button", { name: "Node Geometry to glTF", exact: true }).click();
         await editor.saveToLibraryButton.click();
 
         await editor.openLibraryButton.click();
@@ -969,9 +973,9 @@ test.describe("Node Assets Editor — Library", () => {
 
         await editor.openLibraryButton.click();
         dialog = page.getByRole("dialog", { name: "NodeAsset Library" });
-        await dialog.getByRole("button", { name: "USD Preview 2", exact: true }).click();
+        await dialog.getByRole("button", { name: "Node Geometry to glTF 2", exact: true }).click();
         await expect(editor.nodes).toHaveCount(2);
-        await expect(editor.nodeByTitle("Import USD")).toBeVisible();
+        await expect(editor.nodeByTitle("Import Node Geometry")).toBeVisible();
         await expect(editor.nodeByTitle("Export glTF")).toBeVisible();
     });
 
@@ -991,7 +995,7 @@ test.describe("Node Assets Editor — Library", () => {
         await editor.openLibraryButton.click();
 
         const dialog = page.getByRole("dialog", { name: "NodeAsset Library" });
-        await expect(dialog.getByRole("button", { name: "USD Preview", exact: true })).toBeVisible();
+        await expect(dialog.getByRole("button", { name: "glTF Optimization", exact: true })).toBeVisible();
         await expect(dialog.getByText("Storage blocked", { exact: true })).toBeVisible();
     });
 });

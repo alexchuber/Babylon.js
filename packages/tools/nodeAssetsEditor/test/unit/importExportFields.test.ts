@@ -111,11 +111,23 @@ describe("Export block file name", () => {
 });
 
 describe("Import block source label", () => {
+    it("shows an empty source state for a newly created glTF import", () => {
+        const controller = new NodeAssetGraphController();
+        try {
+            const importNode = controller.createNodeFromPaletteItem("import-gltf", { x: 600, y: 600 });
+            controller.state.addNode(importNode);
+
+            expect(FindPropertyInSection(controller, importNode, "READ GLTF", "Active source", "text").value).toBe("No source loaded");
+        } finally {
+            controller.dispose();
+        }
+    });
+
     it("shows the uploaded file name as the glTF import Source and roundtrips it", async () => {
         const controller = new NodeAssetGraphController();
         try {
             const importNode = FindNode(controller, "Import glTF");
-            expect(FindPropertyInSection(controller, importNode, "READ GLTF", "Active source", "text").value).toBe("No source loaded");
+            expect(FindPropertyInSection(controller, importNode, "READ GLTF", "Active source", "text").value).toBe("catalog-triangle.glb");
 
             vi.mocked(PromptForFileAsync).mockResolvedValue({
                 name: "myModel.glb",
