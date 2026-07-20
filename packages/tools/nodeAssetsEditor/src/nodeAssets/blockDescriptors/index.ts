@@ -5,8 +5,11 @@
  */
 
 import "./importGLTFBlockDescriptor";
+import "./importBabylonAggregateBlockDescriptor";
 import "./readGLTFBlockDescriptor";
+import "./readBabylonBlockDescriptor";
 import "./gltfToUniversalBlockDescriptor";
+import "./babylonToUniversalBlockDescriptor";
 import "./universalToGLTFBlockDescriptor";
 import "./writeGLTFBlockDescriptor";
 import "./legacyImportGLTFBlockDescriptor";

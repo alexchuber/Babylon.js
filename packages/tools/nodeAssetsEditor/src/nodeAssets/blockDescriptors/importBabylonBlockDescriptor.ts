@@ -1,17 +1,8 @@
 import { ImportBabylonBlock } from "node-assets/Blocks/importBabylonBlock";
 
-import { ConfigureBlockForEditor, RegisterBlockDescriptor } from "../blockCatalog";
+import { BabylonHeaderColor, ConfigureBlockForEditor, RegisterBlockDescriptor } from "../blockCatalog";
 import { PromptForFileAsync } from "../browserFiles";
 
-// Data-driven node header color for the Babylon import block.
-const ImportHeaderColor = "#3f6fd9";
-
-/**
- * Prompts for a `.babylon` file, creates an object URL from it, and sets it on the block's
- * `url` connection point, then refreshes the property pane so the URL field updates.
- * @param block - The Babylon import block to populate.
- * @param refresh - Re-renders the property pane after the async pick resolves.
- */
 async function PromptForBabylonFileAsync(block: ImportBabylonBlock, refresh: () => void): Promise<void> {
     const file = await PromptForFileAsync(".babylon");
     if (!file) {
@@ -22,14 +13,15 @@ async function PromptForBabylonFileAsync(block: ImportBabylonBlock, refresh: () 
 }
 
 RegisterBlockDescriptor({
-    paletteItemId: "import-babylon",
-    label: "Import Babylon",
-    category: "Sources",
-    description: "Load a .babylon scene into a Babylon representation.",
+    paletteItemId: "legacy-import-babylon",
+    label: "Legacy Import Babylon",
+    category: "Babylon",
+    description: "Load a legacy .babylon scene representation.",
     keywords: ["babylon", ".babylon", "scene", "load"],
-    headerColor: ImportHeaderColor,
+    headerColor: BabylonHeaderColor,
     className: ImportBabylonBlock.ClassName,
-    create: (nodeAsset) => ConfigureBlockForEditor(new ImportBabylonBlock("Import Babylon", nodeAsset)),
+    isPaletteVisible: false,
+    create: (nodeAsset) => ConfigureBlockForEditor(new ImportBabylonBlock("Legacy Import Babylon", nodeAsset)),
     getPropertySection: (block, { refresh }) => {
         const importBlock = block as ImportBabylonBlock;
         return {

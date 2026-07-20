@@ -65,6 +65,7 @@ const PortStyleByType: Partial<Record<NodeAssetConnectionPointType, { readonly n
     [NodeAssetConnectionPointType.BABYLON_SCENE]: { name: "Babylon Scene", color: BabylonScenePortColor },
     [NodeAssetConnectionPointType.NODE_GEOMETRY]: { name: "Node Geometry", color: NodeGeometryPortColor },
     [NodeAssetConnectionPointType.UNIVERSAL]: { name: "Universal", color: UniversalPortColor },
+    [NodeAssetConnectionPointType.BABYLON_SOURCE]: { name: "Babylon", color: BabylonScenePortColor },
 };
 
 /**

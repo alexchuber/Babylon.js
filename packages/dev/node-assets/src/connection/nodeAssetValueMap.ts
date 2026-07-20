@@ -1,5 +1,6 @@
 import { type ImagePayload } from "../Blocks/imagePayload";
 import { type BabylonAsset } from "../representations/babylonAsset";
+import { type BabylonSource } from "../representations/babylonSource";
 import { type GltfAsset } from "../representations/gltfAsset";
 import { type NodeGeometryAsset } from "../representations/nodeGeometryAsset";
 import { type UsdAsset } from "../representations/usdAsset";
@@ -69,4 +70,5 @@ export type NodeAssetValueMap = {
     [NodeAssetConnectionPointType.BABYLON_SCENE]: BabylonAsset;
     [NodeAssetConnectionPointType.NODE_GEOMETRY]: NodeGeometryAsset;
     [NodeAssetConnectionPointType.UNIVERSAL]: GltfAsset;
+    [NodeAssetConnectionPointType.BABYLON_SOURCE]: BabylonSource;
 };

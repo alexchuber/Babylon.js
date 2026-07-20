@@ -17,6 +17,7 @@ vi.mock("../../src/nodeAssets/browserFiles", () => ({
 }));
 
 const ImportFileButtonLabel = "Upload glTF\u2026";
+const BabylonImportFileButtonLabel = "Upload Babylon\u2026";
 
 function FindNode(controller: NodeAssetGraphController, title: string): IGraphNode {
     const node = controller.state.nodes.find((candidate) => candidate.title === title);
@@ -152,5 +153,54 @@ describe("Import block source label", () => {
         const sourceProperty = section?.properties.find((property) => property.label === "Source");
         expect(sourceProperty?.kind).toBe("text");
         expect((sourceProperty as { value: string }).value).toBe("https://cdn.example.com/scenes/nodeAssets/baseColor.png");
+    });
+
+    it("shares the uploaded Babylon source across compact, expanded, and reloaded editor surfaces", async () => {
+        const controller = new NodeAssetGraphController();
+        try {
+            const importNode = controller.createNodeFromPaletteItem("import-babylon", { x: 600, y: 600 });
+            controller.state.addNode(importNode);
+            expect(FindPropertyInSection(controller, importNode, "READ BABYLON", "Active source", "text").value).toBe("No source loaded");
+
+            vi.mocked(PromptForFileAsync).mockResolvedValue({
+                name: "myScene.babylon",
+                arrayBuffer: async () => new TextEncoder().encode('{"meshes":[]}').buffer,
+            } as unknown as File);
+
+            FindPropertyInSection(controller, importNode, "READ BABYLON", BabylonImportFileButtonLabel, "button").onClick();
+            await vi.waitFor(() => {
+                expect(FindPropertyInSection(controller, importNode, "READ BABYLON", "Active source", "text").value).toBe("myScene.babylon");
+            });
+
+            controller.setAggregateExpanded(importNode.id, true);
+            const readNode = FindNode(controller, "Read Babylon");
+            expect(FindPropertyInSection(controller, readNode, "SOURCE", "Active source", "text").value).toBe("myScene.babylon");
+            expect(FindPropertyInSection(controller, readNode, "SOURCE", BabylonImportFileButtonLabel, "button")).toBeDefined();
+            expect(FindPropertyInSection(controller, readNode, "SOURCE", "URL", "text").value).toBe("");
+
+            const reloaded = new NodeAssetGraphController();
+            try {
+                reloaded.load(controller.serialize());
+                const reloadedImport = FindNode(reloaded, "Import Babylon");
+                expect(FindPropertyInSection(reloaded, reloadedImport, "READ BABYLON", "Active source", "text").value).toBe("myScene.babylon");
+            } finally {
+                reloaded.dispose();
+            }
+        } finally {
+            controller.dispose();
+        }
+    });
+
+    it("keeps the legacy Babylon upload action available for saved graphs", () => {
+        const descriptor = GetBlockDescriptorByPaletteItemId("legacy-import-babylon");
+        const controller = new NodeAssetGraphController();
+        try {
+            const node = controller.createNodeFromPaletteItem("legacy-import-babylon", { x: 600, y: 600 });
+            controller.state.addNode(node);
+            expect(descriptor?.isPaletteVisible).toBe(false);
+            expect(FindPropertyInSection(controller, node, "IMPORT", "Import .babylon file\u2026", "button")).toBeDefined();
+        } finally {
+            controller.dispose();
+        }
     });
 });

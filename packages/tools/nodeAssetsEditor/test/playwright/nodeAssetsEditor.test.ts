@@ -8,6 +8,7 @@ type GltfJson = {
     readonly extensionsRequired?: readonly string[];
     readonly images?: readonly { readonly mimeType?: string }[];
     readonly materials?: readonly unknown[];
+    readonly nodes?: readonly { readonly name?: string }[];
 };
 
 // The energy-orb showcase composites a metal base and a cyan pattern into the base color, fans the same
@@ -47,6 +48,56 @@ function collectPageErrors(page: Page): string[] {
     });
     page.on("pageerror", (error) => errors.push(error.message));
     return errors;
+}
+
+function CreateBabylonFunnelEditorFile(): string {
+    return JSON.stringify({
+        graph: {
+            name: "babylon-funnel",
+            blocks: [
+                {
+                    customType: "ImportBabylonAggregateBlock",
+                    id: 1,
+                    name: "Import Babylon",
+                    aggregateVersion: 1,
+                    subgraph: {
+                        name: "Import Babylon subgraph",
+                        blocks: [
+                            { customType: "ReadBabylonBlock", id: 2, name: "Read Babylon", data: null, source: null, sourceKind: "" },
+                            { customType: "BabylonToUniversalBlock", id: 3, name: "Babylon to Universal" },
+                        ],
+                        connections: [{ fromBlock: 2, fromPoint: "output", toBlock: 3, toPoint: "input" }],
+                    },
+                    exposedInputs: [],
+                    exposedOutputs: [{ publicName: "output", blockId: 3, pointName: "output" }],
+                },
+                {
+                    customType: "ExportGLTFAggregateBlock",
+                    id: 4,
+                    name: "Export glTF",
+                    aggregateVersion: 1,
+                    subgraph: {
+                        name: "Export glTF subgraph",
+                        blocks: [
+                            { customType: "UniversalToGLTFBlock", id: 5, name: "Universal to glTF" },
+                            { customType: "WriteGLTFBlock", id: 6, name: "Write glTF", fileName: "scene" },
+                        ],
+                        connections: [{ fromBlock: 5, fromPoint: "output", toBlock: 6, toPoint: "input" }],
+                    },
+                    exposedInputs: [{ publicName: "input", blockId: 5, pointName: "input" }],
+                    exposedOutputs: [],
+                },
+            ],
+            connections: [{ fromBlock: 1, fromPoint: "output", toBlock: 4, toPoint: "input" }],
+        },
+        editor: {
+            blocks: [
+                { id: 1, position: { x: 200, y: 300 }, title: "Import Babylon", collapsed: false },
+                { id: 4, position: { x: 800, y: 300 }, title: "Export glTF", collapsed: false },
+            ],
+            frames: [],
+        },
+    });
 }
 
 async function readDownloadedGlb(download: Download, expectedFileName = "scene.glb"): Promise<Buffer> {
@@ -389,6 +440,65 @@ test.describe("Node Assets Editor — Universal glTF aggregates", () => {
         await expect(page.getByText("Source error", { exact: true })).toBeVisible();
         await expect(page.getByRole("textbox").nth(3)).toHaveValue("scenes/nodeAssets/orb.glb");
         await expect(page.getByRole("textbox").nth(4)).toHaveValue(/404/);
+    });
+});
+
+test.describe("Node Assets Editor — Babylon Universal funnel", () => {
+    test.describe.configure({ timeout: 180_000 });
+
+    test("uploads, expands, saves, previews, and exports a Babylon source through Universal", async ({ page }) => {
+        const editor = new NodeAssetsEditorPage(page);
+        await editor.goto();
+        await editor.waitForNextSuccessfulPreviewBuild();
+
+        const loadChooserPromise = page.waitForEvent("filechooser");
+        await page.getByRole("button", { name: "Load" }).click();
+        await (
+            await loadChooserPromise
+        ).setFiles({
+            name: "babylon-funnel.json",
+            mimeType: "application/json",
+            buffer: Buffer.from(CreateBabylonFunnelEditorFile()),
+        });
+        await expect(editor.nodes).toHaveCount(2);
+        await editor.expectWiredPipeline([["Import Babylon", "Export glTF"]]);
+
+        await editor.selectNode("Import Babylon");
+        await expect(page.locator('input[value="ImportBabylonAggregateBlock"]')).toBeVisible();
+        await expect(page.getByText("URL", { exact: true })).toBeVisible();
+        const uploadChooserPromise = page.waitForEvent("filechooser");
+        await page.getByRole("button", { name: "Upload Babylon\u2026" }).click();
+        await (
+            await uploadChooserPromise
+        ).setFiles({
+            name: "triangle.babylon",
+            mimeType: "application/json",
+            buffer: readFileSync("packages/tools/nodeAssetsEditor/test/playwright/fixtures/triangle.babylon"),
+        });
+        await expect(page.locator('input[value="triangle.babylon"]')).toBeVisible();
+        await editor.waitForSuccessfulPreviewBuild();
+        await expect(editor.previewCanvas).toBeVisible();
+
+        await editor.nodeByTitle("Import Babylon").getByRole("button", { name: "Expand aggregate" }).click();
+        await expect(editor.nodeByTitle("Read Babylon")).toBeVisible();
+        await expect(editor.nodeByTitle("Babylon to Universal")).toBeVisible();
+        await expect(page.locator('[data-testid="graph-wire"][data-from-node-title="Read Babylon"][data-to-node-title="Babylon to Universal"]')).toHaveCount(1);
+        await editor.selectNode("Read Babylon");
+        await expect(page.getByText("URL", { exact: true })).toBeVisible();
+        await expect(page.locator('input[value="triangle.babylon"]')).toBeVisible();
+
+        await editor.saveToLibraryButton.click();
+        await expect(page.getByLabel('Saved "babylon-funnel" to the library.')).toBeVisible();
+        await editor.openLibraryButton.click();
+        await page.getByRole("dialog", { name: "NodeAsset Library" }).getByRole("button", { name: "babylon-funnel", exact: true }).click();
+        await expect(page.locator('[data-testid="aggregate-frame"]').filter({ hasText: "Import Babylon" })).toBeVisible();
+        await editor.waitForSuccessfulPreviewBuild();
+
+        await editor.selectNode("Export glTF");
+        const downloadPromise = page.waitForEvent("download");
+        await page.getByRole("button", { name: "Export .glb" }).click();
+        const gltf = parseGlbJson(await readDownloadedGlb(await downloadPromise));
+        expect(gltf.nodes?.map((node) => node.name)).toContain("babylon-triangle");
     });
 });
 

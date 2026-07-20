@@ -48,4 +48,7 @@ export enum NodeAssetConnectionPointType {
      * gltf-transform document, but it remains a distinct graph kind from {@link GLTF_DOCUMENT}.
      */
     UNIVERSAL = 8,
+
+    /** A shallow `.babylon` source payload consumed only by Babylon to Universal. */
+    BABYLON_SOURCE = 9,
 }
