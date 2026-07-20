@@ -1,6 +1,6 @@
 # Deliver the Universal hierarchy and assembly operators
 
-Status: ready-for-agent
+Status: resolved
 
 ## What to build
 
@@ -27,3 +27,10 @@ Keep broad palette assertions, built-in examples, the default graph, and shared 
 ## Blocked by
 
 - 01 — Establish the aggregate-backed glTF Universal funnel.
+
+## Verification
+
+A fresh-context verifier confirmed the focused acceptance seams:
+
+- `universalStructureOperators.test.ts`: 5 passed, 0 failed.
+- Node Assets Editor Merge Scenes Playwright proof: 1 passed, 0 failed.

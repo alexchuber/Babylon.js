@@ -8,6 +8,7 @@ type GltfJson = {
     readonly extensionsRequired?: readonly string[];
     readonly images?: readonly { readonly mimeType?: string }[];
     readonly materials?: readonly unknown[];
+    readonly nodes?: readonly { readonly name?: string }[];
 };
 
 // The energy-orb showcase composites a metal base and a cyan pattern into the base color, fans the same
@@ -56,6 +57,107 @@ async function readDownloadedGlb(download: Download, expectedFileName = "scene.g
     expect(exported.length).toBeGreaterThan(0);
     expect(exported.subarray(0, 4).toString("ascii")).toBe("glTF");
     return exported;
+}
+
+function createTriangleGlb(nodeName: string, x: number): Buffer {
+    const binary = Buffer.alloc(36);
+    new Float32Array(binary.buffer, binary.byteOffset, 9).set([0, 0, 0, 0.75, 0, 0, 0, 0.75, 0]);
+    const json = Buffer.from(
+        JSON.stringify({
+            asset: { version: "2.0" },
+            scene: 0,
+            scenes: [{ nodes: [0] }],
+            nodes: [{ name: nodeName, mesh: 0, translation: [x, 0, 0] }],
+            meshes: [{ primitives: [{ attributes: { POSITION: 0 } }] }],
+            buffers: [{ byteLength: binary.length }],
+            bufferViews: [{ buffer: 0, byteOffset: 0, byteLength: binary.length, target: 34962 }],
+            accessors: [{ bufferView: 0, componentType: 5126, count: 3, type: "VEC3", min: [0, 0, 0], max: [0.75, 0.75, 0] }],
+        })
+    );
+    const paddedJsonLength = Math.ceil(json.length / 4) * 4;
+    const paddedBinaryLength = Math.ceil(binary.length / 4) * 4;
+    const glb = Buffer.alloc(12 + 8 + paddedJsonLength + 8 + paddedBinaryLength, 0x20);
+    glb.writeUInt32LE(0x46546c67, 0);
+    glb.writeUInt32LE(2, 4);
+    glb.writeUInt32LE(glb.length, 8);
+    glb.writeUInt32LE(paddedJsonLength, 12);
+    glb.writeUInt32LE(0x4e4f534a, 16);
+    json.copy(glb, 20);
+    const binaryChunkOffset = 20 + paddedJsonLength;
+    glb.writeUInt32LE(paddedBinaryLength, binaryChunkOffset);
+    glb.writeUInt32LE(0x004e4942, binaryChunkOffset + 4);
+    binary.copy(glb, binaryChunkOffset + 8);
+    return glb;
+}
+
+function createImportAggregate(id: number, readId: number, transcoderId: number, name: string, sourceName: string, data: Buffer) {
+    return {
+        customType: "ImportGLTFAggregateBlock",
+        id,
+        name,
+        aggregateVersion: 1,
+        subgraph: {
+            name: `${name} subgraph`,
+            blocks: [
+                { customType: "ReadGLTFBlock", id: readId, name: "Read glTF", data: data.toString("base64"), source: sourceName, sourceKind: "upload" },
+                { customType: "GLTFToUniversalBlock", id: transcoderId, name: "glTF to Universal" },
+            ],
+            connections: [{ fromBlock: readId, fromPoint: "output", toBlock: transcoderId, toPoint: "input" }],
+        },
+        exposedInputs: [],
+        exposedOutputs: [{ publicName: "output", blockId: transcoderId, pointName: "output" }],
+    };
+}
+
+function createUniversalMergeEditorFile(): Buffer {
+    const blocks = [
+        createImportAggregate(1, 101, 102, "Import Alpha", "alpha.glb", createTriangleGlb("AlphaNode", -1)),
+        createImportAggregate(2, 201, 202, "Import Beta", "beta.glb", createTriangleGlb("BetaNode", 1)),
+        { customType: "MergeScenesBlock", id: 3, name: "Merge Scenes", inputCount: 2 },
+        {
+            customType: "ExportGLTFAggregateBlock",
+            id: 4,
+            name: "Export glTF",
+            aggregateVersion: 1,
+            subgraph: {
+                name: "Export glTF subgraph",
+                blocks: [
+                    { customType: "UniversalToGLTFBlock", id: 401, name: "Universal to glTF" },
+                    { customType: "WriteGLTFBlock", id: 402, name: "Write glTF", fileName: "scene" },
+                ],
+                connections: [{ fromBlock: 401, fromPoint: "output", toBlock: 402, toPoint: "input" }],
+            },
+            exposedInputs: [{ publicName: "input", blockId: 401, pointName: "input" }],
+            exposedOutputs: [],
+        },
+    ];
+    return Buffer.from(
+        JSON.stringify({
+            graph: {
+                name: "universal-merge-browser-proof",
+                blocks,
+                connections: [
+                    { fromBlock: 1, fromPoint: "output", toBlock: 3, toPoint: "input0" },
+                    { fromBlock: 2, fromPoint: "output", toBlock: 3, toPoint: "input1" },
+                    { fromBlock: 3, fromPoint: "output", toBlock: 4, toPoint: "input" },
+                ],
+            },
+            editor: {
+                blocks: blocks.map((block, index) => ({
+                    id: block.id,
+                    position: [
+                        { x: 100, y: 180 },
+                        { x: 100, y: 480 },
+                        { x: 500, y: 330 },
+                        { x: 850, y: 330 },
+                    ][index],
+                    title: block.name,
+                    collapsed: false,
+                })),
+                frames: [],
+            },
+        })
+    );
 }
 
 test.describe("Node Assets Editor — Energy orb showcase", () => {
@@ -129,6 +231,36 @@ test.describe("Node Assets Editor — Energy orb showcase", () => {
         expect(gltf.extensionsUsed ?? []).toContain("KHR_draco_mesh_compression");
         expect((gltf.images ?? []).map((image) => image.mimeType)).toContain("image/ktx2");
         expect((gltf.images ?? []).map((image) => image.mimeType)).not.toContain("image/png");
+    });
+
+    test("previews and exports two Universal sources converging through Merge Scenes", async ({ page }) => {
+        const editor = new NodeAssetsEditorPage(page);
+        await editor.goto();
+        await editor.waitForNextSuccessfulPreviewBuild();
+
+        const fileChooserPromise = page.waitForEvent("filechooser");
+        await page.getByRole("button", { name: "Load" }).click();
+        const fileChooser = await fileChooserPromise;
+        await fileChooser.setFiles({
+            name: "universal-merge.json",
+            mimeType: "application/json",
+            buffer: createUniversalMergeEditorFile(),
+        });
+
+        await expect(editor.nodes).toHaveCount(4);
+        await editor.expectWiredPipeline([
+            ["Import Alpha", "Merge Scenes"],
+            ["Import Beta", "Merge Scenes"],
+            ["Merge Scenes", "Export glTF"],
+        ]);
+        await editor.waitForNextSuccessfulPreviewBuild();
+        await expect(editor.previewCanvas).toBeVisible();
+
+        await editor.selectNode("Export glTF");
+        const downloadPromise = page.waitForEvent("download");
+        await page.getByRole("button", { name: "Export .glb" }).click();
+        const gltf = parseGlbJson(await readDownloadedGlb(await downloadPromise));
+        expect((gltf.nodes ?? []).map((node) => node.name).sort()).toEqual(["AlphaNode", "BetaNode"]);
     });
 
     test("deleting the emissive fan-out still rebuilds and exports the compressed orb", async ({ page }) => {
