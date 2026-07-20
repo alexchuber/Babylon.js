@@ -145,6 +145,9 @@ describe("block property sections (unified descriptor path)", () => {
             FindProperty(controller, ktx2Node, "Output container", "dropdown").onChange("Basis");
             FindProperty(controller, ktx2Node, "ETC1S quality", "slider").onChange(200);
             FindProperty(controller, ktx2Node, "UASTC RDO", "switch").onChange(true);
+            const rdoQuality = FindProperty(controller, ktx2Node, "RDO quality", "slider");
+            expect(rdoQuality.min).toBe(0);
+            rdoQuality.onChange(0);
             FindProperty(controller, ktx2Node, "Metadata", "text").onChange('{"author":"Babylon.js"}');
             FindProperty(controller, ktx2Node, "Encoder WASM URL", "text").onChange("/encoder/basis.wasm");
 
@@ -153,6 +156,8 @@ describe("block property sections (unified descriptor path)", () => {
             expect(FindProperty(controller, ktx2Node, "Output container", "dropdown").value).toBe("Basis");
             expect(FindProperty(controller, ktx2Node, "ETC1S quality", "slider").value).toBe(200);
             expect(FindProperty(controller, ktx2Node, "UASTC RDO", "switch").value).toBe(true);
+            expect(FindProperty(controller, ktx2Node, "RDO quality", "slider").value).toBe(0);
+            expect(FindProperty(controller, ktx2Node, "Data sRGB transfer function", "switch").value).toBe(false);
             expect(FindProperty(controller, ktx2Node, "Metadata", "text").value).toBe('{"author":"Babylon.js"}');
             expect(FindProperty(controller, ktx2Node, "Encoder WASM URL", "text").value).toBe("/encoder/basis.wasm");
             expect(FindProperty(controller, ktx2Node, "Compatibility", "text").value).toMatch(/KTX2/);

@@ -118,13 +118,13 @@ export class KTX2CompressionBlock extends NodeAssetBlock {
     public colorSRGBTransferFunction = true;
 
     /** Whether data textures declare the sRGB transfer function. */
-    public dataSRGBTransferFunction = true;
+    public dataSRGBTransferFunction = false;
 
     /** Whether UASTC LDR rate-distortion optimization is enabled. */
     // eslint-disable-next-line @typescript-eslint/naming-convention
     public enableRDO = false;
 
-    /** UASTC RDO quality scalar from 0.001 to 10. */
+    /** UASTC RDO quality scalar from 0 to 10. */
     public rdoQualityLevel = 1;
 
     /** Whether UASTC textures use Zstandard supercompression. */
@@ -330,9 +330,9 @@ export class KTX2CompressionBlock extends NodeAssetBlock {
         this.colorPerceptual = GetSerializedBoolean(serializationObject, "colorPerceptual", true);
         this.dataPerceptual = GetSerializedBoolean(serializationObject, "dataPerceptual", false);
         this.colorSRGBTransferFunction = GetSerializedBoolean(serializationObject, "colorSRGBTransferFunction", true);
-        this.dataSRGBTransferFunction = GetSerializedBoolean(serializationObject, "dataSRGBTransferFunction", true);
+        this.dataSRGBTransferFunction = GetSerializedBoolean(serializationObject, "dataSRGBTransferFunction", false);
         this.enableRDO = GetSerializedBoolean(serializationObject, "enableRDO", false);
-        this.rdoQualityLevel = GetSerializedNumberInRange(serializationObject, "rdoQualityLevel", 0.001, 10, 1);
+        this.rdoQualityLevel = GetSerializedNumberInRange(serializationObject, "rdoQualityLevel", 0, 10, 1);
         this.useZstandard = GetSerializedBoolean(serializationObject, "useZstandard", true);
         this.normalMapTuning = GetSerializedBoolean(serializationObject, "normalMapTuning", false);
         this.flipY = GetSerializedBoolean(serializationObject, "flipY", false);

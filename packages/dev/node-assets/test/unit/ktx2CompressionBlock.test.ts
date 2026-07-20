@@ -13,6 +13,8 @@ vi.mock("draco3dgltf", async () => await vi.importActual("draco3dgltf"));
 // KHR Data Format Descriptor color models identifying the Basis codec used in a KTX2 file.
 const KHR_DF_MODEL_ETC1S = 163;
 const KHR_DF_MODEL_UASTC = 166;
+const KHR_DF_TRANSFER_LINEAR = 1;
+const KHR_DF_TRANSFER_SRGB = 2;
 
 const DecodeWidth = 64;
 const DecodeHeight = 64;
@@ -38,6 +40,12 @@ function ReadKtx2ColorModel(ktx2Bytes: Uint8Array): number {
     const view = new DataView(ktx2Bytes.buffer, ktx2Bytes.byteOffset, ktx2Bytes.byteLength);
     const dfdByteOffset = view.getUint32(48, true);
     return view.getUint8(dfdByteOffset + 12);
+}
+
+function ReadKtx2TransferFunction(ktx2Bytes: Uint8Array): number {
+    const view = new DataView(ktx2Bytes.buffer, ktx2Bytes.byteOffset, ktx2Bytes.byteLength);
+    const dfdByteOffset = view.getUint32(48, true);
+    return view.getUint8(dfdByteOffset + 14);
 }
 
 /**
@@ -122,6 +130,8 @@ describe("KTX2CompressionBlock", () => {
         expect(dataTexture.getMimeType()).toBe("image/ktx2");
         expect(ReadKtx2ColorModel(colorTexture.getImage()!)).toBe(KHR_DF_MODEL_ETC1S);
         expect(ReadKtx2ColorModel(dataTexture.getImage()!)).toBe(KHR_DF_MODEL_UASTC);
+        expect(ReadKtx2TransferFunction(colorTexture.getImage()!)).toBe(KHR_DF_TRANSFER_SRGB);
+        expect(ReadKtx2TransferFunction(dataTexture.getImage()!)).toBe(KHR_DF_TRANSFER_LINEAR);
     }, 20000);
 
     it("passes unsupported textures through uncompressed and still exports a valid glb", async () => {

@@ -302,6 +302,7 @@ describe("NodeAsset", () => {
         const parsedExporter = parsed.attachedBlocks[3] as ExportGLTFBlock;
         expect(parsedKtx2).toBeInstanceOf(KTX2CompressionBlock);
         expect(parsedDraco).toBeInstanceOf(DracoCompressionBlock);
+        expect(parsedKtx2.dataSRGBTransferFunction).toBe(false);
 
         expect(parsedImporter.output.connectedPoints[0]).toBe(parsedKtx2.input);
         expect(parsedKtx2.output.connectedPoints[0]).toBe(parsedDraco.input);
@@ -324,7 +325,7 @@ describe("NodeAsset", () => {
         ktx2.colorSRGBTransferFunction = false;
         ktx2.dataSRGBTransferFunction = false;
         ktx2.enableRDO = true;
-        ktx2.rdoQualityLevel = 0.75;
+        ktx2.rdoQualityLevel = 0;
         ktx2.useZstandard = false;
         ktx2.normalMapTuning = true;
         ktx2.flipY = true;
@@ -359,7 +360,7 @@ describe("NodeAsset", () => {
             colorSRGBTransferFunction: false,
             dataSRGBTransferFunction: false,
             enableRDO: true,
-            rdoQualityLevel: 0.75,
+            rdoQualityLevel: 0,
             useZstandard: false,
             normalMapTuning: true,
             flipY: true,
@@ -398,7 +399,7 @@ describe("NodeAsset", () => {
             colorSRGBTransferFunction: false,
             dataSRGBTransferFunction: false,
             enableRDO: true,
-            rdoQualityLevel: 0.75,
+            rdoQualityLevel: 0,
             useZstandard: false,
             normalMapTuning: true,
             flipY: true,

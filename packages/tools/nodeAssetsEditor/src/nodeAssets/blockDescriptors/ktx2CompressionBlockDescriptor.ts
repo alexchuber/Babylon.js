@@ -182,7 +182,7 @@ RegisterBlockDescriptor({
                     kind: "slider",
                     label: "RDO quality",
                     value: ktx2Block.rdoQualityLevel,
-                    min: 0.001,
+                    min: 0,
                     max: 10,
                     step: 0.001,
                     onChange: (value) => {
