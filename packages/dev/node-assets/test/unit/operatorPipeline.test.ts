@@ -10,8 +10,6 @@ import { JoinBlock } from "../../src/Blocks/joinBlock";
 import { type NodeAssetConnectionPoint } from "../../src/connection/nodeAssetConnectionPoint";
 import { NormalsBlock } from "../../src/Blocks/normalsBlock";
 import { PruneBlock } from "../../src/Blocks/pruneBlock";
-import { QuantizeBlock } from "../../src/Blocks/quantizeBlock";
-import { SimplifyBlock } from "../../src/Blocks/simplifyBlock";
 import { WeldBlock } from "../../src/Blocks/weldBlock";
 import { NodeAsset } from "../../src/nodeAsset";
 import { GetTestGltfDocument } from "./testGltfAsset";
@@ -129,11 +127,9 @@ describe("operator pipeline", () => {
             new DedupBlock("dedup", asset),
             new PruneBlock("prune", asset),
             new NormalsBlock("normals", asset),
-            new SimplifyBlock("simplify", asset),
             new JoinBlock("join", asset),
             new FlattenBlock("flatten", asset),
             new CenterBlock("center", asset),
-            new QuantizeBlock("quantize", asset),
         ];
 
         let previous: NodeAssetConnectionPoint = importer.output;

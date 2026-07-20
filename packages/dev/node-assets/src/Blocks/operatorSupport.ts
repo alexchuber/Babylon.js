@@ -7,13 +7,13 @@ import { GetGltfAsset } from "../representations/gltfAsset";
 /**
  * Reads an operator block's required {@link GltfAsset}, applies the given gltf-transform operations to
  * its document in place, and writes the same asset to the block's output. This is the trivial boilerplate
- * shared by every GLTF_DOCUMENT operator block, so each block only has to dynamic-`import` its op and
- * pass the configured transform(s). It is a helper, not an operator base class: blocks do not extend
- * it, and each keeps its own params, serialization, and registration.
+ * shared by document-backed glTF and Universal operators, so each block only has to dynamic-`import`
+ * its operation and pass the configured transform(s). It is a helper, not an operator base class:
+ * blocks do not extend it, and each keeps its own parameters, serialization, and registration.
  *
  * The document is mutated in place; the evaluator isolates fanned-out consumers before this helper
  * runs, matching the other middle blocks.
- * @param block - The operator block, which must expose a single GLTF_DOCUMENT `input` and `output`.
+ * @param block - The operator block, which must expose one compatible document-backed `input` and `output`.
  * @param transforms - The gltf-transform operations to apply to the document, in order.
  */
 export async function ApplyOperatorTransformsAsync(

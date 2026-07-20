@@ -17,10 +17,10 @@ import { KTX2CompressionBlock } from "../../src/Blocks/ktx2CompressionBlock";
 import { MergeScenes } from "../../src/Blocks/mergeScenes";
 import { NormalsBlock } from "../../src/Blocks/normalsBlock";
 import { PruneBlock } from "../../src/Blocks/pruneBlock";
-import { QuantizeBlock } from "../../src/Blocks/quantizeBlock";
+import { QuantizeAttributesBlock } from "../../src/Blocks/quantizeAttributesBlock";
 import { SetProperty } from "../../src/Blocks/setProperty";
 import { SetTexture } from "../../src/Blocks/setTexture";
-import { SimplifyBlock } from "../../src/Blocks/simplifyBlock";
+import { SimplifyMeshesBlock } from "../../src/Blocks/simplifyMeshesBlock";
 import { WeldBlock } from "../../src/Blocks/weldBlock";
 import { NodeAssetConnectionPointType } from "../../src/connection/nodeAssetConnectionPointType";
 import { NodeAsset } from "../../src/nodeAsset";
@@ -44,8 +44,6 @@ describe("glTF representation paths", () => {
             new DedupBlock("dedup", nodeAsset),
             new PruneBlock("prune", nodeAsset),
             new WeldBlock("weld", nodeAsset),
-            new QuantizeBlock("quantize", nodeAsset),
-            new SimplifyBlock("simplify", nodeAsset),
             new FlattenBlock("flatten", nodeAsset),
             new CenterBlock("center", nodeAsset),
             new NormalsBlock("normals", nodeAsset),
@@ -85,6 +83,14 @@ describe("glTF representation paths", () => {
         expect(setter.scene.name).toBe("scene");
         expect(setTexture.scene.name).toBe("scene");
         expect(buildMaterial.scene.name).toBe("scene");
+    });
+
+    it("keeps reduction operators on the Universal seam rather than the glTF implementation seam", () => {
+        const nodeAsset = new NodeAsset("universal reductions");
+        const operators = [new QuantizeAttributesBlock("Quantize Attributes", nodeAsset), new SimplifyMeshesBlock("Simplify Meshes", nodeAsset)];
+
+        expect(operators.every((operator) => operator.input.type === NodeAssetConnectionPointType.UNIVERSAL)).toBe(true);
+        expect(operators.every((operator) => operator.output.type === NodeAssetConnectionPointType.UNIVERSAL)).toBe(true);
     });
 
     it("carries GltfAsset through import, an operator, and export on GLTF_DOCUMENT points", async () => {
