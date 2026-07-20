@@ -1,4 +1,4 @@
-import { type Node as GltfNode, type Scene, type vec3, type vec4 } from "@gltf-transform/core";
+import { type vec3, type vec4 } from "@gltf-transform/core";
 
 import { RegisterBlock } from "../blockFoundation/blockRegistry";
 import { NodeAssetBlock } from "../blockFoundation/nodeAssetBlock";
@@ -7,6 +7,7 @@ import { NodeAssetConnectionPointType } from "../connection/nodeAssetConnectionP
 import { type NodeAsset } from "../nodeAsset";
 import { GetGltfAsset } from "../representations/gltfAsset";
 import { GetSerializedNumberTuple, GetSerializedStringUnion, type NodeAssetBlockSerialization } from "../serialization/nodeAssetSerialization";
+import { WrapSceneRoots } from "./sceneRootWrappers";
 
 /** Source distance units normalized to meters by Transform Scene. */
 export type SceneUnits = "meters" | "centimeters" | "millimeters" | "inches" | "feet";
@@ -50,14 +51,6 @@ function GetUpAxisRotation(upAxis: SceneUpAxis): vec4 {
     }
 }
 
-function WrapSceneRoots(scene: Scene, wrapper: GltfNode): void {
-    const children = scene.listChildren();
-    for (const child of children) {
-        wrapper.addChild(child);
-    }
-    scene.addChild(wrapper);
-}
-
 /** Normalizes source coordinates, then applies an authored scene transform. */
 export class TransformSceneBlock extends NodeAssetBlock {
     /** The class name, used for identification and safe under minification. */
@@ -95,20 +88,28 @@ export class TransformSceneBlock extends NodeAssetBlock {
         const asset = GetGltfAsset(this.input.value, this.input.name);
         const document = asset.document;
         const unitScale = UnitScaleToMeters[this.units];
+        const scenes = document.getRoot().listScenes();
 
-        for (const scene of document.getRoot().listScenes()) {
-            if (unitScale !== 1 || this.upAxis !== "Y") {
-                const normalized = document
-                    .createNode("Source normalization")
-                    .setScale([unitScale, unitScale, unitScale] as vec3)
-                    .setRotation(GetUpAxisRotation(this.upAxis));
-                WrapSceneRoots(scene, normalized);
-            }
+        if (unitScale !== 1 || this.upAxis !== "Y") {
+            WrapSceneRoots(
+                document,
+                scenes.map((scene) => ({ scene, roots: scene.listChildren(), wrapper: undefined })),
+                () => true,
+                () =>
+                    document
+                        .createNode("Source normalization")
+                        .setScale([unitScale, unitScale, unitScale] as vec3)
+                        .setRotation(GetUpAxisRotation(this.upAxis))
+            );
+        }
 
-            if (this.scale.some((component) => component !== 1) || this.rotation.some((component) => component !== 0)) {
-                const authored = document.createNode("Authored transform").setScale(this.scale).setRotation(EulerDegreesToQuaternion(this.rotation));
-                WrapSceneRoots(scene, authored);
-            }
+        if (this.scale.some((component) => component !== 1) || this.rotation.some((component) => component !== 0)) {
+            WrapSceneRoots(
+                document,
+                scenes.map((scene) => ({ scene, roots: scene.listChildren(), wrapper: undefined })),
+                () => true,
+                () => document.createNode("Authored transform").setScale(this.scale).setRotation(EulerDegreesToQuaternion(this.rotation))
+            );
         }
 
         this.output.value = asset;

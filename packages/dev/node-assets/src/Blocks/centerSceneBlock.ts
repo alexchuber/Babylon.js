@@ -1,4 +1,4 @@
-import { getBounds, type Node, type Scene, type vec3 } from "@gltf-transform/core";
+import { getBounds, type Scene, type vec3 } from "@gltf-transform/core";
 
 import { RegisterBlock } from "../blockFoundation/blockRegistry";
 import { NodeAssetBlock } from "../blockFoundation/nodeAssetBlock";
@@ -7,16 +7,10 @@ import { NodeAssetConnectionPointType } from "../connection/nodeAssetConnectionP
 import { type NodeAsset } from "../nodeAsset";
 import { GetGltfAsset } from "../representations/gltfAsset";
 import { GetSerializedNumberTuple, GetSerializedStringUnion, type NodeAssetBlockSerialization } from "../serialization/nodeAssetSerialization";
+import { WrapSceneRoots } from "./sceneRootWrappers";
 
 /** The bounds-derived or authored pivot placed at the origin by Center Scene. */
 export type CenterScenePivot = "center" | "above" | "below" | "custom-point";
-
-function WrapSceneRoots(scene: Scene, wrapper: Node): void {
-    for (const child of scene.listChildren()) {
-        wrapper.addChild(child);
-    }
-    scene.addChild(wrapper);
-}
 
 function GetPivot(scene: Scene, pivot: CenterScenePivot, customPoint: vec3): vec3 | undefined {
     if (pivot === "custom-point") {
@@ -69,18 +63,20 @@ export class CenterSceneBlock extends NodeAssetBlock {
     public override async _buildBlockAsync(): Promise<void> {
         const asset = GetGltfAsset(this.input.value, this.input.name);
         const document = asset.document;
-        for (const scene of document.getRoot().listScenes()) {
-            if (scene.listChildren().length === 0) {
-                continue;
-            }
-
-            const pivot = GetPivot(scene, this.pivot, this.customPoint);
-            if (!pivot) {
-                continue;
-            }
-            const centering = document.createNode("Bounds-derived centering").setTranslation([-pivot[0], -pivot[1], -pivot[2]]);
-            WrapSceneRoots(scene, centering);
-        }
+        const scenePlans = document
+            .getRoot()
+            .listScenes()
+            .flatMap((scene) => {
+                const roots = scene.listChildren();
+                const pivot = GetPivot(scene, this.pivot, this.customPoint);
+                return roots.length > 0 && pivot ? [{ scene, roots, wrapper: pivot }] : [];
+            });
+        WrapSceneRoots(
+            document,
+            scenePlans,
+            (left, right) => left.every((value, index) => value === right[index]),
+            (pivot) => document.createNode("Bounds-derived centering").setTranslation([-pivot[0], -pivot[1], -pivot[2]])
+        );
         this.output.value = asset;
     }
 
