@@ -13,11 +13,7 @@
 
 import { Observable } from "core/Misc/observable";
 
-import { type BuildPBRMaterial } from "node-assets/Blocks/buildPBRMaterial";
 import { ExportGLTFBlock } from "node-assets/Blocks/exportGLTFBlock";
-import { type ImportGLTFAggregateBlock } from "node-assets/Blocks/importGLTFAggregateBlock";
-import { type ImportImageBlock } from "node-assets/Blocks/importImageBlock";
-import { type KTX2CompressionBlock } from "node-assets/Blocks/ktx2CompressionBlock";
 import { NodeAsset } from "node-assets/nodeAsset";
 import { NodeAssetBuildError } from "node-assets/nodeAssetBuildError";
 import { AggregateBlock } from "node-assets/blockFoundation/aggregateBlock";
@@ -26,7 +22,7 @@ import { type NodeAssetBlock } from "node-assets/blockFoundation/nodeAssetBlock"
 
 import { GraphEditorState, type GraphNodeRemovalPlan } from "../nodeGraph/editorState";
 import { GraphNodeDiagnostics } from "../nodeGraph/nodeDiagnostics";
-import { type IGraphFrame, type IGraphNode, type IGraphSnapshot, type IGraphWire, type Vec2 } from "../nodeGraph/graphModel";
+import { type IGraphFrame, type IGraphNode, type IGraphWire, type Vec2 } from "../nodeGraph/graphModel";
 import { type IPaletteCategory, type IPaletteProjectionOptions } from "../nodeGraph/paletteModel";
 import { type IPropertySection } from "../nodeGraph/propertyModel";
 
@@ -38,7 +34,7 @@ import { BlockToNode, NodeIdForBlockId, PortIdForPoint } from "./blockNodeMappin
 import { BuildPaletteCategories } from "./paletteCategories";
 import { NodeAssetReconciler } from "./nodeAssetReconciler";
 import { NodeAssetBuildWorkerClient, type INodeAssetBuildClient } from "./nodeAssetBuildWorkerClient";
-import { DefaultSampleAssetUrls } from "./defaultSampleAssets";
+import { GetDefaultBuiltInNodeAssetLibraryEntry } from "./builtInLibraryEntries";
 
 /** The editor metadata layered on top of a serialized graph: per-block visual state keyed by block id. */
 interface IEditorBlockMetadata {
@@ -272,13 +268,6 @@ function ParseEditorFile(json: string): INodeAssetEditorFile {
     };
 }
 
-// Human-readable provenance labels for the seeded "energy orb" sample assets, shown in each import
-// block's read-only "Source" field. The asset bytes are bundled with the editor and fetched from its
-// own origin (see ./defaultSampleAssets and loadDefaultImportAsync), so these are display labels only.
-const DefaultOrbGlbPath = "scenes/nodeAssets/orb.glb";
-const DefaultOrbMetalImagePath = "scenes/nodeAssets/orbMetal.png";
-const DefaultOrbPatternImagePath = "scenes/nodeAssets/orbPattern.png";
-
 /**
  * Owns a live {@link NodeAsset} and the {@link GraphEditorState} that visualizes it, delegating the
  * visual-to-domain sync to a {@link NodeAssetReconciler}. Fills the framework's editor-context
@@ -305,102 +294,36 @@ export class NodeAssetGraphController {
     private readonly _buildClient: INodeAssetBuildClient;
     private _buildRelevantSignature: string;
     private readonly _onChangedObserver;
-    private readonly _orbMetalImageBlock: ImportImageBlock;
-    private readonly _orbPatternImageBlock: ImportImageBlock;
-    private readonly _orbGltfBlock: ImportGLTFAggregateBlock;
     private readonly _aggregateRootByChildNodeId = new Map<string, string>();
     private _projectingAggregate = false;
     private _graphRevision = 0;
     private _isDisposed = false;
 
     /**
-     * Creates a controller seeded with the "energy orb" showcase graph. Two ImportImage blocks (a dark
-     * metal base and a cyan circuit pattern) feed a CompositeImage whose result becomes the base colour,
-     * while the same pattern fans out to the emissive input so one asset drives both the surface markings
-     * and their glow. An ImportGLTF (a UV sphere) supplies the geometry to BuildPBRMaterial, which
-     * produces a metallic, self-lit orb that flows through KTX2 and Draco compression (grouped in a
-     * "Compression" frame) to ExportGLTF.
+     * Creates a controller seeded from the maintained default entry in the production pipeline catalog.
      * @param buildClient - Worker-backed build client.
      */
     public constructor(buildClient: INodeAssetBuildClient = new NodeAssetBuildWorkerClient()) {
         this._nodeAsset = new NodeAsset("nodeAsset");
         this._buildClient = buildClient;
         this._reconciler = new NodeAssetReconciler(this._nodeAsset);
-
-        const importImageDescriptor = GetBlockDescriptorByPaletteItemId("import-image")!;
-        const importGltfDescriptor = GetBlockDescriptorByPaletteItemId("import-gltf")!;
-        const universalToGltfDescriptor = GetBlockDescriptorByPaletteItemId("universal-to-gltf")!;
-        const gltfToUniversalDescriptor = GetBlockDescriptorByPaletteItemId("gltf-to-universal")!;
-        const compositeDescriptor = GetBlockDescriptorByPaletteItemId("composite-image")!;
-        const buildDescriptor = GetBlockDescriptorByPaletteItemId("build-pbr-material")!;
-        const ktx2Descriptor = GetBlockDescriptorByPaletteItemId("ktx2-compression")!;
-        const dracoDescriptor = GetBlockDescriptorByPaletteItemId("draco-compression")!;
-        const exportDescriptor = GetBlockDescriptorByPaletteItemId("export-gltf")!;
-
-        const metalNode = this._instantiateBlock(importImageDescriptor, { x: 80, y: 80 });
-        const patternNode = this._instantiateBlock(importImageDescriptor, { x: 80, y: 300 });
-        const gltfNode = this._instantiateBlock(importGltfDescriptor, { x: 80, y: 520 });
-        const universalToGltfNode = this._instantiateBlock(universalToGltfDescriptor, { x: 340, y: 520 });
-        const compositeNode = this._instantiateBlock(compositeDescriptor, { x: 380, y: 140 });
-        const buildNode = this._instantiateBlock(buildDescriptor, { x: 680, y: 320 });
-        const ktx2Node = this._instantiateBlock(ktx2Descriptor, { x: 980, y: 320 });
-        const dracoNode = this._instantiateBlock(dracoDescriptor, { x: 1220, y: 320 });
-        const gltfToUniversalNode = this._instantiateBlock(gltfToUniversalDescriptor, { x: 1460, y: 320 });
-        const exportNode = this._instantiateBlock(exportDescriptor, { x: 1700, y: 320 });
-
-        this._orbMetalImageBlock = this._reconciler.getBlock(metalNode.id)! as ImportImageBlock;
-        this._orbPatternImageBlock = this._reconciler.getBlock(patternNode.id)! as ImportImageBlock;
-        this._orbGltfBlock = this._reconciler.getBlock(gltfNode.id)! as ImportGLTFAggregateBlock;
-
-        // A glossy, self-lit metal orb: near-metallic with a cyan emissive tint so the pattern glows.
-        const buildBlock = this._reconciler.getBlock(buildNode.id)! as BuildPBRMaterial;
-        buildBlock.metallicFactor = 0.9;
-        buildBlock.roughnessFactor = 0.35;
-        buildBlock.emissiveFactor = [0.05, 0.85, 1];
-        // Mipmaps keep the fine circuit lines crisp as the orb recedes.
-        (this._reconciler.getBlock(ktx2Node.id)! as KTX2CompressionBlock).generateMipmaps = true;
-
-        const snapshot: IGraphSnapshot = {
-            nodes: [metalNode, patternNode, gltfNode, universalToGltfNode, compositeNode, buildNode, ktx2Node, dracoNode, gltfToUniversalNode, exportNode],
-            wires: [
-                this._createWireToInput(metalNode, compositeNode, "base"),
-                this._createWireToInput(patternNode, compositeNode, "overlay"),
-                this._createWireToInput(compositeNode, buildNode, "baseColor"),
-                this._createWireToInput(patternNode, buildNode, "emissive"),
-                this._createWire(gltfNode, universalToGltfNode),
-                this._createWireToInput(universalToGltfNode, buildNode, "scene"),
-                this._createWire(buildNode, ktx2Node),
-                this._createWire(ktx2Node, dracoNode),
-                this._createWire(dracoNode, gltfToUniversalNode),
-                this._createWire(gltfToUniversalNode, exportNode),
-            ],
-            frames: [
-                {
-                    id: "frame-compression",
-                    label: "Compression",
-                    color: "#8a5cf6",
-                    position: { x: 940, y: 220 },
-                    size: { width: 500, height: 260 },
-                    nodeIds: [ktx2Node.id, dracoNode.id],
-                    collapsed: false,
+        this.state = new GraphEditorState(
+            { nodes: [], wires: [], frames: [] },
+            {
+                canConnectPorts: (fromPortId, toPortId) => this._canConnectPorts(fromPortId, toPortId),
+                beforeWireChange: (nodeIds) => {
+                    if (this._projectingAggregate) {
+                        return;
+                    }
+                    for (const nodeId of nodeIds) {
+                        this._detachAggregateContainingNode(nodeId);
+                    }
                 },
-            ],
-        };
-        this.state = new GraphEditorState(snapshot, {
-            canConnectPorts: (fromPortId, toPortId) => this._canConnectPorts(fromPortId, toPortId),
-            beforeWireChange: (nodeIds) => {
-                if (this._projectingAggregate) {
-                    return;
-                }
-                for (const nodeId of nodeIds) {
-                    this._detachAggregateContainingNode(nodeId);
-                }
-            },
-            prepareNodeRemoval: (nodeIds) => this._prepareNodeRemoval(nodeIds),
-        });
+                prepareNodeRemoval: (nodeIds) => this._prepareNodeRemoval(nodeIds),
+            }
+        );
 
-        // Subscribe only after seeding so the reconcile sees consistent correspondence and state.
-        this._reconciler.reconcile(this.state);
+        this.load(GetDefaultBuiltInNodeAssetLibraryEntry().serializedGraph);
         this._buildRelevantSignature = this._createBuildRelevantSignature();
         this._onChangedObserver = this.state.onChanged.add((kind) => {
             if (kind === "content") {
@@ -410,38 +333,19 @@ export class NodeAssetGraphController {
     }
 
     /**
+     * Preserves the build-orchestrator startup contract. Catalog source fixtures are already embedded in
+     * the serialized default graph, so startup performs no network loading.
+     * @returns An already-resolved promise.
+     */
+    public async loadDefaultImportAsync(): Promise<void> {}
+
+    /**
      * Projects the registered block catalog into the current palette discovery view.
      * @param options - Search and primitive visibility preferences.
      * @returns Non-empty categories containing only matching discoverable descriptors.
      */
     public getPaletteCategories(options?: IPaletteProjectionOptions): readonly IPaletteCategory[] {
         return BuildPaletteCategories(GetAllBlockDescriptors(), options);
-    }
-
-    /**
-     * Loads the bundled "energy orb" sample assets into the seeded import blocks: the UV-sphere `.glb`
-     * into the ImportGLTF block and the metal and cyan-pattern images into their ImportImage blocks, so
-     * the graph builds the textured, self-lit orb on open.
-     * @returns A promise that resolves after all assets are loaded.
-     */
-    public async loadDefaultImportAsync(): Promise<void> {
-        const [orbGlb, orbMetal, orbPattern] = await Promise.all([
-            this._fetchAssetBytesAsync(DefaultSampleAssetUrls.orbGlb),
-            this._fetchAssetBytesAsync(DefaultSampleAssetUrls.orbMetalImage),
-            this._fetchAssetBytesAsync(DefaultSampleAssetUrls.orbPatternImage),
-        ]);
-
-        this._orbGltfBlock.setUploadedSource(orbGlb, DefaultOrbGlbPath);
-
-        this._orbMetalImageBlock.data = orbMetal;
-        this._orbMetalImageBlock.mimeType = "image/png";
-        this._orbMetalImageBlock.source = DefaultOrbMetalImagePath;
-
-        this._orbPatternImageBlock.data = orbPattern;
-        this._orbPatternImageBlock.mimeType = "image/png";
-        this._orbPatternImageBlock.source = DefaultOrbPatternImagePath;
-
-        this.state.notifyChanged();
     }
 
     /**
@@ -803,42 +707,6 @@ export class NodeAssetGraphController {
         return this._registerBlockNode(block, descriptor, position, descriptor.label, false);
     }
 
-    private _createWire(fromNode: IGraphNode, toNode: IGraphNode): IGraphWire {
-        const fromPort = fromNode.ports.find((port) => port.direction === "output");
-        const toPort = toNode.ports.find((port) => port.direction === "input");
-        if (!fromPort || !toPort) {
-            throw new Error(`Cannot wire "${fromNode.title}" to "${toNode.title}" because a compatible port is missing.`);
-        }
-        return {
-            id: `wire-${fromNode.id}-${toNode.id}`,
-            fromPortId: fromPort.id,
-            toPortId: toPort.id,
-        };
-    }
-
-    /**
-     * Wires a node's output to a specific named input on the target node, so a multi-input block (e.g.
-     * BuildPBRMaterial's `scene` and `baseColor`) can be seeded unambiguously rather than relying on the
-     * first input {@link _createWire} picks.
-     * @param fromNode - The source node (its single output is used).
-     * @param toNode - The target node.
-     * @param toInputName - The connection-point name of the target input to wire to.
-     * @returns The wire connecting them.
-     */
-    private _createWireToInput(fromNode: IGraphNode, toNode: IGraphNode, toInputName: string): IGraphWire {
-        const fromPort = fromNode.ports.find((port) => port.direction === "output");
-        const toBlock = this._reconciler.getBlock(toNode.id);
-        const toPoint = toBlock?.inputs.find((input) => input.name === toInputName);
-        if (!fromPort || !toBlock || !toPoint) {
-            throw new Error(`Cannot wire "${fromNode.title}" to "${toNode.title}"'s "${toInputName}" input because a compatible port is missing.`);
-        }
-        return {
-            id: `wire-${fromNode.id}-${toNode.id}-${toInputName}`,
-            fromPortId: fromPort.id,
-            toPortId: PortIdForPoint(toBlock, toPoint),
-        };
-    }
-
     private _registerBlockNode(block: NodeAssetBlock, descriptor: IBlockDescriptor, position: Vec2, title: string, collapsed: boolean): IGraphNode {
         const node = BlockToNode(block, descriptor, position, title, collapsed);
         this._reconciler.registerNode(block, node);
@@ -947,14 +815,6 @@ export class NodeAssetGraphController {
         }
 
         return { nodeIds: [...removedNodeIds], frameIds: [...removedFrameIds], wireIds: [...removedWireIds] };
-    }
-
-    private async _fetchAssetBytesAsync(url: string): Promise<Uint8Array> {
-        const response = await fetch(url);
-        if (!response.ok) {
-            throw new Error(`Could not load the default sample asset from "${url}" (${response.status} ${response.statusText}).`);
-        }
-        return new Uint8Array(await response.arrayBuffer());
     }
 
     private _reconcileAndNotifyBuildRelevantChange(): void {
