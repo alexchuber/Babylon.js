@@ -1,9 +1,12 @@
 import { describe, expect, it } from "vitest";
 
+import { WeldBlock } from "node-assets/Blocks/weldBlock";
+import { NodeAsset } from "node-assets/nodeAsset";
+
 import { type IGraphNode } from "../../src/nodeGraph/graphModel";
 import { type IPropertySection, type PropertyDescriptor } from "../../src/nodeGraph/propertyModel";
 import { NodeAssetGraphController } from "../../src/nodeAssets/nodeAssetGraphController";
-import { GetAllBlockDescriptors } from "../../src/nodeAssets/blockCatalog";
+import { GetAllBlockDescriptors, GetBlockDescriptorByPaletteItemId } from "../../src/nodeAssets/blockCatalog";
 
 function FindNode(controller: NodeAssetGraphController, title: string): IGraphNode {
     const node = controller.state.nodes.find((candidate) => candidate.title === title);
@@ -116,6 +119,19 @@ describe("block property sections (unified descriptor path)", () => {
         } finally {
             controller.dispose();
         }
+    });
+
+    it("rejects a mismatched block passed to a deduplication property-section callback", () => {
+        const descriptor = GetBlockDescriptorByPaletteItemId("deduplicate-data");
+        const getPropertySection = descriptor?.getPropertySection;
+        if (!getPropertySection) {
+            throw new Error("Could not find the Deduplicate Data property-section callback.");
+        }
+        const block = new WeldBlock("Weld Vertices", new NodeAsset("mismatched-deduplication-block"));
+
+        expect(() => getPropertySection(block, { refresh: () => undefined, requestExport: () => undefined })).toThrow(
+            'Expected a deduplication primitive block, received "WeldBlock".'
+        );
     });
 
     it("marks only the four semantic primitives as abstracted by Deduplicate Resources", () => {

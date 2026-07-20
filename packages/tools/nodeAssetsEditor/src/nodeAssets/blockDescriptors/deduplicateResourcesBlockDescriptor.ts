@@ -3,13 +3,23 @@ import { DeduplicateMaterialsBlock } from "node-assets/Blocks/deduplicateMateria
 import { DeduplicateResourcesBlock } from "node-assets/Blocks/deduplicateResourcesBlock";
 import { DeduplicateTexturesBlock } from "node-assets/Blocks/deduplicateTexturesBlock";
 import { ReuseIdenticalMeshesBlock } from "node-assets/Blocks/reuseIdenticalMeshesBlock";
+import { type NodeAssetBlock } from "node-assets/blockFoundation/nodeAssetBlock";
 
 import { ConfigureBlockForEditor, OperatorHeaderColor, RegisterBlockDescriptor, type IPropertySectionContext } from "../blockCatalog";
+import { type IPropertySection } from "../../nodeGraph/propertyModel";
 
 const AggregatePaletteItemId = "deduplicate-resources";
-type DeduplicationPrimitive = DeduplicateMaterialsBlock | DeduplicateTexturesBlock | ReuseIdenticalMeshesBlock | DeduplicateDataBlock;
 
-function CreateKeepUniqueNamesSection(block: DeduplicationPrimitive, { refresh }: IPropertySectionContext) {
+function CreateKeepUniqueNamesSection(block: NodeAssetBlock, { refresh }: IPropertySectionContext): IPropertySection {
+    if (
+        !(block instanceof DeduplicateMaterialsBlock) &&
+        !(block instanceof DeduplicateTexturesBlock) &&
+        !(block instanceof ReuseIdenticalMeshesBlock) &&
+        !(block instanceof DeduplicateDataBlock)
+    ) {
+        throw new Error(`Expected a deduplication primitive block, received "${block.getClassName()}".`);
+    }
+
     return {
         title: block.name.toUpperCase(),
         properties: [

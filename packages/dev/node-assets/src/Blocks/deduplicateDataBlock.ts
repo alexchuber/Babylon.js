@@ -1,4 +1,4 @@
-import { type Accessor, BufferUtils, type Document, PropertyType, type Transform } from "@gltf-transform/core";
+import { type Accessor, BufferUtils, PropertyType, type Transform } from "@gltf-transform/core";
 
 import { RegisterBlock } from "../blockFoundation/blockRegistry";
 import { NodeAssetBlock } from "../blockFoundation/nodeAssetBlock";
@@ -34,11 +34,11 @@ export class DeduplicateDataBlock extends NodeAssetBlock {
     /** Deduplicates accessor and skin data and forwards the same Universal payload. */
     public override async _buildBlockAsync(): Promise<void> {
         const { dedup } = await import("@gltf-transform/functions");
-        if (this.keepUniqueNames) {
-            await ApplyUniversalOperatorTransformsAsync(this, CreateNameAwareAccessorDedupTransform(), dedup({ propertyTypes: [PropertyType.SKIN], keepUniqueNames: true }));
-        } else {
-            await ApplyUniversalOperatorTransformsAsync(this, dedup({ propertyTypes: [PropertyType.ACCESSOR, PropertyType.SKIN] }));
-        }
+        await ApplyUniversalOperatorTransformsAsync(
+            this,
+            CreateAccessorDedupTransform(this.keepUniqueNames),
+            dedup({ propertyTypes: [PropertyType.SKIN], keepUniqueNames: this.keepUniqueNames })
+        );
     }
 
     /**
@@ -59,42 +59,60 @@ export class DeduplicateDataBlock extends NodeAssetBlock {
     }
 }
 
-// glTF-Transform 4.4.1 ignores keepUniqueNames for accessors, so preserve names in the equivalence key here.
-function CreateNameAwareAccessorDedupTransform(): Transform {
+// glTF-Transform 4.4.1 omits morph targets and skin inverse-bind matrices, and ignores keepUniqueNames for accessors.
+function CreateAccessorDedupTransform(keepUniqueNames: boolean): Transform {
     return (document) => {
         const indices = new Map<string, Set<Accessor>>();
         const attributes = new Map<string, Set<Accessor>>();
         const animationInputs = new Map<string, Set<Accessor>>();
         const animationOutputs = new Map<string, Set<Accessor>>();
+        const inverseBindMatrices = new Map<string, Set<Accessor>>();
         const meshes = document.getRoot().listMeshes();
 
         for (const mesh of meshes) {
             for (const primitive of mesh.listPrimitives()) {
                 for (const accessor of primitive.listAttributes()) {
-                    AddAccessorToGroup(accessor, attributes);
+                    AddAccessorToGroup(accessor, attributes, keepUniqueNames);
                 }
-                AddAccessorToGroup(primitive.getIndices(), indices);
+                // Primitive and morph-target attributes share ARRAY_BUFFER usage, so byte-identical accessors are interchangeable.
+                for (const target of primitive.listTargets()) {
+                    for (const accessor of target.listAttributes()) {
+                        AddAccessorToGroup(accessor, attributes, keepUniqueNames);
+                    }
+                }
+                AddAccessorToGroup(primitive.getIndices(), indices, keepUniqueNames);
             }
         }
 
         for (const animation of document.getRoot().listAnimations()) {
             for (const sampler of animation.listSamplers()) {
-                AddAccessorToGroup(sampler.getInput(), animationInputs);
-                AddAccessorToGroup(sampler.getOutput(), animationOutputs);
+                AddAccessorToGroup(sampler.getInput(), animationInputs, keepUniqueNames);
+                AddAccessorToGroup(sampler.getOutput(), animationOutputs, keepUniqueNames);
             }
         }
 
-        const duplicates = FindDuplicateAccessors([attributes, indices, animationInputs, animationOutputs]);
-        ReplaceDuplicateAccessors(document, duplicates);
+        for (const skin of document.getRoot().listSkins()) {
+            AddAccessorToGroup(skin.getInverseBindMatrices(), inverseBindMatrices, keepUniqueNames);
+        }
+
+        const duplicates = FindDuplicateAccessors([attributes, indices, animationInputs, animationOutputs, inverseBindMatrices]);
+        ReplaceDuplicateAccessors(duplicates);
     };
 }
 
-function AddAccessorToGroup(accessor: Accessor | null, groups: Map<string, Set<Accessor>>): void {
+function AddAccessorToGroup(accessor: Accessor | null, groups: Map<string, Set<Accessor>>, keepUniqueNames: boolean): void {
     if (!accessor) {
         return;
     }
 
-    const key = JSON.stringify([accessor.getName(), accessor.getCount(), accessor.getType(), accessor.getComponentType(), accessor.getNormalized(), accessor.getSparse()]);
+    const key = JSON.stringify([
+        keepUniqueNames ? accessor.getName() : null,
+        accessor.getCount(),
+        accessor.getType(),
+        accessor.getComponentType(),
+        accessor.getNormalized(),
+        accessor.getSparse(),
+    ]);
     let group = groups.get(key);
     if (!group) {
         group = new Set<Accessor>();
@@ -132,39 +150,13 @@ function FindDuplicateAccessors(groups: Map<string, Set<Accessor>>[]): Map<Acces
     return duplicates;
 }
 
-function ReplaceDuplicateAccessors(document: Document, duplicates: Map<Accessor, Accessor>): void {
-    for (const mesh of document.getRoot().listMeshes()) {
-        for (const primitive of mesh.listPrimitives()) {
-            for (const accessor of primitive.listAttributes()) {
-                const replacement = duplicates.get(accessor);
-                if (replacement) {
-                    primitive.swap(accessor, replacement);
-                }
-            }
-            const indices = primitive.getIndices();
-            const replacement = indices && duplicates.get(indices);
-            if (indices && replacement) {
-                primitive.swap(indices, replacement);
+function ReplaceDuplicateAccessors(duplicates: Map<Accessor, Accessor>): void {
+    for (const [accessor, replacement] of duplicates) {
+        for (const parent of accessor.listParents()) {
+            if (parent.propertyType !== PropertyType.ROOT) {
+                parent.swap(accessor, replacement);
             }
         }
-    }
-
-    for (const animation of document.getRoot().listAnimations()) {
-        for (const sampler of animation.listSamplers()) {
-            const input = sampler.getInput();
-            const inputReplacement = input && duplicates.get(input);
-            if (input && inputReplacement) {
-                sampler.swap(input, inputReplacement);
-            }
-            const output = sampler.getOutput();
-            const outputReplacement = output && duplicates.get(output);
-            if (output && outputReplacement) {
-                sampler.swap(output, outputReplacement);
-            }
-        }
-    }
-
-    for (const accessor of duplicates.keys()) {
         accessor.dispose();
     }
 }

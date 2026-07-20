@@ -1,4 +1,4 @@
-import { Document, WebIO } from "@gltf-transform/core";
+import { type Accessor, Document, type Node, WebIO } from "@gltf-transform/core";
 import { ALL_EXTENSIONS } from "@gltf-transform/extensions";
 import { describe, expect, it, vi } from "vitest";
 
@@ -124,6 +124,114 @@ async function BuildNamedDuplicateAccessorsAsync(firstName: string, secondName: 
     input.output.connectTo(deduplicate.input);
     deduplicate.output.connectTo(output.input);
     return await IO.readBinary(await asset.buildAsync());
+}
+
+async function CreateAccessorRolesGlbAsync(firstName: string, secondName: string): Promise<Uint8Array> {
+    const document = new Document();
+    const buffer = document.createBuffer();
+    const joint = document.createNode("joint");
+    const createSkinnedNode = (accessorName: string, nodeName: string) => {
+        const positions = document
+            .createAccessor(accessorName)
+            .setType("VEC3")
+            .setArray(new Float32Array([0, 0, 0, 1, 0, 0, 0, 1, 0]))
+            .setBuffer(buffer);
+        const indices = document
+            .createAccessor(accessorName)
+            .setType("SCALAR")
+            .setArray(new Uint16Array([0, 1, 2]))
+            .setBuffer(buffer);
+        const targetPositions = document
+            .createAccessor(accessorName)
+            .setType("VEC3")
+            .setArray(new Float32Array([0, 0.25, 0, 0, 0, 0, 0, 0, 0]))
+            .setBuffer(buffer);
+        const primitive = document
+            .createPrimitive()
+            .setAttribute("POSITION", positions)
+            .setIndices(indices)
+            .addTarget(document.createPrimitiveTarget().setAttribute("POSITION", targetPositions));
+        const inverseBindMatrices = document
+            .createAccessor(accessorName)
+            .setType("MAT4")
+            .setArray(new Float32Array([1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1]))
+            .setBuffer(buffer);
+        const skin = document.createSkin(accessorName).setInverseBindMatrices(inverseBindMatrices).addJoint(joint);
+        return document.createNode(nodeName).setMesh(document.createMesh().addPrimitive(primitive)).setSkin(skin);
+    };
+    const firstNode = createSkinnedNode(firstName, "first-node");
+    const secondNode = createSkinnedNode(secondName, "second-node");
+    document.createScene().addChild(joint).addChild(firstNode).addChild(secondNode);
+
+    const animation = document.createAnimation();
+    const addAnimationChannel = (accessorName: string, node: Node) => {
+        const input = document
+            .createAccessor(accessorName)
+            .setType("SCALAR")
+            .setArray(new Float32Array([0, 1]))
+            .setBuffer(buffer);
+        const output = document
+            .createAccessor(accessorName)
+            .setType("VEC3")
+            .setArray(new Float32Array([0, 0, 0, 1, 0, 0]))
+            .setBuffer(buffer);
+        const sampler = document.createAnimationSampler().setInput(input).setOutput(output);
+        animation.addSampler(sampler).addChannel(document.createAnimationChannel().setSampler(sampler).setTargetNode(node).setTargetPath("translation"));
+    };
+    addAnimationChannel(firstName, firstNode);
+    addAnimationChannel(secondName, secondNode);
+
+    return await IO.writeBinary(document);
+}
+
+async function BuildAccessorRolesAsync(firstName: string, secondName: string, keepUniqueNames: boolean): Promise<Document> {
+    const asset = new NodeAsset("all-accessor-roles");
+    const input = new ImportGLTFAggregateBlock("Import glTF", asset);
+    input.data = await CreateAccessorRolesGlbAsync(firstName, secondName);
+    input.source = "all-accessor-roles.glb";
+    const deduplicate = new DeduplicateDataBlock("Deduplicate Data", asset);
+    deduplicate.keepUniqueNames = keepUniqueNames;
+    const output = new ExportGLTFAggregateBlock("Export glTF", asset);
+    input.output.connectTo(deduplicate.input);
+    deduplicate.output.connectTo(output.input);
+    return await IO.readBinary(await asset.buildAsync());
+}
+
+function GetAccessorRolePairs(document: Document): { role: string; accessors: [Accessor | null, Accessor | null] }[] {
+    const primitives = document
+        .getRoot()
+        .listMeshes()
+        .map((mesh) => mesh.listPrimitives()[0]);
+    const samplers = document.getRoot().listAnimations()[0].listSamplers();
+    const skinnedNodes = document
+        .getRoot()
+        .listNodes()
+        .filter((node) => node.getSkin());
+    return [
+        { role: "primitive attributes", accessors: [primitives[0].getAttribute("POSITION"), primitives[1].getAttribute("POSITION")] },
+        { role: "primitive indices", accessors: [primitives[0].getIndices(), primitives[1].getIndices()] },
+        {
+            role: "morph targets",
+            accessors: [primitives[0].listTargets()[0].getAttribute("POSITION"), primitives[1].listTargets()[0].getAttribute("POSITION")],
+        },
+        { role: "animation inputs", accessors: [samplers[0].getInput(), samplers[1].getInput()] },
+        { role: "animation outputs", accessors: [samplers[0].getOutput(), samplers[1].getOutput()] },
+        {
+            role: "skin inverse-bind matrices",
+            accessors: [skinnedNodes[0].getSkin()?.getInverseBindMatrices() ?? null, skinnedNodes[1].getSkin()?.getInverseBindMatrices() ?? null],
+        },
+    ];
+}
+
+function ExpectAccessorRolePairs(document: Document, deduplicated: boolean): void {
+    for (const { role, accessors } of GetAccessorRolePairs(document)) {
+        expect(accessors[0], `${role} should exist`).not.toBeNull();
+        if (deduplicated) {
+            expect(accessors[0], `${role} should be deduplicated`).toBe(accessors[1]);
+        } else {
+            expect(accessors[0], `${role} should remain separate`).not.toBe(accessors[1]);
+        }
+    }
 }
 
 async function CreateDuplicateResourcesGlbAsync(): Promise<Uint8Array> {
@@ -274,6 +382,74 @@ describe("Deduplicate Resources", () => {
     ])("deduplicates $caseName accessors when keep unique names is enabled", async ({ firstName, secondName }) => {
         const document = await BuildNamedDuplicateAccessorsAsync(firstName, secondName, true);
         expect(document.getRoot().listAccessors()).toHaveLength(1);
+    });
+
+    it("deduplicates same-name morph-target accessors when keep unique names is enabled", async () => {
+        const document = await BuildAccessorRolesAsync("shared", "shared", true);
+        const targetAccessors = document
+            .getRoot()
+            .listMeshes()
+            .map((mesh) => mesh.listPrimitives()[0].listTargets()[0].getAttribute("POSITION"));
+
+        expect(targetAccessors[0]).toBe(targetAccessors[1]);
+    });
+
+    it("deduplicates morph-target accessors regardless of distinct names when keep unique names is disabled", async () => {
+        const document = await BuildAccessorRolesAsync("first", "second", false);
+        const targetAccessors = document
+            .getRoot()
+            .listMeshes()
+            .map((mesh) => mesh.listPrimitives()[0].listTargets()[0].getAttribute("POSITION"));
+
+        expect(targetAccessors[0]).toBe(targetAccessors[1]);
+    });
+
+    it("deduplicates same-name inverse-bind accessors before equivalent skins when keep unique names is enabled", async () => {
+        const document = await BuildAccessorRolesAsync("shared", "shared", true);
+        const skins = document.getRoot().listSkins();
+
+        expect(skins).toHaveLength(1);
+        expect(
+            document
+                .getRoot()
+                .listAccessors()
+                .filter((accessor) => accessor.getType() === "MAT4")
+        ).toHaveLength(1);
+    });
+
+    it("preserves distinctly named equivalent accessors and skins in every role when keep unique names is enabled", async () => {
+        const document = await BuildAccessorRolesAsync("first", "second", true);
+        const skinnedNodes = document
+            .getRoot()
+            .listNodes()
+            .filter((node) => node.getSkin());
+
+        ExpectAccessorRolePairs(document, false);
+        expect(skinnedNodes[0].getSkin()).not.toBe(skinnedNodes[1].getSkin());
+    });
+
+    it("deduplicates same-name and unnamed equivalent accessors and skins in every role when keep unique names is enabled", async () => {
+        for (const name of ["shared", ""]) {
+            const document = await BuildAccessorRolesAsync(name, name, true);
+            const skinnedNodes = document
+                .getRoot()
+                .listNodes()
+                .filter((node) => node.getSkin());
+
+            ExpectAccessorRolePairs(document, true);
+            expect(skinnedNodes[0].getSkin()).toBe(skinnedNodes[1].getSkin());
+        }
+    });
+
+    it("deduplicates distinctly named equivalent accessors and skins in every role when keep unique names is disabled", async () => {
+        const document = await BuildAccessorRolesAsync("first", "second", false);
+        const skinnedNodes = document
+            .getRoot()
+            .listNodes()
+            .filter((node) => node.getSkin());
+
+        ExpectAccessorRolePairs(document, true);
+        expect(skinnedNodes[0].getSkin()).toBe(skinnedNodes[1].getSkin());
     });
 
     it.each([
