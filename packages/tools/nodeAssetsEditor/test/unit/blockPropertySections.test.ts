@@ -3,6 +3,7 @@ import { describe, expect, it } from "vitest";
 import { type IGraphNode } from "../../src/nodeGraph/graphModel";
 import { type IPropertySection, type PropertyDescriptor } from "../../src/nodeGraph/propertyModel";
 import { NodeAssetGraphController } from "../../src/nodeAssets/nodeAssetGraphController";
+import { GetAllBlockDescriptors } from "../../src/nodeAssets/blockCatalog";
 
 function FindNode(controller: NodeAssetGraphController, title: string): IGraphNode {
     const node = controller.state.nodes.find((candidate) => candidate.title === title);
@@ -86,6 +87,51 @@ describe("block property sections (unified descriptor path)", () => {
             FindProperty(controller, ktx2Node, "Generate mipmaps", "switch").onChange(!initial);
 
             expect(FindProperty(controller, ktx2Node, "Generate mipmaps", "switch").value).toBe(!initial);
+        } finally {
+            controller.dispose();
+        }
+    });
+
+    it("attributes the aggregate's four forwarded Keep unique names controls", () => {
+        const controller = new NodeAssetGraphController();
+        try {
+            const aggregate = AddPaletteNode(controller, "deduplicate-resources");
+            const sections = controller.buildPropertySections(aggregate);
+
+            expect(sections.map((section) => section.title)).toEqual(["GENERAL", "DEDUPLICATE MATERIALS", "DEDUPLICATE TEXTURES", "REUSE IDENTICAL MESHES", "DEDUPLICATE DATA"]);
+            for (const section of sections.slice(1)) {
+                expect(section.properties).toMatchObject([{ kind: "switch", label: "Keep unique names", value: false }]);
+            }
+
+            const materialSwitch = sections[1].properties[0];
+            if (materialSwitch.kind !== "switch") {
+                throw new Error("Expected the material property to be a switch.");
+            }
+            materialSwitch.onChange(true);
+            const saved = JSON.parse(controller.serialize()) as {
+                graph: { blocks: Array<{ customType: string; subgraph?: { blocks: Array<{ keepUniqueNames?: boolean }> } }> };
+            };
+            const serializedAggregate = saved.graph.blocks.find((block) => block.customType === "DeduplicateResourcesBlock");
+            expect(serializedAggregate?.subgraph?.blocks[0].keepUniqueNames).toBe(true);
+        } finally {
+            controller.dispose();
+        }
+    });
+
+    it("marks only the four semantic primitives as abstracted by Deduplicate Resources", () => {
+        const abstracted = GetAllBlockDescriptors().filter((descriptor) => descriptor.abstractedBy !== undefined);
+        const controller = new NodeAssetGraphController();
+        try {
+            const visibleLabels = controller.paletteCategories.flatMap((category) => category.items.map((item) => item.label));
+
+            expect(abstracted.map((descriptor) => [descriptor.label, descriptor.abstractedBy])).toEqual([
+                ["Deduplicate Materials", "deduplicate-resources"],
+                ["Deduplicate Textures", "deduplicate-resources"],
+                ["Reuse Identical Meshes", "deduplicate-resources"],
+                ["Deduplicate Data", "deduplicate-resources"],
+            ]);
+            expect(visibleLabels).toContain("Deduplicate Resources");
+            expect(visibleLabels).not.toEqual(expect.arrayContaining(abstracted.map((descriptor) => descriptor.label)));
         } finally {
             controller.dispose();
         }

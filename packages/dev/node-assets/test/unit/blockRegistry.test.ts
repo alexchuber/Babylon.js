@@ -12,6 +12,10 @@ import {
     CompositeImageBlock,
     ConvertImageFormatBlock,
     DecomposeGLTFMaterialBlock,
+    DeduplicateDataBlock,
+    DeduplicateMaterialsBlock,
+    DeduplicateResourcesBlock,
+    DeduplicateTexturesBlock,
     DedupBlock,
     DracoCompressionBlock,
     EvaluateNodeGeometryBlock,
@@ -56,6 +60,7 @@ import {
     WeldBlock,
     WriteGLTFBlock,
     ReadGLTFBlock,
+    ReuseIdenticalMeshesBlock,
     CustomAggregateBlock,
     // eslint-disable-next-line import/no-internal-modules
 } from "../../src/index";
@@ -172,6 +177,11 @@ describe("block self-registration", () => {
                     KTX2CompressionBlock.ClassName,
                     WeldBlock.ClassName,
                     DedupBlock.ClassName,
+                    DeduplicateMaterialsBlock.ClassName,
+                    DeduplicateTexturesBlock.ClassName,
+                    ReuseIdenticalMeshesBlock.ClassName,
+                    DeduplicateDataBlock.ClassName,
+                    DeduplicateResourcesBlock.ClassName,
                     PruneBlock.ClassName,
                     QuantizeBlock.ClassName,
                     SimplifyBlock.ClassName,
@@ -218,7 +228,7 @@ describe("block self-registration", () => {
                     ExportGLTFAggregateBlock.ClassName,
                 ])
             );
-            expect(registeredClassNames).toHaveLength(52);
+            expect(registeredClassNames).toHaveLength(57);
         });
 
         it.each(registeredClassNames)("round-trips %s through serialize/Parse", (className) => {

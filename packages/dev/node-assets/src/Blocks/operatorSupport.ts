@@ -20,9 +20,29 @@ export async function ApplyOperatorTransformsAsync(
     block: NodeAssetBlock & { readonly input: NodeAssetConnectionPoint; readonly output: NodeAssetConnectionPoint },
     ...transforms: Transform[]
 ): Promise<void> {
+    await ApplyGltfDocumentTransformsAsync(block, "operator", transforms);
+}
+
+/**
+ * Applies gltf-transform operations to the Universal payload carried by a Universal operator block.
+ * @param block The Universal operator block.
+ * @param transforms The gltf-transform operations to apply, in order.
+ */
+export async function ApplyUniversalOperatorTransformsAsync(
+    block: NodeAssetBlock & { readonly input: NodeAssetConnectionPoint; readonly output: NodeAssetConnectionPoint },
+    ...transforms: Transform[]
+): Promise<void> {
+    await ApplyGltfDocumentTransformsAsync(block, "Universal operator", transforms);
+}
+
+async function ApplyGltfDocumentTransformsAsync(
+    block: NodeAssetBlock & { readonly input: NodeAssetConnectionPoint; readonly output: NodeAssetConnectionPoint },
+    blockKind: string,
+    transforms: Transform[]
+): Promise<void> {
     const { input, output } = block;
     if (input.value == null) {
-        throw new Error(`The "${block.name}" operator block has no input document.`);
+        throw new Error(`The "${block.name}" ${blockKind} block has no input document.`);
     }
     const asset = GetGltfAsset(input.value, input.name);
 
