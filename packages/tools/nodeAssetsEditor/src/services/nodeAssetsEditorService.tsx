@@ -36,8 +36,9 @@ import { GLTFValidationController } from "../nodeAssets/gltfValidationController
 import { GLTFValidationPane } from "../nodeAssets/components/GLTFValidationPane";
 import { DownloadBlob, PromptForFileAsync } from "../nodeAssets/browserFiles";
 import { type INodeAssetLibraryEntry, type INodeAssetLibraryStorage, NodeAssetLibrary } from "../nodeAssets/nodeAssetLibrary";
+import { type IPalettePreferenceStorage, PalettePreferences } from "../nodeAssets/palettePreferences";
 
-const BrowserNodeAssetLibraryStorage: INodeAssetLibraryStorage = {
+const BrowserNodeAssetStorage: INodeAssetLibraryStorage & IPalettePreferenceStorage = {
     getItem: (key) => window.localStorage.getItem(key),
     setItem: (key, value) => window.localStorage.setItem(key, value),
 };
@@ -90,7 +91,8 @@ export const NodeAssetsEditorServiceDefinition: ServiceDefinition<[], [IShellSer
     factory: (shellService, toastService) => {
         const controller = new NodeAssetGraphController();
         const preview = new PreviewController();
-        const library = new NodeAssetLibrary({ builtInEntries: CreateBuiltInNodeAssetLibraryEntries(), storage: BrowserNodeAssetLibraryStorage });
+        const library = new NodeAssetLibrary({ builtInEntries: CreateBuiltInNodeAssetLibraryEntries(), storage: BrowserNodeAssetStorage });
+        const palettePreferences = new PalettePreferences(BrowserNodeAssetStorage);
         const validation = new GLTFValidationController();
         const state = controller.state;
         const view = new CanvasViewController();
@@ -99,7 +101,7 @@ export const NodeAssetsEditorServiceDefinition: ServiceDefinition<[], [IShellSer
         const context: EditorContextValue = {
             state,
             diagnostics: controller.diagnostics,
-            paletteCategories: controller.paletteCategories,
+            getPaletteCategories: (options) => controller.getPaletteCategories(options),
             buildPropertySections: (node) => controller.buildPropertySections(node),
             view,
             createNodeFromPaletteItem: (paletteItemId, position) => controller.createNodeFromPaletteItem(paletteItemId, position),
@@ -157,7 +159,7 @@ export const NodeAssetsEditorServiceDefinition: ServiceDefinition<[], [IShellSer
                 horizontalLocation: "left",
                 verticalLocation: "top",
                 teachingMoment: false,
-                content: () => <PaletteView context={context} />,
+                content: () => <PaletteView context={context} preferences={palettePreferences} />,
             }),
             shellService.addSidePane({
                 key: "Preview",

@@ -67,6 +67,30 @@ function GetWireTitles(controller: NodeAssetGraphController): readonly string[] 
 }
 
 describe("NodeAssetGraphController", () => {
+    it("projects palette preferences without changing existing or expanded aggregate nodes", () => {
+        const controller = new NodeAssetGraphController();
+        try {
+            const exportNode = FindNode(controller, "Export glTF");
+            controller.setAggregateExpanded(exportNode.id, true);
+            const nodeIdsBefore = controller.state.nodes.map((node) => node.id);
+            const wireIdsBefore = controller.state.wires.map((wire) => wire.id);
+            const serializedBefore = controller.serialize();
+
+            expect(FindNode(controller, "Universal to glTF")).toBeDefined();
+            expect(FindNode(controller, "Write glTF")).toBeDefined();
+            expect(controller.getPaletteCategories({ showPrimitives: false }).flatMap((category) => category.items).some((item) => item.id === "write-gltf")).toBe(false);
+            expect(controller.getPaletteCategories({ showPrimitives: true }).flatMap((category) => category.items).some((item) => item.id === "write-gltf")).toBe(true);
+
+            expect(controller.state.nodes.map((node) => node.id)).toEqual(nodeIdsBefore);
+            expect(controller.state.wires.map((wire) => wire.id)).toEqual(wireIdsBefore);
+            expect(controller.serialize()).toBe(serializedBefore);
+            expect(FindNode(controller, "Universal to glTF")).toBeDefined();
+            expect(FindNode(controller, "Write glTF")).toBeDefined();
+        } finally {
+            controller.dispose();
+        }
+    });
+
     it("rejects incompatible NodeAsset port kinds before adding a wire", () => {
         const controller = new NodeAssetGraphController();
         try {
@@ -509,7 +533,7 @@ describe("NodeAssetGraphController", () => {
     it("groups MergeScenes under a Composition palette category", () => {
         const controller = new NodeAssetGraphController();
         try {
-            const composition = controller.paletteCategories.find((category) => category.label === "Composition");
+            const composition = controller.getPaletteCategories().find((category) => category.label === "Composition");
             expect(composition).toBeDefined();
             expect(composition!.items.map((item) => item.id)).toContain("merge-scenes");
         } finally {
@@ -520,7 +544,7 @@ describe("NodeAssetGraphController", () => {
     it("orders the Composition palette category immediately before Selectors", () => {
         const controller = new NodeAssetGraphController();
         try {
-            const labels = controller.paletteCategories.map((category) => category.label);
+            const labels = controller.getPaletteCategories().map((category) => category.label);
             const compositionIndex = labels.indexOf("Composition");
             const selectorsIndex = labels.indexOf("Selectors");
             expect(compositionIndex).toBeGreaterThanOrEqual(0);
@@ -533,7 +557,7 @@ describe("NodeAssetGraphController", () => {
     it("provides discovery metadata for every built-in palette item", () => {
         const controller = new NodeAssetGraphController();
         try {
-            const items = controller.paletteCategories.flatMap((category) => category.items);
+            const items = controller.getPaletteCategories().flatMap((category) => category.items);
             expect(items.length).toBeGreaterThan(0);
             expect(items.filter((item) => !item.description?.trim()).map((item) => item.label)).toEqual([]);
             expect(items.filter((item) => !item.keywords?.length).map((item) => item.label)).toEqual([]);
@@ -545,7 +569,7 @@ describe("NodeAssetGraphController", () => {
     it("finds every cleanup-oriented optimization block by intent", () => {
         const controller = new NodeAssetGraphController();
         try {
-            const matches = controller.paletteCategories.flatMap((category) =>
+            const matches = controller.getPaletteCategories().flatMap((category) =>
                 category.items.filter((item) => PaletteItemMatchesFilter(item, category.label, "cleanup")).map((item) => item.id)
             );
 

@@ -483,6 +483,40 @@ test.describe("Node Assets Editor — Energy orb showcase", () => {
         }
     });
 
+    test("persists Show primitives without changing canvas or expanded aggregate nodes", async ({ page }) => {
+        const editor = new NodeAssetsEditorPage(page);
+        await editor.goto();
+
+        const showPrimitives = page.getByRole("checkbox", { name: "Show primitives" });
+        const search = page.getByPlaceholder("Search palette");
+        const nodeGeometryCategory = page.getByRole("button", { name: /^Node Geometry \(/ });
+        const exportNode = editor.nodeByTitle("Export glTF");
+
+        await expect(showPrimitives).not.toBeChecked();
+        await expect(nodeGeometryCategory).toHaveCount(0);
+        await search.fill("read babylon");
+        await expect(page.getByTitle("Read Babylon", { exact: true })).toHaveCount(0);
+
+        await exportNode.getByRole("button", { name: "Expand aggregate" }).click();
+        await expect(editor.nodeByTitle("Write glTF")).toBeVisible();
+
+        await showPrimitives.check();
+        await expect(page.getByTitle("Read Babylon", { exact: true })).toBeVisible();
+        await search.clear();
+        await expect(nodeGeometryCategory).toBeVisible();
+        await editor.dropPaletteItem("Read Babylon", { x: 0.45, y: 0.75 });
+
+        await showPrimitives.uncheck();
+        await expect(nodeGeometryCategory).toHaveCount(0);
+        await expect(page.getByTitle("Read Babylon", { exact: true })).toHaveCount(0);
+        await expect(editor.nodeByTitle("Read Babylon")).toBeVisible();
+        await expect(editor.nodeByTitle("Write glTF")).toBeVisible();
+
+        await showPrimitives.check();
+        await page.reload({ waitUntil: "load" });
+        await expect(showPrimitives).toBeChecked();
+    });
+
     test("extends node selection with the platform multi-select modifier", async ({ page }) => {
         const editor = new NodeAssetsEditorPage(page);
         await editor.goto();

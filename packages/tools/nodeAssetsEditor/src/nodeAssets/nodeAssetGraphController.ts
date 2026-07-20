@@ -28,7 +28,7 @@ import { type NodeAssetBlock } from "node-assets/blockFoundation/nodeAssetBlock"
 import { GraphEditorState } from "../nodeGraph/editorState";
 import { GraphNodeDiagnostics } from "../nodeGraph/nodeDiagnostics";
 import { type IGraphFrame, type IGraphNode, type IGraphSnapshot, type IGraphWire, type Vec2 } from "../nodeGraph/graphModel";
-import { type IPaletteCategory } from "../nodeGraph/paletteModel";
+import { type IPaletteCategory, type IPaletteProjectionOptions } from "../nodeGraph/paletteModel";
 import { type IPropertySection } from "../nodeGraph/propertyModel";
 
 // Import the block descriptor modules for their registration side effects, so the palette and
@@ -289,9 +289,6 @@ export class NodeAssetGraphController {
     /** The visual editor state the framework renders and mutates. */
     public readonly state: GraphEditorState;
 
-    /** The palette contents shown in the left pane, derived from the block catalog. */
-    public readonly paletteCategories: readonly IPaletteCategory[];
-
     /** Ephemeral build diagnostics keyed by visual node id. */
     public readonly diagnostics = new GraphNodeDiagnostics();
 
@@ -400,8 +397,6 @@ export class NodeAssetGraphController {
             },
         });
 
-        this.paletteCategories = BuildPaletteCategories(GetAllBlockDescriptors());
-
         // Subscribe only after seeding so the reconcile sees consistent correspondence and state.
         this._reconciler.reconcile(this.state);
         this._buildRelevantSignature = this._createBuildRelevantSignature();
@@ -410,6 +405,15 @@ export class NodeAssetGraphController {
                 this._reconcileAndNotifyBuildRelevantChange();
             }
         });
+    }
+
+    /**
+     * Projects the registered block catalog into the current palette discovery view.
+     * @param options - Search and primitive visibility preferences.
+     * @returns Non-empty categories containing only matching discoverable descriptors.
+     */
+    public getPaletteCategories(options?: IPaletteProjectionOptions): readonly IPaletteCategory[] {
+        return BuildPaletteCategories(GetAllBlockDescriptors(), options);
     }
 
     /**

@@ -5,8 +5,15 @@ import { type IBlockDescriptor } from "../../src/nodeAssets/blockCatalog";
 import { PaletteItemMatchesFilter } from "../../src/nodeGraph/paletteModel";
 
 /** Builds a descriptor stub carrying only the fields the palette builder reads. */
-function Descriptor(paletteItemId: string, label: string, category?: string, description?: string, keywords?: readonly string[]): IBlockDescriptor {
-    return { paletteItemId, label, category, description, keywords } as unknown as IBlockDescriptor;
+function Descriptor(
+    paletteItemId: string,
+    label: string,
+    category?: string,
+    description?: string,
+    keywords?: readonly string[],
+    metadata?: Pick<IBlockDescriptor, "aggregatePaletteItemId" | "isPaletteVisible">
+): IBlockDescriptor {
+    return { paletteItemId, label, category, description, keywords, ...metadata } as unknown as IBlockDescriptor;
 }
 
 describe("BuildPaletteCategories", () => {
@@ -47,6 +54,49 @@ describe("BuildPaletteCategories", () => {
             description: "Reduce mesh complexity.",
             keywords: ["decimate", "LOD"],
         });
+    });
+
+    it("hides aggregate primitives by default and reveals only authorable primitives on request", () => {
+        const descriptors = [
+            Descriptor("import-gltf", "Import glTF", "Inputs"),
+            Descriptor("read-gltf", "Read glTF", "Inputs", undefined, undefined, { aggregatePaletteItemId: "import-gltf" }),
+            Descriptor("legacy-import-gltf", "Legacy Import glTF", "Inputs", undefined, undefined, {
+                aggregatePaletteItemId: undefined,
+                isPaletteVisible: false,
+            }),
+        ];
+
+        expect(BuildPaletteCategories(descriptors).flatMap((category) => category.items.map((item) => item.label))).toEqual(["Import glTF"]);
+        expect(BuildPaletteCategories(descriptors, { showPrimitives: true }).flatMap((category) => category.items.map((item) => item.label))).toEqual([
+            "Import glTF",
+            "Read glTF",
+        ]);
+    });
+
+    it("uses the same primitive visibility for search and omits empty primitive-only categories", () => {
+        const descriptors = [
+            Descriptor("import-babylon", "Import Babylon", "Inputs"),
+            Descriptor("babylon-to-universal", "Babylon to Universal", "Babylon", "Cross into Universal.", ["convert"], {
+                aggregatePaletteItemId: "import-babylon",
+                isPaletteVisible: undefined,
+            }),
+        ];
+
+        expect(BuildPaletteCategories(descriptors).map((category) => category.label)).toEqual(["Inputs"]);
+        expect(BuildPaletteCategories(descriptors, { filter: "convert" })).toEqual([]);
+        expect(BuildPaletteCategories(descriptors, { filter: "convert", showPrimitives: true })).toEqual([
+            {
+                label: "Babylon",
+                items: [
+                    {
+                        id: "babylon-to-universal",
+                        label: "Babylon to Universal",
+                        description: "Cross into Universal.",
+                        keywords: ["convert"],
+                    },
+                ],
+            },
+        ]);
     });
 
     it.each([

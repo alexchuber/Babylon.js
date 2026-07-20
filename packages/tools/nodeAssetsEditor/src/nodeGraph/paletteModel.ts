@@ -28,6 +28,19 @@ export interface IPaletteCategory {
     readonly items: readonly IPaletteItem[];
 }
 
+/** Options that project the host catalog into the palette's visible discovery surface. */
+export interface IPaletteProjectionOptions {
+    /** User-entered search text. */
+    readonly filter?: string;
+    /** Whether primitives owned by aggregate palette entries are discoverable. */
+    readonly showPrimitives?: boolean;
+}
+
+/** Persistent discovery preferences consumed by the palette view. */
+export interface IPalettePreferences {
+    showPrimitives: boolean;
+}
+
 /**
  * Tests whether a palette item matches a user-entered search term.
  * @param item - Palette item to search.

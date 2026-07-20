@@ -45,7 +45,7 @@ describe("image operation descriptors", () => {
     it("groups the single-input image ops under the Image palette category", () => {
         const controller = new NodeAssetGraphController();
         try {
-            const image = controller.paletteCategories.find((category) => category.label === "Image");
+            const image = controller.getPaletteCategories().find((category) => category.label === "Image");
             expect(image).toBeDefined();
             expect(image!.items.map((item) => item.id)).toEqual(expect.arrayContaining(["resize-image", "convert-image-format", "flip-image"]));
         } finally {

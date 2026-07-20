@@ -29,7 +29,7 @@ describe("GraphNodeView diagnostics", () => {
         const editor: EditorContextValue = {
             state,
             diagnostics,
-            paletteCategories: [],
+            getPaletteCategories: () => [],
             buildPropertySections: () => [],
             view: new CanvasViewController(),
             createNodeFromPaletteItem: () => node,
@@ -69,7 +69,7 @@ describe("GraphNodeView diagnostics", () => {
         const context: EditorContextValue = {
             state,
             diagnostics,
-            paletteCategories: [],
+            getPaletteCategories: () => [],
             buildPropertySections: (selectedNode) => {
                 const diagnostic = diagnostics.get(selectedNode.id);
                 return diagnostic

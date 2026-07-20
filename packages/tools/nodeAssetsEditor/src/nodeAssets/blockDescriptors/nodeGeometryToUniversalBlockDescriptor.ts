@@ -9,6 +9,6 @@ RegisterBlockDescriptor({
     category: "Node Geometry",
     headerColor: TranscodersHeaderColor,
     className: NodeGeometryToUniversalBlock.ClassName,
-    isPaletteVisible: false,
+    aggregatePaletteItemId: "import-node-geometry",
     create: (nodeAsset) => ConfigureBlockForEditor(new NodeGeometryToUniversalBlock("Node Geometry to Universal", nodeAsset)),
 });

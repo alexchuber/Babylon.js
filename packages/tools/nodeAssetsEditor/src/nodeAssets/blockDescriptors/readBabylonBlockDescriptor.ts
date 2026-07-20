@@ -89,7 +89,7 @@ RegisterBlockDescriptor({
     category: "Inputs",
     headerColor: BabylonHeaderColor,
     className: ReadBabylonBlock.ClassName,
-    isPaletteVisible: false,
+    aggregatePaletteItemId: "import-babylon",
     create: (nodeAsset) => ConfigureBlockForEditor(new ReadBabylonBlock("Read Babylon", nodeAsset)),
     getPropertySection: (block, context) => CreateReadBabylonPropertySection(block as ReadBabylonBlock, context),
 });

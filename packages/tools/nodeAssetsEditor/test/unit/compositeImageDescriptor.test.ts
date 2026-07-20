@@ -45,7 +45,7 @@ describe("composite image descriptor", () => {
     it("groups the Composite Image op under the Image palette category", () => {
         const controller = new NodeAssetGraphController();
         try {
-            const image = controller.paletteCategories.find((category) => category.label === "Image");
+            const image = controller.getPaletteCategories().find((category) => category.label === "Image");
             expect(image).toBeDefined();
             expect(image!.items.map((item) => item.id)).toEqual(expect.arrayContaining(["composite-image"]));
         } finally {

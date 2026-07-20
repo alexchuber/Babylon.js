@@ -9,7 +9,7 @@
 import { createContext, useContext } from "react";
 
 import { type IGraphNode } from "./graphModel";
-import { type IPaletteCategory } from "./paletteModel";
+import { type IPaletteCategory, type IPaletteProjectionOptions } from "./paletteModel";
 import { type IPropertySection } from "./propertyModel";
 import { type GraphEditorState } from "./editorState";
 import { type GraphNodeDiagnostics } from "./nodeDiagnostics";
@@ -43,8 +43,8 @@ export type EditorContextValue = {
     readonly state: GraphEditorState;
     /** Optional ephemeral diagnostics rendered on nodes without entering graph snapshots. */
     readonly diagnostics?: GraphNodeDiagnostics;
-    /** The categorized palette contents shown in the left pane. */
-    readonly paletteCategories: readonly IPaletteCategory[];
+    /** Projects the host catalog into the categorized palette discovery surface. */
+    readonly getPaletteCategories: (options?: IPaletteProjectionOptions) => readonly IPaletteCategory[];
     /** Builds the property sections shown for a selected node. */
     readonly buildPropertySections: (node: IGraphNode) => readonly IPropertySection[];
     /** Bridges imperative canvas view commands (e.g. zoom-to-fit) to the toolbar and panes. */

@@ -10,6 +10,6 @@ RegisterBlockDescriptor({
     category: "Babylon",
     headerColor: BabylonHeaderColor,
     className: BabylonToUniversalBlock.ClassName,
-    isPaletteVisible: false,
+    aggregatePaletteItemId: "import-babylon",
     create: (nodeAsset) => new BabylonToUniversalBlock("Babylon to Universal", nodeAsset),
 });

@@ -1,10 +1,10 @@
 import { type DragEvent, type FunctionComponent, useEffect, useMemo, useState } from "react";
 
-import { Accordion, AccordionHeader, AccordionItem, AccordionPanel, Body1, Caption1, makeStyles, tokens } from "@fluentui/react-components";
+import { Accordion, AccordionHeader, AccordionItem, AccordionPanel, Body1, Caption1, Checkbox, makeStyles, tokens } from "@fluentui/react-components";
 import { SearchBar } from "shared-ui-components/fluent/primitives/searchBar";
 
 import { type EditorContextValue } from "../editorContext";
-import { type IPaletteCategory, type IPaletteItem, PaletteDragFormat, PaletteItemMatchesFilter } from "../paletteModel";
+import { type IPaletteCategory, type IPaletteItem, type IPalettePreferences, PaletteDragFormat } from "../paletteModel";
 
 const useStyles = makeStyles({
     root: {
@@ -16,7 +16,10 @@ const useStyles = makeStyles({
         overflow: "hidden",
         padding: `${tokens.spacingVerticalM} ${tokens.spacingHorizontalM}`,
     },
-    search: {
+    header: {
+        display: "flex",
+        flexDirection: "column",
+        gap: tokens.spacingVerticalS,
         flexShrink: 0,
     },
     accordion: {
@@ -62,12 +65,6 @@ const useStyles = makeStyles({
     },
 });
 
-type FilteredPaletteCategory = {
-    readonly category: IPaletteCategory;
-    readonly items: readonly IPaletteItem[];
-    readonly value: string;
-};
-
 const GetCategoryValue = (category: IPaletteCategory, index: number) => `${index}:${category.label}`;
 
 /**
@@ -75,14 +72,15 @@ const GetCategoryValue = (category: IPaletteCategory, index: number) => `${index
  * @param props - Component props.
  * @returns The rendered palette pane.
  */
-export const PaletteView: FunctionComponent<{ context: EditorContextValue }> = (props) => {
-    const { context } = props;
+export const PaletteView: FunctionComponent<{ context: EditorContextValue; preferences: IPalettePreferences }> = (props) => {
+    const { context, preferences } = props;
     const classes = useStyles();
     const [filter, setFilter] = useState("");
-    const categoryValues = useMemo(() => context.paletteCategories.map(GetCategoryValue), [context.paletteCategories]);
+    const [showPrimitives, setShowPrimitives] = useState(() => preferences.showPrimitives);
+    const categories = useMemo(() => context.getPaletteCategories({ filter, showPrimitives }), [context, filter, showPrimitives]);
+    const categoryValues = useMemo(() => categories.map(GetCategoryValue), [categories]);
     const [openCategoryValues, setOpenCategoryValues] = useState<string[]>(categoryValues);
-    const normalizedFilter = filter.trim().toLowerCase();
-    const isFiltering = normalizedFilter.length > 0;
+    const isFiltering = filter.trim().length > 0;
 
     useEffect(() => {
         setOpenCategoryValues((previousOpenValues) => {
@@ -99,20 +97,7 @@ export const PaletteView: FunctionComponent<{ context: EditorContextValue }> = (
         });
     }, [categoryValues]);
 
-    const filteredCategories = useMemo<readonly FilteredPaletteCategory[]>(() => {
-        return context.paletteCategories
-            .map((category, index) => {
-                const items = isFiltering ? category.items.filter((item) => PaletteItemMatchesFilter(item, category.label, normalizedFilter)) : category.items;
-                return {
-                    category,
-                    items,
-                    value: GetCategoryValue(category, index),
-                };
-            })
-            .filter((category) => !isFiltering || category.items.length > 0);
-    }, [context.paletteCategories, isFiltering, normalizedFilter]);
-
-    const effectiveOpenCategoryValues = isFiltering ? filteredCategories.map((category) => category.value) : openCategoryValues;
+    const effectiveOpenCategoryValues = isFiltering ? categoryValues : openCategoryValues;
 
     const onDragStart = (event: DragEvent<HTMLDivElement>, item: IPaletteItem) => {
         event.dataTransfer.effectAllowed = "copy";
@@ -122,10 +107,19 @@ export const PaletteView: FunctionComponent<{ context: EditorContextValue }> = (
 
     return (
         <div className={classes.root}>
-            <div className={classes.search}>
+            <div className={classes.header}>
+                <Checkbox
+                    checked={showPrimitives}
+                    label="Show primitives"
+                    onChange={(_, data) => {
+                        const nextValue = data.checked === true;
+                        preferences.showPrimitives = nextValue;
+                        setShowPrimitives(nextValue);
+                    }}
+                />
                 <SearchBar onChange={setFilter} placeholder="Search palette" />
             </div>
-            {filteredCategories.length > 0 ? (
+            {categories.length > 0 ? (
                 <Accordion
                     className={classes.accordion}
                     collapsible
@@ -137,25 +131,34 @@ export const PaletteView: FunctionComponent<{ context: EditorContextValue }> = (
                         }
                     }}
                 >
-                    {filteredCategories.map(({ category, items, value }) => (
-                        <AccordionItem key={value} value={value}>
-                            <AccordionHeader>
-                                <Body1>
-                                    {category.label} ({items.length})
-                                </Body1>
-                            </AccordionHeader>
-                            <AccordionPanel>
-                                <div className={classes.panel}>
-                                    {items.map((item) => (
-                                        <div key={item.id} className={classes.row} draggable={true} title={item.label} onDragStart={(event) => onDragStart(event, item)}>
-                                            <Body1>{item.label}</Body1>
-                                            {item.description && <Caption1 className={classes.description}>{item.description}</Caption1>}
-                                        </div>
-                                    ))}
-                                </div>
-                            </AccordionPanel>
-                        </AccordionItem>
-                    ))}
+                    {categories.map((category, index) => {
+                        const value = GetCategoryValue(category, index);
+                        return (
+                            <AccordionItem key={value} value={value}>
+                                <AccordionHeader>
+                                    <Body1>
+                                        {category.label} ({category.items.length})
+                                    </Body1>
+                                </AccordionHeader>
+                                <AccordionPanel>
+                                    <div className={classes.panel}>
+                                        {category.items.map((item) => (
+                                            <div
+                                                key={item.id}
+                                                className={classes.row}
+                                                draggable={true}
+                                                title={item.label}
+                                                onDragStart={(event) => onDragStart(event, item)}
+                                            >
+                                                <Body1>{item.label}</Body1>
+                                                {item.description && <Caption1 className={classes.description}>{item.description}</Caption1>}
+                                            </div>
+                                        ))}
+                                    </div>
+                                </AccordionPanel>
+                            </AccordionItem>
+                        );
+                    })}
                 </Accordion>
             ) : (
                 <Caption1 className={classes.empty}>No palette items match the current search.</Caption1>

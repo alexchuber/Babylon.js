@@ -67,7 +67,7 @@ describe("block property sections (unified descriptor path)", () => {
             expect(FindProperty(controller, importNode, "Active source", "text").value).toBe("No source loaded");
             expect(FindProperty(controller, importNode, "Upload Node Geometry\u2026", "button")).toBeDefined();
 
-            const paletteLabels = controller.paletteCategories.flatMap((category) => category.items.map((item) => item.label));
+            const paletteLabels = controller.getPaletteCategories().flatMap((category) => category.items.map((item) => item.label));
             expect(paletteLabels).toContain("Import Node Geometry");
             expect(paletteLabels).not.toContain("Read Node Geometry");
             expect(paletteLabels).not.toContain("Node Geometry to Universal");
@@ -209,7 +209,7 @@ describe("block property sections (unified descriptor path)", () => {
     it("routes every palette block through one property path with a GENERAL section", () => {
         const controller = new NodeAssetGraphController();
         try {
-            for (const category of controller.paletteCategories) {
+            for (const category of controller.getPaletteCategories()) {
                 for (const item of category.items) {
                     const node = AddPaletteNode(controller, item.id);
                     const sections = controller.buildPropertySections(node);
