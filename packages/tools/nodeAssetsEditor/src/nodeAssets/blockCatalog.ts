@@ -113,10 +113,10 @@ export interface IBlockDescriptor {
     /** Whether this descriptor is discoverable in the palette. Defaults to true. */
     readonly isPaletteVisible?: boolean;
     /**
-     * Palette item id of the built-in aggregate that owns this primitive. Owned primitives remain
+     * Palette item id of the built-in aggregate that abstracts this primitive. Abstracted primitives remain
      * authorable but are discoverable only while Show primitives is enabled.
      */
-    readonly aggregatePaletteItemId?: string;
+    readonly abstractedBy?: string;
     /** Constructs the backing block, registering it with the given node asset. */
     readonly create: (nodeAsset: NodeAsset) => NodeAssetBlock;
     /**

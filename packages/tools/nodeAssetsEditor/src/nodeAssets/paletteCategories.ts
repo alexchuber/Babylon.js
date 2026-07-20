@@ -20,7 +20,7 @@ const DefaultPaletteCategory = "Blocks";
 export function BuildPaletteCategories(descriptors: readonly IBlockDescriptor[], options: IPaletteProjectionOptions = {}): readonly IPaletteCategory[] {
     const itemsByCategory = new Map<string, IPaletteItem[]>();
     for (const descriptor of descriptors) {
-        if (descriptor.isPaletteVisible === false || (!options.showPrimitives && descriptor.aggregatePaletteItemId !== undefined)) {
+        if (descriptor.isPaletteVisible === false || (!options.showPrimitives && descriptor.abstractedBy !== undefined)) {
             continue;
         }
         const label = descriptor.category ?? DefaultPaletteCategory;

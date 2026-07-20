@@ -41,7 +41,7 @@ RegisterBlockDescriptor({
     category: "glTF",
     headerColor: WriteHeaderColor,
     className: WriteGLTFBlock.ClassName,
-    aggregatePaletteItemId: "export-gltf",
+    abstractedBy: "export-gltf",
     create: (nodeAsset) => ConfigureBlockForEditor(new WriteGLTFBlock("Write glTF", nodeAsset)),
     getPropertySection: (block, context) => CreateWriteGLTFPropertySection(block as WriteGLTFBlock, context),
 });

@@ -13,6 +13,10 @@ import {
     CompositeImageBlock,
     ConvertImageFormatBlock,
     DecomposeGLTFMaterialBlock,
+    DeduplicateDataBlock,
+    DeduplicateMaterialsBlock,
+    DeduplicateResourcesBlock,
+    DeduplicateTexturesBlock,
     DedupBlock,
     DracoCompressionBlock,
     EvaluateNodeGeometryBlock,
@@ -73,6 +77,7 @@ import {
     ReadGLTFBlock,
     ReadNodeGeometryBlock,
     ReadBabylonBlock,
+    ReuseIdenticalMeshesBlock,
     CustomAggregateBlock,
     // eslint-disable-next-line import/no-internal-modules
 } from "../../src/index";
@@ -190,6 +195,11 @@ describe("block self-registration", () => {
                     WeldBlock.ClassName,
                     WeldVerticesBlock.ClassName,
                     DedupBlock.ClassName,
+                    DeduplicateMaterialsBlock.ClassName,
+                    DeduplicateTexturesBlock.ClassName,
+                    ReuseIdenticalMeshesBlock.ClassName,
+                    DeduplicateDataBlock.ClassName,
+                    DeduplicateResourcesBlock.ClassName,
                     PruneBlock.ClassName,
                     RemoveUnusedResourcesBlock.ClassName,
                     RemoveDegenerateGeometryBlock.ClassName,
@@ -252,7 +262,7 @@ describe("block self-registration", () => {
                     ImportBabylonAggregateBlock.ClassName,
                 ])
             );
-            expect(registeredClassNames).toHaveLength(69);
+            expect(registeredClassNames).toHaveLength(74);
         });
 
         it.each(registeredClassNames)("round-trips %s through serialize/Parse", (className) => {

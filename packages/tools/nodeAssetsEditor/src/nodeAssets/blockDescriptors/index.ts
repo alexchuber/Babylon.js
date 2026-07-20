@@ -20,6 +20,7 @@ import "./exportGLTFBlockDescriptor";
 import "./ktx2CompressionBlockDescriptor";
 import "./weldBlockDescriptor";
 import "./dedupBlockDescriptor";
+import "./deduplicateResourcesBlockDescriptor";
 import "./pruneBlockDescriptor";
 import "./weldVerticesBlockDescriptor";
 import "./removeUnusedResourcesBlockDescriptor";

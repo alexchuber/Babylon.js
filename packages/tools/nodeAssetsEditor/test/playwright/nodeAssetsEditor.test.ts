@@ -646,6 +646,69 @@ test.describe("Node Assets Editor — Universal glTF aggregates", () => {
         });
     });
 
+    test("builds with compact Deduplicate Resources and persists an independently reordered configured expansion", async ({ page }) => {
+        const editor = new NodeAssetsEditorPage(page);
+        await editor.goto();
+        await editor.waitForNextSuccessfulPreviewBuild();
+
+        await editor.dropPaletteItem("Deduplicate Resources", { x: 0.55, y: 0.2 });
+        await editor.connectPorts(editor.portOfNode("Import glTF", "out"), editor.portOfNode("Deduplicate Resources", "in"));
+        await editor.connectPorts(editor.portOfNode("Deduplicate Resources", "out"), editor.portOfNode("Universal to glTF", "in"));
+        await editor.waitForSuccessfulPreviewBuild();
+
+        await editor.selectNode("Deduplicate Resources");
+        await expect(page.getByRole("textbox").nth(1)).toHaveValue("DeduplicateResourcesBlock");
+        await expect(page.getByText("DEDUPLICATE MATERIALS", { exact: true })).toBeVisible();
+        await expect(page.getByText("DEDUPLICATE TEXTURES", { exact: true })).toBeVisible();
+        await expect(page.getByText("REUSE IDENTICAL MESHES", { exact: true })).toBeVisible();
+        await expect(page.getByText("DEDUPLICATE DATA", { exact: true })).toBeVisible();
+        await expect(page.getByText("Keep unique names", { exact: true })).toHaveCount(4);
+
+        await editor.nodeByTitle("Deduplicate Resources").getByRole("button", { name: "Expand aggregate" }).click();
+        await expect(page.locator('[data-testid="aggregate-frame"]').filter({ hasText: "Deduplicate Resources" })).toBeVisible();
+        await expect(editor.nodeByTitle("Deduplicate Materials")).toBeVisible();
+        await expect(editor.nodeByTitle("Deduplicate Textures")).toBeVisible();
+        await expect(editor.nodeByTitle("Reuse Identical Meshes")).toBeVisible();
+        await expect(editor.nodeByTitle("Deduplicate Data")).toBeVisible();
+
+        await page.locator('[data-testid="aggregate-frame"]').filter({ hasText: "Deduplicate Resources" }).getByRole("button", { name: "Collapse aggregate" }).click();
+        await expect(editor.nodeByTitle("Deduplicate Materials")).toHaveCount(0);
+        await expect(editor.nodeByTitle("Deduplicate Resources")).toBeVisible();
+        await editor.nodeByTitle("Deduplicate Resources").getByRole("button", { name: "Expand aggregate" }).click();
+
+        await editor.selectNode("Reuse Identical Meshes");
+        await page.getByRole("switch").click();
+        await expect(page.getByRole("switch")).toBeChecked();
+
+        await editor.deleteWire("Deduplicate Materials", "Deduplicate Textures");
+        await editor.deleteWire("Deduplicate Textures", "Reuse Identical Meshes");
+        await editor.deleteWire("Reuse Identical Meshes", "Deduplicate Data");
+        await editor.connectPorts(editor.portOfNode("Deduplicate Materials", "out"), editor.portOfNode("Reuse Identical Meshes", "in"));
+        await editor.connectPorts(editor.portOfNode("Reuse Identical Meshes", "out"), editor.portOfNode("Deduplicate Textures", "in"));
+        await editor.connectPorts(editor.portOfNode("Deduplicate Textures", "out"), editor.portOfNode("Deduplicate Data", "in"));
+        await editor.waitForSuccessfulPreviewBuild();
+
+        await editor.selectNode("Deduplicate Resources");
+        await expect(page.getByRole("textbox").nth(1)).toHaveValue("CustomAggregateBlock");
+        await editor.saveToLibraryButton.click();
+        await expect(page.getByLabel('Saved "nodeAsset" to the library.')).toBeVisible();
+        await editor.openLibraryButton.click();
+        await page.getByRole("dialog", { name: "NodeAsset Library" }).getByRole("button", { name: "nodeAsset", exact: true }).click();
+
+        await expect(page.locator('[data-testid="aggregate-frame"]').filter({ hasText: "Deduplicate Resources" })).toBeVisible();
+        await editor.expectWiredPipeline([
+            ...EnergyOrbPipeline.filter(([from, to]) => !(from === "Import glTF" && to === "Universal to glTF")),
+            ["Import glTF", "Deduplicate Resources"],
+            ["Deduplicate Resources", "Universal to glTF"],
+            ["Deduplicate Materials", "Reuse Identical Meshes"],
+            ["Reuse Identical Meshes", "Deduplicate Textures"],
+            ["Deduplicate Textures", "Deduplicate Data"],
+        ]);
+        await editor.selectNode("Reuse Identical Meshes");
+        await expect(page.getByRole("switch")).toBeChecked();
+        await editor.waitForSuccessfulPreviewBuild();
+    });
+
     test("detaches before a child edit, persists the expanded custom aggregate, and exports from its Write primitive", async ({ page }) => {
         const editor = new NodeAssetsEditorPage(page);
         await editor.goto();

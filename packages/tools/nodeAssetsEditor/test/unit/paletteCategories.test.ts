@@ -11,7 +11,7 @@ function Descriptor(
     category?: string,
     description?: string,
     keywords?: readonly string[],
-    metadata?: Pick<IBlockDescriptor, "aggregatePaletteItemId" | "isPaletteVisible">
+    metadata?: Pick<IBlockDescriptor, "abstractedBy" | "isPaletteVisible">
 ): IBlockDescriptor {
     return { paletteItemId, label, category, description, keywords, ...metadata } as unknown as IBlockDescriptor;
 }
@@ -59,9 +59,9 @@ describe("BuildPaletteCategories", () => {
     it("hides aggregate primitives by default and reveals only authorable primitives on request", () => {
         const descriptors = [
             Descriptor("import-gltf", "Import glTF", "Inputs"),
-            Descriptor("read-gltf", "Read glTF", "Inputs", undefined, undefined, { aggregatePaletteItemId: "import-gltf" }),
+            Descriptor("read-gltf", "Read glTF", "Inputs", undefined, undefined, { abstractedBy: "import-gltf" }),
             Descriptor("legacy-import-gltf", "Legacy Import glTF", "Inputs", undefined, undefined, {
-                aggregatePaletteItemId: undefined,
+                abstractedBy: undefined,
                 isPaletteVisible: false,
             }),
         ];
@@ -77,7 +77,7 @@ describe("BuildPaletteCategories", () => {
         const descriptors = [
             Descriptor("import-babylon", "Import Babylon", "Inputs"),
             Descriptor("babylon-to-universal", "Babylon to Universal", "Babylon", "Cross into Universal.", ["convert"], {
-                aggregatePaletteItemId: "import-babylon",
+                abstractedBy: "import-babylon",
                 isPaletteVisible: undefined,
             }),
         ];

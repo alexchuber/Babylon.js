@@ -9,6 +9,6 @@ RegisterBlockDescriptor({
     category: "Universal",
     headerColor: TranscodersHeaderColor,
     className: UniversalToGLTFBlock.ClassName,
-    aggregatePaletteItemId: "export-gltf",
+    abstractedBy: "export-gltf",
     create: (nodeAsset) => ConfigureBlockForEditor(new UniversalToGLTFBlock("Universal to glTF", nodeAsset)),
 });

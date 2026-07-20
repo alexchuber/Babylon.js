@@ -96,7 +96,7 @@ RegisterBlockDescriptor({
     category: "Inputs",
     headerColor: ReadHeaderColor,
     className: ReadNodeGeometryBlock.ClassName,
-    aggregatePaletteItemId: "import-node-geometry",
+    abstractedBy: "import-node-geometry",
     create: (nodeAsset) => ConfigureBlockForEditor(new ReadNodeGeometryBlock("Read Node Geometry", nodeAsset)),
     getPropertySection: (block, context) => CreateReadNodeGeometryPropertySection(block as ReadNodeGeometryBlock, context),
 });

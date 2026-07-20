@@ -92,7 +92,7 @@ RegisterBlockDescriptor({
     category: "Inputs",
     headerColor: ReadHeaderColor,
     className: ReadGLTFBlock.ClassName,
-    aggregatePaletteItemId: "import-gltf",
+    abstractedBy: "import-gltf",
     create: (nodeAsset) => ConfigureBlockForEditor(new ReadGLTFBlock("Read glTF", nodeAsset)),
     getPropertySection: (block, context) => CreateReadGLTFPropertySection(block as ReadGLTFBlock, context),
 });

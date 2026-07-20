@@ -64,6 +64,11 @@ export { ImportBabylonAggregateBlock } from "./Blocks/importBabylonAggregateBloc
 export { DracoCompressionBlock, DracoEncoderMethod } from "./Blocks/dracoCompressionBlock";
 export { KTX2CompressionBlock } from "./Blocks/ktx2CompressionBlock";
 export { DedupBlock } from "./Blocks/dedupBlock";
+export { DeduplicateDataBlock } from "./Blocks/deduplicateDataBlock";
+export { DeduplicateMaterialsBlock } from "./Blocks/deduplicateMaterialsBlock";
+export { DeduplicateResourcesBlock } from "./Blocks/deduplicateResourcesBlock";
+export { DeduplicateTexturesBlock } from "./Blocks/deduplicateTexturesBlock";
+export { ReuseIdenticalMeshesBlock } from "./Blocks/reuseIdenticalMeshesBlock";
 export { PruneBlock } from "./Blocks/pruneBlock";
 export { WeldBlock } from "./Blocks/weldBlock";
 export { WeldVerticesBlock } from "./Blocks/weldVerticesBlock";
