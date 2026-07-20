@@ -103,6 +103,10 @@ export const NodeAssetsEditorServiceDefinition: ServiceDefinition<[], [IShellSer
             buildPropertySections: (node) => controller.buildPropertySections(node),
             view,
             createNodeFromPaletteItem: (paletteItemId, position) => controller.createNodeFromPaletteItem(paletteItemId, position),
+            aggregatePresentation: {
+                isAggregateNode: (nodeId) => controller.isAggregateNode(nodeId),
+                setExpanded: (nodeId, expanded) => controller.setAggregateExpanded(nodeId, expanded),
+            },
         };
 
         const orchestrator = new BuildOrchestrator({ controller, preview, validation });

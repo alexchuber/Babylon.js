@@ -95,6 +95,35 @@ describe("NodeAssetGraphController", () => {
         }
     });
 
+    it("detaches and persists a custom aggregate before an internal wire edit", () => {
+        const controller = new NodeAssetGraphController();
+        try {
+            const exportNode = FindNode(controller, "Export glTF");
+            controller.setAggregateExpanded(exportNode.id, true);
+            const internalWire = controller.state.wires.find((wire) => {
+                const from = controller.state.getPortNode(wire.fromPortId);
+                const to = controller.state.getPortNode(wire.toPortId);
+                return from?.title === "Universal to glTF" && to?.title === "Write glTF";
+            });
+            if (!internalWire) {
+                throw new Error("Could not find the Export glTF aggregate's internal wire.");
+            }
+
+            controller.state.removeWire(internalWire.id);
+
+            const saved = JSON.parse(controller.serialize()) as {
+                graph: {
+                    blocks: Array<{ customType: string; name: string; subgraph?: { connections: unknown[] } }>;
+                };
+            };
+            const detached = saved.graph.blocks.find((block) => block.name === "Export glTF");
+            expect(detached?.customType).toBe("CustomAggregateBlock");
+            expect(detached?.subgraph?.connections).toEqual([]);
+        } finally {
+            controller.dispose();
+        }
+    });
+
     it("offers the supported demo pipelines as uniquely named bundled library entries", () => {
         const names = BuiltInNodeAssetLibraryEntries.map((entry) => entry.name);
 
@@ -300,7 +329,7 @@ describe("NodeAssetGraphController", () => {
 
             expect(changes.count()).toBe(1);
             expect(reconcileSpy).toHaveBeenCalledOnce();
-            expect(serializeSpy).toHaveBeenCalledOnce();
+            expect(serializeSpy).toHaveBeenCalledTimes(3);
         } finally {
             changes.dispose();
             controller.dispose();

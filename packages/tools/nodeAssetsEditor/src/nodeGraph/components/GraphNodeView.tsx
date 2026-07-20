@@ -137,6 +137,7 @@ export const GraphNodeView: FunctionComponent<{ node: IGraphNode }> = (props) =>
     const diagnostic = useObservableState(() => canvas.editor.diagnostics?.get(node.id) ?? null, canvas.editor.diagnostics?.onChanged);
     const size = GetNodeSize(node);
     const { inputs, outputs } = PartitionPorts(node);
+    const isAggregate = canvas.editor.aggregatePresentation?.isAggregateNode(node.id) ?? false;
 
     const onHeaderPointerDown = (event: ReactPointerEvent) => {
         if (event.button !== 0) {
@@ -151,6 +152,10 @@ export const GraphNodeView: FunctionComponent<{ node: IGraphNode }> = (props) =>
 
     const onChevronClick = (event: ReactMouseEvent) => {
         event.stopPropagation();
+        if (isAggregate) {
+            canvas.editor.aggregatePresentation?.setExpanded(node.id, !node.aggregateExpanded);
+            return;
+        }
         state.setNodeCollapsed(node.id, !node.collapsed);
     };
 
@@ -193,9 +198,19 @@ export const GraphNodeView: FunctionComponent<{ node: IGraphNode }> = (props) =>
                         onPointerDown={onChevronPointerDown}
                         onClick={onChevronClick}
                         role="button"
-                        aria-label={node.collapsed ? "Expand node" : "Collapse node"}
+                        aria-label={isAggregate ? (node.aggregateExpanded ? "Collapse aggregate" : "Expand aggregate") : node.collapsed ? "Expand node" : "Collapse node"}
                     >
-                        {node.collapsed ? <ChevronRightRegular /> : <ChevronDownRegular />}
+                        {isAggregate ? (
+                            node.aggregateExpanded ? (
+                                <ChevronDownRegular />
+                            ) : (
+                                <ChevronRightRegular />
+                            )
+                        ) : node.collapsed ? (
+                            <ChevronRightRegular />
+                        ) : (
+                            <ChevronDownRegular />
+                        )}
                     </div>
                 </div>
             </div>

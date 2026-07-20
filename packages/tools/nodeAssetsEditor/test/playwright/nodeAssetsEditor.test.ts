@@ -17,10 +17,12 @@ const EnergyOrbPipeline: readonly (readonly [string, string])[] = [
     ["Import Image", "Composite Image"],
     ["Composite Image", "Build PBR Material"],
     ["Import Image", "Build PBR Material"],
-    ["Import glTF", "Build PBR Material"],
+    ["Import glTF", "Universal to glTF"],
+    ["Universal to glTF", "Build PBR Material"],
     ["Build PBR Material", "Apply BasisU"],
     ["Apply BasisU", "Apply Draco"],
-    ["Apply Draco", "Export glTF"],
+    ["Apply Draco", "glTF to Universal"],
+    ["glTF to Universal", "Export glTF"],
 ];
 
 /**
@@ -47,8 +49,8 @@ function collectPageErrors(page: Page): string[] {
     return errors;
 }
 
-async function readDownloadedGlb(download: Download): Promise<Buffer> {
-    expect(download.suggestedFilename()).toBe("scene.glb");
+async function readDownloadedGlb(download: Download, expectedFileName = "scene.glb"): Promise<Buffer> {
+    expect(download.suggestedFilename()).toBe(expectedFileName);
     const downloadPath = await download.path();
     const exported = readFileSync(downloadPath);
     expect(exported.length).toBeGreaterThan(0);
@@ -78,13 +80,15 @@ test.describe("Node Assets Editor — Energy orb showcase", () => {
         await orbMetalResponse;
         await orbPatternResponse;
 
-        await expect(editor.nodes).toHaveCount(8);
+        await expect(editor.nodes).toHaveCount(10);
         await expect(editor.nodeByTitle("Import glTF")).toBeVisible();
+        await expect(editor.nodeByTitle("Universal to glTF")).toBeVisible();
         await expect(editor.nodeByTitle("Import Image")).toHaveCount(2);
         await expect(editor.nodeByTitle("Composite Image")).toBeVisible();
         await expect(editor.nodeByTitle("Build PBR Material")).toBeVisible();
         await expect(editor.nodeByTitle("Apply BasisU")).toBeVisible();
         await expect(editor.nodeByTitle("Apply Draco")).toBeVisible();
+        await expect(editor.nodeByTitle("glTF to Universal")).toBeVisible();
         await expect(editor.nodeByTitle("Export glTF")).toBeVisible();
         await editor.expectWiredPipeline(EnergyOrbPipeline);
 
@@ -98,9 +102,9 @@ test.describe("Node Assets Editor — Energy orb showcase", () => {
         // Each import block is seeded on open with a stable, human-readable provenance label, so the
         // read-only Source field shows each asset's sample path.
         await editor.selectNode("Import glTF");
-        await expect(page.getByRole("textbox").nth(1)).toHaveValue("scenes/nodeAssets/orb.glb");
+        await expect(page.getByRole("textbox").nth(3)).toHaveValue("scenes/nodeAssets/orb.glb");
         await editor.selectNode("Import Image", 0);
-        await expect(page.getByRole("textbox").nth(1)).toHaveValue(/^scenes\/nodeAssets\/orb(Metal|Pattern)\.png$/);
+        await expect(page.getByRole("textbox").nth(2)).toHaveValue(/^scenes\/nodeAssets\/orb(Metal|Pattern)\.png$/);
 
         expect(pageErrors).toEqual([]);
     });
@@ -140,10 +144,12 @@ test.describe("Node Assets Editor — Energy orb showcase", () => {
             ["Import Image", "Composite Image"],
             ["Import Image", "Composite Image"],
             ["Composite Image", "Build PBR Material"],
-            ["Import glTF", "Build PBR Material"],
+            ["Import glTF", "Universal to glTF"],
+            ["Universal to glTF", "Build PBR Material"],
             ["Build PBR Material", "Apply BasisU"],
             ["Apply BasisU", "Apply Draco"],
-            ["Apply Draco", "Export glTF"],
+            ["Apply Draco", "glTF to Universal"],
+            ["glTF to Universal", "Export glTF"],
         ]);
         await editor.waitForSuccessfulPreviewBuild();
         await expect(editor.previewCanvas).toBeVisible();
@@ -163,10 +169,10 @@ test.describe("Node Assets Editor — Energy orb showcase", () => {
         await editor.goto();
         await editor.waitForNextSuccessfulPreviewBuild();
 
-        await editor.connectPorts(editor.portOfNode("Build PBR Material", "out"), editor.portOfNode("Export glTF", "in"));
+        await editor.connectPorts(editor.portOfNode("Import glTF", "out"), editor.portOfNode("Export glTF", "in"));
 
-        await expect(page.locator('[data-testid="graph-wire"][data-from-node-title="Apply Draco"][data-to-node-title="Export glTF"]')).toHaveCount(0);
-        await expect(page.locator('[data-testid="graph-wire"][data-from-node-title="Build PBR Material"][data-to-node-title="Export glTF"]')).toHaveCount(1);
+        await expect(page.locator('[data-testid="graph-wire"][data-from-node-title="glTF to Universal"][data-to-node-title="Export glTF"]')).toHaveCount(0);
+        await expect(page.locator('[data-testid="graph-wire"][data-from-node-title="Import glTF"][data-to-node-title="Export glTF"]')).toHaveCount(1);
         await editor.waitForSuccessfulPreviewBuild();
     });
 
@@ -193,7 +199,7 @@ test.describe("Node Assets Editor — Energy orb showcase", () => {
         await editor.goto();
         await editor.waitForNextSuccessfulPreviewBuild();
 
-        await editor.deleteWire("Apply Draco", "Export glTF");
+        await editor.deleteWire("glTF to Universal", "Export glTF");
         await expect(editor.previewErrorOverlay).toBeVisible({ timeout: 30_000 });
 
         const exportNode = editor.nodeByTitle("Export glTF");
@@ -215,7 +221,7 @@ test.describe("Node Assets Editor — Energy orb showcase", () => {
         await fileChooser.setFiles({ name: "broken.json", mimeType: "application/json", buffer: Buffer.from("{") });
 
         await expect(page.getByText(/Could not load the NodeAsset file:/)).toBeVisible();
-        await expect(editor.nodes).toHaveCount(8);
+        await expect(editor.nodes).toHaveCount(10);
         await editor.expectWiredPipeline(EnergyOrbPipeline);
         await expect(editor.previewCanvas).toBeVisible();
     });
@@ -241,14 +247,17 @@ test.describe("Node Assets Editor — Energy orb showcase", () => {
         await editor.goto();
 
         await editor.selectNode("Import glTF");
-        await editor.nodeByTitle("Build PBR Material").getByText("Build PBR Material", { exact: true }).click({
-            modifiers: [process.platform === "darwin" ? "Meta" : "Control"],
-        });
+        await editor
+            .nodeByTitle("Build PBR Material")
+            .getByText("Build PBR Material", { exact: true })
+            .click({
+                modifiers: [process.platform === "darwin" ? "Meta" : "Control"],
+            });
         await page.keyboard.press("Delete");
 
         await expect(editor.nodeByTitle("Import glTF")).toHaveCount(0);
         await expect(editor.nodeByTitle("Build PBR Material")).toHaveCount(0);
-        await expect(editor.nodes).toHaveCount(6);
+        await expect(editor.nodes).toHaveCount(8);
     });
 
     test("reorganizes overlapping nodes into a left-to-right data flow", async ({ page }) => {
@@ -277,9 +286,109 @@ test.describe("Node Assets Editor — Energy orb showcase", () => {
 
         await expect.poll(overlaps).toBe(false);
         const pipelineX = await Promise.all(
-            ["Import glTF", "Build PBR Material", "Apply BasisU", "Apply Draco", "Export glTF"].map(async (title) => (await editor.nodeByTitle(title).boundingBox())?.x ?? 0)
+            ["Import glTF", "Universal to glTF", "Build PBR Material", "Apply BasisU", "Apply Draco", "glTF to Universal", "Export glTF"].map(
+                async (title) => (await editor.nodeByTitle(title).boundingBox())?.x ?? 0
+            )
         );
         expect(pipelineX).toEqual([...pipelineX].sort((left, right) => left - right));
+    });
+});
+
+test.describe("Node Assets Editor — Universal glTF aggregates", () => {
+    test.describe.configure({ timeout: 180_000 });
+
+    test("previews a compact aggregate and expands and collapses its typed primitive subgraph", async ({ page }) => {
+        const editor = new NodeAssetsEditorPage(page);
+        await editor.goto();
+        await editor.waitForNextSuccessfulPreviewBuild();
+
+        await editor.selectNode("Import glTF");
+        await expect(page.getByRole("textbox").nth(0)).toHaveValue("Import glTF");
+        await expect(page.getByRole("textbox").nth(1)).toHaveValue("ImportGLTFAggregateBlock");
+        await expect(page.getByRole("textbox").nth(1)).toBeDisabled();
+
+        await editor.nodeByTitle("Import glTF").getByRole("button", { name: "Expand aggregate" }).click();
+        const aggregateFrame = page.locator('[data-testid="aggregate-frame"]').filter({ hasText: "Import glTF" });
+        await expect(aggregateFrame).toBeVisible();
+        await expect(editor.nodeByTitle("Read glTF")).toBeVisible();
+        await expect(editor.nodeByTitle("glTF to Universal")).toHaveCount(2);
+        await expect(page.locator('[data-testid="graph-wire"][data-from-node-title="Read glTF"][data-to-node-title="glTF to Universal"]')).toHaveCount(1);
+        await editor.waitForSuccessfulPreviewBuild();
+
+        await aggregateFrame.getByRole("button", { name: "Collapse aggregate" }).click();
+        await expect(editor.nodeByTitle("Read glTF")).toHaveCount(0);
+        await expect(editor.nodeByTitle("glTF to Universal")).toHaveCount(1);
+        await expect(editor.nodeByTitle("Import glTF")).toBeVisible();
+        await editor.waitForSuccessfulPreviewBuild();
+    });
+
+    test("detaches before a child edit, persists the expanded custom aggregate, and exports from its Write primitive", async ({ page }) => {
+        const editor = new NodeAssetsEditorPage(page);
+        await editor.goto();
+        await editor.waitForNextSuccessfulPreviewBuild();
+
+        await editor.nodeByTitle("Export glTF").getByRole("button", { name: "Expand aggregate" }).click();
+        await editor.selectNode("Write glTF");
+        await page.getByRole("textbox").nth(2).fill("custom-output");
+        await expect(page.getByRole("textbox").nth(2)).toHaveValue("custom-output");
+
+        await editor.selectNode("Export glTF");
+        await expect(page.getByRole("textbox").nth(1)).toHaveValue("CustomAggregateBlock");
+        await editor.waitForSuccessfulPreviewBuild();
+
+        await editor.saveToLibraryButton.click();
+        await expect(page.getByLabel('Saved "nodeAsset" to the library.')).toBeVisible();
+        await editor.openLibraryButton.click();
+        await page.getByRole("dialog", { name: "NodeAsset Library" }).getByRole("button", { name: "nodeAsset", exact: true }).click();
+
+        await expect(page.locator('[data-testid="aggregate-frame"]').filter({ hasText: "Export glTF" })).toBeVisible();
+        await editor.selectNode("Export glTF");
+        await expect(page.getByRole("textbox").nth(1)).toHaveValue("CustomAggregateBlock");
+        await expect(page.getByRole("textbox").nth(2)).toHaveValue("custom-output");
+        await editor.selectNode("Write glTF");
+        await expect(page.getByRole("textbox").nth(2)).toHaveValue("custom-output");
+        await editor.waitForSuccessfulPreviewBuild();
+
+        const downloadPromise = page.waitForEvent("download");
+        await page.getByRole("button", { name: "Export .glb" }).click();
+        await readDownloadedGlb(await downloadPromise, "custom-output.glb");
+    });
+
+    test("shares a successful upload between the compact Import aggregate and its Read primitive", async ({ page }) => {
+        const editor = new NodeAssetsEditorPage(page);
+        await editor.goto();
+        await editor.waitForNextSuccessfulPreviewBuild();
+
+        await editor.selectNode("Import glTF");
+        const fileChooserPromise = page.waitForEvent("filechooser");
+        await page.getByRole("button", { name: "Upload glTF…" }).click();
+        const fileChooser = await fileChooserPromise;
+        await fileChooser.setFiles({
+            name: "uploaded-orb.glb",
+            mimeType: "model/gltf-binary",
+            buffer: readFileSync("packages/tools/nodeAssetsEditor/src/nodeAssets/sampleAssets/orb.glb"),
+        });
+        await expect(page.getByRole("textbox").nth(3)).toHaveValue("uploaded-orb.glb");
+
+        await editor.nodeByTitle("Import glTF").getByRole("button", { name: "Expand aggregate" }).click();
+        await editor.selectNode("Read glTF");
+        await expect(page.getByRole("textbox").nth(3)).toHaveValue("uploaded-orb.glb");
+        await editor.waitForSuccessfulPreviewBuild();
+    });
+
+    test("keeps the active source and surfaces an error when a URL load fails", async ({ page }) => {
+        const editor = new NodeAssetsEditorPage(page);
+        await page.route("https://example.invalid/missing.glb", async (route) => await route.fulfill({ status: 404, body: "Not Found" }));
+        await editor.goto();
+        await editor.waitForNextSuccessfulPreviewBuild();
+        await editor.selectNode("Import glTF");
+
+        await page.getByRole("textbox").nth(2).fill("https://example.invalid/missing.glb");
+        await page.getByRole("textbox").nth(2).blur();
+
+        await expect(page.getByText("Source error", { exact: true })).toBeVisible();
+        await expect(page.getByRole("textbox").nth(3)).toHaveValue("scenes/nodeAssets/orb.glb");
+        await expect(page.getByRole("textbox").nth(4)).toHaveValue(/404/);
     });
 });
 

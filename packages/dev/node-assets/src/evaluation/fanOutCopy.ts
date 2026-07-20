@@ -45,6 +45,7 @@ export async function CloneForFanOutAsync(type: NodeAssetConnectionPointType, va
 
     switch (type) {
         case NodeAssetConnectionPointType.GLTF_DOCUMENT:
+        case NodeAssetConnectionPointType.UNIVERSAL:
             return GetGltfAsset(value, "fan-out").clone();
         case NodeAssetConnectionPointType.USD_STAGE:
             if (!IsUsdAsset(value)) {

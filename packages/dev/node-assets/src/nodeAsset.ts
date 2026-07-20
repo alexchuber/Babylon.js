@@ -184,7 +184,7 @@ export class NodeAsset {
             // A per-build memo so each block is evaluated exactly once even when its output fans out to
             // several consumers. Scoped to this call: a fresh build starts with a fresh memo.
             const evaluated = new Map<NodeAssetBlock, Promise<void>>();
-            await this._evaluateBlockAsync(exportBlock, evaluated, scope, []);
+            await this._evaluateBlockAsync(exportBlock, evaluated, scope, [], new Set());
             result = exportBlock.result;
             if (!result) {
                 throw new Error(`The "${this.name}" node asset produced no result.`);
@@ -231,9 +231,16 @@ export class NodeAsset {
      * @param evaluated - The per-build memo of block evaluations.
      * @param scope - The per-build owner of diagnostics and lifecycle state.
      * @param ancestry - Blocks on the current pull path, used to detect cycles without rejecting fan-out.
+     * @param externalInputs - Unconnected inputs supplied by an enclosing aggregate.
      * @returns The block's single evaluation promise, shared across all of its consumers.
      */
-    private async _evaluateBlockAsync(block: NodeAssetBlock, evaluated: Map<NodeAssetBlock, Promise<void>>, scope: BuildScope, ancestry: readonly NodeAssetBlock[]): Promise<void> {
+    private async _evaluateBlockAsync(
+        block: NodeAssetBlock,
+        evaluated: Map<NodeAssetBlock, Promise<void>>,
+        scope: BuildScope,
+        ancestry: readonly NodeAssetBlock[],
+        externalInputs: ReadonlySet<NodeAssetConnectionPoint>
+    ): Promise<void> {
         if (ancestry.includes(block)) {
             throw new NodeAssetBuildError(`The "${this.name}" node asset contains a cycle through the "${block.name}" block.`, block.uniqueId);
         }
@@ -245,7 +252,7 @@ export class NodeAsset {
         scope.beginEvaluation();
         // Populate the memo synchronously (before the await below) so a sibling branch reaching this
         // same block dedupes onto this promise instead of starting a second evaluation.
-        const promise = this._doEvaluateBlockAsync(block, evaluated, scope, [...ancestry, block]);
+        const promise = this._doEvaluateBlockAsync(block, evaluated, scope, [...ancestry, block], externalInputs);
         evaluated.set(block, promise);
         try {
             return await promise;
@@ -263,12 +270,14 @@ export class NodeAsset {
      * @param evaluated - The per-build memo of block evaluations.
      * @param scope - The per-build owner of diagnostics and lifecycle state.
      * @param ancestry - Blocks on the current pull path, including this block.
+     * @param externalInputs - Unconnected inputs supplied by an enclosing aggregate.
      */
     private async _doEvaluateBlockAsync(
         block: NodeAssetBlock,
         evaluated: Map<NodeAssetBlock, Promise<void>>,
         scope: BuildScope,
-        ancestry: readonly NodeAssetBlock[]
+        ancestry: readonly NodeAssetBlock[],
+        externalInputs: ReadonlySet<NodeAssetConnectionPoint>
     ): Promise<void> {
         const connections: Array<{ input: NodeAssetConnectionPoint; upstream: NodeAssetConnectionPoint }> = [];
         for (const input of block.inputs) {
@@ -276,6 +285,9 @@ export class NodeAsset {
             const upstream = input.connectedPoint;
             if (upstream) {
                 connections.push({ input, upstream });
+                continue;
+            }
+            if (externalInputs.has(input) && input.value != null) {
                 continue;
             }
             // An unconnected optional input is a valid "no value" (the block falls back to a default);
@@ -288,7 +300,7 @@ export class NodeAsset {
         // Build all upstream blocks first, then propagate their resolved values.
         await this._settleInOrderAsync(
             connections.map(async (connection) => {
-                await this._evaluateBlockAsync(connection.upstream.ownerBlock, evaluated, scope, ancestry);
+                await this._evaluateBlockAsync(connection.upstream.ownerBlock, evaluated, scope, ancestry, externalInputs);
             }),
             scope
         );
@@ -369,6 +381,26 @@ export class NodeAsset {
                 throw result.reason;
             }
         }
+    }
+
+    /**
+     * Evaluates owned blocks as part of an aggregate using the caller's build scope.
+     * @param blocks The internal target blocks to evaluate.
+     * @param scope The parent graph's build scope.
+     * @param externalInputs Internal inputs supplied by the aggregate's public inputs.
+     * @internal
+     */
+    public async _evaluateAggregateBlocksAsync(blocks: ReadonlyArray<NodeAssetBlock>, scope: BuildScope, externalInputs: ReadonlySet<NodeAssetConnectionPoint>): Promise<void> {
+        if (blocks.some((block) => !this._attachedBlocks.includes(block))) {
+            throw new Error("Cannot evaluate an aggregate target that is not owned by its subgraph.");
+        }
+        const evaluated = new Map<NodeAssetBlock, Promise<void>>();
+        await this._settleInOrderAsync(
+            blocks.map(async (block) => {
+                await this._evaluateBlockAsync(block, evaluated, scope, [], externalInputs);
+            }),
+            scope
+        );
     }
 }
 

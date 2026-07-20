@@ -5,6 +5,12 @@
  */
 
 import "./importGLTFBlockDescriptor";
+import "./readGLTFBlockDescriptor";
+import "./gltfToUniversalBlockDescriptor";
+import "./universalToGLTFBlockDescriptor";
+import "./writeGLTFBlockDescriptor";
+import "./legacyImportGLTFBlockDescriptor";
+import "./legacyExportGLTFBlockDescriptor";
 import "./importUSDBlockDescriptor";
 import "./dracoCompressionBlockDescriptor";
 import "./exportGLTFBlockDescriptor";
@@ -43,6 +49,7 @@ import "./babylon2GLTFBlockDescriptor";
 import "./evaluateNodeGeometryBlockDescriptor";
 import "./decomposeGLTFMaterialBlockDescriptor";
 import "./composeGLTFMaterialBlockDescriptor";
+import "./customAggregateBlockDescriptor";
 import "./getBabylonMeshBlockDescriptor";
 import "./setBabylonPropertyBlockDescriptor";
 import "./getUSDPrimBlockDescriptor";

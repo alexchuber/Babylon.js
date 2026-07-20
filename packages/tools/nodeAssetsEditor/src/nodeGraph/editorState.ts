@@ -28,6 +28,8 @@ export type GraphClipboard = {
 export type GraphEditorStateOptions = {
     /** Additional compatibility rule applied after the framework's generic wire checks pass. */
     readonly canConnectPorts?: (fromPortId: string, toPortId: string) => boolean;
+    /** Lets a host prepare domain state before a committed wire edit touches the visual graph. */
+    readonly beforeWireChange?: (nodeIds: readonly string[]) => void;
 };
 
 /** Whether an editor-state change affects only presentation or the graph's authored content. */
@@ -64,6 +66,7 @@ export class GraphEditorState {
     private _selectionVersion = 0;
 
     private readonly _canConnectPorts: (fromPortId: string, toPortId: string) => boolean;
+    private readonly _beforeWireChange: (nodeIds: readonly string[]) => void;
     private readonly _onChanged = new Observable<GraphChangeKind>();
     private readonly _onSelectionChanged = new Observable<void>();
 
@@ -78,6 +81,7 @@ export class GraphEditorState {
         this._wires = [...cloned.wires];
         this._frames = [...cloned.frames];
         this._canConnectPorts = options.canConnectPorts ?? (() => true);
+        this._beforeWireChange = options.beforeWireChange ?? (() => undefined);
     }
 
     /** Fires whenever the graph contents (nodes, wires, frames) change. */
@@ -314,6 +318,9 @@ export class GraphEditorState {
         if (!this._canConnect(fromPortId, toPortId)) {
             return undefined;
         }
+        const fromNode = this.getPortNode(fromPortId);
+        const toNode = this.getPortNode(toPortId);
+        this._beforeWireChange([fromNode?.id, toNode?.id].filter((nodeId): nodeId is string => nodeId !== undefined));
         this._recordUndo();
         const replacedWireIds = new Set(this._wires.filter((wire) => wire.toPortId === toPortId).map((wire) => wire.id));
         if (replacedWireIds.size > 0) {
@@ -338,6 +345,10 @@ export class GraphEditorState {
         if (index < 0) {
             return;
         }
+        const wire = this._wires[index];
+        const fromNode = this.getPortNode(wire.fromPortId);
+        const toNode = this.getPortNode(wire.toPortId);
+        this._beforeWireChange([fromNode?.id, toNode?.id].filter((nodeId): nodeId is string => nodeId !== undefined));
         this._recordUndo();
         this._wires.splice(index, 1);
         if (this._selectedWireId === id) {
@@ -365,6 +376,20 @@ export class GraphEditorState {
     public addFrame(frame: IGraphFrame): void {
         this._recordUndo("visual");
         this._frames.push(frame);
+        this._notifyChanged("visual");
+    }
+
+    /**
+     * Removes a frame without removing its member nodes.
+     * @param id The frame id.
+     */
+    public removeFrame(id: string): void {
+        const index = this._frames.findIndex((frame) => frame.id === id);
+        if (index < 0) {
+            return;
+        }
+        this._recordUndo("visual");
+        this._frames.splice(index, 1);
         this._notifyChanged("visual");
     }
 

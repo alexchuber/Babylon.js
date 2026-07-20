@@ -3,7 +3,7 @@
  *
  * A flat enum of payload kinds. Connections are validated by kind-equality only (see
  * {@link NodeAssetConnectionPoint.connectTo}), so appending a new kind never affects existing
- * wiring. The three representation kinds stay distinct so lossy conversion remains explicit.
+ * wiring. The representation kinds stay distinct so lossy conversion remains explicit.
  * {@link SCENE} is retained only as a source-compatible alias for {@link GLTF_DOCUMENT}.
  */
 export enum NodeAssetConnectionPointType {
@@ -42,4 +42,10 @@ export enum NodeAssetConnectionPointType {
 
     /** A {@link NodeGeometryAsset} containing an unevaluated graph and optional evaluated snapshot. */
     NODE_GEOMETRY = 7,
+
+    /**
+     * The source-independent working representation. Its proof-of-concept payload is backed by a
+     * gltf-transform document, but it remains a distinct graph kind from {@link GLTF_DOCUMENT}.
+     */
+    UNIVERSAL = 8,
 }

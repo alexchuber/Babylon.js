@@ -16,7 +16,7 @@ vi.mock("../../src/nodeAssets/browserFiles", () => ({
     DownloadBlob: vi.fn(),
 }));
 
-const ImportFileButtonLabel = "Import glTF file\u2026";
+const ImportFileButtonLabel = "Upload glTF\u2026";
 
 function FindNode(controller: NodeAssetGraphController, title: string): IGraphNode {
     const node = controller.state.nodes.find((candidate) => candidate.title === title);
@@ -49,7 +49,7 @@ describe("Export block file name", () => {
         const controller = new NodeAssetGraphController();
         try {
             const exportNode = FindNode(controller, "Export glTF");
-            expect(FindPropertyInSection(controller, exportNode, "EXPORT", "Name", "text").value).toBe("scene");
+            expect(FindPropertyInSection(controller, exportNode, "WRITE GLTF", "File name", "text").value).toBe("scene");
         } finally {
             controller.dispose();
         }
@@ -63,8 +63,8 @@ describe("Export block file name", () => {
         });
         try {
             const exportNode = FindNode(controller, "Export glTF");
-            FindPropertyInSection(controller, exportNode, "EXPORT", "Name", "text").onChange("myScene");
-            FindPropertyInSection(controller, exportNode, "EXPORT", "Export .glb", "button").onClick();
+            FindPropertyInSection(controller, exportNode, "WRITE GLTF", "File name", "text").onChange("myScene");
+            FindPropertyInSection(controller, exportNode, "WRITE GLTF", "Export .glb", "button").onClick();
             expect(requestedName).toBe("myScene");
         } finally {
             observer.remove();
@@ -80,7 +80,7 @@ describe("Export block file name", () => {
         });
         try {
             const exportNode = FindNode(controller, "Export glTF");
-            FindPropertyInSection(controller, exportNode, "EXPORT", "Name", "text").onChange("renamed");
+            FindPropertyInSection(controller, exportNode, "WRITE GLTF", "File name", "text").onChange("renamed");
             expect(buildRelevantChanges).toBe(0);
         } finally {
             observer.remove();
@@ -92,14 +92,14 @@ describe("Export block file name", () => {
         const controller = new NodeAssetGraphController();
         try {
             const exportNode = FindNode(controller, "Export glTF");
-            FindPropertyInSection(controller, exportNode, "EXPORT", "Name", "text").onChange("myScene");
+            FindPropertyInSection(controller, exportNode, "WRITE GLTF", "File name", "text").onChange("myScene");
             const json = controller.serialize();
 
             const reloaded = new NodeAssetGraphController();
             try {
                 reloaded.load(json);
                 const reloadedExport = FindNode(reloaded, "Export glTF");
-                expect(FindPropertyInSection(reloaded, reloadedExport, "EXPORT", "Name", "text").value).toBe("myScene");
+                expect(FindPropertyInSection(reloaded, reloadedExport, "WRITE GLTF", "File name", "text").value).toBe("myScene");
             } finally {
                 reloaded.dispose();
             }
@@ -114,17 +114,17 @@ describe("Import block source label", () => {
         const controller = new NodeAssetGraphController();
         try {
             const importNode = FindNode(controller, "Import glTF");
-            expect(FindPropertyInSection(controller, importNode, "IMPORT", "Source", "text").value).toBe("No file loaded");
+            expect(FindPropertyInSection(controller, importNode, "READ GLTF", "Active source", "text").value).toBe("No source loaded");
 
             vi.mocked(PromptForFileAsync).mockResolvedValue({
                 name: "myModel.glb",
                 arrayBuffer: async () => new Uint8Array([1, 2, 3, 4]).buffer,
             } as unknown as File);
 
-            FindPropertyInSection(controller, importNode, "IMPORT", ImportFileButtonLabel, "button").onClick();
+            FindPropertyInSection(controller, importNode, "READ GLTF", ImportFileButtonLabel, "button").onClick();
 
             await vi.waitFor(() => {
-                expect(FindPropertyInSection(controller, importNode, "IMPORT", "Source", "text").value).toBe("myModel.glb");
+                expect(FindPropertyInSection(controller, importNode, "READ GLTF", "Active source", "text").value).toBe("myModel.glb");
             });
 
             const json = controller.serialize();
@@ -132,7 +132,7 @@ describe("Import block source label", () => {
             try {
                 reloaded.load(json);
                 const reloadedImport = FindNode(reloaded, "Import glTF");
-                expect(FindPropertyInSection(reloaded, reloadedImport, "IMPORT", "Source", "text").value).toBe("myModel.glb");
+                expect(FindPropertyInSection(reloaded, reloadedImport, "READ GLTF", "Active source", "text").value).toBe("myModel.glb");
             } finally {
                 reloaded.dispose();
             }

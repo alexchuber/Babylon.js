@@ -54,6 +54,11 @@ export type EditorContextValue = {
      * Supplied by the host so the framework stays agnostic about what a dropped item becomes.
      */
     readonly createNodeFromPaletteItem: (paletteItemId: string, position: { x: number; y: number }) => IGraphNode;
+    /** Optional host support for compact nodes that project an expandable owned subgraph. */
+    readonly aggregatePresentation?: {
+        readonly isAggregateNode: (nodeId: string) => boolean;
+        readonly setExpanded: (nodeId: string, expanded: boolean) => void;
+    };
 };
 
 const EditorContext = createContext<EditorContextValue | undefined>(undefined);

@@ -43,15 +43,15 @@ function FindProperty<TKind extends PropertyDescriptor["kind"]>(
 }
 
 describe("block property sections (unified descriptor path)", () => {
-    it("builds the IMPORT section for the glTF import block", () => {
+    it("builds the forwarded Read glTF section for the aggregate import block", () => {
         const controller = new NodeAssetGraphController();
         try {
             const importNode = FindNode(controller, "Import glTF");
-            const section = FindSection(controller, importNode, "IMPORT");
+            const section = FindSection(controller, importNode, "READ GLTF");
 
-            expect(section.properties.map((property) => property.label)).toEqual(["Source", "Import glTF file\u2026"]);
-            expect(FindProperty(controller, importNode, "Source", "text").value).toBe("No file loaded");
-            expect(FindProperty(controller, importNode, "Import glTF file\u2026", "button")).toBeDefined();
+            expect(section.properties.map((property) => property.label)).toEqual(["URL", "Active source", "Upload glTF\u2026"]);
+            expect(FindProperty(controller, importNode, "Active source", "text").value).toBe("No source loaded");
+            expect(FindProperty(controller, importNode, "Upload glTF\u2026", "button")).toBeDefined();
         } finally {
             controller.dispose();
         }
@@ -65,7 +65,7 @@ describe("block property sections (unified descriptor path)", () => {
         });
         try {
             const exportNode = FindNode(controller, "Export glTF");
-            FindSection(controller, exportNode, "EXPORT");
+            FindSection(controller, exportNode, "WRITE GLTF");
 
             FindProperty(controller, exportNode, "Export .glb", "button").onClick();
 

@@ -21,6 +21,7 @@ import {
     ScenePortColor,
     StringPortColor,
     UsdStagePortColor,
+    UniversalPortColor,
     type IBlockDescriptor,
 } from "./blockCatalog";
 
@@ -55,7 +56,7 @@ export function PortIdForPoint(block: NodeAssetBlock, point: NodeAssetConnection
 
 /** Per-kind port label and dot color for connection-point types currently supported by the editor. */
 const PortStyleByType: Partial<Record<NodeAssetConnectionPointType, { readonly name: string; readonly color: string }>> = {
-    [NodeAssetConnectionPointType.GLTF_DOCUMENT]: { name: "glTF Document", color: ScenePortColor },
+    [NodeAssetConnectionPointType.GLTF_DOCUMENT]: { name: "glTF", color: ScenePortColor },
     [NodeAssetConnectionPointType.NUMBER]: { name: "Number", color: NumberPortColor },
     [NodeAssetConnectionPointType.STRING]: { name: "String", color: StringPortColor },
     [NodeAssetConnectionPointType.JSON]: { name: "Json", color: JsonPortColor },
@@ -63,6 +64,7 @@ const PortStyleByType: Partial<Record<NodeAssetConnectionPointType, { readonly n
     [NodeAssetConnectionPointType.USD_STAGE]: { name: "USD Stage", color: UsdStagePortColor },
     [NodeAssetConnectionPointType.BABYLON_SCENE]: { name: "Babylon Scene", color: BabylonScenePortColor },
     [NodeAssetConnectionPointType.NODE_GEOMETRY]: { name: "Node Geometry", color: NodeGeometryPortColor },
+    [NodeAssetConnectionPointType.UNIVERSAL]: { name: "Universal", color: UniversalPortColor },
 };
 
 /**

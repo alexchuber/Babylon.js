@@ -25,6 +25,8 @@ export {
 } from "./evaluation/buildScope";
 export { GetNodeAssetBuildErrorContext, type INodeAssetBuildErrorContext, NodeAssetBuildError } from "./nodeAssetBuildError";
 export { NodeAssetBlock } from "./blockFoundation/nodeAssetBlock";
+export { AggregateBlock, AggregateSerializationVersion } from "./blockFoundation/aggregateBlock";
+export { CustomAggregateBlock } from "./blockFoundation/customAggregateBlock";
 export { NodeAssetConnectionPoint } from "./connection/nodeAssetConnectionPoint";
 export { NodeAssetConnectionPointDirection } from "./connection/nodeAssetConnectionPointDirection";
 export { NodeAssetConnectionPointType } from "./connection/nodeAssetConnectionPointType";
@@ -48,6 +50,12 @@ export {
 } from "./serialization/nodeAssetSerialization";
 export { ImportGLTFBlock } from "./Blocks/importGLTFBlock";
 export { ExportGLTFBlock } from "./Blocks/exportGLTFBlock";
+export { type GLTFSourceFetcher, type GLTFSourceKind, type IGLTFSourceResponse, ReadGLTFBlock } from "./Blocks/readGLTFBlock";
+export { GLTFToUniversalBlock } from "./Blocks/gltfToUniversalBlock";
+export { UniversalToGLTFBlock } from "./Blocks/universalToGLTFBlock";
+export { WriteGLTFBlock } from "./Blocks/writeGLTFBlock";
+export { ImportGLTFAggregateBlock } from "./Blocks/importGLTFAggregateBlock";
+export { ExportGLTFAggregateBlock } from "./Blocks/exportGLTFAggregateBlock";
 export { DracoCompressionBlock, DracoEncoderMethod } from "./Blocks/dracoCompressionBlock";
 export { KTX2CompressionBlock } from "./Blocks/ktx2CompressionBlock";
 export { DedupBlock } from "./Blocks/dedupBlock";

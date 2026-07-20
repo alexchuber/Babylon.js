@@ -26,6 +26,9 @@ export interface IPropertySectionContext {
 /** Data-driven dot color for scene-typed ports (applied inline as visual data, not theme chrome). */
 export const ScenePortColor = "#d97b3f";
 
+/** Data-driven dot color for Universal ports, distinct from the glTF delivery lane. */
+export const UniversalPortColor = "#2f8f83";
+
 /** Data-driven dot colors for the scalar port kinds, so each renders distinctly from SCENE. */
 export const NumberPortColor = "#3f79d9";
 export const StringPortColor = "#3fa86b";
@@ -96,6 +99,8 @@ export interface IBlockDescriptor {
     readonly className: string;
     /** Optional palette category label; entries without one fall into the default category. */
     readonly category?: string;
+    /** Whether this descriptor is discoverable in the palette. Defaults to true. */
+    readonly isPaletteVisible?: boolean;
     /** Constructs the backing block, registering it with the given node asset. */
     readonly create: (nodeAsset: NodeAsset) => NodeAssetBlock;
     /**

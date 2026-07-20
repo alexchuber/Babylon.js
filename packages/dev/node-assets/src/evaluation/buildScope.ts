@@ -108,7 +108,7 @@ export interface IBuildDiagnostic {
 export type LossDisposition = "preserve" | "bake" | "drop" | "extension";
 
 /** A representation kind that can be the source or target of a lossy conversion. */
-export type BuildRepresentationKind = "GLTF_DOCUMENT" | "USD_STAGE" | "BABYLON_SCENE";
+export type BuildRepresentationKind = "GLTF_DOCUMENT" | "UNIVERSAL" | "USD_STAGE" | "BABYLON_SCENE";
 
 /** A non-fatal record of representation semantics preserved, baked, dropped, or extended. */
 export type LossRecord = IBuildDiagnostic & {
@@ -514,6 +514,7 @@ export class BuildScope {
                     continue;
                 }
                 try {
+                    // eslint-disable-next-line no-await-in-loop -- resources must dispose sequentially in reverse registration order
                     await entry.resource.dispose();
                 } catch (error) {
                     this.addDiagnostic({

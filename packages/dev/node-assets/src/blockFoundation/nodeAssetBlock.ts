@@ -15,7 +15,7 @@ export abstract class NodeAssetBlock {
     public static ClassName = "NodeAssetBlock";
 
     /** The display name of the block. */
-    public readonly name: string;
+    public name: string;
 
     /** A session-unique id for this block. Preserved across {@link serialize}/parse. */
     public uniqueId: number;

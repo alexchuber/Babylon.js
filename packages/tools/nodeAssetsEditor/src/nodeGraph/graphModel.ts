@@ -51,6 +51,8 @@ export interface IGraphNode {
     position: Vec2;
     /** When true, the node body (ports) is hidden and only the header is shown. */
     collapsed: boolean;
+    /** Host-owned expanded-subgraph presentation state, when this node represents an aggregate. */
+    aggregateExpanded?: boolean;
 }
 
 /**
@@ -83,6 +85,10 @@ export interface IGraphFrame {
     nodeIds: readonly string[];
     /** When true, the frame is drawn collapsed. */
     collapsed: boolean;
+    /** Identifies a host-projected aggregate frame rather than an authored layout frame. */
+    kind?: "aggregate";
+    /** The compact aggregate node whose projected children this frame contains. */
+    aggregateNodeId?: string;
 }
 
 /**

@@ -15,6 +15,7 @@ import {
     DedupBlock,
     DracoCompressionBlock,
     EvaluateNodeGeometryBlock,
+    ExportGLTFAggregateBlock,
     ExportGLTFBlock,
     ExportImageBlock,
     ExtractTexture,
@@ -25,8 +26,10 @@ import {
     GetUSDPrimBlock,
     GLTF2BabylonBlock,
     GLTFSelectorBlock,
+    GLTFToUniversalBlock,
     ImportBabylonBlock,
     ImportGLTFBlock,
+    ImportGLTFAggregateBlock,
     ImportNodeGeometryBlock,
     ImportUSDBlock,
     ImportImageBlock,
@@ -46,10 +49,14 @@ import {
     SetTexture,
     SimplifyBlock,
     StringLiteral,
+    UniversalToGLTFBlock,
     USD2BabylonBlock,
     USD2GLTFBlock,
     USDSelectorBlock,
     WeldBlock,
+    WriteGLTFBlock,
+    ReadGLTFBlock,
+    CustomAggregateBlock,
     // eslint-disable-next-line import/no-internal-modules
 } from "../../src/index";
 import { CreateBlockByClassName, GetRegisteredBlockClassNames } from "../../src/blockFoundation/blockRegistry";
@@ -157,6 +164,7 @@ describe("block self-registration", () => {
         it("registers every built-in block", () => {
             expect(registeredClassNames).toEqual(
                 expect.arrayContaining([
+                    CustomAggregateBlock.ClassName,
                     ImportGLTFBlock.ClassName,
                     ImportUSDBlock.ClassName,
                     DracoCompressionBlock.ClassName,
@@ -202,9 +210,15 @@ describe("block self-registration", () => {
                     GLTFSelectorBlock.ClassName,
                     USDSelectorBlock.ClassName,
                     BabylonSelectorBlock.ClassName,
+                    ReadGLTFBlock.ClassName,
+                    GLTFToUniversalBlock.ClassName,
+                    UniversalToGLTFBlock.ClassName,
+                    WriteGLTFBlock.ClassName,
+                    ImportGLTFAggregateBlock.ClassName,
+                    ExportGLTFAggregateBlock.ClassName,
                 ])
             );
-            expect(registeredClassNames).toHaveLength(45);
+            expect(registeredClassNames).toHaveLength(52);
         });
 
         it.each(registeredClassNames)("round-trips %s through serialize/Parse", (className) => {

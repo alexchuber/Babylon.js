@@ -5,6 +5,8 @@ import { Caption1, makeStyles, shorthands, tokens } from "@fluentui/react-compon
 import { type IGraphFrame } from "../graphModel";
 import { FrameHeaderHeight } from "../geometry";
 import { useCanvasContext } from "./canvasContext";
+import { Button } from "shared-ui-components/fluent/primitives/button";
+import { ChevronUpRegular } from "@fluentui/react-icons";
 
 const useStyles = makeStyles({
     frame: {
@@ -34,6 +36,7 @@ const useStyles = makeStyles({
         alignItems: "center",
         paddingLeft: tokens.spacingHorizontalS,
         paddingRight: tokens.spacingHorizontalS,
+        justifyContent: "space-between",
     },
     headerLabel: {
         color: tokens.colorNeutralForegroundOnBrand,
@@ -62,16 +65,30 @@ export const GraphFrameView: FunctionComponent<{ frame: IGraphFrame }> = (props)
         canvas.beginFrameInteraction(frame.id, event);
     };
 
+    const onCollapsePointerDown = (event: ReactPointerEvent) => {
+        event.stopPropagation();
+    };
+
     return (
         <div
             className={classes.frame}
             style={{ left: frame.position.x, top: frame.position.y, width: frame.size.width, height: frame.size.height, borderColor: frame.color }}
             onPointerDown={onPointerDown}
-            data-testid="graph-frame"
+            data-testid={frame.kind === "aggregate" ? "aggregate-frame" : "graph-frame"}
         >
             <div className={classes.fill} style={{ backgroundColor: frame.color }} />
             <div className={classes.header} style={{ backgroundColor: frame.color }}>
                 <Caption1 className={classes.headerLabel}>{frame.label}</Caption1>
+                {frame.kind === "aggregate" && frame.aggregateNodeId && (
+                    <Button
+                        appearance="transparent"
+                        icon={ChevronUpRegular}
+                        title="Collapse aggregate"
+                        ariaLabel="Collapse aggregate"
+                        onPointerDown={onCollapsePointerDown}
+                        onClick={() => canvas.editor.aggregatePresentation?.setExpanded(frame.aggregateNodeId!, false)}
+                    />
+                )}
             </div>
         </div>
     );

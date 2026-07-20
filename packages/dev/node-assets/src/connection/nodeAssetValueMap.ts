@@ -68,4 +68,5 @@ export type NodeAssetValueMap = {
     [NodeAssetConnectionPointType.USD_STAGE]: UsdAsset;
     [NodeAssetConnectionPointType.BABYLON_SCENE]: BabylonAsset;
     [NodeAssetConnectionPointType.NODE_GEOMETRY]: NodeGeometryAsset;
+    [NodeAssetConnectionPointType.UNIVERSAL]: GltfAsset;
 };

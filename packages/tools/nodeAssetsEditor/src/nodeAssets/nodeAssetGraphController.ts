@@ -15,11 +15,14 @@ import { Observable } from "core/Misc/observable";
 
 import { type BuildPBRMaterial } from "node-assets/Blocks/buildPBRMaterial";
 import { ExportGLTFBlock } from "node-assets/Blocks/exportGLTFBlock";
-import { type ImportGLTFBlock } from "node-assets/Blocks/importGLTFBlock";
+import { ExportGLTFAggregateBlock } from "node-assets/Blocks/exportGLTFAggregateBlock";
+import { type ImportGLTFAggregateBlock } from "node-assets/Blocks/importGLTFAggregateBlock";
 import { type ImportImageBlock } from "node-assets/Blocks/importImageBlock";
 import { type KTX2CompressionBlock } from "node-assets/Blocks/ktx2CompressionBlock";
 import { NodeAsset } from "node-assets/nodeAsset";
 import { NodeAssetBuildError } from "node-assets/nodeAssetBuildError";
+import { AggregateBlock } from "node-assets/blockFoundation/aggregateBlock";
+import { CustomAggregateBlock } from "node-assets/blockFoundation/customAggregateBlock";
 import { type NodeAssetBlock } from "node-assets/blockFoundation/nodeAssetBlock";
 
 import { GraphEditorState } from "../nodeGraph/editorState";
@@ -44,6 +47,7 @@ interface IEditorBlockMetadata {
     readonly position: Vec2;
     readonly title: string;
     readonly collapsed: boolean;
+    readonly aggregateExpanded?: boolean;
     /** Export blocks only: the user-chosen base file name for the download (editor-owned, kept out of the domain graph). */
     readonly fileName?: string;
 }
@@ -167,7 +171,7 @@ function ParseEditorFile(json: string): INodeAssetEditorFile {
         if (!IsRecord(rawBlock)) {
             throw new Error(`Editor block metadata at index ${index} must be an object.`);
         }
-        const { id, position, title, collapsed, fileName } = rawBlock;
+        const { id, position, title, collapsed, fileName, aggregateExpanded } = rawBlock;
         if (typeof id !== "number" || !Number.isSafeInteger(id) || id < 0 || id >= Number.MAX_SAFE_INTEGER) {
             throw new Error(`Editor block metadata at index ${index} must have an id that is a safe non-negative integer.`);
         }
@@ -190,12 +194,16 @@ function ParseEditorFile(json: string): INodeAssetEditorFile {
         if (fileName !== undefined && typeof fileName !== "string") {
             throw new Error(`Editor block metadata at index ${index} must have a string fileName when provided.`);
         }
+        if (aggregateExpanded !== undefined && typeof aggregateExpanded !== "boolean") {
+            throw new Error(`Editor block metadata at index ${index} must have a boolean aggregateExpanded value when provided.`);
+        }
         return {
             id,
             position: { x: position.x, y: position.y },
             title,
             collapsed,
             fileName,
+            aggregateExpanded,
         };
     });
 
@@ -303,7 +311,9 @@ export class NodeAssetGraphController {
     private readonly _onChangedObserver;
     private readonly _orbMetalImageBlock: ImportImageBlock;
     private readonly _orbPatternImageBlock: ImportImageBlock;
-    private readonly _orbGltfBlock: ImportGLTFBlock;
+    private readonly _orbGltfBlock: ImportGLTFAggregateBlock;
+    private readonly _aggregateRootByChildNodeId = new Map<string, string>();
+    private _projectingAggregate = false;
 
     /**
      * Creates a controller seeded with the "energy orb" showcase graph. Two ImportImage blocks (a dark
@@ -321,6 +331,8 @@ export class NodeAssetGraphController {
 
         const importImageDescriptor = GetBlockDescriptorByPaletteItemId("import-image")!;
         const importGltfDescriptor = GetBlockDescriptorByPaletteItemId("import-gltf")!;
+        const universalToGltfDescriptor = GetBlockDescriptorByPaletteItemId("universal-to-gltf")!;
+        const gltfToUniversalDescriptor = GetBlockDescriptorByPaletteItemId("gltf-to-universal")!;
         const compositeDescriptor = GetBlockDescriptorByPaletteItemId("composite-image")!;
         const buildDescriptor = GetBlockDescriptorByPaletteItemId("build-pbr-material")!;
         const ktx2Descriptor = GetBlockDescriptorByPaletteItemId("ktx2-compression")!;
@@ -330,15 +342,17 @@ export class NodeAssetGraphController {
         const metalNode = this._instantiateBlock(importImageDescriptor, { x: 80, y: 80 });
         const patternNode = this._instantiateBlock(importImageDescriptor, { x: 80, y: 300 });
         const gltfNode = this._instantiateBlock(importGltfDescriptor, { x: 80, y: 520 });
+        const universalToGltfNode = this._instantiateBlock(universalToGltfDescriptor, { x: 340, y: 520 });
         const compositeNode = this._instantiateBlock(compositeDescriptor, { x: 380, y: 140 });
         const buildNode = this._instantiateBlock(buildDescriptor, { x: 680, y: 320 });
         const ktx2Node = this._instantiateBlock(ktx2Descriptor, { x: 980, y: 320 });
         const dracoNode = this._instantiateBlock(dracoDescriptor, { x: 1220, y: 320 });
-        const exportNode = this._instantiateBlock(exportDescriptor, { x: 1460, y: 320 });
+        const gltfToUniversalNode = this._instantiateBlock(gltfToUniversalDescriptor, { x: 1460, y: 320 });
+        const exportNode = this._instantiateBlock(exportDescriptor, { x: 1700, y: 320 });
 
         this._orbMetalImageBlock = this._reconciler.getBlock(metalNode.id)! as ImportImageBlock;
         this._orbPatternImageBlock = this._reconciler.getBlock(patternNode.id)! as ImportImageBlock;
-        this._orbGltfBlock = this._reconciler.getBlock(gltfNode.id)! as ImportGLTFBlock;
+        this._orbGltfBlock = this._reconciler.getBlock(gltfNode.id)! as ImportGLTFAggregateBlock;
 
         // A glossy, self-lit metal orb: near-metallic with a cyan emissive tint so the pattern glows.
         const buildBlock = this._reconciler.getBlock(buildNode.id)! as BuildPBRMaterial;
@@ -349,16 +363,18 @@ export class NodeAssetGraphController {
         (this._reconciler.getBlock(ktx2Node.id)! as KTX2CompressionBlock).generateMipmaps = true;
 
         const snapshot: IGraphSnapshot = {
-            nodes: [metalNode, patternNode, gltfNode, compositeNode, buildNode, ktx2Node, dracoNode, exportNode],
+            nodes: [metalNode, patternNode, gltfNode, universalToGltfNode, compositeNode, buildNode, ktx2Node, dracoNode, gltfToUniversalNode, exportNode],
             wires: [
                 this._createWireToInput(metalNode, compositeNode, "base"),
                 this._createWireToInput(patternNode, compositeNode, "overlay"),
                 this._createWireToInput(compositeNode, buildNode, "baseColor"),
                 this._createWireToInput(patternNode, buildNode, "emissive"),
-                this._createWireToInput(gltfNode, buildNode, "scene"),
+                this._createWire(gltfNode, universalToGltfNode),
+                this._createWireToInput(universalToGltfNode, buildNode, "scene"),
                 this._createWire(buildNode, ktx2Node),
                 this._createWire(ktx2Node, dracoNode),
-                this._createWire(dracoNode, exportNode),
+                this._createWire(dracoNode, gltfToUniversalNode),
+                this._createWire(gltfToUniversalNode, exportNode),
             ],
             frames: [
                 {
@@ -373,7 +389,15 @@ export class NodeAssetGraphController {
             ],
         };
         this.state = new GraphEditorState(snapshot, {
-            canConnectPorts: (fromPortId, toPortId) => this._reconciler.canConnectPorts(fromPortId, toPortId),
+            canConnectPorts: (fromPortId, toPortId) => this._canConnectPorts(fromPortId, toPortId),
+            beforeWireChange: (nodeIds) => {
+                if (this._projectingAggregate) {
+                    return;
+                }
+                for (const nodeId of nodeIds) {
+                    this._detachAggregateContainingNode(nodeId);
+                }
+            },
         });
 
         this.paletteCategories = BuildPaletteCategories(GetAllBlockDescriptors());
@@ -401,8 +425,7 @@ export class NodeAssetGraphController {
             this._fetchAssetBytesAsync(DefaultSampleAssetUrls.orbPatternImage),
         ]);
 
-        this._orbGltfBlock.data = orbGlb;
-        this._orbGltfBlock.source = DefaultOrbGlbPath;
+        this._orbGltfBlock.setUploadedSource(orbGlb, DefaultOrbGlbPath);
 
         this._orbMetalImageBlock.data = orbMetal;
         this._orbMetalImageBlock.mimeType = "image/png";
@@ -431,6 +454,80 @@ export class NodeAssetGraphController {
     }
 
     /**
+     * Tests whether a visual node represents an aggregate block.
+     * @param nodeId The visual node id.
+     * @returns Whether the node is a compact aggregate root.
+     */
+    public isAggregateNode(nodeId: string): boolean {
+        return this._reconciler.getBlock(nodeId) instanceof AggregateBlock && !this._aggregateRootByChildNodeId.has(nodeId);
+    }
+
+    /**
+     * Expands or collapses an aggregate's projected primitive subgraph.
+     * @param nodeId The compact aggregate node id.
+     * @param expanded The requested presentation state.
+     */
+    public setAggregateExpanded(nodeId: string, expanded: boolean): void {
+        const rootNode = this.state.getNode(nodeId);
+        const aggregate = this._reconciler.getBlock(nodeId);
+        if (!rootNode || !(aggregate instanceof AggregateBlock) || rootNode.aggregateExpanded === expanded) {
+            return;
+        }
+
+        if (expanded) {
+            this._projectingAggregate = true;
+            try {
+                rootNode.aggregateExpanded = true;
+                const childNodes: IGraphNode[] = [];
+                for (const [index, block] of aggregate.subgraph.attachedBlocks.entries()) {
+                    const descriptor = GetBlockDescriptorForBlock(block);
+                    if (!descriptor) {
+                        throw new Error(`The "${block.getClassName()}" aggregate child is not supported by this Node Assets Editor.`);
+                    }
+                    const childNode = BlockToNode(block, descriptor, { x: rootNode.position.x + 260 + index * 260, y: rootNode.position.y + 120 }, block.name, false);
+                    childNodes.push(childNode);
+                    this._aggregateRootByChildNodeId.set(childNode.id, rootNode.id);
+                    this._reconciler.registerNode(block, childNode);
+                    this.state.addNode(childNode);
+                }
+                for (const block of aggregate.subgraph.attachedBlocks) {
+                    for (const output of block.outputs) {
+                        for (const input of output.connectedPoints) {
+                            this.state.addWire(PortIdForPoint(block, output), PortIdForPoint(input.ownerBlock, input));
+                        }
+                    }
+                }
+                this.state.addFrame({
+                    id: `aggregate-frame-${rootNode.id}`,
+                    label: rootNode.title,
+                    color: rootNode.headerColor,
+                    position: { x: rootNode.position.x + 220, y: rootNode.position.y + 70 },
+                    size: { width: Math.max(560, childNodes.length * 260 + 80), height: 300 },
+                    nodeIds: childNodes.map((node) => node.id),
+                    collapsed: false,
+                    kind: "aggregate",
+                    aggregateNodeId: rootNode.id,
+                });
+                this.state.notifyChanged("visual");
+                return;
+            } finally {
+                this._projectingAggregate = false;
+            }
+        }
+
+        const frame = this.state.frames.find((candidate) => candidate.kind === "aggregate" && candidate.aggregateNodeId === rootNode.id);
+        if (frame) {
+            this.state.removeNodes(frame.nodeIds);
+            for (const childNodeId of frame.nodeIds) {
+                this._aggregateRootByChildNodeId.delete(childNodeId);
+            }
+            this.state.removeFrame(frame.id);
+        }
+        rootNode.aggregateExpanded = false;
+        this.state.notifyChanged("visual");
+    }
+
+    /**
      * Builds the property sections for a selected node: a general name field plus the block's own
      * descriptor-provided section, if any.
      * @param node - The selected node.
@@ -450,8 +547,20 @@ export class NodeAssetGraphController {
                                 return;
                             }
                             node.title = value;
+                            const block = this._reconciler.getBlock(node.id);
+                            if (block) {
+                                block.name = value;
+                            }
+                            this._detachAggregateContainingNode(node.id);
                             this.state.notifyChanged("visual");
                         },
+                    },
+                    {
+                        kind: "text",
+                        label: "Type",
+                        value: this._reconciler.getBlock(node.id)?.getClassName() ?? "",
+                        disabled: true,
+                        onChange: () => undefined,
                     },
                 ],
             },
@@ -474,12 +583,25 @@ export class NodeAssetGraphController {
 
         const block = this._reconciler.getBlock(node.id);
         if (block) {
-            const section = GetBlockDescriptorForBlock(block)?.getPropertySection?.(block, {
-                refresh: () => this.state.notifyChanged(),
-                requestExport: (fileName) => this.onExportRequested.notifyObservers(fileName ?? "scene"),
-            });
-            if (section) {
-                sections.push(section);
+            const propertyContext = {
+                refresh: () => {
+                    this._detachAggregateContainingNode(node.id);
+                    this.state.notifyChanged();
+                },
+                requestExport: (fileName?: string) => this.onExportRequested.notifyObservers(fileName ?? "scene"),
+            };
+            if (block instanceof AggregateBlock) {
+                for (const child of block.subgraph.attachedBlocks) {
+                    const childSection = GetBlockDescriptorForBlock(child)?.getPropertySection?.(child, propertyContext);
+                    if (childSection) {
+                        sections.push({ ...childSection, title: child.name.toUpperCase() });
+                    }
+                }
+            } else {
+                const section = GetBlockDescriptorForBlock(block)?.getPropertySection?.(block, propertyContext);
+                if (section) {
+                    sections.push(section);
+                }
             }
         }
 
@@ -525,6 +647,9 @@ export class NodeAssetGraphController {
         this._reconcileAndNotifyBuildRelevantChange();
         const blocks: IEditorBlockMetadata[] = [];
         for (const node of this.state.nodes) {
+            if (this._aggregateRootByChildNodeId.has(node.id)) {
+                continue;
+            }
             const block = this._reconciler.getBlock(node.id);
             if (block) {
                 blocks.push({
@@ -532,28 +657,31 @@ export class NodeAssetGraphController {
                     position: node.position,
                     title: node.title,
                     collapsed: node.collapsed,
+                    aggregateExpanded: node.aggregateExpanded,
                     fileName: block instanceof ExportGLTFBlock ? block.fileName : undefined,
                 });
             }
         }
-        const frames: IEditorFrameMetadata[] = this.state.frames.map((frame) => {
-            const blockIds = frame.nodeIds.map((nodeId) => {
-                const block = this._reconciler.getBlock(nodeId);
-                if (!block) {
-                    throw new Error(`Cannot serialize frame "${frame.label}" because it references unknown node "${nodeId}".`);
-                }
-                return block.uniqueId;
+        const frames: IEditorFrameMetadata[] = this.state.frames
+            .filter((frame) => frame.kind !== "aggregate")
+            .map((frame) => {
+                const blockIds = frame.nodeIds.map((nodeId) => {
+                    const block = this._reconciler.getBlock(nodeId);
+                    if (!block) {
+                        throw new Error(`Cannot serialize frame "${frame.label}" because it references unknown node "${nodeId}".`);
+                    }
+                    return block.uniqueId;
+                });
+                return {
+                    id: frame.id,
+                    label: frame.label,
+                    color: frame.color,
+                    position: frame.position,
+                    size: frame.size,
+                    blockIds,
+                    collapsed: frame.collapsed,
+                };
             });
-            return {
-                id: frame.id,
-                label: frame.label,
-                color: frame.color,
-                position: frame.position,
-                size: frame.size,
-                blockIds,
-                collapsed: frame.collapsed,
-            };
-        });
         const file: INodeAssetEditorFile = { graph: this._nodeAsset.serialize(), editor: { blocks, frames } };
         return JSON.stringify(file, null, 2);
     }
@@ -624,12 +752,18 @@ export class NodeAssetGraphController {
         // Commit only after the complete candidate file has parsed and mapped successfully.
         this._nodeAsset = asset;
         this._reconciler.reset(asset);
+        this._aggregateRootByChildNodeId.clear();
         for (const { block, node } of blockNodes) {
             this._reconciler.registerNode(block, node);
         }
         this.diagnostics.clear();
         // Correspondence is committed above, so the reconcile fired by reset sees a consistent world.
         this.state.reset({ nodes, wires, frames });
+        for (const metadata of file.editor.blocks) {
+            if (metadata.aggregateExpanded) {
+                this.setAggregateExpanded(NodeIdForBlockId(metadata.id), true);
+            }
+        }
     }
 
     /** Releases the state subscription. */
@@ -687,6 +821,44 @@ export class NodeAssetGraphController {
         return node;
     }
 
+    private _canConnectPorts(fromPortId: string, toPortId: string): boolean {
+        if (!this._reconciler.canConnectPorts(fromPortId, toPortId)) {
+            return false;
+        }
+        const fromRoot = this._aggregateRootByChildNodeId.get(this.state.getPortNode(fromPortId)?.id ?? "");
+        const toRoot = this._aggregateRootByChildNodeId.get(this.state.getPortNode(toPortId)?.id ?? "");
+        return fromRoot === toRoot;
+    }
+
+    private _detachAggregateContainingNode(nodeId: string): void {
+        const rootNodeId = this._aggregateRootByChildNodeId.get(nodeId);
+        if (!rootNodeId) {
+            return;
+        }
+        const aggregate = this._reconciler.getBlock(rootNodeId);
+        if (!(aggregate instanceof AggregateBlock) || aggregate instanceof CustomAggregateBlock) {
+            return;
+        }
+
+        const custom = CustomAggregateBlock.FromAggregate(aggregate, aggregate.name, this._nodeAsset);
+        custom.uniqueId = aggregate.uniqueId;
+        this._nodeAsset.removeBlock(aggregate);
+
+        const rootNode = this.state.getNode(rootNodeId);
+        if (!rootNode) {
+            throw new Error(`Cannot detach aggregate "${aggregate.name}" because its visual root is missing.`);
+        }
+        this._reconciler.registerNode(custom, rootNode);
+
+        for (const childBlock of custom.subgraph.attachedBlocks) {
+            const childNodeId = NodeIdForBlockId(childBlock.uniqueId);
+            const childNode = this.state.getNode(childNodeId);
+            if (childNode && this._aggregateRootByChildNodeId.get(childNodeId) === rootNodeId) {
+                this._reconciler.registerNode(childBlock, childNode);
+            }
+        }
+    }
+
     private async _fetchAssetBytesAsync(url: string): Promise<Uint8Array> {
         const response = await fetch(url);
         if (!response.ok) {
@@ -696,6 +868,9 @@ export class NodeAssetGraphController {
     }
 
     private _reconcileAndNotifyBuildRelevantChange(): void {
+        if (!this._projectingAggregate) {
+            this._reconcileCustomAggregateSubgraphs();
+        }
         this._reconciler.reconcile(this.state);
         const signature = this._createBuildRelevantSignature();
         if (signature !== this._buildRelevantSignature) {
@@ -705,6 +880,39 @@ export class NodeAssetGraphController {
     }
 
     private _createBuildRelevantSignature(): string {
-        return JSON.stringify(this._nodeAsset.serialize());
+        return JSON.stringify(this._nodeAsset.serialize(), (key, value) => (key === "fileName" ? undefined : value));
+    }
+
+    private _reconcileCustomAggregateSubgraphs(): void {
+        const customAggregates = this.state.nodes
+            .map((node) => ({ node, block: this._reconciler.getBlock(node.id) }))
+            .filter((entry): entry is { node: IGraphNode; block: CustomAggregateBlock } => entry.node.aggregateExpanded === true && entry.block instanceof CustomAggregateBlock);
+
+        for (const { node: rootNode, block: aggregate } of customAggregates) {
+            const childNodeIds = new Set(
+                Array.from(this._aggregateRootByChildNodeId)
+                    .filter(([, rootNodeId]) => rootNodeId === rootNode.id)
+                    .map(([childNodeId]) => childNodeId)
+            );
+            for (const block of aggregate.subgraph.attachedBlocks) {
+                for (const output of block.outputs) {
+                    output.disconnect();
+                }
+            }
+            for (const wire of this.state.wires) {
+                const fromNode = this.state.getPortNode(wire.fromPortId);
+                const toNode = this.state.getPortNode(wire.toPortId);
+                if (!fromNode || !toNode || !childNodeIds.has(fromNode.id) || !childNodeIds.has(toNode.id)) {
+                    continue;
+                }
+                const fromBlock = this._reconciler.getBlock(fromNode.id);
+                const toBlock = this._reconciler.getBlock(toNode.id);
+                const from = fromBlock?.outputs.find((point) => PortIdForPoint(fromBlock, point) === wire.fromPortId);
+                const to = toBlock?.inputs.find((point) => PortIdForPoint(toBlock, point) === wire.toPortId);
+                if (from && to) {
+                    from.connectTo(to);
+                }
+            }
+        }
     }
 }

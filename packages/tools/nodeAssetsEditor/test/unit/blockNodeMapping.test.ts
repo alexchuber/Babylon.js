@@ -52,7 +52,7 @@ describe("blockNodeMapping", () => {
 
         expect(PointToPort(block, block.scene)).toEqual({
             id: PortIdForPoint(block, block.scene),
-            name: "glTF Document",
+            name: "glTF",
             direction: "input",
             color: ScenePortColor,
         });
