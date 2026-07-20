@@ -1,5 +1,5 @@
 import { Button as FluentButton, makeStyles, Spinner } from "@fluentui/react-components";
-import { type MouseEvent, forwardRef, useCallback, useContext, useState } from "react";
+import { type MouseEvent, type PointerEventHandler, forwardRef, useCallback, useContext, useState } from "react";
 import { type FluentIcon } from "@fluentui/react-icons";
 import { type BasePrimitiveProps } from "./primitive";
 import { ToolContext } from "../hoc/fluentToolWrapper";
@@ -18,6 +18,8 @@ const useButtonStyles = makeStyles({
 export type ButtonProps = BasePrimitiveProps & {
     /** Callback invoked when the button is clicked. */
     onClick?: (e?: MouseEvent<HTMLButtonElement>) => unknown | Promise<unknown>;
+    /** Callback invoked when a pointer becomes active on the button. */
+    onPointerDown?: PointerEventHandler<HTMLButtonElement>;
     /** Optional icon rendered inside the button. */
     icon?: FluentIcon;
     /** Fluent button appearance. */

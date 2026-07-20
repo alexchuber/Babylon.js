@@ -15,7 +15,6 @@ import { Observable } from "core/Misc/observable";
 
 import { type BuildPBRMaterial } from "node-assets/Blocks/buildPBRMaterial";
 import { ExportGLTFBlock } from "node-assets/Blocks/exportGLTFBlock";
-import { ExportGLTFAggregateBlock } from "node-assets/Blocks/exportGLTFAggregateBlock";
 import { type ImportGLTFAggregateBlock } from "node-assets/Blocks/importGLTFAggregateBlock";
 import { type ImportImageBlock } from "node-assets/Blocks/importImageBlock";
 import { type KTX2CompressionBlock } from "node-assets/Blocks/ktx2CompressionBlock";
@@ -25,7 +24,7 @@ import { AggregateBlock } from "node-assets/blockFoundation/aggregateBlock";
 import { CustomAggregateBlock } from "node-assets/blockFoundation/customAggregateBlock";
 import { type NodeAssetBlock } from "node-assets/blockFoundation/nodeAssetBlock";
 
-import { GraphEditorState } from "../nodeGraph/editorState";
+import { GraphEditorState, type GraphNodeRemovalPlan } from "../nodeGraph/editorState";
 import { GraphNodeDiagnostics } from "../nodeGraph/nodeDiagnostics";
 import { type IGraphFrame, type IGraphNode, type IGraphSnapshot, type IGraphWire, type Vec2 } from "../nodeGraph/graphModel";
 import { type IPaletteCategory, type IPaletteProjectionOptions } from "../nodeGraph/paletteModel";
@@ -395,6 +394,7 @@ export class NodeAssetGraphController {
                     this._detachAggregateContainingNode(nodeId);
                 }
             },
+            prepareNodeRemoval: (nodeIds) => this._prepareNodeRemoval(nodeIds),
         });
 
         // Subscribe only after seeding so the reconcile sees consistent correspondence and state.
@@ -519,15 +519,20 @@ export class NodeAssetGraphController {
             }
         }
 
-        const frame = this.state.frames.find((candidate) => candidate.kind === "aggregate" && candidate.aggregateNodeId === rootNode.id);
-        if (frame) {
-            this.state.removeNodes(frame.nodeIds);
-            for (const childNodeId of frame.nodeIds) {
-                this._aggregateRootByChildNodeId.delete(childNodeId);
-            }
-            this.state.removeFrame(frame.id);
-        }
         rootNode.aggregateExpanded = false;
+        this._projectingAggregate = true;
+        try {
+            const frame = this.state.frames.find((candidate) => candidate.kind === "aggregate" && candidate.aggregateNodeId === rootNode.id);
+            if (frame) {
+                this.state.removeNodes(frame.nodeIds);
+                for (const childNodeId of frame.nodeIds) {
+                    this._aggregateRootByChildNodeId.delete(childNodeId);
+                }
+                this.state.removeFrame(frame.id);
+            }
+        } finally {
+            this._projectingAggregate = false;
+        }
         this.state.notifyChanged("visual");
     }
 
@@ -588,6 +593,7 @@ export class NodeAssetGraphController {
         const block = this._reconciler.getBlock(node.id);
         if (block) {
             const propertyContext = {
+                prepareEdit: <BlockT extends NodeAssetBlock>(editedBlock: BlockT): BlockT => this._preparePropertyEdit(node.id, editedBlock),
                 refresh: () => {
                     this._detachAggregateContainingNode(node.id);
                     this.state.notifyChanged();
@@ -839,6 +845,10 @@ export class NodeAssetGraphController {
         if (!rootNodeId) {
             return;
         }
+        this._detachAggregate(rootNodeId);
+    }
+
+    private _detachAggregate(rootNodeId: string): void {
         const aggregate = this._reconciler.getBlock(rootNodeId);
         if (!(aggregate instanceof AggregateBlock) || aggregate instanceof CustomAggregateBlock) {
             return;
@@ -861,6 +871,68 @@ export class NodeAssetGraphController {
                 this._reconciler.registerNode(childBlock, childNode);
             }
         }
+    }
+
+    private _preparePropertyEdit<BlockT extends NodeAssetBlock>(nodeId: string, block: BlockT): BlockT {
+        const nodeBlock = this._reconciler.getBlock(nodeId);
+        const rootNodeId =
+            this._aggregateRootByChildNodeId.get(nodeId) ??
+            (nodeBlock instanceof AggregateBlock && nodeBlock.subgraph.attachedBlocks.some((candidate) => candidate.uniqueId === block.uniqueId) ? nodeId : undefined);
+        if (!rootNodeId) {
+            return block;
+        }
+
+        this._detachAggregate(rootNodeId);
+        const aggregate = this._reconciler.getBlock(rootNodeId);
+        const authoredBlock = aggregate instanceof AggregateBlock ? aggregate.subgraph.attachedBlocks.find((candidate) => candidate.uniqueId === block.uniqueId) : undefined;
+        if (!authoredBlock) {
+            throw new Error(`Cannot edit aggregate child "${block.name}" because its authored block is missing.`);
+        }
+        return authoredBlock as BlockT;
+    }
+
+    private _prepareNodeRemoval(nodeIds: readonly string[]): GraphNodeRemovalPlan {
+        if (this._projectingAggregate) {
+            return { nodeIds };
+        }
+
+        const removedNodeIds = new Set(nodeIds);
+        const removedFrameIds = new Set<string>();
+        const removedWireIds = new Set<string>();
+        const removedRootIds = new Set(nodeIds.filter((nodeId) => this.isAggregateNode(nodeId)));
+        for (const rootNodeId of removedRootIds) {
+            const frame = this.state.frames.find((candidate) => candidate.kind === "aggregate" && candidate.aggregateNodeId === rootNodeId);
+            if (!frame) {
+                continue;
+            }
+            removedFrameIds.add(frame.id);
+            for (const childNodeId of frame.nodeIds) {
+                removedNodeIds.add(childNodeId);
+                this._aggregateRootByChildNodeId.delete(childNodeId);
+            }
+        }
+
+        for (const nodeId of nodeIds) {
+            const rootNodeId = this._aggregateRootByChildNodeId.get(nodeId);
+            if (!rootNodeId || removedRootIds.has(rootNodeId)) {
+                continue;
+            }
+            this._detachAggregate(rootNodeId);
+            const aggregate = this._reconciler.getBlock(rootNodeId);
+            const child = this._reconciler.getBlock(nodeId);
+            if (!(aggregate instanceof CustomAggregateBlock) || !child) {
+                throw new Error(`Cannot delete aggregate child "${nodeId}" because its authored block is missing.`);
+            }
+            const removedPublicPortIds = new Set(aggregate._removeOwnedBlock(child).map((point) => PortIdForPoint(aggregate, point)));
+            for (const wire of this.state.wires) {
+                if (removedPublicPortIds.has(wire.fromPortId) || removedPublicPortIds.has(wire.toPortId)) {
+                    removedWireIds.add(wire.id);
+                }
+            }
+            this._aggregateRootByChildNodeId.delete(nodeId);
+        }
+
+        return { nodeIds: [...removedNodeIds], frameIds: [...removedFrameIds], wireIds: [...removedWireIds] };
     }
 
     private async _fetchAssetBytesAsync(url: string): Promise<Uint8Array> {
