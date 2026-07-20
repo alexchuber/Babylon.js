@@ -233,6 +233,13 @@ export class NodeAssetsEditorPage {
         await this.page.waitForTimeout(1_000);
     }
 
+    /** Wait for a build while the Preview pane is mounted but hidden behind another tab. */
+    async waitForNextSuccessfulHiddenPreviewBuild(): Promise<void> {
+        await expect(this.previewBuildingOverlay).toHaveCount(1, { timeout: 15_000 });
+        await expect(this.previewBuildingOverlay).toHaveCount(0, { timeout: 120_000 });
+        await expect(this.previewErrorOverlay).toHaveCount(0);
+    }
+
     /** Wait for any observable auto-build spinner to clear and leave no in-pane build error. */
     async waitForSuccessfulPreviewBuild(): Promise<void> {
         await this.page.waitForTimeout(500);
@@ -245,6 +252,33 @@ export class NodeAssetsEditorPage {
         }
         await expect(this.previewErrorOverlay).toBeHidden({ timeout: 60_000 });
         await this.page.waitForTimeout(1_000);
+    }
+
+    async expectPreviewToHaveRenderedContent(): Promise<void> {
+        await expect(this.previewCanvas).toBeVisible();
+        await expect
+            .poll(
+                async () =>
+                    await this.previewCanvas.evaluate((canvas: HTMLCanvasElement) => {
+                        const sample = document.createElement("canvas");
+                        sample.width = 32;
+                        sample.height = 32;
+                        const context = sample.getContext("2d", { willReadFrequently: true });
+                        if (!context || canvas.width === 0 || canvas.height === 0) {
+                            return 0;
+                        }
+
+                        context.drawImage(canvas, 0, 0, sample.width, sample.height);
+                        const pixels = context.getImageData(0, 0, sample.width, sample.height).data;
+                        const colors = new Set<number>();
+                        for (let index = 0; index < pixels.length; index += 4) {
+                            colors.add((pixels[index] << 24) | (pixels[index + 1] << 16) | (pixels[index + 2] << 8) | pixels[index + 3]);
+                        }
+                        return colors.size;
+                    }),
+                { message: "Expected the preview canvas to contain a rendered scene.", timeout: 15_000 }
+            )
+            .toBeGreaterThan(8);
     }
 
     private async getWireEndpointKeys(): Promise<readonly string[]> {

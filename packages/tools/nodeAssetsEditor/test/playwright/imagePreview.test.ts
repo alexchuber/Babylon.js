@@ -74,11 +74,20 @@ test.describe("Node Assets Editor — image preview", () => {
         // The preview shows the produced image (an <img> over an object URL) and reports its mime type.
         await expect(previewImage).toBeVisible();
         await expect(previewImage).toHaveJSProperty("complete", true);
-        expect(await previewImage.getAttribute("src")).toMatch(/^blob:/);
+        const objectUrl = await previewImage.getAttribute("src");
+        if (!objectUrl) {
+            throw new Error("The produced image preview did not expose an object URL.");
+        }
+        expect(objectUrl).toMatch(/^blob:/);
         await expect(previewImageInfo).toContainText("image/png");
 
         await page.locator('button[value="Validation"]').click();
         await expect(page.getByText("glTF validation does not apply to image outputs.")).toBeVisible();
+
+        await page.locator('button[value="Preview"]').click();
+        await expect(previewImage).toBeVisible();
+        await expect(previewImage).toHaveAttribute("src", objectUrl);
+        await expect(previewImage).toHaveJSProperty("complete", true);
 
         expect(pageErrors).toEqual([]);
     });

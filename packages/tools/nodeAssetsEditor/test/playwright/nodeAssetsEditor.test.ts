@@ -92,6 +92,64 @@ test.describe("Node Assets Editor — Orb compression sample", () => {
         expect(pageErrors).toEqual([]);
     });
 
+    test("restores the rendered preview across repeated Validation tab visits", async ({ page }) => {
+        const editor = new NodeAssetsEditorPage(page);
+
+        await editor.goto();
+        await editor.waitForNextSuccessfulPreviewBuild();
+        await editor.expectPreviewToHaveRenderedContent();
+        const initialCanvas = await editor.previewCanvas.elementHandle();
+        if (!initialCanvas) {
+            throw new Error("Could not resolve the rendered preview canvas.");
+        }
+
+        for (let visit = 0; visit < 2; visit++) {
+            await page.locator('button[value="Validation"]').click();
+            await expect(page.getByText(/Your output (is a valid glTF file|has validation issues)/)).toBeVisible({ timeout: 30_000 });
+            await expect(editor.previewCanvas).toHaveCount(1);
+            await expect(editor.previewCanvas).toBeHidden();
+
+            await page.locator('button[value="Preview"]').click();
+            expect(await editor.previewCanvas.evaluate((canvas, originalCanvas) => canvas === originalCanvas, initialCanvas)).toBe(true);
+            await editor.expectPreviewToHaveRenderedContent();
+        }
+    });
+
+    test("finishes the initial preview build while Validation is selected", async ({ page }) => {
+        const editor = new NodeAssetsEditorPage(page);
+
+        await editor.goto();
+        await expect(editor.previewBuildingOverlay).toBeVisible();
+
+        const previewBuild = editor.waitForNextSuccessfulHiddenPreviewBuild();
+        await page.locator('button[value="Validation"]').click();
+        await expect(editor.previewCanvas).toHaveCount(1);
+        await previewBuild;
+
+        await page.locator('button[value="Preview"]').click();
+        await editor.expectPreviewToHaveRenderedContent();
+    });
+
+    test("renders a newer successful preview built while Validation is selected", async ({ page }) => {
+        const editor = new NodeAssetsEditorPage(page);
+
+        await editor.goto();
+        await editor.waitForNextSuccessfulPreviewBuild();
+        await editor.expectPreviewToHaveRenderedContent();
+
+        await page.locator('button[value="Validation"]').click();
+        await expect(page.getByText(/Your output (is a valid glTF file|has validation issues)/)).toBeVisible({ timeout: 30_000 });
+
+        const previewBuild = editor.waitForNextSuccessfulHiddenPreviewBuild();
+        await editor.openLibraryButton.click();
+        const dialog = page.getByRole("dialog", { name: "NodeAsset Library" });
+        await dialog.getByRole("button", { name: "USD Preview", exact: true }).click();
+        await previewBuild;
+
+        await page.locator('button[value="Preview"]').click();
+        await editor.expectPreviewToHaveRenderedContent();
+    });
+
     test("renders the renamed Inputs palette and creates every input node", async ({ page }) => {
         const editor = new NodeAssetsEditorPage(page);
         await editor.goto();
@@ -173,6 +231,10 @@ test.describe("Node Assets Editor — Orb compression sample", () => {
 
         await editor.selectNode("Export glTF");
         await expect(page.getByText("BUILD ERROR", { exact: true })).toBeVisible();
+
+        await page.locator('button[value="Validation"]').click();
+        await page.locator('button[value="Preview"]').click();
+        await expect(editor.previewErrorOverlay).toBeVisible();
     });
 
     test("reports a failed load without replacing the current graph or preview", async ({ page }) => {
