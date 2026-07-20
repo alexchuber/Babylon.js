@@ -365,7 +365,7 @@ test.describe("Node Assets Editor — Energy orb showcase", () => {
         const search = page.getByPlaceholder("Search palette");
         for (const [query, label, description] of [
             ["decimate", "Simplify Meshes", "Reduce Universal mesh geometry to a target ratio and error limit."],
-            ["optimize", "Prune", "Remove unused scene resources from the output."],
+            ["optimize", "Remove Unused Resources", "Remove resources that are no longer referenced by the scene."],
             ["compress", "Apply BasisU", "Compress scene textures to KTX2 / Basis Universal."],
         ]) {
             await search.fill(query);
@@ -570,6 +570,59 @@ test.describe("Node Assets Editor — Universal glTF aggregates", () => {
         await expect(page.getByText("Source error", { exact: true })).toBeVisible();
         await expect(page.getByRole("textbox").nth(3)).toHaveValue("scenes/nodeAssets/orb.glb");
         await expect(page.getByRole("textbox").nth(4)).toHaveValue(/404/);
+    });
+
+    test("adds, configures, and previews the four Universal cleanup operators in an aggregate graph", async ({ page }) => {
+        const editor = new NodeAssetsEditorPage(page);
+        await editor.goto();
+        await editor.waitForNextSuccessfulPreviewBuild();
+
+        await editor.connectPorts(editor.portOfNode("Import glTF", "out"), editor.portOfNode("Export glTF", "in"));
+        await editor.dropPaletteItem("Weld Vertices", { x: 0.28, y: 0.2 });
+        await editor.dropPaletteItem("Remove Unused Resources", { x: 0.43, y: 0.35 });
+        await editor.dropPaletteItem("Remove Degenerate Geometry", { x: 0.58, y: 0.5 });
+        await editor.dropPaletteItem("Fix Face Winding", { x: 0.73, y: 0.65 });
+
+        await editor.connectPorts(editor.portOfNode("Import glTF", "out"), editor.portOfNode("Weld Vertices", "in"));
+        await editor.connectPorts(editor.portOfNode("Weld Vertices", "out"), editor.portOfNode("Remove Unused Resources", "in"));
+        await editor.connectPorts(editor.portOfNode("Remove Unused Resources", "out"), editor.portOfNode("Remove Degenerate Geometry", "in"));
+        await editor.connectPorts(editor.portOfNode("Remove Degenerate Geometry", "out"), editor.portOfNode("Fix Face Winding", "in"));
+        await editor.connectPorts(editor.portOfNode("Fix Face Winding", "out"), editor.portOfNode("Export glTF", "in"));
+
+        await editor.selectNode("Weld Vertices");
+        await expect(page.getByRole("textbox").nth(1)).toHaveValue("WeldVerticesBlock");
+        await expect(page.getByText("Overwrite existing", { exact: true })).toBeVisible();
+        await page.getByRole("switch").click();
+
+        await editor.selectNode("Remove Unused Resources");
+        await expect(page.getByRole("textbox").nth(1)).toHaveValue("RemoveUnusedResourcesBlock");
+        await page.getByRole("textbox").nth(2).fill("Material, Texture");
+        await page.getByRole("textbox").nth(2).blur();
+        await expect(page.getByText("Keep leaf nodes", { exact: true })).toBeVisible();
+        for (const toggle of await page.getByRole("switch").all()) {
+            await toggle.click();
+        }
+
+        await editor.selectNode("Remove Degenerate Geometry");
+        await expect(page.getByRole("textbox").nth(1)).toHaveValue("RemoveDegenerateGeometryBlock");
+        await page.getByRole("textbox").nth(2).fill("0");
+        await page.getByRole("textbox").nth(2).blur();
+
+        await editor.selectNode("Fix Face Winding");
+        await expect(page.getByRole("textbox").nth(1)).toHaveValue("FixFaceWindingBlock");
+        await expect(page.getByRole("textbox")).toHaveCount(2);
+
+        for (const [fromNodeTitle, toNodeTitle] of [
+            ["Import glTF", "Weld Vertices"],
+            ["Weld Vertices", "Remove Unused Resources"],
+            ["Remove Unused Resources", "Remove Degenerate Geometry"],
+            ["Remove Degenerate Geometry", "Fix Face Winding"],
+            ["Fix Face Winding", "Export glTF"],
+        ] as const) {
+            await expect(page.locator(`[data-testid="graph-wire"][data-from-node-title="${fromNodeTitle}"][data-to-node-title="${toNodeTitle}"]`)).toHaveCount(1);
+        }
+        await editor.waitForSuccessfulPreviewBuild();
+        await expect(editor.previewCanvas).toBeVisible();
     });
 });
 

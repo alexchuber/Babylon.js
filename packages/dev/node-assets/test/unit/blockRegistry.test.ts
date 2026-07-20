@@ -19,6 +19,7 @@ import {
     ExportGLTFBlock,
     ExportImageBlock,
     ExtractTexture,
+    FixFaceWindingBlock,
     FlattenBlock,
     FlattenHierarchyBlock,
     FlipImageBlock,
@@ -45,6 +46,8 @@ import {
     NumberLiteral,
     PruneBlock,
     QuantizeAttributesBlock,
+    RemoveDegenerateGeometryBlock,
+    RemoveUnusedResourcesBlock,
     ResizeImageBlock,
     Selector,
     SetBabylonPropertyBlock,
@@ -58,6 +61,7 @@ import {
     USD2GLTFBlock,
     USDSelectorBlock,
     WeldBlock,
+    WeldVerticesBlock,
     WriteGLTFBlock,
     ReadGLTFBlock,
     CustomAggregateBlock,
@@ -175,8 +179,12 @@ describe("block self-registration", () => {
                     ExportGLTFBlock.ClassName,
                     KTX2CompressionBlock.ClassName,
                     WeldBlock.ClassName,
+                    WeldVerticesBlock.ClassName,
                     DedupBlock.ClassName,
                     PruneBlock.ClassName,
+                    RemoveUnusedResourcesBlock.ClassName,
+                    RemoveDegenerateGeometryBlock.ClassName,
+                    FixFaceWindingBlock.ClassName,
                     QuantizeAttributesBlock.ClassName,
                     SimplifyMeshesBlock.ClassName,
                     FlattenBlock.ClassName,
@@ -226,7 +234,7 @@ describe("block self-registration", () => {
                     ExportGLTFAggregateBlock.ClassName,
                 ])
             );
-            expect(registeredClassNames).toHaveLength(56);
+            expect(registeredClassNames).toHaveLength(60);
         });
 
         it.each(registeredClassNames)("round-trips %s through serialize/Parse", (className) => {

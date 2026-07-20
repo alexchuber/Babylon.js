@@ -38,6 +38,12 @@ export const JsonPortColor = "#b163c9";
 export const OperatorCategory = "Operators";
 export const OperatorHeaderColor = "#2f8f83";
 
+/** Palette category for source-independent Universal operators. */
+export const UniversalCategory = "Universal";
+
+/** Palette family for Universal cleanup decisions. */
+export const CleanupFamily = "Cleanup";
+
 /** Palette category and shared node header color for the value-literal source block family. */
 export const ValuesCategory = "Values";
 export const ValuesHeaderColor = "#5a5fb0";
@@ -99,6 +105,8 @@ export interface IBlockDescriptor {
     readonly className: string;
     /** Optional palette category label; entries without one fall into the default category. */
     readonly category?: string;
+    /** Optional family label within a category. */
+    readonly family?: string;
     /** Whether this descriptor is discoverable in the palette. Defaults to true. */
     readonly isPaletteVisible?: boolean;
     /** Constructs the backing block, registering it with the given node asset. */
