@@ -1,28 +1,15 @@
 # NodeAssets Editor — sample assets
 
-These files back the Node Assets Editor's bundled sample graphs.
+These files back the Node Assets Editor's bundled default graph.
 
-## Energy-orb default graph
+## Orb compression default graph
 
-The editor opens on an **energy orb** showcase: two `ImportImage` sources (a dark metal base and a cyan
-circuit pattern) composite into the base colour, the same pattern fans out to the emissive input, an
-`ImportGLTF` sphere supplies the geometry to `BuildPBRMaterial`, and the built orb flows through KTX2 +
-Draco compression to `ExportGLTF`.
+The editor opens on a compact compression graph: an `ImportGLTF` sphere flows through KTX2 and Draco
+transforms to `ExportGLTF`. The bundled sphere has no textures, so KTX2 becomes effective when the input
+is replaced with a textured glTF.
 
 - `orb.glb` — a UV sphere (POSITION, NORMAL, TEXCOORD_0 + indices) with **no material**, i.e. the bare
-  geometry the graph textures and self-lights.
-- `orbMetal.png` — a 512×512 dark, radially-shaded metal base colour.
-- `orbPattern.png` — a 512×512 cyan circuit/reticle pattern with a transparent background, used both as
-  the composite overlay and (fanned out) as the emissive glow.
-
-## Compose-up test fixtures
-
-- `bareCube.glb` — a tiny unit cube (POSITION, NORMAL, TEXCOORD_0) with **no material**.
-- `baseColor.png` — a small 64×64 checker used as a base-colour texture.
-
-These two back the headless compose-up unit test (`packages/dev/node-assets/test/unit/composeUpShowcase.test.ts`),
-which exercises the `ImportGLTF` + `ImportImage` → `BuildPBRMaterial` → `ExportGLTF` build funnel without
-the browser-only compositing path.
+  geometry the graph optimizes.
 
 ## Provenance / licence
 

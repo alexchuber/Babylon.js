@@ -6,12 +6,9 @@ import { describe, expect, it, vi } from "vitest";
 import {
     Babylon2GLTFBlock,
     BabylonSelectorBlock,
-    BuildPBRMaterial,
     CenterBlock,
-    ComposeGLTFMaterialBlock,
     CompositeImageBlock,
     ConvertImageFormatBlock,
-    DecomposeGLTFMaterialBlock,
     DedupBlock,
     DracoCompressionBlock,
     EvaluateNodeGeometryBlock,
@@ -181,7 +178,6 @@ describe("block self-registration", () => {
                     GetProperty.ClassName,
                     SetProperty.ClassName,
                     SetTexture.ClassName,
-                    BuildPBRMaterial.ClassName,
                     ResizeImageBlock.ClassName,
                     ConvertImageFormatBlock.ClassName,
                     FlipImageBlock.ClassName,
@@ -194,8 +190,6 @@ describe("block self-registration", () => {
                     GLTF2BabylonBlock.ClassName,
                     Babylon2GLTFBlock.ClassName,
                     EvaluateNodeGeometryBlock.ClassName,
-                    DecomposeGLTFMaterialBlock.ClassName,
-                    ComposeGLTFMaterialBlock.ClassName,
                     GetBabylonMeshBlock.ClassName,
                     SetBabylonPropertyBlock.ClassName,
                     GetUSDPrimBlock.ClassName,
@@ -204,7 +198,7 @@ describe("block self-registration", () => {
                     BabylonSelectorBlock.ClassName,
                 ])
             );
-            expect(registeredClassNames).toHaveLength(45);
+            expect(registeredClassNames).toHaveLength(42);
         });
 
         it.each(registeredClassNames)("round-trips %s through serialize/Parse", (className) => {

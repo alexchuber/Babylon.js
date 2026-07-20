@@ -65,8 +65,7 @@ lifecycle-managed.
   distinct from both the plain-data structural copy and `BabylonAsset`'s affine reject.
 - Blocks stop owning disposal. A block produces a typed payload registered with the build scope; the
   scope disposes it. This is what makes cancellation, limits, and sibling cleanup enforceable centrally.
-- `BuildPBRMaterial` and similar assembly blocks are **decomposed per representation** for new graphs
-  (a glTF-targeting builder writes into a `Document`; a Babylon-targeting builder builds a `Material`),
-  while the legacy glTF parsing path is kept for milestone 01–06 compatibility.
+- Material assembly and decomposition use representation-specific primitives; legacy generic material
+  blocks are not registered in the built-in catalog.
 - The worker/transferable protocol is defined by the build scope, so representation payloads have a
   single, testable serialization boundary rather than each block inventing one.

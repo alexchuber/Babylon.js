@@ -1,17 +1,13 @@
-// The default "energy orb" sample assets, bundled into the editor via Vite `?url` imports so the
+// The default orb sample asset, bundled into the editor via a Vite `?url` import so the
 // seeded graph's first preview builds from the tool's own origin — with no dependency on a separate
 // sample-asset CDN (see loadDefaultImportAsync in ./nodeAssetGraphController). This mirrors how the
 // build worker bundles its encoder sidecars (see ./nodeAssetBuildWorkerResources).
 //
-// These files are byte-for-byte copies of the canonical playground samples in
-// packages/tools/playground/public/scenes/nodeAssets/; keep them in sync if the originals change.
+// This file is a byte-for-byte copy of the canonical playground sample in
+// packages/tools/playground/public/scenes/nodeAssets/; keep it in sync if the original changes.
 import OrbGlbUrl from "./sampleAssets/orb.glb?url";
-import OrbMetalImageUrl from "./sampleAssets/orbMetal.png?url";
-import OrbPatternImageUrl from "./sampleAssets/orbPattern.png?url";
 
-/** Same-origin URLs for the bundled default "energy orb" sample assets, used to seed the import blocks. */
+/** Same-origin URL for the bundled default orb sample asset, used to seed the import block. */
 export const DefaultSampleAssetUrls = {
     orbGlb: OrbGlbUrl,
-    orbMetalImage: OrbMetalImageUrl,
-    orbPatternImage: OrbPatternImageUrl,
 } as const;

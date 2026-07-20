@@ -18,7 +18,22 @@ import { GetRegisteredBlockClassNames } from "node-assets/blockFoundation/blockR
 
 import { GetAllBlockDescriptors } from "../../src/nodeAssets/blockCatalog";
 
+const RemovedBlockClassNames = ["BuildPBRMaterial", "DecomposeGLTFMaterialBlock", "ComposeGLTFMaterialBlock"] as const;
+const RemovedPaletteItemIds = ["build-pbr-material", "decompose-gltf-material", "compose-gltf-material"] as const;
+
 describe("Block descriptor ↔ runtime registry parity", () => {
+    it("does not register or expose the removed material blocks", () => {
+        const runtimeClassNames = GetRegisteredBlockClassNames();
+        const paletteItemIds = GetAllBlockDescriptors().map((descriptor) => descriptor.paletteItemId);
+
+        for (const className of RemovedBlockClassNames) {
+            expect(runtimeClassNames).not.toContain(className);
+        }
+        for (const paletteItemId of RemovedPaletteItemIds) {
+            expect(paletteItemIds).not.toContain(paletteItemId);
+        }
+    });
+
     it("registers an editor descriptor for exactly the set of runtime blocks", () => {
         const runtimeClassNames = [...GetRegisteredBlockClassNames()].sort();
         const descriptorClassNames = GetAllBlockDescriptors()

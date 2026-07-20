@@ -72,18 +72,18 @@ describe("NodeAssetGraphController", () => {
         try {
             const exportImage = controller.createNodeFromPaletteItem("export-image", { x: 1800, y: 320 });
             controller.state.addNode(exportImage);
-            const buildPbr = FindNode(controller, "Build PBR Material");
-            const sceneOutput = buildPbr.ports.find((port) => port.direction === "output");
+            const importGltf = FindNode(controller, "Import glTF");
+            const gltfOutput = importGltf.ports.find((port) => port.direction === "output");
             const imageInput = exportImage.ports.find((port) => port.direction === "input");
-            if (!sceneOutput || !imageInput) {
-                throw new Error("Could not find the SCENE output and IMAGE input for the compatibility test.");
+            if (!gltfOutput || !imageInput) {
+                throw new Error("Could not find the glTF output and IMAGE input for the compatibility test.");
             }
             const serializedBefore = controller.serialize();
             const wireCountBefore = controller.state.wires.length;
             const changes = CountBuildRelevantChanges(controller);
 
             try {
-                expect(controller.state.addWire(sceneOutput.id, imageInput.id)).toBeUndefined();
+                expect(controller.state.addWire(gltfOutput.id, imageInput.id)).toBeUndefined();
                 expect(controller.state.wires).toHaveLength(wireCountBefore);
                 expect(controller.serialize()).toBe(serializedBefore);
                 expect(changes.count()).toBe(0);
@@ -294,9 +294,9 @@ describe("NodeAssetGraphController", () => {
         reconcileSpy.mockClear();
         serializeSpy.mockClear();
         try {
-            const buildNode = FindNode(controller, "Build PBR Material");
+            const ktx2Node = FindNode(controller, "Apply BasisU");
 
-            FindProperty(controller, buildNode, "Metallic", "slider").onChange(0.25);
+            FindProperty(controller, ktx2Node, "Generate mipmaps", "switch").onChange(true);
 
             expect(changes.count()).toBe(1);
             expect(reconcileSpy).toHaveBeenCalledOnce();
@@ -364,18 +364,10 @@ describe("NodeAssetGraphController", () => {
             controller.state.removeNodes([extraNode.id]);
             expect(changes.count()).toBe(4);
 
-            const buildNode = FindNode(controller, "Build PBR Material");
-            FindProperty(controller, buildNode, "Base color", "color").onChange("#804020");
+            const ktx2Node = FindNode(controller, "Apply BasisU");
+            const generateMipmaps = FindProperty(controller, ktx2Node, "Generate mipmaps", "switch");
+            generateMipmaps.onChange(!generateMipmaps.value);
             expect(changes.count()).toBe(5);
-
-            FindProperty(controller, buildNode, "Base alpha", "slider").onChange(0.5);
-            expect(changes.count()).toBe(6);
-            FindProperty(controller, buildNode, "Metallic", "slider").onChange(0.25);
-            expect(changes.count()).toBe(7);
-            FindProperty(controller, buildNode, "Roughness", "slider").onChange(0.75);
-            expect(changes.count()).toBe(8);
-            FindProperty(controller, buildNode, "Emissive", "color").onChange("#202020");
-            expect(changes.count()).toBe(9);
         } finally {
             changes.dispose();
             controller.dispose();
@@ -509,9 +501,6 @@ describe("NodeAssetGraphController", () => {
                         "selector",
                         "get-property",
                         "set-property",
-                        "build-pbr-material",
-                        "decompose-gltf-material",
-                        "compose-gltf-material",
                         "gltf-selector",
                     ],
                 },
@@ -666,7 +655,7 @@ describe("NodeAssetGraphController", () => {
                 id: "frame-compression",
                 label: "Compression",
                 color: "#8a5cf6",
-                position: { x: 940, y: 220 },
+                position: { x: 340, y: 220 },
                 size: { width: 500, height: 260 },
                 nodeIds: expect.arrayContaining([expect.any(String), expect.any(String)]),
                 collapsed: false,

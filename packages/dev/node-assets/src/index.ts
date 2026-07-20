@@ -71,7 +71,6 @@ export { type IExportBlock, IsExportBlock } from "./blockFoundation/exportBlock"
 export { Selector } from "./Blocks/selector";
 export { GetProperty } from "./Blocks/getProperty";
 export { SetProperty } from "./Blocks/setProperty";
-export { BuildPBRMaterial } from "./Blocks/buildPBRMaterial";
 export { ResizeImageBlock } from "./Blocks/resizeImageBlock";
 export { ConvertImageFormatBlock, type ImageFormat } from "./Blocks/convertImageFormatBlock";
 export { FlipImageBlock, type FlipAxis } from "./Blocks/flipImageBlock";
@@ -86,8 +85,6 @@ export { USD2BabylonBlock } from "./Blocks/usd2BabylonBlock";
 export { GLTF2BabylonBlock } from "./Blocks/gltf2BabylonBlock";
 export { Babylon2GLTFBlock } from "./Blocks/babylon2GLTFBlock";
 export { EvaluateNodeGeometryBlock } from "./Blocks/evaluateNodeGeometryBlock";
-export { DecomposeGLTFMaterialBlock } from "./Blocks/decomposeGLTFMaterialBlock";
-export { ComposeGLTFMaterialBlock } from "./Blocks/composeGLTFMaterialBlock";
 export { GetBabylonMeshBlock } from "./Blocks/getBabylonMeshBlock";
 export { SetBabylonPropertyBlock } from "./Blocks/setBabylonPropertyBlock";
 export { GetUSDPrimBlock } from "./Blocks/getUSDPrimBlock";

@@ -2,7 +2,6 @@ import { Document, WebIO } from "@gltf-transform/core";
 import { ALL_EXTENSIONS } from "@gltf-transform/extensions";
 import { describe, expect, it, vi } from "vitest";
 
-import { BuildPBRMaterial } from "../../src/Blocks/buildPBRMaterial";
 import { CenterBlock } from "../../src/Blocks/centerBlock";
 import { DedupBlock } from "../../src/Blocks/dedupBlock";
 import { DracoCompressionBlock } from "../../src/Blocks/dracoCompressionBlock";
@@ -58,7 +57,6 @@ describe("glTF representation paths", () => {
         const setter = new SetProperty("set", nodeAsset);
         const extract = new ExtractTexture("extract", nodeAsset);
         const setTexture = new SetTexture("set-texture", nodeAsset);
-        const buildMaterial = new BuildPBRMaterial("build-material", nodeAsset);
 
         const gltfPoints = [
             importer.output,
@@ -73,8 +71,6 @@ describe("glTF representation paths", () => {
             extract.scene,
             setTexture.scene,
             setTexture.output,
-            buildMaterial.scene,
-            buildMaterial.output,
         ];
 
         expect(gltfPoints.every((point) => point.type === NodeAssetConnectionPointType.GLTF_DOCUMENT)).toBe(true);
@@ -84,7 +80,6 @@ describe("glTF representation paths", () => {
         expect(merge.inputs.map((input) => input.name)).toEqual(["input0", "input1"]);
         expect(setter.scene.name).toBe("scene");
         expect(setTexture.scene.name).toBe("scene");
-        expect(buildMaterial.scene.name).toBe("scene");
     });
 
     it("carries GltfAsset through import, an operator, and export on GLTF_DOCUMENT points", async () => {

@@ -39,12 +39,6 @@ export const ImportsHeaderColor = "#3f7d4e";
 export const GltfCategory = "glTF";
 export const GltfHeaderColor = "#2f8f83";
 
-/** Legacy aliases used by the glTF material descriptors pending removal. */
-export const OperatorCategory = GltfCategory;
-export const OperatorHeaderColor = GltfHeaderColor;
-export const CompositionCategory = GltfCategory;
-export const CompositionHeaderColor = GltfHeaderColor;
-
 /** Palette category and shared node header color for the value-literal source block family. */
 export const ValuesCategory = "Values";
 export const ValuesHeaderColor = "#5a5fb0";

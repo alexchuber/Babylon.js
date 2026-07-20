@@ -211,11 +211,6 @@ The IMAGE-typed members of the selector family. ExtractTexture resolves a textur
 outputs the texture as an IMAGE; SetTexture writes an IMAGE into a texture slot. Same converter as
 GetProperty/SetProperty, different port kind. _Avoid_: get/put texture, texture IO.
 
-**BuildPBRMaterial**:
-A block that assembles a PBR metallic-roughness material from IMAGE inputs (base colour, normal,
-metallic-roughness, emissive) and factor params, attaches it to a **GLTF_DOCUMENT**, and optionally
-assigns it at a target pointer. The "compose up the funnel" tool. _Avoid_: material factory, shader block.
-
 **gltf-transform Document**:
 The payload wrapped by a **GltfAsset** (the `GLTF_DOCUMENT` representation) — a gltf-transform
 `Document`, used directly, no re-wrapping inside block bodies. It was the milestone 01–06 `SCENE`

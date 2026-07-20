@@ -10,7 +10,7 @@ import "../../src/nodeAssets/nodeAssetBuildWorkerCore";
 import { CreateBlockByClassName, GetRegisteredBlockClassNames } from "node-assets/blockFoundation/blockRegistry";
 import { NodeAsset } from "node-assets/nodeAsset";
 
-// The 45 built-in block ClassNames, hardcoded (not derived from the package barrel) so this test fails
+// The 42 built-in block ClassNames, hardcoded (not derived from the package barrel) so this test fails
 // if the worker realm ever registers a different set than the package publishes. Keep in sync with
 // packages/dev/node-assets/test/unit/blockRegistry.test.ts.
 const ExpectedBlockClassNames = [
@@ -38,7 +38,6 @@ const ExpectedBlockClassNames = [
     "GetProperty",
     "SetProperty",
     "SetTexture",
-    "BuildPBRMaterial",
     "ResizeImageBlock",
     "ConvertImageFormatBlock",
     "FlipImageBlock",
@@ -51,8 +50,6 @@ const ExpectedBlockClassNames = [
     "GLTF2BabylonBlock",
     "Babylon2GLTFBlock",
     "EvaluateNodeGeometryBlock",
-    "DecomposeGLTFMaterialBlock",
-    "ComposeGLTFMaterialBlock",
     "GetBabylonMeshBlock",
     "SetBabylonPropertyBlock",
     "GetUSDPrimBlock",
@@ -61,42 +58,22 @@ const ExpectedBlockClassNames = [
     "BabylonSelectorBlock",
 ] as const;
 
-// The energy-orb showcase graph the editor seeds on open: a dark-metal base and a cyan pattern composite
-// into the base colour, the same pattern fans out to the emissive input, and an imported sphere is built
-// into a self-lit PBR material that flows through KTX2 + Draco compression to export. This is a
-// hand-authored copy of what `NodeAsset.serialize()` produces, so `NodeAsset.Parse` is the only consumer
-// of the block registry and the assertion pins the exact graph the preview worker must deserialize.
-const EnergyOrbSeedClassNames = [
-    "ImportImageBlock",
-    "ImportImageBlock",
-    "ImportGLTFBlock",
-    "CompositeImageBlock",
-    "BuildPBRMaterial",
-    "KTX2CompressionBlock",
-    "DracoCompressionBlock",
-    "ExportGLTFBlock",
-] as const;
-const EnergyOrbSerializedGraph = {
-    name: "energy-orb",
+// The orb compression graph the editor seeds on open. This is a hand-authored copy of what
+// `NodeAsset.serialize()` produces, so `NodeAsset.Parse` is the only consumer of the block registry and
+// the assertion pins the exact graph the preview worker must deserialize.
+const DefaultSeedClassNames = ["ImportGLTFBlock", "KTX2CompressionBlock", "DracoCompressionBlock", "ExportGLTFBlock"] as const;
+const DefaultSerializedGraph = {
+    name: "orb-compression",
     blocks: [
-        { customType: "ImportImageBlock", id: 1, name: "Import Image" },
-        { customType: "ImportImageBlock", id: 2, name: "Import Image" },
-        { customType: "ImportGLTFBlock", id: 3, name: "Import glTF" },
-        { customType: "CompositeImageBlock", id: 4, name: "Composite Image" },
-        { customType: "BuildPBRMaterial", id: 5, name: "Build PBR Material" },
-        { customType: "KTX2CompressionBlock", id: 6, name: "KTX2 Compress" },
-        { customType: "DracoCompressionBlock", id: 7, name: "Draco Compression" },
-        { customType: "ExportGLTFBlock", id: 8, name: "Export glTF" },
+        { customType: "ImportGLTFBlock", id: 1, name: "Import glTF" },
+        { customType: "KTX2CompressionBlock", id: 2, name: "KTX2 Compress" },
+        { customType: "DracoCompressionBlock", id: 3, name: "Draco Compression" },
+        { customType: "ExportGLTFBlock", id: 4, name: "Export glTF" },
     ],
     connections: [
-        { fromBlock: 1, fromPoint: "output", toBlock: 4, toPoint: "base" },
-        { fromBlock: 2, fromPoint: "output", toBlock: 4, toPoint: "overlay" },
-        { fromBlock: 4, fromPoint: "output", toBlock: 5, toPoint: "baseColor" },
-        { fromBlock: 2, fromPoint: "output", toBlock: 5, toPoint: "emissive" },
-        { fromBlock: 3, fromPoint: "output", toBlock: 5, toPoint: "scene" },
-        { fromBlock: 5, fromPoint: "output", toBlock: 6, toPoint: "input" },
-        { fromBlock: 6, fromPoint: "output", toBlock: 7, toPoint: "input" },
-        { fromBlock: 7, fromPoint: "output", toBlock: 8, toPoint: "input" },
+        { fromBlock: 1, fromPoint: "output", toBlock: 2, toPoint: "input" },
+        { fromBlock: 2, fromPoint: "output", toBlock: 3, toPoint: "input" },
+        { fromBlock: 3, fromPoint: "output", toBlock: 4, toPoint: "input" },
     ],
 };
 
@@ -107,9 +84,9 @@ describe("preview build worker block registration", () => {
     // `Cannot deserialize unknown block type "ImportImageBlock"` in the worker and surfaced as a preview
     // build error. Importing the package barrel registers every block, so the worker can never drift
     // behind the blocks a saved graph might contain.
-    it("deserializes the energy-orb seed graph the preview worker builds", () => {
-        const parsed = NodeAsset.Parse(EnergyOrbSerializedGraph);
-        expect(parsed.attachedBlocks.map((block) => block.getClassName())).toEqual([...EnergyOrbSeedClassNames]);
+    it("deserializes the default seed graph the preview worker builds", () => {
+        const parsed = NodeAsset.Parse(DefaultSerializedGraph);
+        expect(parsed.attachedBlocks.map((block) => block.getClassName())).toEqual([...DefaultSeedClassNames]);
     });
 
     it("registers every built-in block in the worker realm", () => {

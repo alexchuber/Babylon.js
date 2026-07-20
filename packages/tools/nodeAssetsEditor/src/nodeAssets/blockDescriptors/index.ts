@@ -26,9 +26,6 @@ import "./mergeScenesDescriptor";
 import "./selectorDescriptor";
 import "./getPropertyDescriptor";
 import "./setPropertyDescriptor";
-import "./buildPBRMaterialDescriptor";
-import "./decomposeGLTFMaterialBlockDescriptor";
-import "./composeGLTFMaterialBlockDescriptor";
 import "./gltfSelectorBlockDescriptor";
 
 import "./getUSDPrimBlockDescriptor";
