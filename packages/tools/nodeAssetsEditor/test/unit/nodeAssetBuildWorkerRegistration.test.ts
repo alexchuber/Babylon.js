@@ -65,6 +65,9 @@ const ExpectedBlockClassNames = [
     "WriteGLTFBlock",
     "ImportGLTFAggregateBlock",
     "ExportGLTFAggregateBlock",
+    "ReadUSDBlock",
+    "USDToUniversalBlock",
+    "ImportUSDAggregateBlock",
     "CustomAggregateBlock",
 ] as const;
 

@@ -32,6 +32,7 @@ import {
     ImportGLTFAggregateBlock,
     ImportNodeGeometryBlock,
     ImportUSDBlock,
+    ImportUSDAggregateBlock,
     ImportImageBlock,
     JoinBlock,
     JsonLiteral,
@@ -56,6 +57,8 @@ import {
     WeldBlock,
     WriteGLTFBlock,
     ReadGLTFBlock,
+    ReadUSDBlock,
+    USDToUniversalBlock,
     CustomAggregateBlock,
     // eslint-disable-next-line import/no-internal-modules
 } from "../../src/index";
@@ -216,9 +219,12 @@ describe("block self-registration", () => {
                     WriteGLTFBlock.ClassName,
                     ImportGLTFAggregateBlock.ClassName,
                     ExportGLTFAggregateBlock.ClassName,
+                    ReadUSDBlock.ClassName,
+                    USDToUniversalBlock.ClassName,
+                    ImportUSDAggregateBlock.ClassName,
                 ])
             );
-            expect(registeredClassNames).toHaveLength(52);
+            expect(registeredClassNames).toHaveLength(55);
         });
 
         it.each(registeredClassNames)("round-trips %s through serialize/Parse", (className) => {

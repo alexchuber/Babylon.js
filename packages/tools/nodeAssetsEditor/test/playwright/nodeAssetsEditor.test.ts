@@ -8,6 +8,8 @@ type GltfJson = {
     readonly extensionsRequired?: readonly string[];
     readonly images?: readonly { readonly mimeType?: string }[];
     readonly materials?: readonly unknown[];
+    readonly meshes?: readonly unknown[];
+    readonly nodes?: readonly { readonly name?: string }[];
 };
 
 // The energy-orb showcase composites a metal base and a cyan pattern into the base color, fans the same
@@ -389,6 +391,61 @@ test.describe("Node Assets Editor — Universal glTF aggregates", () => {
         await expect(page.getByText("Source error", { exact: true })).toBeVisible();
         await expect(page.getByRole("textbox").nth(3)).toHaveValue("scenes/nodeAssets/orb.glb");
         await expect(page.getByRole("textbox").nth(4)).toHaveValue(/404/);
+    });
+});
+
+test.describe("Node Assets Editor — USD Universal aggregate", () => {
+    test.describe.configure({ timeout: 180_000 });
+
+    test("uploads and expands Import USD, previews its Universal output, and downloads a valid GLB", async ({ page }) => {
+        const editor = new NodeAssetsEditorPage(page);
+        await editor.goto();
+        await editor.waitForNextSuccessfulPreviewBuild();
+
+        await editor.dropPaletteItem("Import USD", { x: 0.18, y: 0.72 });
+        await editor.selectNode("Import USD");
+        const fileChooserPromise = page.waitForEvent("filechooser");
+        await page.getByRole("button", { name: "Upload USD…" }).click();
+        const fileChooser = await fileChooserPromise;
+        await fileChooser.setFiles({
+            name: "triangle.usda",
+            mimeType: "text/plain",
+            buffer: Buffer.from(`#usda 1.0
+def Xform "World"
+{
+    def Mesh "Triangle"
+    {
+        int[] faceVertexCounts = [3]
+        int[] faceVertexIndices = [0, 1, 2]
+        point3f[] points = [(0, 0, 0), (2, 0, 0), (0, 2, 0)]
+    }
+}
+`),
+        });
+        await expect(page.getByRole("textbox").nth(3)).toHaveValue("triangle.usda");
+
+        await editor.connectPorts(editor.portOfNode("Import USD", "out"), editor.portOfNode("Export glTF", "in"));
+        await editor.waitForSuccessfulPreviewBuild();
+        await expect(editor.previewCanvas).toBeVisible();
+
+        await editor.nodeByTitle("Import USD").getByRole("button", { name: "Expand aggregate" }).click();
+        await expect(editor.nodeByTitle("Read USD")).toBeVisible();
+        await expect(editor.nodeByTitle("USD to Universal")).toBeVisible();
+        await expect(page.locator('[data-testid="graph-wire"][data-from-node-title="Read USD"][data-to-node-title="USD to Universal"]')).toHaveCount(1);
+        await expect(editor.nodeByTitle("USD → glTF")).toHaveCount(0);
+        await expect(editor.nodeByTitle("USD → Babylon")).toHaveCount(0);
+        await expect(editor.nodeByTitle("USD Selector")).toHaveCount(0);
+        await expect(editor.nodeByTitle("Get USD Prim")).toHaveCount(0);
+
+        await editor.selectNode("Read USD");
+        await expect(page.getByRole("textbox").nth(3)).toHaveValue("triangle.usda");
+
+        await editor.selectNode("Export glTF");
+        const downloadPromise = page.waitForEvent("download");
+        await page.getByRole("button", { name: "Export .glb" }).click();
+        const exported = parseGlbJson(await readDownloadedGlb(await downloadPromise));
+        expect((exported.meshes ?? []).length).toBe(1);
+        expect((exported.nodes ?? []).map((node) => node.name)).toEqual(expect.arrayContaining(["World", "Triangle"]));
     });
 });
 

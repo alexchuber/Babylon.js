@@ -23,6 +23,7 @@ class RepresentationMappingTestBlock extends NodeAssetBlock {
     public readonly usd = this._registerOutput("usd", NodeAssetConnectionPointType.USD_STAGE);
     public readonly babylon = this._registerOutput("babylon", NodeAssetConnectionPointType.BABYLON_SCENE);
     public readonly nodeGeometry = this._registerOutput("nodeGeometry", NodeAssetConnectionPointType.NODE_GEOMETRY);
+    public readonly usdSource = this._registerOutput("usdSource", NodeAssetConnectionPointType.USD_SOURCE);
 
     public override async _buildBlockAsync(): Promise<void> {}
 }
@@ -72,6 +73,7 @@ describe("blockNodeMapping", () => {
         expect(PointToPort(block, block.usd).color).toBe(UsdStagePortColor);
         expect(PointToPort(block, block.babylon).color).toBe(BabylonScenePortColor);
         expect(PointToPort(block, block.nodeGeometry).color).toBe(NodeGeometryPortColor);
+        expect(PointToPort(block, block.usdSource)).toMatchObject({ name: "USD", color: UsdStagePortColor });
     });
 
     it("builds a node with input ports before output ports", () => {

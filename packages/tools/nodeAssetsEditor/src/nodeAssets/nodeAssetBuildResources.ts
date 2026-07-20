@@ -1,6 +1,7 @@
 import { ImportGLTFBlock } from "node-assets/Blocks/importGLTFBlock";
 import { ReadGLTFBlock } from "node-assets/Blocks/readGLTFBlock";
 import { ImportUSDBlock } from "node-assets/Blocks/importUSDBlock";
+import { USDToUniversalBlock } from "node-assets/Blocks/usdToUniversalBlock";
 import { ExportGLTFBlock } from "node-assets/Blocks/exportGLTFBlock";
 import { WriteGLTFBlock } from "node-assets/Blocks/writeGLTFBlock";
 import { KTX2CompressionBlock } from "node-assets/Blocks/ktx2CompressionBlock";
@@ -31,7 +32,7 @@ export function ConfigureNodeAssetBuildResources(nodeAsset: NodeAsset, resourceU
     const configureBlock = (block: NodeAssetBlock): void => {
         if (block instanceof ImportGLTFBlock || block instanceof ReadGLTFBlock) {
             block.dracoDecoderWasmUrl = resourceUrls.dracoDecoderWasmUrl;
-        } else if (block instanceof ImportUSDBlock) {
+        } else if (block instanceof ImportUSDBlock || block instanceof USDToUniversalBlock) {
             block.usdWasmUrl = resourceUrls.usdWasmUrl;
         } else if (block instanceof ExportGLTFBlock || block instanceof WriteGLTFBlock) {
             block.dracoEncoderWasmUrl = resourceUrls.dracoEncoderWasmUrl;

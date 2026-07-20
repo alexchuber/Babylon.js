@@ -3,6 +3,7 @@ import { type BabylonAsset } from "../representations/babylonAsset";
 import { type GltfAsset } from "../representations/gltfAsset";
 import { type NodeGeometryAsset } from "../representations/nodeGeometryAsset";
 import { type UsdAsset } from "../representations/usdAsset";
+import { type UsdSourceAsset } from "../representations/usdSourceAsset";
 import { type NodeAssetConnectionPointType } from "./nodeAssetConnectionPointType";
 
 /** A JSON primitive supported by the JSON connection point kind. */
@@ -69,4 +70,5 @@ export type NodeAssetValueMap = {
     [NodeAssetConnectionPointType.BABYLON_SCENE]: BabylonAsset;
     [NodeAssetConnectionPointType.NODE_GEOMETRY]: NodeGeometryAsset;
     [NodeAssetConnectionPointType.UNIVERSAL]: GltfAsset;
+    [NodeAssetConnectionPointType.USD_SOURCE]: UsdSourceAsset;
 };

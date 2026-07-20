@@ -17,12 +17,20 @@ vi.mock("../../src/nodeAssets/browserFiles", () => ({
 }));
 
 const ImportFileButtonLabel = "Upload glTF\u2026";
+const UploadUSDButtonLabel = "Upload USD\u2026";
 
 function FindNode(controller: NodeAssetGraphController, title: string): IGraphNode {
     const node = controller.state.nodes.find((candidate) => candidate.title === title);
     if (!node) {
         throw new Error(`Could not find node "${title}".`);
     }
+
+    return node;
+}
+
+function AddPaletteNode(controller: NodeAssetGraphController, paletteItemId: string): IGraphNode {
+    const node = controller.createNodeFromPaletteItem(paletteItemId, { x: 600, y: 600 });
+    controller.state.addNode(node);
     return node;
 }
 
@@ -133,6 +141,40 @@ describe("Import block source label", () => {
                 reloaded.load(json);
                 const reloadedImport = FindNode(reloaded, "Import glTF");
                 expect(FindPropertyInSection(reloaded, reloadedImport, "READ GLTF", "Active source", "text").value).toBe("myModel.glb");
+            } finally {
+                reloaded.dispose();
+            }
+        } finally {
+            controller.dispose();
+        }
+    });
+
+    it("forwards the same persisted USD upload state from Import USD to its Read USD child", async () => {
+        const controller = new NodeAssetGraphController();
+        try {
+            const importNode = AddPaletteNode(controller, "import-usd");
+            expect(FindPropertyInSection(controller, importNode, "READ USD", "Active source", "text").value).toBe("No source loaded");
+
+            vi.mocked(PromptForFileAsync).mockResolvedValue({
+                name: "triangle.usda",
+                arrayBuffer: async () => new TextEncoder().encode("#usda 1.0").buffer,
+            } as unknown as File);
+
+            FindPropertyInSection(controller, importNode, "READ USD", UploadUSDButtonLabel, "button").onClick();
+            await vi.waitFor(() => {
+                expect(FindPropertyInSection(controller, importNode, "READ USD", "Active source", "text").value).toBe("triangle.usda");
+            });
+
+            const reloaded = new NodeAssetGraphController();
+            try {
+                reloaded.load(controller.serialize());
+                const reloadedImport = FindNode(reloaded, "Import USD");
+                expect(FindPropertyInSection(controller, importNode, "READ USD", "URL", "text").value).toBe("");
+                expect(FindPropertyInSection(reloaded, reloadedImport, "READ USD", "Active source", "text").value).toBe("triangle.usda");
+
+                reloaded.setAggregateExpanded(reloadedImport.id, true);
+                const readNode = FindNode(reloaded, "Read USD");
+                expect(FindPropertyInSection(reloaded, readNode, "SOURCE", "Active source", "text").value).toBe("triangle.usda");
             } finally {
                 reloaded.dispose();
             }

@@ -48,4 +48,7 @@ export enum NodeAssetConnectionPointType {
      * gltf-transform document, but it remains a distinct graph kind from {@link GLTF_DOCUMENT}.
      */
     UNIVERSAL = 8,
+
+    /** Lightweight resolved USD source bytes consumed only by USD-to-Universal transcoding. */
+    USD_SOURCE = 9,
 }

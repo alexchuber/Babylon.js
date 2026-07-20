@@ -40,6 +40,7 @@ export {
 } from "./connection/nodeAssetValueMap";
 export { GetGltfAsset, GltfAsset, type IGltfAssetMetadata, IsGltfAsset } from "./representations/gltfAsset";
 export { type IUsdAssetMetadata, IsUsdAsset, UsdAsset } from "./representations/usdAsset";
+export { IsUsdSourceAsset, UsdSourceAsset, type USDSourceKind } from "./representations/usdSourceAsset";
 export { BabylonAsset, type IBabylonAssetMetadata, IsBabylonAsset } from "./representations/babylonAsset";
 export { type INodeGeometryAssetMetadata, IsNodeGeometryAsset, NodeGeometryAsset } from "./representations/nodeGeometryAsset";
 export {
@@ -56,6 +57,9 @@ export { UniversalToGLTFBlock } from "./Blocks/universalToGLTFBlock";
 export { WriteGLTFBlock } from "./Blocks/writeGLTFBlock";
 export { ImportGLTFAggregateBlock } from "./Blocks/importGLTFAggregateBlock";
 export { ExportGLTFAggregateBlock } from "./Blocks/exportGLTFAggregateBlock";
+export { type IUSDSourceResponse, ReadUSDBlock, type USDSourceFetcher } from "./Blocks/readUSDBlock";
+export { USDToUniversalBlock } from "./Blocks/usdToUniversalBlock";
+export { ImportUSDAggregateBlock } from "./Blocks/importUSDAggregateBlock";
 export { DracoCompressionBlock, DracoEncoderMethod } from "./Blocks/dracoCompressionBlock";
 export { KTX2CompressionBlock } from "./Blocks/ktx2CompressionBlock";
 export { DedupBlock } from "./Blocks/dedupBlock";
