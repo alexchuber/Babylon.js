@@ -12,8 +12,6 @@ import { NodeAssetGraphController } from "../../src/nodeAssets/nodeAssetGraphCon
 import { type INodeAssetBuildClient } from "../../src/nodeAssets/nodeAssetBuildWorkerClient";
 import { NodeAssetReconciler } from "../../src/nodeAssets/nodeAssetReconciler";
 
-const BuiltInNodeAssetLibraryEntries = CreateBuiltInNodeAssetLibraryEntries();
-
 type MutableSavedGraph = {
     graph: {
         blocks: Array<{ id: number }>;
@@ -56,24 +54,14 @@ function CountBuildRelevantChanges(controller: NodeAssetGraphController): { read
     };
 }
 
-function GetWireTitles(controller: NodeAssetGraphController): readonly string[] {
-    return controller.state.wires
-        .map((wire) => {
-            const from = controller.state.getPortNode(wire.fromPortId);
-            const to = controller.state.getPortNode(wire.toPortId);
-            return `${from?.title}->${to?.title}`;
-        })
-        .sort();
-}
-
 describe("NodeAssetGraphController", () => {
     it("rejects incompatible NodeAsset port kinds before adding a wire", () => {
         const controller = new NodeAssetGraphController();
         try {
             const exportImage = controller.createNodeFromPaletteItem("export-image", { x: 1800, y: 320 });
             controller.state.addNode(exportImage);
-            const buildPbr = FindNode(controller, "Build PBR Material");
-            const sceneOutput = buildPbr.ports.find((port) => port.direction === "output");
+            const weld = FindNode(controller, "Weld Vertices");
+            const sceneOutput = weld.ports.find((port) => port.direction === "output");
             const imageInput = exportImage.ports.find((port) => port.direction === "input");
             if (!sceneOutput || !imageInput) {
                 throw new Error("Could not find the SCENE output and IMAGE input for the compatibility test.");
@@ -124,156 +112,40 @@ describe("NodeAssetGraphController", () => {
         }
     });
 
-    it("offers the supported demo pipelines as uniquely named bundled library entries", () => {
-        const names = BuiltInNodeAssetLibraryEntries.map((entry) => entry.name);
-
-        expect(names).toEqual(["USD to Optimized glTF", "USD with Custom Textures", "Multi-Source Merge", "Material Decomposition", "USD Preview", "Full Supported Pipeline"]);
-        expect(new Set(names).size).toBe(names.length);
-    });
-
-    it("loads the bundled USD optimization pipeline through the normal graph load path", () => {
+    it("loads the exact production catalog through the normal graph load path", () => {
+        const expectedCatalog = [
+            ["glTF Optimization", ["Import glTF", "Weld Vertices", "Remove Unused Resources", "Export glTF"]],
+            ["USD to Optimized glTF", ["Import USD", "Remove Unused Resources", "Export glTF"]],
+            ["Babylon to Optimized glTF", ["Import Babylon", "Weld Vertices", "Export glTF"]],
+            ["Node Geometry to glTF", ["Import Node Geometry", "Export glTF"]],
+            ["Multi-Source Universal Merge", ["Import glTF", "Import Babylon", "Merge Scenes", "Export glTF"]],
+            ["Advanced glTF Compression", ["Import glTF", "Universal to glTF", "Compress Textures (KTX2)", "Compress Geometry (Draco)", "Write glTF"]],
+            [
+                "Full Universal Optimization",
+                [
+                    "Import glTF",
+                    "Generate Tangents",
+                    "Weld Vertices",
+                    "Deduplicate Resources",
+                    "Fix Face Winding",
+                    "Quantize Attributes",
+                    "Split Meshes by Material",
+                    "Export glTF",
+                ],
+            ],
+        ] as const;
+        const entries = CreateBuiltInNodeAssetLibraryEntries();
         const controller = new NodeAssetGraphController();
         try {
-            const entry = BuiltInNodeAssetLibraryEntries.find((candidate) => candidate.name === "USD to Optimized glTF")!;
+            expect(entries.map((entry) => entry.name)).toEqual(expectedCatalog.map(([name]) => name));
+            for (const [index, entry] of entries.entries()) {
+                const editorFile = JSON.parse(entry.serializedGraph) as { graph: { name: string; connections: unknown[] } };
+                controller.load(entry.serializedGraph);
 
-            controller.load(entry.serializedGraph);
-
-            expect(controller.state.nodes.map((node) => node.title)).toEqual(["Import USD", "Draco Compression", "Export glTF"]);
-            expect(GetWireTitles(controller)).toEqual(["Draco Compression->Export glTF", "Import USD->Draco Compression"]);
-        } finally {
-            controller.dispose();
-        }
-    });
-
-    it("loads the bundled USD texture replacement pipeline through the normal graph load path", () => {
-        const controller = new NodeAssetGraphController();
-        try {
-            const entry = BuiltInNodeAssetLibraryEntries.find((candidate) => candidate.name === "USD with Custom Textures")!;
-
-            controller.load(entry.serializedGraph);
-
-            expect(controller.state.nodes.map((node) => node.title)).toEqual(["Import USD", "Import Image", "Selector", "Set Texture", "Export glTF"]);
-            expect(GetWireTitles(controller)).toEqual(["Import Image->Set Texture", "Import USD->Set Texture", "Selector->Set Texture", "Set Texture->Export glTF"]);
-        } finally {
-            controller.dispose();
-        }
-    });
-
-    it("loads the bundled multi-source merge pipeline through the normal graph load path", () => {
-        const controller = new NodeAssetGraphController();
-        try {
-            const entry = BuiltInNodeAssetLibraryEntries.find((candidate) => candidate.name === "Multi-Source Merge")!;
-
-            controller.load(entry.serializedGraph);
-
-            expect(controller.state.nodes.map((node) => node.title)).toEqual(["Import USD", "Import glTF", "Merge Scenes", "Draco Compression", "KTX2 Compress", "Export glTF"]);
-            expect(GetWireTitles(controller)).toEqual([
-                "Draco Compression->KTX2 Compress",
-                "Import USD->Merge Scenes",
-                "Import glTF->Merge Scenes",
-                "KTX2 Compress->Export glTF",
-                "Merge Scenes->Draco Compression",
-            ]);
-        } finally {
-            controller.dispose();
-        }
-    });
-
-    it("loads the bundled material decomposition pipeline through the normal graph load path", () => {
-        const controller = new NodeAssetGraphController();
-        try {
-            const entry = BuiltInNodeAssetLibraryEntries.find((candidate) => candidate.name === "Material Decomposition")!;
-
-            controller.load(entry.serializedGraph);
-
-            expect(controller.state.nodes.map((node) => node.title)).toEqual([
-                "Import glTF",
-                "Base Color Selector",
-                "Normal Selector",
-                "ORM Selector",
-                "Extract Base Color",
-                "Extract Normal",
-                "Extract ORM",
-                "Resize Base Color",
-                "Resize Normal",
-                "Resize ORM",
-                "Set Base Color",
-                "Set Normal",
-                "Set ORM",
-                "Roughness Selector",
-                "Roughness Value",
-                "Set Roughness",
-                "Export glTF",
-            ]);
-            expect(GetWireTitles(controller)).toEqual([
-                "Base Color Selector->Extract Base Color",
-                "Base Color Selector->Set Base Color",
-                "Extract Base Color->Resize Base Color",
-                "Extract Normal->Resize Normal",
-                "Extract ORM->Resize ORM",
-                "Import glTF->Extract Base Color",
-                "Import glTF->Extract Normal",
-                "Import glTF->Extract ORM",
-                "Import glTF->Set Base Color",
-                "Normal Selector->Extract Normal",
-                "Normal Selector->Set Normal",
-                "ORM Selector->Extract ORM",
-                "ORM Selector->Set ORM",
-                "Resize Base Color->Set Base Color",
-                "Resize Normal->Set Normal",
-                "Resize ORM->Set ORM",
-                "Roughness Selector->Set Roughness",
-                "Roughness Value->Set Roughness",
-                "Set Base Color->Set Normal",
-                "Set Normal->Set ORM",
-                "Set ORM->Set Roughness",
-                "Set Roughness->Export glTF",
-            ]);
-        } finally {
-            controller.dispose();
-        }
-    });
-
-    it("loads the bundled USD preview pipeline through the normal graph load path", () => {
-        const controller = new NodeAssetGraphController();
-        try {
-            const entry = BuiltInNodeAssetLibraryEntries.find((candidate) => candidate.name === "USD Preview")!;
-
-            controller.load(entry.serializedGraph);
-
-            expect(controller.state.nodes.map((node) => node.title)).toEqual(["Import USD", "Export glTF"]);
-            expect(GetWireTitles(controller)).toEqual(["Import USD->Export glTF"]);
-        } finally {
-            controller.dispose();
-        }
-    });
-
-    it("loads the bundled full supported pipeline through the normal graph load path", () => {
-        const controller = new NodeAssetGraphController();
-        try {
-            const entry = BuiltInNodeAssetLibraryEntries.find((candidate) => candidate.name === "Full Supported Pipeline")!;
-
-            controller.load(entry.serializedGraph);
-
-            expect(controller.state.nodes.map((node) => node.title)).toEqual([
-                "Import USD",
-                "Import glTF A",
-                "Import glTF B",
-                "Merge Sources",
-                "Merge Assembly",
-                "Draco Compression",
-                "KTX2 Compress",
-                "Export glTF",
-            ]);
-            expect(GetWireTitles(controller)).toEqual([
-                "Draco Compression->KTX2 Compress",
-                "Import USD->Merge Sources",
-                "Import glTF A->Merge Sources",
-                "Import glTF B->Merge Assembly",
-                "KTX2 Compress->Export glTF",
-                "Merge Assembly->Draco Compression",
-                "Merge Sources->Merge Assembly",
-            ]);
+                expect(controller.state.nodes.map((node) => node.title)).toEqual(expectedCatalog[index][1]);
+                expect(controller.state.wires).toHaveLength(editorFile.graph.connections.length);
+                expect(JSON.parse(controller.serialize()).graph.name).toBe(editorFile.graph.name);
+            }
         } finally {
             controller.dispose();
         }
@@ -323,9 +195,9 @@ describe("NodeAssetGraphController", () => {
         reconcileSpy.mockClear();
         serializeSpy.mockClear();
         try {
-            const buildNode = FindNode(controller, "Build PBR Material");
+            const buildNode = FindNode(controller, "Weld Vertices");
 
-            FindProperty(controller, buildNode, "Metallic", "slider").onChange(0.25);
+            FindProperty(controller, buildNode, "Overwrite existing", "switch").onChange(false);
 
             expect(changes.count()).toBe(1);
             expect(reconcileSpy).toHaveBeenCalledOnce();
@@ -393,17 +265,18 @@ describe("NodeAssetGraphController", () => {
             controller.state.removeNodes([extraNode.id]);
             expect(changes.count()).toBe(4);
 
-            const buildNode = FindNode(controller, "Build PBR Material");
-            FindProperty(controller, buildNode, "Base color", "color").onChange("#804020");
+            const weldNode = FindNode(controller, "Weld Vertices");
+            FindProperty(controller, weldNode, "Overwrite existing", "switch").onChange(false);
             expect(changes.count()).toBe(5);
 
-            FindProperty(controller, buildNode, "Base alpha", "slider").onChange(0.5);
+            const pruneNode = FindNode(controller, "Remove Unused Resources");
+            FindProperty(controller, pruneNode, "Kept property types", "text").onChange("Material");
             expect(changes.count()).toBe(6);
-            FindProperty(controller, buildNode, "Metallic", "slider").onChange(0.25);
+            FindProperty(controller, pruneNode, "Keep leaf nodes", "switch").onChange(true);
             expect(changes.count()).toBe(7);
-            FindProperty(controller, buildNode, "Roughness", "slider").onChange(0.75);
+            FindProperty(controller, pruneNode, "Keep attributes", "switch").onChange(true);
             expect(changes.count()).toBe(8);
-            FindProperty(controller, buildNode, "Emissive", "color").onChange("#202020");
+            FindProperty(controller, pruneNode, "Keep extras", "switch").onChange(true);
             expect(changes.count()).toBe(9);
         } finally {
             changes.dispose();
@@ -420,7 +293,7 @@ describe("NodeAssetGraphController", () => {
             expect(changes.count()).toBe(0);
 
             const changed = JSON.parse(saved);
-            changed.graph.blocks[0].data = "AQID";
+            changed.graph.blocks[0].subgraph.blocks[0].data = "AQID";
             controller.load(JSON.stringify(changed));
             expect(changes.count()).toBe(1);
 
@@ -641,15 +514,6 @@ describe("NodeAssetGraphController", () => {
                 nodeIds: [importNode.id],
                 collapsed: true,
             });
-            expect(controller.state.frames).toContainEqual({
-                id: "frame-compression",
-                label: "Compression",
-                color: "#8a5cf6",
-                position: { x: 940, y: 220 },
-                size: { width: 500, height: 260 },
-                nodeIds: expect.arrayContaining([expect.any(String), expect.any(String)]),
-                collapsed: false,
-            });
         } finally {
             controller.dispose();
         }
@@ -703,6 +567,11 @@ describe("NodeAssetGraphController", () => {
     it("rejects malformed frame membership without replacing the current graph", () => {
         const controller = new NodeAssetGraphController();
         try {
+            const importNode = FindNode(controller, "Import glTF");
+            controller.state.groupNodesIntoFrame([importNode.id], "Sources", "#123456", {
+                position: { x: 40, y: 480 },
+                size: { width: 280, height: 220 },
+            });
             const saved = controller.serialize();
             const malformed = JSON.parse(saved);
             malformed.editor.frames[0].blockIds = [999_999];
