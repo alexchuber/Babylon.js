@@ -95,14 +95,6 @@ const ExpectedBlockClassNames = [
     "ReadBabylonBlock",
     "BabylonToUniversalBlock",
     "ImportBabylonAggregateBlock",
-    "ReadUSDBlock",
-    "USDToUniversalBlock",
-    "ImportUSDAggregateBlock",
-    "DeduplicateMaterialsBlock",
-    "DeduplicateTexturesBlock",
-    "ReuseIdenticalMeshesBlock",
-    "DeduplicateDataBlock",
-    "DeduplicateResourcesBlock",
 ] as const;
 
 const DefaultPipelineClassNames = ["ImportGLTFAggregateBlock", "WeldVerticesBlock", "RemoveUnusedResourcesBlock", "ExportGLTFAggregateBlock"] as const;

@@ -671,9 +671,9 @@ test.describe("Node Assets Editor — Universal glTF aggregates", () => {
         await editor.selectNode("Deduplicate Resources");
         await expect(page.getByRole("textbox").nth(1)).toHaveValue("CustomAggregateBlock");
         await editor.saveToLibraryButton.click();
-        await expect(page.getByLabel('Saved "nodeAsset" to the library.')).toBeVisible();
+        await expect(page.getByLabel('Saved "glTF Optimization 2" to the library.')).toBeVisible();
         await editor.openLibraryButton.click();
-        await page.getByRole("dialog", { name: "NodeAsset Library" }).getByRole("button", { name: "nodeAsset", exact: true }).click();
+        await page.getByRole("dialog", { name: "NodeAsset Library" }).getByRole("button", { name: "glTF Optimization 2", exact: true }).click();
 
         await expect(page.locator('[data-testid="aggregate-frame"]').filter({ hasText: "Deduplicate Resources" })).toBeVisible();
         await editor.expectWiredPipeline([
