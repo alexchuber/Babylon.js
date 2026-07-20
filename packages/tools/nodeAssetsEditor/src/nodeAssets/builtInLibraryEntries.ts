@@ -1,5 +1,10 @@
 import { EncodeArrayBufferToBase64 } from "core/Misc/stringTools";
 
+import { DracoCompressionBlock } from "node-assets/Blocks/dracoCompressionBlock";
+import { KTX2CompressionBlock } from "node-assets/Blocks/ktx2CompressionBlock";
+import { type NodeAssetBlock } from "node-assets/blockFoundation/nodeAssetBlock";
+import { type NodeAsset } from "node-assets/nodeAsset";
+
 import { type INodeAssetLibraryEntry } from "./nodeAssetLibrary";
 import { BuiltInLibraryFixtures } from "./builtInLibraryFixtures";
 
@@ -25,6 +30,21 @@ type EditorBlock = {
     readonly title: string;
     readonly collapsed: boolean;
 };
+
+const SerializationOnlyNodeAsset = {
+    _registerBlock(): void {},
+} as unknown as NodeAsset;
+
+function GetSerializedBlockProperties(block: NodeAssetBlock): Record<string, unknown> {
+    const properties: Record<string, unknown> = { ...block.serialize() };
+    delete properties.customType;
+    delete properties.id;
+    delete properties.name;
+    return properties;
+}
+
+const DefaultKtx2CompressionProperties = GetSerializedBlockProperties(new KTX2CompressionBlock("KTX2 serialization defaults", SerializationOnlyNodeAsset));
+const DefaultDracoCompressionProperties = GetSerializedBlockProperties(new DracoCompressionBlock("Draco serialization defaults", SerializationOnlyNodeAsset));
 
 class BuiltInPipelineBuilder {
     private _nextId = 1;
@@ -292,13 +312,8 @@ function CreateAdvancedCompressionEntry(): INodeAssetLibraryEntry {
     const builder = new BuiltInPipelineBuilder("Advanced glTF Compression");
     const source = CreateGltfImport(builder);
     const toGltf = builder.addBlock("UniversalToGLTFBlock", "Universal to glTF", 340, 120);
-    const textures = builder.addBlock("KTX2CompressionBlock", "Compress Textures (KTX2)", 640, 120, { generateMipmaps: false });
-    const geometry = builder.addBlock("DracoCompressionBlock", "Compress Geometry (Draco)", 960, 120, {
-        method: 1,
-        encodeSpeed: 5,
-        decodeSpeed: 5,
-        quantizationBits: null,
-    });
+    const textures = builder.addBlock("KTX2CompressionBlock", "Compress Textures (KTX2)", 640, 120, DefaultKtx2CompressionProperties);
+    const geometry = builder.addBlock("DracoCompressionBlock", "Compress Geometry (Draco)", 960, 120, DefaultDracoCompressionProperties);
     const write = builder.addBlock("WriteGLTFBlock", "Write glTF", 1280, 120, { fileName: "scene" });
     builder.connect(source, toGltf);
     builder.connect(toGltf, textures);
