@@ -50,10 +50,9 @@ test.describe("Node Assets Editor — image preview", () => {
         await page.keyboard.press("Delete");
         await expect(editor.nodeByTitle("Export glTF")).toBeHidden();
 
-        // Build a minimal IMAGE pipeline: Image -> Export Image. The energy-orb seed already
-        // contains two "Image" nodes, so target the one just dropped ("last") for the wiring and
-        // file load below. Drop the two nodes at distinct canvas points so they don't overlap (the app
-        // places nodes exactly at the cursor), keeping each node's ports individually hittable for the wire.
+        // Build a minimal IMAGE pipeline: Image -> Export Image. Drop the two nodes at distinct
+        // canvas points so they don't overlap (the app places nodes exactly at the cursor), keeping
+        // each node's ports individually hittable for the wire.
         await editor.dropPaletteItem("Image", { x: 0.3, y: 0.25 });
         await editor.dropPaletteItem("Export Image", { x: 0.62, y: 0.66 });
         await editor.connectPorts(editor.portOfNode("Image", "out", "last"), editor.portOfNode("Export Image", "in"));
