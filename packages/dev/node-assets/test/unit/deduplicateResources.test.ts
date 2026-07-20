@@ -95,6 +95,37 @@ async function CreateDuplicateDataGlbAsync(): Promise<Uint8Array> {
     return await IO.writeBinary(document);
 }
 
+async function CreateNamedDuplicateAccessorsGlbAsync(firstName: string, secondName: string): Promise<Uint8Array> {
+    const document = new Document();
+    const buffer = document.createBuffer();
+    const createMesh = (name: string) => {
+        const positions = document
+            .createAccessor(name)
+            .setType("VEC3")
+            .setArray(new Float32Array([0, 0, 0, 1, 0, 0, 0, 1, 0]))
+            .setBuffer(buffer);
+        return document.createMesh().addPrimitive(document.createPrimitive().setAttribute("POSITION", positions));
+    };
+    document
+        .createScene()
+        .addChild(document.createNode().setMesh(createMesh(firstName)))
+        .addChild(document.createNode().setMesh(createMesh(secondName)));
+    return await IO.writeBinary(document);
+}
+
+async function BuildNamedDuplicateAccessorsAsync(firstName: string, secondName: string, keepUniqueNames: boolean): Promise<Document> {
+    const asset = new NodeAsset("named-accessors");
+    const input = new ImportGLTFAggregateBlock("Import glTF", asset);
+    input.data = await CreateNamedDuplicateAccessorsGlbAsync(firstName, secondName);
+    input.source = "named-accessors.glb";
+    const deduplicate = new DeduplicateDataBlock("Deduplicate Data", asset);
+    deduplicate.keepUniqueNames = keepUniqueNames;
+    const output = new ExportGLTFAggregateBlock("Export glTF", asset);
+    input.output.connectTo(deduplicate.input);
+    deduplicate.output.connectTo(output.input);
+    return await IO.readBinary(await asset.buildAsync());
+}
+
 async function CreateDuplicateResourcesGlbAsync(): Promise<Uint8Array> {
     const document = new Document();
     const buffer = document.createBuffer();
@@ -215,6 +246,34 @@ describe("Deduplicate Resources", () => {
         expect(deduplicate.output.type).toBe(NodeAssetConnectionPointType.UNIVERSAL);
         expect(document.getRoot().listAccessors()).toHaveLength(1);
         expect(document.getRoot().listSkins()).toHaveLength(1);
+    });
+
+    it("preserves byte-identical accessors with distinct names when keep unique names is enabled", async () => {
+        const document = await BuildNamedDuplicateAccessorsAsync("first", "second", true);
+        expect(
+            document
+                .getRoot()
+                .listAccessors()
+                .map((accessor) => accessor.getName())
+        ).toEqual(["first", "second"]);
+    });
+
+    it("deduplicates byte-identical accessors with distinct names when keep unique names is disabled", async () => {
+        const document = await BuildNamedDuplicateAccessorsAsync("first", "second", false);
+        expect(
+            document
+                .getRoot()
+                .listAccessors()
+                .map((accessor) => accessor.getName())
+        ).toEqual(["first"]);
+    });
+
+    it.each([
+        { caseName: "same-name", firstName: "shared", secondName: "shared" },
+        { caseName: "unnamed", firstName: "", secondName: "" },
+    ])("deduplicates $caseName accessors when keep unique names is enabled", async ({ firstName, secondName }) => {
+        const document = await BuildNamedDuplicateAccessorsAsync(firstName, secondName, true);
+        expect(document.getRoot().listAccessors()).toHaveLength(1);
     });
 
     it.each([
