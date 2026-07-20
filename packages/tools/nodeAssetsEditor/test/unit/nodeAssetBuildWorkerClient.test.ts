@@ -2,7 +2,13 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { _SetNodeAssetBuildErrorContext, NodeAssetBuildError } from "node-assets/nodeAssetBuildError";
 
-import { NodeAssetBuildSupersededError, NodeAssetBuildTimeoutError, NodeAssetBuildWorkerClient, type INodeAssetBuildWorker } from "../../src/nodeAssets/nodeAssetBuildWorkerClient";
+import {
+    Ktx2EncoderResourceConflictError,
+    NodeAssetBuildSupersededError,
+    NodeAssetBuildTimeoutError,
+    NodeAssetBuildWorkerClient,
+    type INodeAssetBuildWorker,
+} from "../../src/nodeAssets/nodeAssetBuildWorkerClient";
 import { SerializeNodeAssetBuildError, type INodeAssetBuildRequest, type NodeAssetBuildResponse } from "../../src/nodeAssets/nodeAssetBuildMessages";
 
 class TestBuildWorker implements INodeAssetBuildWorker {
@@ -245,6 +251,138 @@ describe("NodeAssetBuildWorkerClient", () => {
 
             workers[1].sendResponse({ type: "error", generation: 2, error: { name: "Error", message: "Failed to fetch the Basis encoder resource." } });
             await expect(secondBuild).resolves.toBeInstanceOf(Error);
+
+            client.dispose();
+        });
+
+        it("restarts the worker when successive builds' KTX2 URLs would collide under naive delimiter-joined serialization", async () => {
+            // A signature that flattens a pair with `${jsUrl}|${wasmUrl}` (or `[jsUrl, wasmUrl].join("|")`)
+            // conflates jsUrl="a|b"/wasmUrl="c" with jsUrl="a"/wasmUrl="b|c": both flatten to "a|b|c".
+            // The signature must serialize each pair as a structured tuple so these remain distinct and
+            // still trigger a worker restart between builds.
+            const { workers, createWorker } = CreateWorkerFactory();
+            const client = new NodeAssetBuildWorkerClient(createWorker);
+
+            const firstBuild = client.buildAsync(GraphWithKtx2Urls("a|b", "c"));
+            workers[0].sendResponse({ type: "success", generation: 1, bytes: new Uint8Array([1]).buffer });
+            await expect(firstBuild).resolves.toEqual(new Uint8Array([1]));
+
+            const secondBuild = client.buildAsync(GraphWithKtx2Urls("a", "b|c"));
+            workers[1]?.sendResponse({ type: "success", generation: 2, bytes: new Uint8Array([2]).buffer });
+
+            expect(workers).toHaveLength(2);
+            expect(workers[0].terminated).toBe(true);
+            await expect(secondBuild).resolves.toEqual(new Uint8Array([2]));
+
+            client.dispose();
+        });
+
+        it("restarts the worker when jsUrl changes between an empty string and null between builds", async () => {
+            // "" (authored, would try an empty dynamic import) and null (unauthored, encoder default)
+            // are different resource configurations and must not be conflated into one signature.
+            const { workers, createWorker } = CreateWorkerFactory();
+            const client = new NodeAssetBuildWorkerClient(createWorker);
+
+            const firstBuild = client.buildAsync(GraphWithKtx2Urls("", ""));
+            workers[0].sendResponse({ type: "success", generation: 1, bytes: new Uint8Array([1]).buffer });
+            await expect(firstBuild).resolves.toEqual(new Uint8Array([1]));
+
+            const secondBuild = client.buildAsync(GraphWithKtx2Urls(null, null));
+            workers[1]?.sendResponse({ type: "success", generation: 2, bytes: new Uint8Array([2]).buffer });
+
+            expect(workers).toHaveLength(2);
+            expect(workers[0].terminated).toBe(true);
+            await expect(secondBuild).resolves.toEqual(new Uint8Array([2]));
+
+            client.dispose();
+        });
+    });
+
+    describe("authored KTX2 encoder resource URL conflicts", () => {
+        function GraphWithTwoKtx2Blocks(
+            first: { jsUrl: string; wasmUrl: string },
+            second: { jsUrl: string; wasmUrl: string }
+        ): { name: string; blocks: unknown[]; connections: unknown[] } {
+            return {
+                name: "nodeAsset",
+                blocks: [
+                    { customType: "KTX2CompressionBlock", id: 1, name: "ktx2 A", jsUrl: first.jsUrl, wasmUrl: first.wasmUrl },
+                    { customType: "KTX2CompressionBlock", id: 2, name: "ktx2 B", jsUrl: second.jsUrl, wasmUrl: second.wasmUrl },
+                ],
+                connections: [],
+            };
+        }
+
+        it("rejects a build with two top-level KTX2 blocks authoring different encoder resource URLs", async () => {
+            const { workers, createWorker } = CreateWorkerFactory();
+            const client = new NodeAssetBuildWorkerClient(createWorker);
+
+            const graph = GraphWithTwoKtx2Blocks({ jsUrl: "/a.js", wasmUrl: "/a.wasm" }, { jsUrl: "/b.js", wasmUrl: "/b.wasm" });
+
+            await expect(client.buildAsync(graph)).rejects.toThrow(/ktx2 A.*ktx2 B|ktx2 B.*ktx2 A/is);
+            await expect(client.buildAsync(graph)).rejects.toBeInstanceOf(Ktx2EncoderResourceConflictError);
+            expect(workers).toHaveLength(0);
+
+            client.dispose();
+        });
+
+        it("allows multiple top-level KTX2 blocks that author the exact same encoder resource URLs", async () => {
+            const { workers, createWorker } = CreateWorkerFactory();
+            const client = new NodeAssetBuildWorkerClient(createWorker);
+
+            const graph = GraphWithTwoKtx2Blocks({ jsUrl: "/shared.js", wasmUrl: "/shared.wasm" }, { jsUrl: "/shared.js", wasmUrl: "/shared.wasm" });
+
+            const buildPromise = client.buildAsync(graph);
+            expect(workers).toHaveLength(1);
+            workers[0].sendResponse({ type: "success", generation: 1, bytes: new Uint8Array([1]).buffer });
+
+            await expect(buildPromise).resolves.toEqual(new Uint8Array([1]));
+            client.dispose();
+        });
+
+        it("rejects an authored empty jsUrl as distinct from an unauthored (null) jsUrl", async () => {
+            // "" is an explicit, dynamic-import-breaking authored value, while null/undefined means
+            // "let the encoder use its own default". Coercing both to the same empty string would
+            // silently treat two semantically different authored configurations as identical.
+            const { workers, createWorker } = CreateWorkerFactory();
+            const client = new NodeAssetBuildWorkerClient(createWorker);
+
+            const graph = GraphWithTwoKtx2Blocks({ jsUrl: "", wasmUrl: "" }, { jsUrl: null as unknown as string, wasmUrl: null as unknown as string });
+
+            await expect(client.buildAsync(graph)).rejects.toBeInstanceOf(Ktx2EncoderResourceConflictError);
+            expect(workers).toHaveLength(0);
+
+            client.dispose();
+        });
+
+        it("rejects a divergent KTX2 pair nested inside an aggregate-owned subgraph", async () => {
+            const { workers, createWorker } = CreateWorkerFactory();
+            const client = new NodeAssetBuildWorkerClient(createWorker);
+
+            const graph = {
+                name: "nodeAsset",
+                blocks: [
+                    { customType: "KTX2CompressionBlock", id: 1, name: "top-level ktx2", jsUrl: "/top.js", wasmUrl: "/top.wasm" },
+                    {
+                        customType: "CustomAggregateBlock",
+                        id: 2,
+                        name: "aggregate",
+                        subgraph: {
+                            name: "aggregate subgraph",
+                            blocks: [{ customType: "KTX2CompressionBlock", id: 3, name: "nested ktx2", jsUrl: "/nested.js", wasmUrl: "/nested.wasm" }],
+                            connections: [],
+                        },
+                    },
+                ],
+                connections: [],
+            };
+
+            await expect(client.buildAsync(graph)).rejects.toThrow(/top-level ktx2.*nested ktx2|nested ktx2.*top-level ktx2/is);
+            expect(workers).toHaveLength(0);
+
+            const error = await client.buildAsync(graph).catch((rejection: unknown) => rejection);
+            expect(error).toBeInstanceOf(Ktx2EncoderResourceConflictError);
+            expect((error as Ktx2EncoderResourceConflictError).blockIds.slice().sort()).toEqual([1, 3]);
 
             client.dispose();
         });

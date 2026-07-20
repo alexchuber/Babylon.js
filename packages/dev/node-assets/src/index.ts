@@ -1,4 +1,4 @@
-export { NodeAsset } from "./nodeAsset";
+export { NodeAsset, Ktx2EncoderResourceConflictError } from "./nodeAsset";
 export { BuildFanOutError } from "./evaluation/fanOutCopy";
 export {
     BuildResourceIdentities,

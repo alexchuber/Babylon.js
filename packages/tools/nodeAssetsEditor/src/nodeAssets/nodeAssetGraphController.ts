@@ -38,7 +38,7 @@ import { ConfigureBlockForEditor, GetAllBlockDescriptors, GetBlockDescriptorByPa
 import { BlockToNode, NodeIdForBlockId, PortIdForPoint } from "./blockNodeMapping";
 import { BuildPaletteCategories } from "./paletteCategories";
 import { NodeAssetReconciler } from "./nodeAssetReconciler";
-import { NodeAssetBuildWorkerClient, type INodeAssetBuildClient } from "./nodeAssetBuildWorkerClient";
+import { Ktx2EncoderResourceConflictError, NodeAssetBuildWorkerClient, type INodeAssetBuildClient } from "./nodeAssetBuildWorkerClient";
 import { DefaultSampleAssetUrls } from "./defaultSampleAssets";
 
 /** The editor metadata layered on top of a serialized graph: per-block visual state keyed by block id. */
@@ -625,11 +625,20 @@ export class NodeAssetGraphController {
     }
 
     /**
-     * Maps a structured runtime failure to its visual node.
+     * Maps a structured runtime failure to its visual node(s).
      * @param error - Build failure reported by the worker.
      */
     public reportBuildError(error: unknown): void {
         this.diagnostics.clear();
+        if (error instanceof Ktx2EncoderResourceConflictError) {
+            for (const blockId of error.blockIds) {
+                const nodeId = NodeIdForBlockId(blockId);
+                if (this.state.getNode(nodeId)) {
+                    this.diagnostics.set(nodeId, { severity: "error", message: error.message });
+                }
+            }
+            return;
+        }
         if (!(error instanceof NodeAssetBuildError)) {
             return;
         }

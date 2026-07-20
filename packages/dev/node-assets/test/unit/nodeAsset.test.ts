@@ -6,6 +6,7 @@ import { ExportGLTFBlock } from "../../src/Blocks/exportGLTFBlock";
 import { ImportGLTFBlock } from "../../src/Blocks/importGLTFBlock";
 import { KTX2CompressionBlock } from "../../src/Blocks/ktx2CompressionBlock";
 import { PruneBlock } from "../../src/Blocks/pruneBlock";
+import { CustomAggregateBlock } from "../../src/blockFoundation/customAggregateBlock";
 import { type IExportBlock } from "../../src/blockFoundation/exportBlock";
 import { NodeAssetBlock } from "../../src/blockFoundation/nodeAssetBlock";
 import { type NodeAssetConnectionPoint } from "../../src/connection/nodeAssetConnectionPoint";
@@ -468,5 +469,52 @@ describe("NodeAsset", () => {
 
         await expect(asset.buildAsync()).resolves.toEqual(new Uint8Array([7]));
         await expect(asset.buildAsync()).rejects.toThrow('The "one-shot export" node asset produced no result.');
+    });
+
+    describe("KTX2 encoder resource pair validation", () => {
+        it("rejects a direct build with two KTX2 blocks authoring different encoder resource URLs", async () => {
+            const asset = new NodeAsset("ktx2-conflict");
+            const ktx2A = new KTX2CompressionBlock("ktx2 A", asset);
+            ktx2A.jsUrl = "/a.js";
+            ktx2A.wasmUrl = "/a.wasm";
+            const ktx2B = new KTX2CompressionBlock("ktx2 B", asset);
+            ktx2B.jsUrl = "/b.js";
+            ktx2B.wasmUrl = "/b.wasm";
+
+            await expect(asset.buildAsync()).rejects.toThrow(/ktx2 A.*ktx2 B|ktx2 B.*ktx2 A/is);
+        });
+
+        it("allows multiple KTX2 blocks that author the exact same encoder resource URLs", async () => {
+            const asset = new NodeAsset("ktx2-same-pair");
+            const importer = new ImportGLTFBlock("import", asset);
+            importer.data = await CreateFixtureGlbAsync();
+            const ktx2A = new KTX2CompressionBlock("ktx2 A", asset);
+            ktx2A.jsUrl = "/shared.js";
+            ktx2A.wasmUrl = "/shared.wasm";
+            const ktx2B = new KTX2CompressionBlock("ktx2 B", asset);
+            ktx2B.jsUrl = "/shared.js";
+            ktx2B.wasmUrl = "/shared.wasm";
+            const exporter = new ExportGLTFBlock("export", asset);
+            importer.output.connectTo(ktx2A.input);
+            ktx2A.output.connectTo(ktx2B.input);
+            ktx2B.output.connectTo(exporter.input);
+
+            // The fixture has no textures, so both KTX2 blocks trivially succeed once past validation;
+            // this proves the same-pair graph is allowed through (never rejected as a resource conflict).
+            await expect(asset.buildAsync()).resolves.toBeInstanceOf(Uint8Array);
+        });
+
+        it("rejects a divergent KTX2 pair nested inside a custom aggregate's owned subgraph", async () => {
+            const asset = new NodeAsset("ktx2-aggregate-conflict");
+            const topLevelKtx2 = new KTX2CompressionBlock("top-level ktx2", asset);
+            topLevelKtx2.jsUrl = "/top.js";
+            topLevelKtx2.wasmUrl = "/top.wasm";
+            const aggregate = new CustomAggregateBlock("aggregate", asset);
+            const nestedKtx2 = new KTX2CompressionBlock("nested ktx2", aggregate.subgraph);
+            nestedKtx2.jsUrl = "/nested.js";
+            nestedKtx2.wasmUrl = "/nested.wasm";
+
+            await expect(asset.buildAsync()).rejects.toThrow(/top-level ktx2.*nested ktx2|nested ktx2.*top-level ktx2/is);
+        });
     });
 });

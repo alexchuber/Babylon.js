@@ -9,7 +9,7 @@ import { PaletteItemMatchesFilter } from "../../src/nodeGraph/paletteModel";
 import { type PropertyDescriptor } from "../../src/nodeGraph/propertyModel";
 import { CreateBuiltInNodeAssetLibraryEntries } from "../../src/nodeAssets/builtInLibraryEntries";
 import { NodeAssetGraphController } from "../../src/nodeAssets/nodeAssetGraphController";
-import { type INodeAssetBuildClient } from "../../src/nodeAssets/nodeAssetBuildWorkerClient";
+import { type INodeAssetBuildClient, Ktx2EncoderResourceConflictError } from "../../src/nodeAssets/nodeAssetBuildWorkerClient";
 import { NodeAssetReconciler } from "../../src/nodeAssets/nodeAssetReconciler";
 
 const BuiltInNodeAssetLibraryEntries = CreateBuiltInNodeAssetLibraryEntries();
@@ -450,6 +450,35 @@ describe("NodeAssetGraphController", () => {
             });
 
             controller.clearBuildError();
+            expect(controller.diagnostics.get(exportNode.id)).toBeNull();
+        } finally {
+            controller.dispose();
+        }
+    });
+
+    it("maps a KTX2 encoder resource conflict to every involved node's diagnostic", () => {
+        const controller = new NodeAssetGraphController();
+        try {
+            const importNode = FindNode(controller, "Import glTF");
+            const exportNode = FindNode(controller, "Export glTF");
+            const importBlockId = Number(importNode.id.slice("node-".length));
+            const exportBlockId = Number(exportNode.id.slice("node-".length));
+
+            controller.reportBuildError(
+                new Ktx2EncoderResourceConflictError("Multiple Compress Textures (KTX2) blocks author different encoder resource URLs.", [importBlockId, exportBlockId])
+            );
+
+            expect(controller.diagnostics.get(importNode.id)).toEqual({
+                severity: "error",
+                message: "Multiple Compress Textures (KTX2) blocks author different encoder resource URLs.",
+            });
+            expect(controller.diagnostics.get(exportNode.id)).toEqual({
+                severity: "error",
+                message: "Multiple Compress Textures (KTX2) blocks author different encoder resource URLs.",
+            });
+
+            controller.clearBuildError();
+            expect(controller.diagnostics.get(importNode.id)).toBeNull();
             expect(controller.diagnostics.get(exportNode.id)).toBeNull();
         } finally {
             controller.dispose();

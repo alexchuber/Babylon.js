@@ -116,30 +116,57 @@ interface ISerializedGraphLike {
  * contents under `subgraph` rather than inlining them into the parent graph's `blocks` array).
  */
 interface ISerializedKtx2BlockLike {
+    readonly id?: unknown;
+    readonly name?: unknown;
     readonly customType?: unknown;
     readonly jsUrl?: unknown;
     readonly wasmUrl?: unknown;
     readonly subgraph?: ISerializedGraphLike;
 }
 
+/** One KTX2 compression block's authored encoder resource pair, plus enough identity for diagnostics. */
+interface IKtx2EncoderResourceUsage {
+    readonly blockId: number | undefined;
+    readonly blockName: string;
+    readonly jsUrl: string | null;
+    readonly wasmUrl: string | null;
+}
+
 /**
- * Collects every KTX2 compression block's authored `jsUrl`/`wasmUrl` pair in a serialized graph,
- * recursing into aggregate blocks' nested `subgraph`s so a KTX2 block hidden inside a Custom
- * Aggregate is still found.
- * @param graph - The serialized graph (or nested subgraph) to scan.
- * @param urls - The signature strings collected so far; appended to in place.
+ * Normalizes an authored KTX2 URL value to either its exact string (including `""`) or `null` for
+ * "unauthored". `null` and `undefined` both mean "let the encoder fall back to its own default", while
+ * `""` is a distinct, explicit authored value (an empty dynamic-import target) and must not collide
+ * with it.
+ * @param value - The raw serialized `jsUrl`/`wasmUrl` value.
+ * @returns The value's exact string, or `null` when unauthored.
  */
-function CollectKtx2EncoderResourceUrls(graph: ISerializedGraphLike | null | undefined, urls: string[]): void {
+function NormalizeKtx2Url(value: unknown): string | null {
+    return typeof value === "string" ? value : null;
+}
+
+/**
+ * Collects every KTX2 compression block's authored `jsUrl`/`wasmUrl` pair (plus block identity) in a
+ * serialized graph, recursing into aggregate blocks' nested `subgraph`s so a KTX2 block hidden inside
+ * a Custom Aggregate is still found.
+ * @param graph - The serialized graph (or nested subgraph) to scan.
+ * @param usages - The usages collected so far; appended to in place.
+ */
+function CollectKtx2EncoderResourceUsages(graph: ISerializedGraphLike | null | undefined, usages: IKtx2EncoderResourceUsage[]): void {
     const blocks = graph?.blocks;
     if (!Array.isArray(blocks)) {
         return;
     }
     for (const block of blocks) {
         if (block?.customType === Ktx2CompressionBlockClassName) {
-            urls.push(`${String(block.jsUrl ?? "")}|${String(block.wasmUrl ?? "")}`);
+            usages.push({
+                blockId: typeof block.id === "number" ? block.id : undefined,
+                blockName: typeof block.name === "string" && block.name.length > 0 ? block.name : "(unnamed)",
+                jsUrl: NormalizeKtx2Url(block.jsUrl),
+                wasmUrl: NormalizeKtx2Url(block.wasmUrl),
+            });
         }
         if (block?.subgraph) {
-            CollectKtx2EncoderResourceUrls(block.subgraph, urls);
+            CollectKtx2EncoderResourceUsages(block.subgraph, usages);
         }
     }
 }
@@ -150,13 +177,82 @@ function CollectKtx2EncoderResourceUrls(graph: ISerializedGraphLike | null | und
  * `ktx2-encoder`'s Basis WASM module init is memoized at module scope the first time it runs, so a
  * worker that already initialized it would otherwise keep using the old resource even after the user
  * points the block at a new URL.
+ *
+ * Each pair is serialized as a structured `[jsUrl, wasmUrl]` tuple (rather than a delimiter-joined
+ * string such as "jsUrl|wasmUrl") so that URLs containing the delimiter can never collide; for
+ * example `("a|b", "c")` and `("a", "b|c")` remain distinguishable. `null` (unauthored) and `""`
+ * (explicitly authored empty string) are likewise preserved as distinct JSON values.
  * @param graph - The serialized `NodeAsset` graph passed to {@link NodeAssetBuildWorkerClient.buildAsync}.
  * @returns A string signature; equal signatures mean the same encoder resources would be used.
  */
 function GetKtx2EncoderResourceSignature(graph: unknown): string {
-    const urls: string[] = [];
-    CollectKtx2EncoderResourceUrls(graph as ISerializedGraphLike | null, urls);
-    return JSON.stringify(urls);
+    const usages: IKtx2EncoderResourceUsage[] = [];
+    CollectKtx2EncoderResourceUsages(graph as ISerializedGraphLike | null, usages);
+    return JSON.stringify(usages.map((usage) => [usage.jsUrl, usage.wasmUrl]));
+}
+
+/**
+ * Error thrown when an authored graph contains more than one distinct KTX2 encoder resource
+ * (`jsUrl`/`wasmUrl`) pair. `ktx2-encoder` memoizes a single Basis WASM module Promise at module
+ * scope, so a single build with divergent pairs would otherwise silently encode every KTX2 block
+ * with whichever pair happened to initialize the module first.
+ */
+export class Ktx2EncoderResourceConflictError extends Error {
+    /** The unique ids of every KTX2 compression block involved in the conflict, for node attribution. */
+    public readonly blockIds: readonly number[];
+
+    /**
+     * Creates a KTX2 encoder resource conflict error.
+     * @param message - Human-readable description of the divergent block configuration.
+     * @param blockIds - Unique ids of every KTX2 compression block involved in the conflict.
+     */
+    public constructor(message: string, blockIds: readonly number[]) {
+        super(message);
+        this.name = "Ktx2EncoderResourceConflictError";
+        this.blockIds = blockIds;
+    }
+}
+
+/**
+ * Rejects an authored graph containing more than one distinct KTX2 `jsUrl`/`wasmUrl` pair (including
+ * ones nested inside aggregate subgraphs). Zero KTX2 blocks, exactly one distinct pair, or several
+ * KTX2 blocks that all share the exact same pair are all allowed; the URLs are public, per-block
+ * serialized/editor properties, so silently picking one pair for the whole build would be invalid.
+ * @param graph - The serialized `NodeAsset` graph passed to {@link NodeAssetBuildWorkerClient.buildAsync}.
+ * @throws {@link Ktx2EncoderResourceConflictError} when more than one distinct pair is authored.
+ */
+function ValidateKtx2EncoderResourcePairs(graph: unknown): void {
+    const usages: IKtx2EncoderResourceUsage[] = [];
+    CollectKtx2EncoderResourceUsages(graph as ISerializedGraphLike | null, usages);
+
+    const usagesByPair = new Map<string, IKtx2EncoderResourceUsage[]>();
+    for (const usage of usages) {
+        const pairKey = JSON.stringify([usage.jsUrl, usage.wasmUrl]);
+        const existing = usagesByPair.get(pairKey);
+        if (existing) {
+            existing.push(usage);
+        } else {
+            usagesByPair.set(pairKey, [usage]);
+        }
+    }
+
+    if (usagesByPair.size <= 1) {
+        return;
+    }
+
+    const pairDescriptions = Array.from(usagesByPair.values()).map((group) => {
+        const blockDescriptions = group.map((usage) => `"${usage.blockName}" (id ${usage.blockId ?? "?"})`).join(", ");
+        return `${blockDescriptions} -> jsUrl=${JSON.stringify(group[0].jsUrl)}, wasmUrl=${JSON.stringify(group[0].wasmUrl)}`;
+    });
+    const blockIds = usages.map((usage) => usage.blockId).filter((blockId): blockId is number => blockId !== undefined);
+
+    throw new Ktx2EncoderResourceConflictError(
+        `Multiple Compress Textures (KTX2) blocks author different encoder resource URLs (jsUrl/wasmUrl): ${pairDescriptions.join("; ")}. ` +
+            "The ktx2-encoder library initializes its Basis WASM module once per worker (JavaScript execution context), so every " +
+            "KTX2 block in one build (including ones nested inside a Custom Aggregate) must share the exact same jsUrl/wasmUrl pair. " +
+            "Point them at the same encoder resources, or move the divergent block into a separate build.",
+        blockIds
+    );
 }
 
 /**
@@ -187,6 +283,10 @@ export class NodeAssetBuildWorkerClient implements INodeAssetBuildClient {
         if (this._isDisposed) {
             throw new Error("The node asset build worker client has been disposed.");
         }
+
+        // Validate before touching any worker state: an invalid graph must not supersede an in-flight
+        // build or spawn/restart a worker for work that can never safely run.
+        ValidateKtx2EncoderResourcePairs(graph);
 
         this._supersedePendingBuild();
         this._restartWorkerIfKtx2EncoderResourcesChanged(graph);
