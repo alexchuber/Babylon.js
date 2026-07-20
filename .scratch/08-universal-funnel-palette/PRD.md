@@ -64,12 +64,12 @@ The default palette is:
 | Category | Family | Blocks |
 | --- | --- | --- |
 | Inputs | Aggregate imports | Import glTF; Import USD; Import Babylon; Import Node Geometry |
-| Universal | Cleanup | Weld; Deduplicate; Remove Unused Resources; Remove Degenerate Geometry; Fix Winding |
-| Universal | Reduction | Quantize; Simplify |
-| Universal | Structure | Flatten Hierarchy; Join Meshes; Split by Material; Merge Scenes; Transform Scene; Center |
+| Universal | Cleanup | Weld Vertices; Deduplicate Resources; Remove Unused Resources; Remove Degenerate Geometry; Fix Face Winding |
+| Universal | Reduction | Quantize Attributes; Simplify Meshes |
+| Universal | Structure | Flatten Hierarchy; Join Meshes; Split Meshes by Material; Merge Scenes; Transform Scene; Center Scene |
 | Universal | Attributes | Recompute Normals; Generate Tangents; Strip Attributes |
 | Universal | Textures | Resize Textures |
-| glTF | Encoding/output | Apply Draco; Apply BasisU; Export glTF |
+| glTF | Encoding/output | Compress Geometry (Draco); Compress Textures (KTX2); Export glTF |
 
 With **Show primitives** enabled, the palette additionally exposes:
 
@@ -165,10 +165,10 @@ All blocks expose editable **Name** and read-only **Type**, where Type is the bl
     converges on the supported GLB delivery path.
 39. As a pipeline author, I do not want pairwise USD/Babylon/glTF transcoders, so that the conversion
     vocabulary remains small.
-40. As a pipeline author, I want Weld as an independently reusable cleanup decision, so that I can place
-    it where topology permits.
-41. As a pipeline author, I want Deduplicate as a compact aggregate, so that common deduplication does
-    not require four nodes.
+40. As a pipeline author, I want Weld Vertices as an independently reusable cleanup decision, so that I
+    can place it where topology permits.
+41. As a pipeline author, I want Deduplicate Resources as a compact aggregate, so that common
+    deduplication does not require four nodes.
 42. As an advanced pipeline author, I want separate Deduplicate Materials, Deduplicate Textures, Reuse
     Identical Meshes, and Deduplicate Data primitives, so that I can configure and order their effects
     independently.
@@ -176,10 +176,10 @@ All blocks expose editable **Name** and read-only **Type**, where Type is the bl
     so that it is not confused with runtime GPU instancing.
 44. As a pipeline author, I want Remove Unused Resources separated from Remove Degenerate Geometry, so
     that resource cleanup and geometry repair remain independent decisions.
-45. As a pipeline author, I want Fix Winding separate from Recompute Normals, so that correcting
+45. As a pipeline author, I want Fix Face Winding separate from Recompute Normals, so that correcting
     orientation does not imply replacing shading data.
-46. As a pipeline author, I want Quantize and Simplify to remain single configurable blocks, so that
-    algorithm tuning does not create palette variants.
+46. As a pipeline author, I want Quantize Attributes and Simplify Meshes to remain single configurable
+    blocks, so that algorithm tuning does not create palette variants.
 47. As a pipeline author, I want structure operations such as flattening, joining, splitting, merging,
     transforming, and centering to be independent blocks, so that I can compose only the changes I need.
 48. As a pipeline author, I want Recompute Normals, Generate Tangents, and Strip Attributes to be
@@ -188,10 +188,10 @@ All blocks expose editable **Name** and read-only **Type**, where Type is the bl
     that I can reduce texture dimensions without a detached image pipeline.
 50. As a pipeline author, I do not want Reencode Textures or Pack Texture Channels in this proof of
     concept, so that encoding and material semantics remain focused.
-51. As a glTF delivery author, I want Apply Draco to remain an explicit glTF → glTF block, so that mesh
-    encoding is visible.
-52. As a glTF delivery author, I want Apply BasisU to remain an explicit glTF → glTF block, so that
-    texture encoding is visible.
+51. As a glTF delivery author, I want Compress Geometry (Draco) to remain an explicit glTF → glTF
+    block, so that mesh encoding is visible.
+52. As a glTF delivery author, I want Compress Textures (KTX2) to remain an explicit glTF → glTF
+    block, so that texture encoding is visible.
 53. As an advanced glTF delivery author, I want to build
     `Universal → glTF → codecs → Write glTF`, so that target-format decisions stay outside Universal.
 54. As a casual glTF delivery author, I want Export glTF to bypass explicit target-lane assembly, so that
@@ -203,7 +203,7 @@ All blocks expose editable **Name** and read-only **Type**, where Type is the bl
 57. As a pipeline-library user, I want examples for glTF, USD, Babylon, and Node Geometry funnels, so that
     every supported source has a working reference.
 58. As a pipeline-library user, I want an advanced compression example, so that I can learn when to use
-    Universal → glTF, Apply BasisU, Apply Draco, and Write glTF.
+    Universal → glTF, Compress Textures (KTX2), Compress Geometry (Draco), and Write glTF.
 59. As a pipeline-library user, I want a multi-source merge example, so that I can see different formats
     converge into the same Universal flow.
 60. As a pipeline-library user, I want every bundled graph to preview successfully, so that examples are
@@ -250,7 +250,7 @@ All blocks expose editable **Name** and read-only **Type**, where Type is the bl
    intermediate Babylon representation in the authored graph.
 
 7. **Built-in aggregates have runtime subgraph semantics.** Import glTF, Import USD, Import Babylon,
-   Import Node Geometry, Export glTF, and Deduplicate execute as typed compositions of ordinary
+   Import Node Geometry, Export glTF, and Deduplicate Resources execute as typed compositions of ordinary
    primitive blocks. They are not union-typed mega-blocks and do not rely on invisible implicit
    conversion.
 
@@ -282,45 +282,45 @@ All blocks expose editable **Name** and read-only **Type**, where Type is the bl
     and never removes canvas nodes. Use Fluent UI conventions and semantic theme tokens; do not add raw
     color hex values or ad hoc checkbox styling.
 
-14. **Deduplicate is the convenience aggregate.** Its ordered internal primitives are Deduplicate
+14. **Deduplicate Resources is the convenience aggregate.** Its ordered internal primitives are Deduplicate
     Materials, Deduplicate Textures, Reuse Identical Meshes, and Deduplicate Data. The primitives map to
     semantic resource effects rather than mechanically exposing one block per implementation enum.
     Deduplicate Data owns accessor/skin deduplication. Algorithm options remain properties.
 
 15. **Universal block catalog and properties:**
-    - Weld: overwrite existing.
+    - Weld Vertices: overwrite existing.
     - Deduplicate Materials/Textures/Reuse Identical Meshes/Deduplicate Data: keep unique names.
     - Remove Unused Resources: kept property types, leaf nodes, attributes, solid textures, and extras.
     - Remove Degenerate Geometry: tolerance.
-    - Fix Winding: no required property.
-    - Quantize: position, normal, texture-coordinate, color, weight, and generic bits; normalize weights;
+    - Fix Face Winding: no required property.
+    - Quantize Attributes: position, normal, texture-coordinate, color, weight, and generic bits; normalize weights;
       attribute and morph-target patterns; quantization volume; cleanup.
-    - Simplify: target ratio, error limit, lock border.
+    - Simplify Meshes: target ratio, error limit, lock border.
     - Flatten Hierarchy: cleanup empty nodes.
     - Join Meshes: keep separate meshes, keep named nodes, cleanup.
-    - Split by Material: no required property.
+    - Split Meshes by Material: no required property.
     - Merge Scenes: variadic Universal inputs and Add input.
     - Transform Scene: units, scale, rotation, and up axis.
-    - Center: center/above/below/custom-point pivot and custom point.
+    - Center Scene: center/above/below/custom-point pivot and custom point.
     - Recompute Normals: overwrite existing.
     - Generate Tangents: no required property.
     - Strip Attributes: selected attribute kinds.
     - Resize Textures: maximum dimensions and resize mode.
 
 16. **glTF block catalog and properties:**
-    - Apply Draco remains glTF → glTF and exposes method, encode/decode speed, position/normal/color/
+    - Compress Geometry (Draco) remains glTF → glTF and exposes method, encode/decode speed, position/normal/color/
       texture-coordinate/generic quantization bits, quantization volume, custom bounds, and compatibility
       information.
-    - Apply BasisU remains glTF → glTF and retains the researched KTX2/Basis option surface: mipmaps,
+    - Compress Textures (KTX2) remains glTF → glTF and retains the researched KTX2/Basis option surface: mipmaps,
       texture and slot filters, output container, ETC1S/UASTC settings, perceptual metrics, transfer
       function, RDO, Zstandard, normal-map tuning, Flip Y, HDR, metadata, and encoder locations.
     - Write glTF is glTF → terminal bytes and exposes file name plus Export .glb.
     - Export glTF is Universal → terminal bytes through Universal → glTF and Write glTF.
 
 17. **Primitive visibility is selective.** Read/Write blocks, the five funnel transcoders, and the four
-    deduplication primitives are hidden by default because aggregates cover them. Apply Draco, Apply
-    BasisU, and standalone Universal operators remain visible because no aggregate replaces their user
-    decision.
+    deduplication primitives are hidden by default because aggregates cover them. Compress Geometry
+    (Draco), Compress Textures (KTX2), and standalone Universal operators remain visible because no
+    aggregate replaces their user decision.
 
 18. **Selectors, accessors, image blocks, values, and material blocks leave the product surface.** Their
     descriptors and bundled examples are removed. Existing runtime classes may remain registered for
@@ -334,7 +334,8 @@ All blocks expose editable **Name** and read-only **Type**, where Type is the bl
     - Babylon to optimized glTF;
     - Node Geometry to glTF;
     - multi-source Universal merge;
-    - advanced glTF compression using Universal → glTF, Apply BasisU, Apply Draco, and Write glTF;
+    - advanced glTF compression using Universal → glTF, Compress Textures (KTX2),
+      Compress Geometry (Draco), and Write glTF;
     - a representative full Universal optimization pipeline.
     Obsolete custom-texture, material-decomposition, selector, value, and image examples are removed.
 
@@ -386,8 +387,8 @@ All blocks expose editable **Name** and read-only **Type**, where Type is the bl
 - Runtime tests prove that Node Geometry → Universal performs the required evaluation without a separate
   Evaluate node and that USD/Babylon/Node Geometry source payloads cannot be wired to unrelated domains.
 
-- Runtime tests prove semantic deduplication primitives independently and prove that Deduplicate produces
-  the same observable result as their documented composition.
+- Runtime tests prove semantic deduplication primitives independently and prove that Deduplicate
+  Resources produces the same observable result as their documented composition.
 
 - Existing operator-pipeline, import/export metadata, serialization-schema, block-registry, and
   connection-point tests are the closest runtime prior art.
@@ -468,5 +469,5 @@ All blocks expose editable **Name** and read-only **Type**, where Type is the bl
 
   ```text
   Import glTF → [Universal operations] → Universal → glTF
-              → Apply BasisU → Apply Draco → Write glTF
+              → Compress Textures (KTX2) → Compress Geometry (Draco) → Write glTF
   ```
