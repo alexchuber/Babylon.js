@@ -1,13 +1,16 @@
 import { test, expect, type Page, type Download } from "@playwright/test";
 import { readFileSync } from "node:fs";
+import { resolve } from "node:path";
 
 import { NodeAssetsEditorPage, useLocalGltfValidator } from "./nae.utils";
 
 type GltfJson = {
+    readonly accessors?: readonly { readonly count?: number; readonly type?: string }[];
     readonly extensionsUsed?: readonly string[];
     readonly extensionsRequired?: readonly string[];
     readonly images?: readonly { readonly mimeType?: string }[];
     readonly materials?: readonly unknown[];
+    readonly meshes?: readonly { readonly primitives?: readonly { readonly attributes?: { readonly POSITION?: number }; readonly indices?: number }[] }[];
 };
 
 // The energy-orb showcase composites a metal base and a cyan pattern into the base color, fans the same
@@ -56,6 +59,62 @@ async function readDownloadedGlb(download: Download, expectedFileName = "scene.g
     expect(exported.length).toBeGreaterThan(0);
     expect(exported.subarray(0, 4).toString("ascii")).toBe("glTF");
     return exported;
+}
+
+function createNodeGeometryFixture(): Buffer {
+    return readFileSync(resolve(__dirname, "../../../nge-mcp-server/examples/SimpleBox.json"));
+}
+
+function createNodeGeometryEditorFile(): Buffer {
+    return Buffer.from(
+        JSON.stringify({
+            graph: {
+                name: "Node Geometry funnel",
+                blocks: [
+                    {
+                        customType: "ImportNodeGeometryAggregateBlock",
+                        id: 100,
+                        name: "Import Node Geometry",
+                        aggregateVersion: 1,
+                        subgraph: {
+                            name: "Import Node Geometry subgraph",
+                            blocks: [
+                                { customType: "ReadNodeGeometryBlock", id: 101, name: "Read Node Geometry", data: null, source: null, sourceKind: "" },
+                                { customType: "NodeGeometryToUniversalBlock", id: 102, name: "Node Geometry to Universal" },
+                            ],
+                            connections: [{ fromBlock: 101, fromPoint: "output", toBlock: 102, toPoint: "input" }],
+                        },
+                        exposedInputs: [],
+                        exposedOutputs: [{ publicName: "output", blockId: 102, pointName: "output" }],
+                    },
+                    {
+                        customType: "ExportGLTFAggregateBlock",
+                        id: 200,
+                        name: "Export glTF",
+                        aggregateVersion: 1,
+                        subgraph: {
+                            name: "Export glTF subgraph",
+                            blocks: [
+                                { customType: "UniversalToGLTFBlock", id: 201, name: "Universal to glTF" },
+                                { customType: "WriteGLTFBlock", id: 202, name: "Write glTF", fileName: "scene" },
+                            ],
+                            connections: [{ fromBlock: 201, fromPoint: "output", toBlock: 202, toPoint: "input" }],
+                        },
+                        exposedInputs: [{ publicName: "input", blockId: 201, pointName: "input" }],
+                        exposedOutputs: [],
+                    },
+                ],
+                connections: [{ fromBlock: 100, fromPoint: "output", toBlock: 200, toPoint: "input" }],
+            },
+            editor: {
+                blocks: [
+                    { id: 100, position: { x: 180, y: 220 }, title: "Import Node Geometry", collapsed: false },
+                    { id: 200, position: { x: 620, y: 220 }, title: "Export glTF", collapsed: false },
+                ],
+                frames: [],
+            },
+        })
+    );
 }
 
 test.describe("Node Assets Editor — Energy orb showcase", () => {
@@ -389,6 +448,81 @@ test.describe("Node Assets Editor — Universal glTF aggregates", () => {
         await expect(page.getByText("Source error", { exact: true })).toBeVisible();
         await expect(page.getByRole("textbox").nth(3)).toHaveValue("scenes/nodeAssets/orb.glb");
         await expect(page.getByRole("textbox").nth(4)).toHaveValue(/404/);
+    });
+
+    test("imports Node Geometry through the aggregate, expands it, previews it, and downloads its GLB", async ({ page }) => {
+        const editor = new NodeAssetsEditorPage(page);
+        const nodeGeometry = createNodeGeometryFixture();
+        const propertyTextbox = (label: string) => page.getByText(label, { exact: true }).locator("xpath=ancestor::div[.//input][1]").locator("input");
+        await page.route("**/TEST/1", async (route) => {
+            await route.fulfill({
+                status: 200,
+                contentType: "application/json",
+                body: JSON.stringify({
+                    jsonPayload: JSON.stringify({ nodeGeometry: nodeGeometry.toString("utf8") }),
+                }),
+            });
+        });
+        await editor.goto();
+        await editor.waitForNextSuccessfulPreviewBuild();
+
+        const loadChooserPromise = page.waitForEvent("filechooser");
+        await page.getByRole("button", { name: "Load" }).click();
+        const loadChooser = await loadChooserPromise;
+        await loadChooser.setFiles({
+            name: "node-geometry-funnel.json",
+            mimeType: "application/json",
+            buffer: createNodeGeometryEditorFile(),
+        });
+        await expect(editor.nodes).toHaveCount(2);
+        await expect(page.getByTitle("Evaluate Node Geometry", { exact: true })).toHaveCount(0);
+
+        await editor.selectNode("Import Node Geometry");
+        await propertyTextbox("Snippet ID").fill("#TEST#1");
+        await propertyTextbox("Snippet ID").blur();
+        await editor.waitForSuccessfulPreviewBuild();
+        await expect(propertyTextbox("Type")).toHaveValue("ImportNodeGeometryAggregateBlock");
+        await expect(propertyTextbox("Snippet ID")).toHaveValue("#TEST#1");
+        await expect(propertyTextbox("Active source")).toHaveValue("TEST#1");
+
+        await editor.nodeByTitle("Import Node Geometry").getByRole("button", { name: "Expand aggregate" }).click();
+        await expect(editor.nodeByTitle("Read Node Geometry")).toBeVisible();
+        await expect(editor.nodeByTitle("Node Geometry to Universal")).toBeVisible();
+        await expect(page.locator('[data-testid="graph-wire"][data-from-node-title="Read Node Geometry"][data-to-node-title="Node Geometry to Universal"]')).toHaveCount(1);
+        await editor.selectNode("Read Node Geometry");
+        await expect(propertyTextbox("Snippet ID")).toHaveValue("#TEST#1");
+        await expect(propertyTextbox("Active source")).toHaveValue("TEST#1");
+
+        const uploadChooserPromise = page.waitForEvent("filechooser");
+        await page.getByRole("button", { name: "Upload Node Geometry…" }).click();
+        const uploadChooser = await uploadChooserPromise;
+        await uploadChooser.setFiles({
+            name: "box.json",
+            mimeType: "application/json",
+            buffer: nodeGeometry,
+        });
+        await editor.waitForSuccessfulPreviewBuild();
+        await expect(propertyTextbox("Snippet ID")).toHaveValue("");
+        await expect(propertyTextbox("Active source")).toHaveValue("box.json");
+        await expect(editor.previewCanvas).toBeVisible();
+
+        await editor.selectNode("Import Node Geometry");
+        await expect(propertyTextbox("Active source")).toHaveValue("box.json");
+        await editor.saveToLibraryButton.click();
+        await editor.openLibraryButton.click();
+        await page.getByRole("dialog", { name: "NodeAsset Library" }).getByRole("button", { name: "Node Geometry funnel", exact: true }).click();
+        await expect(editor.nodeByTitle("Read Node Geometry")).toBeVisible();
+        await editor.waitForSuccessfulPreviewBuild();
+        await editor.selectNode("Import Node Geometry");
+        await expect(propertyTextbox("Active source")).toHaveValue("box.json");
+
+        await editor.selectNode("Export glTF");
+        const downloadPromise = page.waitForEvent("download");
+        await page.getByRole("button", { name: "Export .glb" }).click();
+        const gltf = parseGlbJson(await readDownloadedGlb(await downloadPromise));
+        const primitive = gltf.meshes?.[0]?.primitives?.[0];
+        expect(gltf.accessors?.[primitive?.attributes?.POSITION ?? -1]).toMatchObject({ count: 24, type: "VEC3" });
+        expect(gltf.accessors?.[primitive?.indices ?? -1]).toMatchObject({ count: 36 });
     });
 });
 

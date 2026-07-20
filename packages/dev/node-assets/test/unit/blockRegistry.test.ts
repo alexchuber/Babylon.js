@@ -30,6 +30,7 @@ import {
     ImportBabylonBlock,
     ImportGLTFBlock,
     ImportGLTFAggregateBlock,
+    ImportNodeGeometryAggregateBlock,
     ImportNodeGeometryBlock,
     ImportUSDBlock,
     ImportImageBlock,
@@ -39,6 +40,7 @@ import {
     MergeScenes,
     NodeAsset,
     NormalsBlock,
+    NodeGeometryToUniversalBlock,
     NumberLiteral,
     PruneBlock,
     QuantizeBlock,
@@ -56,6 +58,7 @@ import {
     WeldBlock,
     WriteGLTFBlock,
     ReadGLTFBlock,
+    ReadNodeGeometryBlock,
     CustomAggregateBlock,
     // eslint-disable-next-line import/no-internal-modules
 } from "../../src/index";
@@ -197,6 +200,9 @@ describe("block self-registration", () => {
                     CompositeImageBlock.ClassName,
                     ImportBabylonBlock.ClassName,
                     ImportNodeGeometryBlock.ClassName,
+                    ReadNodeGeometryBlock.ClassName,
+                    NodeGeometryToUniversalBlock.ClassName,
+                    ImportNodeGeometryAggregateBlock.ClassName,
                     USD2GLTFBlock.ClassName,
                     USD2BabylonBlock.ClassName,
                     GLTF2BabylonBlock.ClassName,
@@ -218,7 +224,7 @@ describe("block self-registration", () => {
                     ExportGLTFAggregateBlock.ClassName,
                 ])
             );
-            expect(registeredClassNames).toHaveLength(52);
+            expect(registeredClassNames).toHaveLength(55);
         });
 
         it.each(registeredClassNames)("round-trips %s through serialize/Parse", (className) => {

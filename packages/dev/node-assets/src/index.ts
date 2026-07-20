@@ -42,6 +42,7 @@ export { GetGltfAsset, GltfAsset, type IGltfAssetMetadata, IsGltfAsset } from ".
 export { type IUsdAssetMetadata, IsUsdAsset, UsdAsset } from "./representations/usdAsset";
 export { BabylonAsset, type IBabylonAssetMetadata, IsBabylonAsset } from "./representations/babylonAsset";
 export { type INodeGeometryAssetMetadata, IsNodeGeometryAsset, NodeGeometryAsset } from "./representations/nodeGeometryAsset";
+export { type INodeGeometrySourceMetadata, IsNodeGeometrySource, NodeGeometrySource, type NodeGeometrySourceKind } from "./representations/nodeGeometrySource";
 export {
     IsNodeAssetSerializedGraph,
     type NodeAssetBlockSerialization,
@@ -94,6 +95,9 @@ export { USD2BabylonBlock } from "./Blocks/usd2BabylonBlock";
 export { GLTF2BabylonBlock } from "./Blocks/gltf2BabylonBlock";
 export { Babylon2GLTFBlock } from "./Blocks/babylon2GLTFBlock";
 export { EvaluateNodeGeometryBlock } from "./Blocks/evaluateNodeGeometryBlock";
+export { type NodeGeometrySnippetFetcher, ReadNodeGeometryBlock } from "./Blocks/readNodeGeometryBlock";
+export { NodeGeometryToUniversalBlock } from "./Blocks/nodeGeometryToUniversalBlock";
+export { ImportNodeGeometryAggregateBlock } from "./Blocks/importNodeGeometryAggregateBlock";
 export { DecomposeGLTFMaterialBlock } from "./Blocks/decomposeGLTFMaterialBlock";
 export { ComposeGLTFMaterialBlock } from "./Blocks/composeGLTFMaterialBlock";
 export { GetBabylonMeshBlock } from "./Blocks/getBabylonMeshBlock";
