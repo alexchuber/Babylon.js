@@ -113,7 +113,7 @@ describe("Import block source label", () => {
     it("shows the uploaded file name as the glTF import Source and roundtrips it", async () => {
         const controller = new NodeAssetGraphController();
         try {
-            const importNode = FindNode(controller, "Import glTF");
+            const importNode = FindNode(controller, "glTF");
             expect(FindPropertyInSection(controller, importNode, "IMPORT", "Source", "text").value).toBe("No file loaded");
 
             vi.mocked(PromptForFileAsync).mockResolvedValue({
@@ -131,7 +131,7 @@ describe("Import block source label", () => {
             const reloaded = new NodeAssetGraphController();
             try {
                 reloaded.load(json);
-                const reloadedImport = FindNode(reloaded, "Import glTF");
+                const reloadedImport = FindNode(reloaded, "glTF");
                 expect(FindPropertyInSection(reloaded, reloadedImport, "IMPORT", "Source", "text").value).toBe("myModel.glb");
             } finally {
                 reloaded.dispose();
@@ -143,7 +143,7 @@ describe("Import block source label", () => {
 
     it("shows a source URL verbatim in the image import Source field", () => {
         const asset = new NodeAsset("image-source");
-        const block = new ImportImageBlock("Import Image", asset);
+        const block = new ImportImageBlock("Image", asset);
         block.data = new Uint8Array([1, 2, 3]);
         block.source = "https://cdn.example.com/scenes/nodeAssets/baseColor.png";
 

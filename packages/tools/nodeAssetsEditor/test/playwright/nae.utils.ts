@@ -91,15 +91,17 @@ export class NodeAssetsEditorPage {
     }
 
     /**
-     * Locate a node by its title text, e.g. "Import glTF". When the graph holds several nodes of the
-     * same title (e.g. the energy-orb seed already has two "Import Image" nodes), pass `occurrence` to
+     * Locate a node by its title text, e.g. "glTF". When the graph holds several nodes of the
+     * same title (e.g. the energy-orb seed already has two "Image" nodes), pass `occurrence` to
      * narrow to a single one: an index, or "last" for the most recently added node.
      * @param title - The node's visible title.
      * @param occurrence - Optional disambiguator when several nodes share the title.
      * @returns The node locator.
      */
     nodeByTitle(title: string, occurrence?: NodeOccurrence): Locator {
-        const matches = this.nodes.filter({ hasText: title });
+        const escapedTitle = title.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+        const titleElement = this.page.locator('[data-testid="graph-node-title"]').filter({ hasText: new RegExp(`^${escapedTitle}$`) });
+        const matches = this.nodes.filter({ has: titleElement });
         if (occurrence === undefined) {
             return matches;
         }
@@ -112,7 +114,7 @@ export class NodeAssetsEditorPage {
      * @param occurrence - Optional disambiguator when several nodes share the title (see {@link nodeByTitle}).
      */
     async selectNode(title: string, occurrence?: NodeOccurrence): Promise<void> {
-        await this.nodeByTitle(title, occurrence).getByText(title, { exact: true }).click();
+        await this.nodeByTitle(title, occurrence).locator('[data-testid="graph-node-title"]').click();
     }
 
     /**

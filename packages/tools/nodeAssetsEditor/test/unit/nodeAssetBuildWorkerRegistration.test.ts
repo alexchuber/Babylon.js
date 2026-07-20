@@ -65,7 +65,7 @@ const DefaultSeedClassNames = ["ImportGLTFBlock", "KTX2CompressionBlock", "Draco
 const DefaultSerializedGraph = {
     name: "orb-compression",
     blocks: [
-        { customType: "ImportGLTFBlock", id: 1, name: "Import glTF" },
+        { customType: "ImportGLTFBlock", id: 1, name: "glTF" },
         { customType: "KTX2CompressionBlock", id: 2, name: "KTX2 Compress" },
         { customType: "DracoCompressionBlock", id: 3, name: "Draco Compression" },
         { customType: "ExportGLTFBlock", id: 4, name: "Export glTF" },

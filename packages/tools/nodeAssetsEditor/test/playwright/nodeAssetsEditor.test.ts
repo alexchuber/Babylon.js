@@ -8,10 +8,18 @@ type GltfJson = {
 };
 
 const DefaultPipeline: readonly (readonly [string, string])[] = [
-    ["Import glTF", "Apply BasisU"],
+    ["glTF", "Apply BasisU"],
     ["Apply BasisU", "Apply Draco"],
     ["Apply Draco", "Export glTF"],
 ];
+
+const InputPaletteEntries = [
+    { label: "glTF", dropPoint: { x: 0.1, y: 0.8 } },
+    { label: "USD", dropPoint: { x: 0.3, y: 0.8 } },
+    { label: "Image", dropPoint: { x: 0.5, y: 0.8 } },
+    { label: "Babylon", dropPoint: { x: 0.7, y: 0.8 } },
+    { label: "Node Geometry", dropPoint: { x: 0.9, y: 0.8 } },
+] as const;
 
 /**
  * Parses the JSON chunk of a glb without any glTF dependency, so assertions can inspect the exported
@@ -64,7 +72,7 @@ test.describe("Node Assets Editor — Orb compression sample", () => {
         await orbGlbResponse;
 
         await expect(editor.nodes).toHaveCount(4);
-        await expect(editor.nodeByTitle("Import glTF")).toBeVisible();
+        await expect(editor.nodeByTitle("glTF")).toBeVisible();
         await expect(editor.nodeByTitle("Apply BasisU")).toBeVisible();
         await expect(editor.nodeByTitle("Apply Draco")).toBeVisible();
         await expect(editor.nodeByTitle("Export glTF")).toBeVisible();
@@ -78,10 +86,30 @@ test.describe("Node Assets Editor — Orb compression sample", () => {
         await expect(editor.previewCanvas).toBeVisible();
 
         // The import block is seeded with a stable, human-readable provenance label.
-        await editor.selectNode("Import glTF");
+        await editor.selectNode("glTF");
         await expect(page.getByRole("textbox").nth(1)).toHaveValue("scenes/nodeAssets/orb.glb");
 
         expect(pageErrors).toEqual([]);
+    });
+
+    test("renders the renamed Inputs palette and creates every input node", async ({ page }) => {
+        const editor = new NodeAssetsEditorPage(page);
+        await editor.goto();
+
+        await page.getByPlaceholder("Search palette").fill("import");
+        await expect(page.getByText("Inputs (5)", { exact: true })).toBeVisible();
+        for (const { label } of InputPaletteEntries) {
+            await expect(page.getByTitle(label, { exact: true })).toBeVisible();
+        }
+
+        for (const { label, dropPoint } of InputPaletteEntries) {
+            await editor.dropPaletteItem(label, dropPoint);
+        }
+
+        await expect(editor.nodes).toHaveCount(9);
+        for (const { label } of InputPaletteEntries) {
+            await expect(editor.nodeByTitle(label, "last")).toBeVisible();
+        }
     });
 
     test("exports the compressed orb the preview rendered", async ({ page }) => {
@@ -183,7 +211,7 @@ test.describe("Node Assets Editor — Orb compression sample", () => {
         const editor = new NodeAssetsEditorPage(page);
         await editor.goto();
 
-        await editor.selectNode("Import glTF");
+        await editor.selectNode("glTF");
         await editor
             .nodeByTitle("Apply BasisU")
             .getByText("Apply BasisU", { exact: true })
@@ -192,7 +220,7 @@ test.describe("Node Assets Editor — Orb compression sample", () => {
             });
         await page.keyboard.press("Delete");
 
-        await expect(editor.nodeByTitle("Import glTF")).toHaveCount(0);
+        await expect(editor.nodeByTitle("glTF")).toHaveCount(0);
         await expect(editor.nodeByTitle("Apply BasisU")).toHaveCount(0);
         await expect(editor.nodes).toHaveCount(2);
     });
@@ -222,9 +250,7 @@ test.describe("Node Assets Editor — Orb compression sample", () => {
         await page.getByRole("button", { name: "Reorganize" }).click();
 
         await expect.poll(overlaps).toBe(false);
-        const pipelineX = await Promise.all(
-            ["Import glTF", "Apply BasisU", "Apply Draco", "Export glTF"].map(async (title) => (await editor.nodeByTitle(title).boundingBox())?.x ?? 0)
-        );
+        const pipelineX = await Promise.all(["glTF", "Apply BasisU", "Apply Draco", "Export glTF"].map(async (title) => (await editor.nodeByTitle(title).boundingBox())?.x ?? 0));
         expect(pipelineX).toEqual([...pipelineX].sort((left, right) => left - right));
     });
 });
@@ -287,7 +313,7 @@ test.describe("Node Assets Editor — Library", () => {
 
         await expect(dialog).toBeHidden();
         await expect(editor.nodes).toHaveCount(2);
-        await expect(editor.nodeByTitle("Import USD")).toBeVisible();
+        await expect(editor.nodeByTitle("USD")).toBeVisible();
         await expect(editor.nodeByTitle("Export glTF")).toBeVisible();
     });
 
@@ -325,7 +351,7 @@ test.describe("Node Assets Editor — Library", () => {
         dialog = page.getByRole("dialog", { name: "NodeAsset Library" });
         await dialog.getByRole("button", { name: "USD Preview 2", exact: true }).click();
         await expect(editor.nodes).toHaveCount(2);
-        await expect(editor.nodeByTitle("Import USD")).toBeVisible();
+        await expect(editor.nodeByTitle("USD")).toBeVisible();
         await expect(editor.nodeByTitle("Export glTF")).toBeVisible();
     });
 

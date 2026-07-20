@@ -14,6 +14,14 @@ import { NodeAssetReconciler } from "../../src/nodeAssets/nodeAssetReconciler";
 
 const BuiltInNodeAssetLibraryEntries = CreateBuiltInNodeAssetLibraryEntries();
 
+const ExpectedInputPaletteEntries = [
+    { id: "import-gltf", label: "glTF", customType: "ImportGLTFBlock" },
+    { id: "import-usd", label: "USD", customType: "ImportUSDBlock" },
+    { id: "import-image", label: "Image", customType: "ImportImageBlock" },
+    { id: "import-babylon", label: "Babylon", customType: "ImportBabylonBlock" },
+    { id: "import-node-geometry", label: "Node Geometry", customType: "ImportNodeGeometryBlock" },
+] as const;
+
 type MutableSavedGraph = {
     graph: {
         blocks: Array<{ id: number }>;
@@ -72,7 +80,7 @@ describe("NodeAssetGraphController", () => {
         try {
             const exportImage = controller.createNodeFromPaletteItem("export-image", { x: 1800, y: 320 });
             controller.state.addNode(exportImage);
-            const importGltf = FindNode(controller, "Import glTF");
+            const importGltf = FindNode(controller, "glTF");
             const gltfOutput = importGltf.ports.find((port) => port.direction === "output");
             const imageInput = exportImage.ports.find((port) => port.direction === "input");
             if (!gltfOutput || !imageInput) {
@@ -109,8 +117,8 @@ describe("NodeAssetGraphController", () => {
 
             controller.load(entry.serializedGraph);
 
-            expect(controller.state.nodes.map((node) => node.title)).toEqual(["Import USD", "Draco Compression", "Export glTF"]);
-            expect(GetWireTitles(controller)).toEqual(["Draco Compression->Export glTF", "Import USD->Draco Compression"]);
+            expect(controller.state.nodes.map((node) => node.title)).toEqual(["USD", "Draco Compression", "Export glTF"]);
+            expect(GetWireTitles(controller)).toEqual(["Draco Compression->Export glTF", "USD->Draco Compression"]);
         } finally {
             controller.dispose();
         }
@@ -123,8 +131,8 @@ describe("NodeAssetGraphController", () => {
 
             controller.load(entry.serializedGraph);
 
-            expect(controller.state.nodes.map((node) => node.title)).toEqual(["Import USD", "Import Image", "Selector", "Set Texture", "Export glTF"]);
-            expect(GetWireTitles(controller)).toEqual(["Import Image->Set Texture", "Import USD->Set Texture", "Selector->Set Texture", "Set Texture->Export glTF"]);
+            expect(controller.state.nodes.map((node) => node.title)).toEqual(["USD", "Image", "Selector", "Set Texture", "Export glTF"]);
+            expect(GetWireTitles(controller)).toEqual(["Image->Set Texture", "Selector->Set Texture", "Set Texture->Export glTF", "USD->Set Texture"]);
         } finally {
             controller.dispose();
         }
@@ -137,13 +145,13 @@ describe("NodeAssetGraphController", () => {
 
             controller.load(entry.serializedGraph);
 
-            expect(controller.state.nodes.map((node) => node.title)).toEqual(["Import USD", "Import glTF", "Merge Scenes", "Draco Compression", "KTX2 Compress", "Export glTF"]);
+            expect(controller.state.nodes.map((node) => node.title)).toEqual(["USD", "glTF", "Merge Scenes", "Draco Compression", "KTX2 Compress", "Export glTF"]);
             expect(GetWireTitles(controller)).toEqual([
                 "Draco Compression->KTX2 Compress",
-                "Import USD->Merge Scenes",
-                "Import glTF->Merge Scenes",
                 "KTX2 Compress->Export glTF",
                 "Merge Scenes->Draco Compression",
+                "USD->Merge Scenes",
+                "glTF->Merge Scenes",
             ]);
         } finally {
             controller.dispose();
@@ -158,7 +166,7 @@ describe("NodeAssetGraphController", () => {
             controller.load(entry.serializedGraph);
 
             expect(controller.state.nodes.map((node) => node.title)).toEqual([
-                "Import glTF",
+                "glTF",
                 "Base Color Selector",
                 "Normal Selector",
                 "ORM Selector",
@@ -182,10 +190,6 @@ describe("NodeAssetGraphController", () => {
                 "Extract Base Color->Resize Base Color",
                 "Extract Normal->Resize Normal",
                 "Extract ORM->Resize ORM",
-                "Import glTF->Extract Base Color",
-                "Import glTF->Extract Normal",
-                "Import glTF->Extract ORM",
-                "Import glTF->Set Base Color",
                 "Normal Selector->Extract Normal",
                 "Normal Selector->Set Normal",
                 "ORM Selector->Extract ORM",
@@ -199,6 +203,10 @@ describe("NodeAssetGraphController", () => {
                 "Set Normal->Set ORM",
                 "Set ORM->Set Roughness",
                 "Set Roughness->Export glTF",
+                "glTF->Extract Base Color",
+                "glTF->Extract Normal",
+                "glTF->Extract ORM",
+                "glTF->Set Base Color",
             ]);
         } finally {
             controller.dispose();
@@ -212,8 +220,8 @@ describe("NodeAssetGraphController", () => {
 
             controller.load(entry.serializedGraph);
 
-            expect(controller.state.nodes.map((node) => node.title)).toEqual(["Import USD", "Export glTF"]);
-            expect(GetWireTitles(controller)).toEqual(["Import USD->Export glTF"]);
+            expect(controller.state.nodes.map((node) => node.title)).toEqual(["USD", "Export glTF"]);
+            expect(GetWireTitles(controller)).toEqual(["USD->Export glTF"]);
         } finally {
             controller.dispose();
         }
@@ -227,9 +235,9 @@ describe("NodeAssetGraphController", () => {
             controller.load(entry.serializedGraph);
 
             expect(controller.state.nodes.map((node) => node.title)).toEqual([
-                "Import USD",
-                "Import glTF A",
-                "Import glTF B",
+                "USD",
+                "glTF A",
+                "glTF B",
                 "Merge Sources",
                 "Merge Assembly",
                 "Draco Compression",
@@ -238,12 +246,12 @@ describe("NodeAssetGraphController", () => {
             ]);
             expect(GetWireTitles(controller)).toEqual([
                 "Draco Compression->KTX2 Compress",
-                "Import USD->Merge Sources",
-                "Import glTF A->Merge Sources",
-                "Import glTF B->Merge Assembly",
                 "KTX2 Compress->Export glTF",
                 "Merge Assembly->Draco Compression",
                 "Merge Sources->Merge Assembly",
+                "USD->Merge Sources",
+                "glTF A->Merge Sources",
+                "glTF B->Merge Assembly",
             ]);
         } finally {
             controller.dispose();
@@ -258,7 +266,7 @@ describe("NodeAssetGraphController", () => {
         reconcileSpy.mockClear();
         serializeSpy.mockClear();
         try {
-            const importNode = FindNode(controller, "Import glTF");
+            const importNode = FindNode(controller, "glTF");
 
             controller.state.translateNodes([importNode.id], { x: 25, y: 10 });
             controller.state.setNodeCollapsed(importNode.id, true);
@@ -479,7 +487,7 @@ describe("NodeAssetGraphController", () => {
                 }))
             ).toEqual([
                 {
-                    label: "Imports",
+                    label: "Inputs",
                     itemIds: ["import-gltf", "import-usd", "import-image", "import-babylon", "import-node-geometry"],
                 },
                 {
@@ -519,11 +527,80 @@ describe("NodeAssetGraphController", () => {
         }
     });
 
+    it("exposes renamed Inputs with stable palette and serialized identities", () => {
+        const controller = new NodeAssetGraphController();
+        try {
+            const inputCategory = controller.paletteCategories[0];
+            const createdNodes = ExpectedInputPaletteEntries.map((entry, index) => {
+                const node = controller.createNodeFromPaletteItem(entry.id, { x: index * 200, y: 800 });
+                controller.state.addNode(node);
+                return node;
+            });
+            const createdNodeIds = new Set(createdNodes.map((node) => node.id));
+            const serialized = JSON.parse(controller.serialize());
+            const importSearchIds = controller.paletteCategories.flatMap((category) =>
+                category.items.filter((item) => PaletteItemMatchesFilter(item, category.label, "import")).map((item) => item.id)
+            );
+
+            expect({
+                category: {
+                    label: inputCategory.label,
+                    items: inputCategory.items.map(({ id, label }) => ({ id, label })),
+                },
+                createdNodeTitles: createdNodes.map((node) => node.title),
+                serializedIdentities: serialized.graph.blocks
+                    .filter((block: { id: number }) => createdNodeIds.has(`node-${block.id}`))
+                    .map(({ customType, name }: { customType: string; name: string }) => ({ customType, name })),
+                importSearchIds,
+            }).toEqual({
+                category: {
+                    label: "Inputs",
+                    items: ExpectedInputPaletteEntries.map(({ id, label }) => ({ id, label })),
+                },
+                createdNodeTitles: ExpectedInputPaletteEntries.map(({ label }) => label),
+                serializedIdentities: ExpectedInputPaletteEntries.map(({ customType, label }) => ({ customType, name: label })),
+                importSearchIds: ExpectedInputPaletteEntries.map(({ id }) => id),
+            });
+        } finally {
+            controller.dispose();
+        }
+    });
+
+    it("preserves pre-rename input names when loading and re-saving a graph", () => {
+        const controller = new NodeAssetGraphController();
+        try {
+            const saved = JSON.parse(controller.serialize());
+            saved.graph.blocks[0].name = "Import glTF";
+            saved.editor.blocks[0].title = "Import glTF";
+
+            controller.load(JSON.stringify(saved));
+
+            const roundTripped = JSON.parse(controller.serialize());
+            expect({
+                nodeTitle: controller.state.nodes[0].title,
+                block: {
+                    customType: roundTripped.graph.blocks[0].customType,
+                    name: roundTripped.graph.blocks[0].name,
+                },
+                editorTitle: roundTripped.editor.blocks[0].title,
+            }).toEqual({
+                nodeTitle: "Import glTF",
+                block: {
+                    customType: "ImportGLTFBlock",
+                    name: "Import glTF",
+                },
+                editorTitle: "Import glTF",
+            });
+        } finally {
+            controller.dispose();
+        }
+    });
+
     it("uses one node header color per palette category", () => {
         const controller = new NodeAssetGraphController();
         try {
             const expectedHeaderColors: Readonly<Record<string, string>> = {
-                Imports: "#3f7d4e",
+                Inputs: "#3f7d4e",
                 glTF: "#2f8f83",
                 USD: "#C4A265",
                 Babylon: "#4A90D9",
@@ -633,7 +710,7 @@ describe("NodeAssetGraphController", () => {
     it("preserves editor frames and their node membership through save and load", () => {
         const controller = new NodeAssetGraphController();
         try {
-            const importNode = FindNode(controller, "Import glTF");
+            const importNode = FindNode(controller, "glTF");
             const frame = controller.state.groupNodesIntoFrame([importNode.id], "Sources", "#123456", {
                 position: { x: 40, y: 480 },
                 size: { width: 280, height: 220 },
@@ -669,7 +746,7 @@ describe("NodeAssetGraphController", () => {
         const sourceController = new NodeAssetGraphController();
         let serialized: string;
         try {
-            const importNode = FindNode(sourceController, "Import glTF");
+            const importNode = FindNode(sourceController, "glTF");
             sourceController.state.groupNodesIntoFrame([importNode.id], "Sources", "#123456", {
                 position: { x: 40, y: 480 },
                 size: { width: 280, height: 220 },
@@ -683,7 +760,7 @@ describe("NodeAssetGraphController", () => {
         try {
             targetController.load(serialized);
             const loadedFrameIds = targetController.state.frames.map((frame) => frame.id);
-            const importNode = FindNode(targetController, "Import glTF");
+            const importNode = FindNode(targetController, "glTF");
 
             const newFrame = targetController.state.groupNodesIntoFrame([importNode.id], "More sources", "#654321", {
                 position: { x: 80, y: 520 },

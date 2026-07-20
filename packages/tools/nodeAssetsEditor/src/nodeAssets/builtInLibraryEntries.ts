@@ -142,15 +142,15 @@ function CreateBuiltInEntry(name: string, configure?: (builder: ISampleBuilder) 
 export function CreateBuiltInNodeAssetLibraryEntries(): readonly INodeAssetLibraryEntry[] {
     return [
         CreateBuiltInEntry("USD to Optimized glTF", ({ asset, addBlock }) => {
-            const source = addBlock(CreateBuiltInUsdSource("Import USD", asset), 50, 50);
+            const source = addBlock(CreateBuiltInUsdSource("USD", asset), 50, 50);
             const draco = addBlock(new DracoCompressionBlock("Draco Compression", asset), 310, 50);
             const output = addBlock(new ExportGLTFBlock("Export glTF", asset), 570, 50);
             source.output.connectTo(draco.input);
             draco.output.connectTo(output.input);
         }),
         CreateBuiltInEntry("USD with Custom Textures", ({ asset, addBlock }) => {
-            const source = addBlock(CreateBuiltInUsdSource("Import USD", asset), 50, 40);
-            const image = addBlock(CreateBuiltInImageSource("Import Image", asset), 310, 190);
+            const source = addBlock(CreateBuiltInUsdSource("USD", asset), 50, 40);
+            const image = addBlock(CreateBuiltInImageSource("Image", asset), 310, 190);
             const selector = addBlock(new Selector("Selector", asset), 310, 340);
             const setTexture = addBlock(new SetTexture("Set Texture", asset), 570, 40);
             const output = addBlock(new ExportGLTFBlock("Export glTF", asset), 830, 50);
@@ -161,8 +161,8 @@ export function CreateBuiltInNodeAssetLibraryEntries(): readonly INodeAssetLibra
             setTexture.output.connectTo(output.input);
         }),
         CreateBuiltInEntry("Multi-Source Merge", ({ asset, addBlock }) => {
-            const usd = addBlock(CreateBuiltInUsdSource("Import USD", asset), 50, 30);
-            const gltf = addBlock(CreateBuiltInGltfSource("Import glTF", asset), 50, 190);
+            const usd = addBlock(CreateBuiltInUsdSource("USD", asset), 50, 30);
+            const gltf = addBlock(CreateBuiltInGltfSource("glTF", asset), 50, 190);
             const merge = addBlock(new MergeScenes("Merge Scenes", asset), 310, 60);
             const draco = addBlock(new DracoCompressionBlock("Draco Compression", asset), 570, 75);
             const ktx2 = addBlock(new KTX2CompressionBlock("KTX2 Compress", asset), 830, 75);
@@ -174,7 +174,7 @@ export function CreateBuiltInNodeAssetLibraryEntries(): readonly INodeAssetLibra
             ktx2.output.connectTo(output.input);
         }),
         CreateBuiltInEntry("Material Decomposition", ({ asset, addBlock }) => {
-            const source = addBlock(new ImportGLTFBlock("Import glTF", asset), 50, 200);
+            const source = addBlock(new ImportGLTFBlock("glTF", asset), 50, 200);
             const baseSelector = addBlock(new Selector("Base Color Selector", asset), 280, 20);
             const normalSelector = addBlock(new Selector("Normal Selector", asset), 280, 170);
             const ormSelector = addBlock(new Selector("ORM Selector", asset), 280, 320);
@@ -222,14 +222,14 @@ export function CreateBuiltInNodeAssetLibraryEntries(): readonly INodeAssetLibra
             setRoughness.output.connectTo(output.input);
         }),
         CreateBuiltInEntry("USD Preview", ({ asset, addBlock }) => {
-            const source = addBlock(CreateBuiltInUsdSource("Import USD", asset), 50, 50);
+            const source = addBlock(CreateBuiltInUsdSource("USD", asset), 50, 50);
             const output = addBlock(new ExportGLTFBlock("Export glTF", asset), 310, 50);
             source.output.connectTo(output.input);
         }),
         CreateBuiltInEntry("Full Supported Pipeline", ({ asset, addBlock }) => {
-            const usd = addBlock(CreateBuiltInUsdSource("Import USD", asset), 40, 30);
-            const gltfA = addBlock(CreateBuiltInGltfSource("Import glTF A", asset), 40, 170);
-            const gltfB = addBlock(CreateBuiltInGltfSource("Import glTF B", asset), 40, 310);
+            const usd = addBlock(CreateBuiltInUsdSource("USD", asset), 40, 30);
+            const gltfA = addBlock(CreateBuiltInGltfSource("glTF A", asset), 40, 170);
+            const gltfB = addBlock(CreateBuiltInGltfSource("glTF B", asset), 40, 310);
             const mergeSources = addBlock(new MergeScenes("Merge Sources", asset), 310, 60);
             const mergeAssembly = addBlock(new MergeScenes("Merge Assembly", asset), 570, 140);
             const draco = addBlock(new DracoCompressionBlock("Draco Compression", asset), 830, 155);

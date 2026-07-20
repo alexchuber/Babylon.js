@@ -1,6 +1,6 @@
 import { ImportImageBlock } from "node-assets/Blocks/importImageBlock";
 
-import { ConfigureBlockForEditor, ImportsCategory, ImportsHeaderColor, RegisterBlockDescriptor } from "../blockCatalog";
+import { ConfigureBlockForEditor, InputsCategory, InputsHeaderColor, RegisterBlockDescriptor } from "../blockCatalog";
 import { PromptForFileAsync } from "../browserFiles";
 
 /**
@@ -23,13 +23,13 @@ async function PromptForImageAsync(block: ImportImageBlock, refresh: () => void)
 
 RegisterBlockDescriptor({
     paletteItemId: "import-image",
-    label: "Import Image",
+    label: "Image",
     description: "Load a PNG, JPEG, WebP, GIF, or BMP source image.",
-    keywords: ["open", "load", "source", "texture", "PNG", "JPEG", "WebP", "GIF", "BMP"],
-    headerColor: ImportsHeaderColor,
-    category: ImportsCategory,
+    keywords: ["import", "open", "load", "source", "texture", "PNG", "JPEG", "WebP", "GIF", "BMP"],
+    headerColor: InputsHeaderColor,
+    category: InputsCategory,
     className: ImportImageBlock.ClassName,
-    create: (nodeAsset) => ConfigureBlockForEditor(new ImportImageBlock("Import Image", nodeAsset)),
+    create: (nodeAsset) => ConfigureBlockForEditor(new ImportImageBlock("Image", nodeAsset)),
     getPropertySection: (block, { refresh }) => {
         const importBlock = block as ImportImageBlock;
         // Show where the bytes came from (the source URL or the uploaded file name); fall back to a byte

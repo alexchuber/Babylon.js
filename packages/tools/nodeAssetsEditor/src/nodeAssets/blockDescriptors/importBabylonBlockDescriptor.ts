@@ -1,6 +1,6 @@
 import { ImportBabylonBlock } from "node-assets/Blocks/importBabylonBlock";
 
-import { ConfigureBlockForEditor, ImportsCategory, ImportsHeaderColor, RegisterBlockDescriptor } from "../blockCatalog";
+import { ConfigureBlockForEditor, InputsCategory, InputsHeaderColor, RegisterBlockDescriptor } from "../blockCatalog";
 import { PromptForFileAsync } from "../browserFiles";
 
 /**
@@ -20,13 +20,13 @@ async function PromptForBabylonFileAsync(block: ImportBabylonBlock, refresh: () 
 
 RegisterBlockDescriptor({
     paletteItemId: "import-babylon",
-    label: "Import Babylon",
-    category: ImportsCategory,
+    label: "Babylon",
+    category: InputsCategory,
     description: "Load a .babylon scene into a Babylon representation.",
-    keywords: ["babylon", ".babylon", "scene", "load"],
-    headerColor: ImportsHeaderColor,
+    keywords: ["import", "babylon", ".babylon", "scene", "load"],
+    headerColor: InputsHeaderColor,
     className: ImportBabylonBlock.ClassName,
-    create: (nodeAsset) => ConfigureBlockForEditor(new ImportBabylonBlock("Import Babylon", nodeAsset)),
+    create: (nodeAsset) => ConfigureBlockForEditor(new ImportBabylonBlock("Babylon", nodeAsset)),
     getPropertySection: (block, { refresh }) => {
         const importBlock = block as ImportBabylonBlock;
         return {

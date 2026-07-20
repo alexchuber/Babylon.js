@@ -31,9 +31,9 @@ export const NumberPortColor = "#3f79d9";
 export const StringPortColor = "#3fa86b";
 export const JsonPortColor = "#b163c9";
 
-/** Palette category and shared node header color for import boundary blocks. */
-export const ImportsCategory = "Imports";
-export const ImportsHeaderColor = "#3f7d4e";
+/** Palette category and shared node header color for input boundary blocks. */
+export const InputsCategory = "Inputs";
+export const InputsHeaderColor = "#3f7d4e";
 
 /** Palette category and shared node header color for blocks that operate on glTF documents. */
 export const GltfCategory = "glTF";

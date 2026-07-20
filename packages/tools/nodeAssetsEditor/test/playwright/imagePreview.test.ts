@@ -50,17 +50,17 @@ test.describe("Node Assets Editor — image preview", () => {
         await page.keyboard.press("Delete");
         await expect(editor.nodeByTitle("Export glTF")).toBeHidden();
 
-        // Build a minimal IMAGE pipeline: Import Image -> Export Image. The energy-orb seed already
-        // contains two "Import Image" nodes, so target the one just dropped ("last") for the wiring and
+        // Build a minimal IMAGE pipeline: Image -> Export Image. The energy-orb seed already
+        // contains two "Image" nodes, so target the one just dropped ("last") for the wiring and
         // file load below. Drop the two nodes at distinct canvas points so they don't overlap (the app
         // places nodes exactly at the cursor), keeping each node's ports individually hittable for the wire.
-        await editor.dropPaletteItem("Import Image", { x: 0.3, y: 0.25 });
+        await editor.dropPaletteItem("Image", { x: 0.3, y: 0.25 });
         await editor.dropPaletteItem("Export Image", { x: 0.62, y: 0.66 });
-        await editor.connectPorts(editor.portOfNode("Import Image", "out", "last"), editor.portOfNode("Export Image", "in"));
+        await editor.connectPorts(editor.portOfNode("Image", "out", "last"), editor.portOfNode("Export Image", "in"));
 
         // Load the source image through the block's file picker; this is the change that yields the
         // first successful IMAGE build.
-        await editor.selectNode("Import Image", "last");
+        await editor.selectNode("Image", "last");
         const fileChooserPromise = page.waitForEvent("filechooser");
         await page.getByRole("button", { name: /Import image file/ }).click();
         const fileChooser = await fileChooserPromise;
@@ -96,8 +96,8 @@ test.describe("Node Assets Editor — image preview", () => {
         await editor.selectNode("Export glTF");
         await page.keyboard.press("Delete");
 
-        await editor.dropPaletteItem("Import Image", { x: 0.12, y: 0.2 });
-        const baseNodeId = await editor.nodeByTitle("Import Image", "last").getAttribute("data-node-id");
+        await editor.dropPaletteItem("Image", { x: 0.12, y: 0.2 });
+        const baseNodeId = await editor.nodeByTitle("Image", "last").getAttribute("data-node-id");
         expect(baseNodeId).not.toBeNull();
         const baseNode = page.locator(`[data-node-id="${baseNodeId}"]`);
 
@@ -105,22 +105,22 @@ test.describe("Node Assets Editor — image preview", () => {
         await editor.dropPaletteItem("Resize Image", { x: 0.5, y: 0.2 });
         await editor.dropPaletteItem("Composite Image", { x: 0.7, y: 0.35 });
         await editor.dropPaletteItem("Export Image", { x: 0.88, y: 0.35 });
-        await editor.dropPaletteItem("Import Image", { x: 0.5, y: 0.72 });
+        await editor.dropPaletteItem("Image", { x: 0.5, y: 0.72 });
 
-        const overlayNode = editor.nodeByTitle("Import Image", "last");
+        const overlayNode = editor.nodeByTitle("Image", "last");
         await editor.connectPorts(baseNode.locator('[data-port-id*="-out-"]'), editor.portOfNode("Flip Image", "in"));
         await editor.connectPorts(editor.portOfNode("Flip Image", "out"), editor.portOfNode("Resize Image", "in"));
         await editor.connectPorts(editor.portOfNode("Resize Image", "out"), editor.namedPortOfNode("Composite Image", "in", "base", "last"));
         await editor.connectPorts(overlayNode.locator('[data-port-id*="-out-"]'), editor.namedPortOfNode("Composite Image", "in", "overlay", "last"));
         await editor.connectPorts(editor.portOfNode("Composite Image", "out", "last"), editor.portOfNode("Export Image", "in"));
 
-        await baseNode.getByText("Import Image", { exact: true }).click();
+        await baseNode.locator('[data-testid="graph-node-title"]').click();
         let fileChooserPromise = page.waitForEvent("filechooser");
         await page.getByRole("button", { name: /Import image file/ }).click();
         let fileChooser = await fileChooserPromise;
         await fileChooser.setFiles({ name: "quadrants.png", mimeType: "image/png", buffer: AsymmetricPng });
 
-        await overlayNode.getByText("Import Image", { exact: true }).click();
+        await overlayNode.locator('[data-testid="graph-node-title"]').click();
         fileChooserPromise = page.waitForEvent("filechooser");
         await page.getByRole("button", { name: /Import image file/ }).click();
         fileChooser = await fileChooserPromise;

@@ -60,9 +60,9 @@ model, graph store.
 
 **palette** (`IPaletteCategory` / `IPaletteItem`, `PaletteView`):
 The left pane's categorized, filterable list of block kinds; dragging an item onto the canvas creates a
-node. Categories appear in deterministic order: **Imports**, **glTF**, **USD**, **Babylon**, **Image**,
+node. Categories appear in deterministic order: **Inputs**, **glTF**, **USD**, **Babylon**, **Image**,
 **Node Geometry**, **Transcoders**, and **Values**. The five concrete-domain sections group blocks by
-their primary operands; Imports and Transcoders intentionally group cross-domain workflow boundaries,
+their primary operands; Inputs and Transcoders intentionally group cross-domain workflow boundaries,
 while Values contains only scalar literal sources. Search includes labels, categories, concise
 descriptions, and workflow aliases such as `decimate`, `optimize`, and `compress`; descriptions appear
 below item labels. _Avoid_: toolbox, node list.

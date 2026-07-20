@@ -181,7 +181,9 @@ export const GraphNodeView: FunctionComponent<{ node: IGraphNode }> = (props) =>
             onContextMenu={onContextMenu}
         >
             <div className={mergeClasses(classes.header, node.collapsed && classes.headerCollapsed)} style={{ backgroundColor: node.headerColor }}>
-                <Caption1 className={classes.headerTitle}>{node.title}</Caption1>
+                <Caption1 className={classes.headerTitle} data-testid="graph-node-title">
+                    {node.title}
+                </Caption1>
                 <div className={classes.headerActions}>
                     {diagnostic && (
                         <div className={classes.errorIcon} role="img" aria-label={`Error: ${diagnostic.message}`} title={diagnostic.message}>

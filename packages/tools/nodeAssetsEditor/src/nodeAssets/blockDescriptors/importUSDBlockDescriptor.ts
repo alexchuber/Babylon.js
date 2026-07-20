@@ -1,6 +1,6 @@
 import { ImportUSDBlock } from "node-assets/Blocks/importUSDBlock";
 
-import { ConfigureBlockForEditor, ImportsCategory, ImportsHeaderColor, RegisterBlockDescriptor } from "../blockCatalog";
+import { ConfigureBlockForEditor, InputsCategory, InputsHeaderColor, RegisterBlockDescriptor } from "../blockCatalog";
 import { PromptForFileAsync } from "../browserFiles";
 
 /**
@@ -21,13 +21,13 @@ async function PromptForUsdAsync(block: ImportUSDBlock, refresh: () => void): Pr
 
 RegisterBlockDescriptor({
     paletteItemId: "import-usd",
-    label: "Import USD",
+    label: "USD",
     description: "Transcode a USD, USDA, or USDZ source onto the scene spine.",
-    keywords: ["open", "load", "source", "Pixar", "USDZ"],
-    category: ImportsCategory,
-    headerColor: ImportsHeaderColor,
+    keywords: ["import", "open", "load", "source", "Pixar", "USDZ"],
+    category: InputsCategory,
+    headerColor: InputsHeaderColor,
     className: ImportUSDBlock.ClassName,
-    create: (nodeAsset) => ConfigureBlockForEditor(new ImportUSDBlock("Import USD", nodeAsset)),
+    create: (nodeAsset) => ConfigureBlockForEditor(new ImportUSDBlock("USD", nodeAsset)),
     getPropertySection: (block, { refresh }) => {
         const importBlock = block as ImportUSDBlock;
         // Show where the bytes came from (the source URL or the uploaded file name); fall back to a byte

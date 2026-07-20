@@ -1,6 +1,6 @@
 import { ImportGLTFBlock } from "node-assets/Blocks/importGLTFBlock";
 
-import { ConfigureBlockForEditor, ImportsCategory, ImportsHeaderColor, RegisterBlockDescriptor } from "../blockCatalog";
+import { ConfigureBlockForEditor, InputsCategory, InputsHeaderColor, RegisterBlockDescriptor } from "../blockCatalog";
 import { PromptForFileAsync } from "../browserFiles";
 
 /**
@@ -21,13 +21,13 @@ async function PromptForGLTFAsync(block: ImportGLTFBlock, refresh: () => void): 
 
 RegisterBlockDescriptor({
     paletteItemId: "import-gltf",
-    label: "Import glTF",
+    label: "glTF",
     description: "Load a glTF or GLB source scene.",
-    keywords: ["open", "load", "source", "model", "GLB"],
-    category: ImportsCategory,
-    headerColor: ImportsHeaderColor,
+    keywords: ["import", "open", "load", "source", "model", "GLB"],
+    category: InputsCategory,
+    headerColor: InputsHeaderColor,
     className: ImportGLTFBlock.ClassName,
-    create: (nodeAsset) => ConfigureBlockForEditor(new ImportGLTFBlock("Import glTF", nodeAsset)),
+    create: (nodeAsset) => ConfigureBlockForEditor(new ImportGLTFBlock("glTF", nodeAsset)),
     getPropertySection: (block, { refresh }) => {
         const importBlock = block as ImportGLTFBlock;
         // Show where the bytes came from (the source URL or the uploaded file name); fall back to a byte

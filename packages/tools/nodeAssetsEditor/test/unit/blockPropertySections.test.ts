@@ -46,7 +46,7 @@ describe("block property sections (unified descriptor path)", () => {
     it("builds the IMPORT section for the glTF import block", () => {
         const controller = new NodeAssetGraphController();
         try {
-            const importNode = FindNode(controller, "Import glTF");
+            const importNode = FindNode(controller, "glTF");
             const section = FindSection(controller, importNode, "IMPORT");
 
             expect(section.properties.map((property) => property.label)).toEqual(["Source", "Import glTF file\u2026"]);
