@@ -314,6 +314,15 @@ export class NodeAssetGraphController {
     private readonly _orbGltfBlock: ImportGLTFAggregateBlock;
     private readonly _aggregateRootByChildNodeId = new Map<string, string>();
     private _projectingAggregate = false;
+    /**
+     * Authored (not merely visual) intent that an aggregate block is expanded, keyed by block id.
+     * Unlike a projected node's own `aggregateExpanded` flag -- which is lost the moment its node is
+     * removed by a collapsing ancestor -- this survives an ancestor's collapse so re-expanding the
+     * ancestor can recursively restore exactly which descendants were expanded beforehand.
+     */
+    private readonly _authoredAggregateExpansion = new Set<number>();
+    /** Durable build-diagnostic source keyed by runtime block id, surviving aggregate visibility changes. */
+    private readonly _authoredBuildDiagnostics = new Map<number, string>();
 
     /**
      * Creates a controller seeded with the "energy orb" showcase graph. Two ImportImage blocks (a dark
@@ -463,7 +472,11 @@ export class NodeAssetGraphController {
     }
 
     /**
-     * Expands or collapses an aggregate's projected primitive subgraph.
+     * Expands or collapses an aggregate's projected primitive subgraph. Expanding also recursively
+     * restores any descendant aggregate that was previously (authored-)expanded before an ancestor's
+     * collapse tore its projection down; collapsing recursively tears down every descendant projection,
+     * not just this aggregate's direct children, while preserving each descendant's own authored
+     * expanded intent so a later re-expand restores the whole subtree exactly as it was.
      * @param nodeId The compact aggregate node id.
      * @param expanded The requested presentation state.
      */
@@ -475,56 +488,108 @@ export class NodeAssetGraphController {
         }
 
         if (expanded) {
+            this._authoredAggregateExpansion.add(aggregate.uniqueId);
             this._projectingAggregate = true;
             try {
                 rootNode.aggregateExpanded = true;
-                const childNodes: IGraphNode[] = [];
-                for (const [index, block] of aggregate.subgraph.attachedBlocks.entries()) {
-                    const descriptor = GetBlockDescriptorForBlock(block);
-                    if (!descriptor) {
-                        throw new Error(`The "${block.getClassName()}" aggregate child is not supported by this Node Assets Editor.`);
-                    }
-                    const childNode = BlockToNode(block, descriptor, { x: rootNode.position.x + 260 + index * 260, y: rootNode.position.y + 120 }, block.name, false);
-                    childNodes.push(childNode);
-                    this._aggregateRootByChildNodeId.set(childNode.id, rootNode.id);
-                    this._reconciler.registerNode(block, childNode);
-                    this.state.addNode(childNode);
-                }
-                for (const block of aggregate.subgraph.attachedBlocks) {
-                    for (const output of block.outputs) {
-                        for (const input of output.connectedPoints) {
-                            this.state.addWire(PortIdForPoint(block, output), PortIdForPoint(input.ownerBlock, input));
-                        }
-                    }
-                }
-                this.state.addFrame({
-                    id: `aggregate-frame-${rootNode.id}`,
-                    label: rootNode.title,
-                    color: rootNode.headerColor,
-                    position: { x: rootNode.position.x + 220, y: rootNode.position.y + 70 },
-                    size: { width: Math.max(560, childNodes.length * 260 + 80), height: 300 },
-                    nodeIds: childNodes.map((node) => node.id),
-                    collapsed: false,
-                    kind: "aggregate",
-                    aggregateNodeId: rootNode.id,
-                });
+                this._projectAggregateChildren(rootNode, aggregate);
                 this.state.notifyChanged("visual");
-                return;
+            } finally {
+                this._projectingAggregate = false;
+            }
+        } else {
+            this._authoredAggregateExpansion.delete(aggregate.uniqueId);
+            this._projectingAggregate = true;
+            try {
+                const nodeIds: string[] = [];
+                const frameIds: string[] = [];
+                this._collectAggregateProjection(rootNode.id, nodeIds, frameIds);
+                this.state.removeNodes(nodeIds);
+                for (const removedNodeId of nodeIds) {
+                    this._aggregateRootByChildNodeId.delete(removedNodeId);
+                }
+                for (const frameId of frameIds) {
+                    this.state.removeFrame(frameId);
+                }
+                rootNode.aggregateExpanded = false;
+                this.state.notifyChanged("visual");
             } finally {
                 this._projectingAggregate = false;
             }
         }
 
-        const frame = this.state.frames.find((candidate) => candidate.kind === "aggregate" && candidate.aggregateNodeId === rootNode.id);
-        if (frame) {
-            this.state.removeNodes(frame.nodeIds);
-            for (const childNodeId of frame.nodeIds) {
-                this._aggregateRootByChildNodeId.delete(childNodeId);
+        this._reprojectBuildDiagnostics();
+    }
+
+    /**
+     * Projects an aggregate's direct primitive children as visual nodes plus their internal wires and
+     * frame, then recursively re-projects any child that is itself an aggregate still marked expanded
+     * in {@link _authoredAggregateExpansion} (restoring a subtree an ancestor's collapse tore down).
+     * @param rootNode The aggregate's own (already-visible) visual node.
+     * @param aggregate The aggregate block being expanded.
+     */
+    private _projectAggregateChildren(rootNode: IGraphNode, aggregate: AggregateBlock): void {
+        const childNodes: IGraphNode[] = [];
+        for (const [index, block] of aggregate.subgraph.attachedBlocks.entries()) {
+            const descriptor = GetBlockDescriptorForBlock(block);
+            if (!descriptor) {
+                throw new Error(`The "${block.getClassName()}" aggregate child is not supported by this Node Assets Editor.`);
             }
-            this.state.removeFrame(frame.id);
+            const childNode = BlockToNode(block, descriptor, { x: rootNode.position.x + 260 + index * 260, y: rootNode.position.y + 120 }, block.name, false);
+            childNodes.push(childNode);
+            this._aggregateRootByChildNodeId.set(childNode.id, rootNode.id);
+            this._reconciler.registerNode(block, childNode);
+            this.state.addNode(childNode);
         }
-        rootNode.aggregateExpanded = false;
-        this.state.notifyChanged("visual");
+        for (const block of aggregate.subgraph.attachedBlocks) {
+            for (const output of block.outputs) {
+                for (const input of output.connectedPoints) {
+                    this.state.addWire(PortIdForPoint(block, output), PortIdForPoint(input.ownerBlock, input));
+                }
+            }
+        }
+        this.state.addFrame({
+            id: `aggregate-frame-${rootNode.id}`,
+            label: rootNode.title,
+            color: rootNode.headerColor,
+            position: { x: rootNode.position.x + 220, y: rootNode.position.y + 70 },
+            size: { width: Math.max(560, childNodes.length * 260 + 80), height: 300 },
+            nodeIds: childNodes.map((node) => node.id),
+            collapsed: false,
+            kind: "aggregate",
+            aggregateNodeId: rootNode.id,
+        });
+
+        for (const [index, block] of aggregate.subgraph.attachedBlocks.entries()) {
+            if (block instanceof AggregateBlock && this._authoredAggregateExpansion.has(block.uniqueId)) {
+                const childNode = childNodes[index];
+                childNode.aggregateExpanded = true;
+                this._projectAggregateChildren(childNode, block);
+            }
+        }
+    }
+
+    /**
+     * Recursively collects every visual node id and aggregate-frame id belonging to an aggregate's
+     * projected subgraph, including nested aggregates' own projected children and frames at any depth,
+     * so a collapse can tear the whole subtree down in one batch instead of only its direct children.
+     * @param rootNodeId The aggregate's own visual node id.
+     * @param nodeIds Descendant node ids collected so far; appended to in place.
+     * @param frameIds Descendant aggregate-frame ids collected so far; appended to in place.
+     */
+    private _collectAggregateProjection(rootNodeId: string, nodeIds: string[], frameIds: string[]): void {
+        const frame = this.state.frames.find((candidate) => candidate.kind === "aggregate" && candidate.aggregateNodeId === rootNodeId);
+        if (!frame) {
+            return;
+        }
+        frameIds.push(frame.id);
+        for (const childNodeId of frame.nodeIds) {
+            nodeIds.push(childNodeId);
+            const childNode = this.state.getNode(childNodeId);
+            if (childNode?.aggregateExpanded) {
+                this._collectAggregateProjection(childNodeId, nodeIds, frameIds);
+            }
+        }
     }
 
     /**
@@ -621,30 +686,52 @@ export class NodeAssetGraphController {
 
     /** Clears the node diagnostic produced by the previous build. */
     public clearBuildError(): void {
+        this._authoredBuildDiagnostics.clear();
         this.diagnostics.clear();
     }
 
     /**
-     * Maps a structured runtime failure to its visual node(s).
+     * Records a build failure's block attribution as a durable, block-id-keyed diagnostic source (see
+     * {@link _authoredBuildDiagnostics}) and projects it onto the current visual state. Recorded by
+     * block id rather than resolved node id up front, so a later aggregate expand/collapse can
+     * re-derive the correct node without losing or duplicating the diagnostic.
      * @param error - Build failure reported by the worker.
      */
     public reportBuildError(error: unknown): void {
-        this.diagnostics.clear();
+        this._authoredBuildDiagnostics.clear();
         if (error instanceof Ktx2EncoderResourceConflictError) {
             for (const blockId of error.blockIds) {
-                const nodeId = this._findAttributionNodeId(blockId);
-                if (nodeId) {
-                    this.diagnostics.set(nodeId, { severity: "error", message: error.message });
-                }
+                this._authoredBuildDiagnostics.set(blockId, error.message);
             }
+        } else if (error instanceof NodeAssetBuildError) {
+            this._authoredBuildDiagnostics.set(error.blockId, error.message);
+        }
+        this._reprojectBuildDiagnostics();
+    }
+
+    /**
+     * Recomputes every visual diagnostic from {@link _authoredBuildDiagnostics}, the durable source of
+     * truth keyed by runtime block id. Called after {@link reportBuildError} and after any aggregate
+     * expand/collapse (see {@link setAggregateExpanded}), since which visual node currently best
+     * represents a given block can change -- a projected child appearing or disappearing -- without the
+     * underlying build failure itself changing. Fully replaces the visual diagnostics rather than
+     * patching them, so a node that no longer applies is never left with a stale entry.
+     *
+     * Short-circuits when no diagnostic is active so that toggling an aggregate unrelated to any build
+     * failure -- the common case -- never touches {@link diagnostics} (and so never notifies its
+     * observers or forces node views to re-render) at all.
+     */
+    private _reprojectBuildDiagnostics(): void {
+        if (this._authoredBuildDiagnostics.size === 0) {
+            this.diagnostics.clear();
             return;
         }
-        if (!(error instanceof NodeAssetBuildError)) {
-            return;
-        }
-        const nodeId = NodeIdForBlockId(error.blockId);
-        if (this.state.getNode(nodeId)) {
-            this.diagnostics.set(nodeId, { severity: "error", message: error.message });
+        this.diagnostics.clear();
+        for (const [blockId, message] of this._authoredBuildDiagnostics) {
+            const nodeId = this._findAttributionNodeId(blockId);
+            if (nodeId) {
+                this.diagnostics.set(nodeId, { severity: "error", message });
+            }
         }
     }
 
@@ -808,9 +895,11 @@ export class NodeAssetGraphController {
         this._nodeAsset = asset;
         this._reconciler.reset(asset);
         this._aggregateRootByChildNodeId.clear();
+        this._authoredAggregateExpansion.clear();
         for (const { block, node } of blockNodes) {
             this._reconciler.registerNode(block, node);
         }
+        this._authoredBuildDiagnostics.clear();
         this.diagnostics.clear();
         // Correspondence is committed above, so the reconcile fired by reset sees a consistent world.
         this.state.reset({ nodes, wires, frames });

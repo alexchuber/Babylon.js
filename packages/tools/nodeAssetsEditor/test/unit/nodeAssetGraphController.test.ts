@@ -2,6 +2,7 @@ import { describe, expect, it, vi } from "vitest";
 
 import { NodeAsset } from "node-assets/nodeAsset";
 import { CustomAggregateBlock } from "node-assets/blockFoundation/customAggregateBlock";
+import { DracoCompressionBlock } from "node-assets/Blocks/dracoCompressionBlock";
 import { KTX2CompressionBlock } from "node-assets/Blocks/ktx2CompressionBlock";
 import { StringLiteral } from "node-assets/Blocks/stringLiteral";
 
@@ -575,6 +576,203 @@ describe("NodeAssetGraphController", () => {
 
             expect(controller.diagnostics.get(aggregateBNodeId)).toEqual({ severity: "error", message });
             expect(controller.diagnostics.get(aggregateANodeId)).toBeNull();
+        } finally {
+            controller.dispose();
+        }
+    });
+
+    it("reprojects a KTX2 diagnostic from the projected child to the aggregate root when the aggregate collapses", () => {
+        const asset = new NodeAsset("scratch-reproject-collapse");
+        const aggregate = new CustomAggregateBlock("aggregate", asset);
+        const nestedKtx2 = new KTX2CompressionBlock("nested ktx2", aggregate.subgraph);
+        const other = new KTX2CompressionBlock("other ktx2", asset);
+
+        const file = JSON.stringify({
+            graph: asset.serialize(),
+            editor: {
+                blocks: [
+                    { id: aggregate.uniqueId, position: { x: 0, y: 0 }, title: aggregate.name, collapsed: false, aggregateExpanded: true },
+                    { id: other.uniqueId, position: { x: 400, y: 0 }, title: other.name, collapsed: false },
+                ],
+                frames: [],
+            },
+        });
+
+        const controller = new NodeAssetGraphController();
+        try {
+            controller.load(file);
+
+            const aggregateNodeId = NodeIdForBlockId(aggregate.uniqueId);
+            const nestedNodeId = NodeIdForBlockId(nestedKtx2.uniqueId);
+
+            // The aggregate starts expanded (per the load metadata), so the nested block has its own node.
+            expect(controller.state.getNode(nestedNodeId)).not.toBeUndefined();
+
+            const message = "Multiple Compress Textures (KTX2) blocks author different encoder resource URLs.";
+            controller.reportBuildError(new Ktx2EncoderResourceConflictError(message, [nestedKtx2.uniqueId, other.uniqueId]));
+            expect(controller.diagnostics.get(nestedNodeId)).toEqual({ severity: "error", message });
+            expect(controller.diagnostics.get(aggregateNodeId)).toBeNull();
+
+            controller.setAggregateExpanded(aggregateNodeId, false);
+
+            // The nested node is gone, and the diagnostic must have moved to the aggregate root instead of
+            // being silently orphaned on the (now nonexistent) child node.
+            expect(controller.state.getNode(nestedNodeId)).toBeUndefined();
+            expect(controller.diagnostics.get(aggregateNodeId)).toEqual({ severity: "error", message });
+            expect(controller.diagnostics.get(nestedNodeId)).toBeNull();
+        } finally {
+            controller.dispose();
+        }
+    });
+
+    it("reprojects a KTX2 diagnostic from the aggregate root to the projected child when the aggregate expands", () => {
+        const asset = new NodeAsset("scratch-reproject-expand");
+        const aggregate = new CustomAggregateBlock("aggregate", asset);
+        const nestedKtx2 = new KTX2CompressionBlock("nested ktx2", aggregate.subgraph);
+        const other = new KTX2CompressionBlock("other ktx2", asset);
+
+        const file = JSON.stringify({
+            graph: asset.serialize(),
+            editor: {
+                blocks: [
+                    { id: aggregate.uniqueId, position: { x: 0, y: 0 }, title: aggregate.name, collapsed: false, aggregateExpanded: false },
+                    { id: other.uniqueId, position: { x: 400, y: 0 }, title: other.name, collapsed: false },
+                ],
+                frames: [],
+            },
+        });
+
+        const controller = new NodeAssetGraphController();
+        try {
+            controller.load(file);
+
+            const aggregateNodeId = NodeIdForBlockId(aggregate.uniqueId);
+            const nestedNodeId = NodeIdForBlockId(nestedKtx2.uniqueId);
+
+            expect(controller.state.getNode(nestedNodeId)).toBeUndefined();
+
+            const message = "Multiple Compress Textures (KTX2) blocks author different encoder resource URLs.";
+            controller.reportBuildError(new Ktx2EncoderResourceConflictError(message, [nestedKtx2.uniqueId, other.uniqueId]));
+            expect(controller.diagnostics.get(aggregateNodeId)).toEqual({ severity: "error", message });
+            expect(controller.diagnostics.get(nestedNodeId)).toBeNull();
+
+            controller.setAggregateExpanded(aggregateNodeId, true);
+
+            // The nested node now exists, and the diagnostic must have moved onto it instead of remaining
+            // stuck on the aggregate root now that a more specific node is visible.
+            expect(controller.state.getNode(nestedNodeId)).not.toBeUndefined();
+            expect(controller.diagnostics.get(nestedNodeId)).toEqual({ severity: "error", message });
+            expect(controller.diagnostics.get(aggregateNodeId)).toBeNull();
+        } finally {
+            controller.dispose();
+        }
+    });
+
+    it("recursively tears down and restores nested aggregate projections and diagnostics across repeated collapse/expand cycles", () => {
+        // Three-level nesting: aggregate A owns aggregate B, which owns KTX2 block C. Both A and B start
+        // expanded (via an explicit setAggregateExpanded call for B, since only top-level blocks carry
+        // editor metadata). Collapsing A must recursively tear down B's frame/child too (not just A's
+        // direct child, B's own node) while preserving B's authored expanded intent, so re-expanding A
+        // restores B (and C) exactly as they were -- across multiple cycles, with no orphaned mappings,
+        // duplicate frames, or duplicate diagnostics.
+        const asset = new NodeAsset("scratch-nested-cycles");
+        const aggregateA = new CustomAggregateBlock("aggregate A", asset);
+        const aggregateB = new CustomAggregateBlock("aggregate B", aggregateA.subgraph);
+        const nestedKtx2C = new KTX2CompressionBlock("nested ktx2 C", aggregateB.subgraph);
+
+        const file = JSON.stringify({
+            graph: asset.serialize(),
+            editor: {
+                blocks: [{ id: aggregateA.uniqueId, position: { x: 0, y: 0 }, title: aggregateA.name, collapsed: false, aggregateExpanded: true }],
+                frames: [],
+            },
+        });
+
+        const controller = new NodeAssetGraphController();
+        try {
+            controller.load(file);
+
+            const aNodeId = NodeIdForBlockId(aggregateA.uniqueId);
+            const bNodeId = NodeIdForBlockId(aggregateB.uniqueId);
+            const cNodeId = NodeIdForBlockId(nestedKtx2C.uniqueId);
+            const aggregateFrames = () => controller.state.frames.filter((frame) => frame.kind === "aggregate");
+
+            controller.setAggregateExpanded(bNodeId, true);
+            expect(controller.state.getNode(bNodeId)).not.toBeUndefined();
+            expect(controller.state.getNode(cNodeId)).not.toBeUndefined();
+            expect(aggregateFrames()).toHaveLength(2);
+
+            const message = "Multiple Compress Textures (KTX2) blocks author different encoder resource URLs.";
+            controller.reportBuildError(new Ktx2EncoderResourceConflictError(message, [nestedKtx2C.uniqueId]));
+            expect(controller.diagnostics.get(cNodeId)).toEqual({ severity: "error", message });
+            expect(controller.diagnostics.get(bNodeId)).toBeNull();
+            expect(controller.diagnostics.get(aNodeId)).toBeNull();
+
+            for (let cycle = 0; cycle < 2; cycle++) {
+                controller.setAggregateExpanded(aNodeId, false);
+
+                expect(controller.state.getNode(bNodeId)).toBeUndefined();
+                expect(controller.state.getNode(cNodeId)).toBeUndefined();
+                expect(aggregateFrames()).toHaveLength(0);
+                expect(controller.diagnostics.get(aNodeId)).toEqual({ severity: "error", message });
+                expect(controller.diagnostics.get(bNodeId)).toBeNull();
+                expect(controller.diagnostics.get(cNodeId)).toBeNull();
+
+                controller.setAggregateExpanded(aNodeId, true);
+
+                // B's own prior expanded state (authored, not just visual) is restored automatically,
+                // without a separate explicit expand call on B.
+                expect(controller.state.getNode(bNodeId)).not.toBeUndefined();
+                expect(controller.state.getNode(cNodeId)).not.toBeUndefined();
+                expect(controller.state.nodes.filter((node) => node.id === bNodeId)).toHaveLength(1);
+                expect(controller.state.nodes.filter((node) => node.id === cNodeId)).toHaveLength(1);
+                expect(aggregateFrames()).toHaveLength(2);
+                expect(controller.diagnostics.get(cNodeId)).toEqual({ severity: "error", message });
+                expect(controller.diagnostics.get(aNodeId)).toBeNull();
+                expect(controller.diagnostics.get(bNodeId)).toBeNull();
+            }
+        } finally {
+            controller.dispose();
+        }
+    });
+
+    it("preserves a custom aggregate's internal wiring across a collapse and re-expand", () => {
+        // Collapsing an aggregate removes its projected children's visual nodes/wires, which fires a
+        // "content" state change that the controller reacts to by reconciling. That reconcile pass
+        // must not treat the temporarily-removed visual wires as a genuine domain edit and disconnect
+        // the aggregate's authored internal connection.
+        const asset = new NodeAsset("scratch-collapse-wiring");
+        const aggregate = new CustomAggregateBlock("aggregate", asset);
+        const ktx2 = new KTX2CompressionBlock("ktx2", aggregate.subgraph);
+        const draco = new DracoCompressionBlock("draco", aggregate.subgraph);
+        ktx2.output.connectTo(draco.input);
+
+        const file = JSON.stringify({
+            graph: asset.serialize(),
+            editor: {
+                blocks: [{ id: aggregate.uniqueId, position: { x: 0, y: 0 }, title: aggregate.name, collapsed: false, aggregateExpanded: true }],
+                frames: [],
+            },
+        });
+
+        const controller = new NodeAssetGraphController();
+        try {
+            controller.load(file);
+
+            const aggregateNodeId = NodeIdForBlockId(aggregate.uniqueId);
+            const readInternalConnections = (): unknown => {
+                const saved = JSON.parse(controller.serialize()) as { graph: { blocks: Array<{ id: number; subgraph?: { connections: unknown[] } }> } };
+                const savedAggregate = saved.graph.blocks.find((block) => block.id === aggregate.uniqueId);
+                return savedAggregate?.subgraph?.connections;
+            };
+
+            expect(readInternalConnections()).toEqual([{ fromBlock: ktx2.uniqueId, fromPoint: "output", toBlock: draco.uniqueId, toPoint: "input" }]);
+
+            controller.setAggregateExpanded(aggregateNodeId, false);
+            expect(readInternalConnections()).toEqual([{ fromBlock: ktx2.uniqueId, fromPoint: "output", toBlock: draco.uniqueId, toPoint: "input" }]);
+
+            controller.setAggregateExpanded(aggregateNodeId, true);
+            expect(readInternalConnections()).toEqual([{ fromBlock: ktx2.uniqueId, fromPoint: "output", toBlock: draco.uniqueId, toPoint: "input" }]);
         } finally {
             controller.dispose();
         }
