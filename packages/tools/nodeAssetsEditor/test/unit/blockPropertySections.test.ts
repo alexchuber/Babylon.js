@@ -131,6 +131,61 @@ describe("block property sections (unified descriptor path)", () => {
         }
     });
 
+    it("forwards the complete Quantize Attributes property surface", () => {
+        const controller = new NodeAssetGraphController();
+        try {
+            const node = AddPaletteNode(controller, "quantize-attributes");
+            const section = FindSection(controller, node, "QUANTIZE ATTRIBUTES");
+            expect(section.properties.map((property) => property.label)).toEqual([
+                "Position bits",
+                "Normal bits",
+                "Texture-coordinate bits",
+                "Color bits",
+                "Weight bits",
+                "Generic bits",
+                "Normalize weights",
+                "Attribute pattern",
+                "Morph-target pattern",
+                "Quantization volume",
+                "Cleanup",
+            ]);
+
+            FindProperty(controller, node, "Position bits", "slider").onChange(8);
+            FindProperty(controller, node, "Normalize weights", "switch").onChange(false);
+            const attributePattern = FindProperty(controller, node, "Attribute pattern", "text");
+            expect(attributePattern.validator!("(")).toBe(false);
+            expect(attributePattern.validator!("^POSITION$")).toBe(true);
+            attributePattern.onChange("^POSITION$");
+            FindProperty(controller, node, "Quantization volume", "dropdown").onChange("Scene");
+
+            expect(FindProperty(controller, node, "Position bits", "slider").value).toBe(8);
+            expect(FindProperty(controller, node, "Normalize weights", "switch").value).toBe(false);
+            expect(FindProperty(controller, node, "Attribute pattern", "text").value).toBe("^POSITION$");
+            expect(FindProperty(controller, node, "Quantization volume", "dropdown").value).toBe("Scene");
+        } finally {
+            controller.dispose();
+        }
+    });
+
+    it("forwards the complete Simplify Meshes property surface", () => {
+        const controller = new NodeAssetGraphController();
+        try {
+            const node = AddPaletteNode(controller, "simplify-meshes");
+            const section = FindSection(controller, node, "SIMPLIFY MESHES");
+            expect(section.properties.map((property) => property.label)).toEqual(["Target ratio", "Error limit", "Lock border"]);
+
+            FindProperty(controller, node, "Target ratio", "slider").onChange(0.25);
+            FindProperty(controller, node, "Error limit", "slider").onChange(0.5);
+            FindProperty(controller, node, "Lock border", "switch").onChange(true);
+
+            expect(FindProperty(controller, node, "Target ratio", "slider").value).toBe(0.25);
+            expect(FindProperty(controller, node, "Error limit", "slider").value).toBe(0.5);
+            expect(FindProperty(controller, node, "Lock border", "switch").value).toBe(true);
+        } finally {
+            controller.dispose();
+        }
+    });
+
     it("routes every palette block through one property path with a GENERAL section", () => {
         const controller = new NodeAssetGraphController();
         try {

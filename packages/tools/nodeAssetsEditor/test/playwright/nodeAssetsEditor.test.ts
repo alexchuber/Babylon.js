@@ -364,7 +364,7 @@ test.describe("Node Assets Editor — Energy orb showcase", () => {
 
         const search = page.getByPlaceholder("Search palette");
         for (const [query, label, description] of [
-            ["decimate", "Simplify", "Reduce mesh polygon count to a target ratio."],
+            ["decimate", "Simplify Meshes", "Reduce Universal mesh geometry to a target ratio and error limit."],
             ["optimize", "Prune", "Remove unused scene resources from the output."],
             ["compress", "Apply BasisU", "Compress scene textures to KTX2 / Basis Universal."],
         ]) {
@@ -452,6 +452,55 @@ test.describe("Node Assets Editor — Universal glTF aggregates", () => {
         await expect(editor.nodeByTitle("glTF to Universal")).toHaveCount(1);
         await expect(editor.nodeByTitle("Import glTF")).toBeVisible();
         await editor.waitForSuccessfulPreviewBuild();
+    });
+
+    test.describe("Node Assets Editor — Universal reductions", () => {
+        test.describe.configure({ timeout: 180_000 });
+
+        function propertyControl(page: Page, label: string) {
+            return page.getByText(label, { exact: true }).locator("xpath=ancestor::*[.//input or .//*[@role='combobox'] or .//*[@role='switch']][1]");
+        }
+
+        test("edits reduction options and previews after each block is inserted into an aggregate graph", async ({ page }) => {
+            const editor = new NodeAssetsEditorPage(page);
+            await editor.goto();
+            await editor.waitForNextSuccessfulPreviewBuild();
+
+            await editor.connectPorts(editor.portOfNode("Import glTF", "out"), editor.portOfNode("Export glTF", "in"));
+            await editor.waitForNextSuccessfulPreviewBuild();
+
+            await editor.dropPaletteItem("Quantize Attributes", { x: 0.45, y: 0.35 });
+            await editor.connectPorts(editor.portOfNode("Import glTF", "out"), editor.portOfNode("Quantize Attributes", "in"));
+            await editor.connectPorts(editor.portOfNode("Quantize Attributes", "out"), editor.portOfNode("Export glTF", "in"));
+            await editor.selectNode("Quantize Attributes");
+            await propertyControl(page, "Position bits").locator('input[type="text"]').fill("8");
+            await propertyControl(page, "Position bits").locator('input[type="text"]').press("Enter");
+            await propertyControl(page, "Normalize weights").getByRole("switch").click();
+            await propertyControl(page, "Attribute pattern").locator('input[type="text"]').fill("^POSITION|NORMAL$");
+            await propertyControl(page, "Attribute pattern").locator('input[type="text"]').press("Enter");
+            await propertyControl(page, "Quantization volume").getByRole("combobox").click();
+            await page.getByRole("option", { name: "Scene", exact: true }).click();
+            await editor.waitForSuccessfulPreviewBuild();
+            await expect(editor.previewCanvas).toBeVisible();
+
+            await editor.dropPaletteItem("Simplify Meshes", { x: 0.65, y: 0.35 });
+            await editor.connectPorts(editor.portOfNode("Quantize Attributes", "out"), editor.portOfNode("Simplify Meshes", "in"));
+            await editor.connectPorts(editor.portOfNode("Simplify Meshes", "out"), editor.portOfNode("Export glTF", "in"));
+            await editor.selectNode("Simplify Meshes");
+            await propertyControl(page, "Target ratio").locator('input[type="text"]').fill("0.5");
+            await propertyControl(page, "Target ratio").locator('input[type="text"]').press("Enter");
+            await propertyControl(page, "Lock border").getByRole("switch").click();
+            await editor.waitForSuccessfulPreviewBuild();
+            await expect(editor.previewCanvas).toBeVisible();
+
+            for (const [from, to] of [
+                ["Import glTF", "Quantize Attributes"],
+                ["Quantize Attributes", "Simplify Meshes"],
+                ["Simplify Meshes", "Export glTF"],
+            ]) {
+                await expect(page.locator(`[data-testid="graph-wire"][data-from-node-title="${from}"][data-to-node-title="${to}"]`)).toHaveCount(1);
+            }
+        });
     });
 
     test("detaches before a child edit, persists the expanded custom aggregate, and exports from its Write primitive", async ({ page }) => {
