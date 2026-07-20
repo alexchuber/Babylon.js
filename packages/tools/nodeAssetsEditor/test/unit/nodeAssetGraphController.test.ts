@@ -477,25 +477,77 @@ describe("NodeAssetGraphController", () => {
         }
     });
 
-    it("groups MergeScenes under a Composition palette category", () => {
+    it("exposes every built-in block in domain-oriented palette order", () => {
         const controller = new NodeAssetGraphController();
         try {
-            const composition = controller.paletteCategories.find((category) => category.label === "Composition");
-            expect(composition).toBeDefined();
-            expect(composition!.items.map((item) => item.id)).toContain("merge-scenes");
+            expect(
+                controller.paletteCategories.map((category) => ({
+                    label: category.label,
+                    itemIds: category.items.map((item) => item.id),
+                }))
+            ).toEqual([
+                {
+                    label: "Imports",
+                    itemIds: ["import-gltf", "import-usd", "import-image", "import-babylon", "import-node-geometry"],
+                },
+                {
+                    label: "glTF",
+                    itemIds: [
+                        "draco-compression",
+                        "export-gltf",
+                        "ktx2-compression",
+                        "weld",
+                        "dedup",
+                        "prune",
+                        "quantize",
+                        "simplify",
+                        "flatten",
+                        "join",
+                        "normals",
+                        "center",
+                        "merge-scenes",
+                        "selector",
+                        "get-property",
+                        "set-property",
+                        "build-pbr-material",
+                        "decompose-gltf-material",
+                        "compose-gltf-material",
+                        "gltf-selector",
+                    ],
+                },
+                { label: "USD", itemIds: ["get-usd-prim", "usd-selector"] },
+                { label: "Babylon", itemIds: ["get-babylon-mesh", "set-babylon-property", "babylon-selector"] },
+                {
+                    label: "Image",
+                    itemIds: ["export-image", "resize-image", "convert-image-format", "flip-image", "extract-texture", "composite-image", "set-texture"],
+                },
+                { label: "Node Geometry", itemIds: ["evaluate-node-geometry"] },
+                { label: "Transcoders", itemIds: ["usd2gltf", "usd2babylon", "gltf2babylon", "babylon2gltf"] },
+                { label: "Values", itemIds: ["number-literal", "string-literal", "json-literal"] },
+            ]);
         } finally {
             controller.dispose();
         }
     });
 
-    it("orders the Composition palette category immediately before Selectors", () => {
+    it("uses one node header color per palette category", () => {
         const controller = new NodeAssetGraphController();
         try {
-            const labels = controller.paletteCategories.map((category) => category.label);
-            const compositionIndex = labels.indexOf("Composition");
-            const selectorsIndex = labels.indexOf("Selectors");
-            expect(compositionIndex).toBeGreaterThanOrEqual(0);
-            expect(selectorsIndex).toBe(compositionIndex + 1);
+            const expectedHeaderColors: Readonly<Record<string, string>> = {
+                Imports: "#3f7d4e",
+                glTF: "#2f8f83",
+                USD: "#C4A265",
+                Babylon: "#4A90D9",
+                Image: "#a0568f",
+                "Node Geometry": "#7B68EE",
+                Transcoders: "#6B4C8A",
+                Values: "#5a5fb0",
+            };
+
+            for (const category of controller.paletteCategories) {
+                const headerColors = category.items.map((item) => controller.createNodeFromPaletteItem(item.id, { x: 0, y: 0 }).headerColor);
+                expect([...new Set(headerColors)]).toEqual([expectedHeaderColors[category.label]]);
+            }
         } finally {
             controller.dispose();
         }

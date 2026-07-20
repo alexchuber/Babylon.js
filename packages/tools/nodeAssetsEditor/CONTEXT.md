@@ -38,10 +38,10 @@ runtime block. _Avoid_: block (that is the runtime's word), card.
 **port** (`IGraphPort`):
 The visual input/output dot on a node. The editor's render of a runtime connection point; its kind
 reflects the connection point type. Milestone 01–06 kinds are SCENE, IMAGE, NUMBER, STRING, JSON;
-_(milestone 07)_ the three **representation** kinds GLTF_DOCUMENT, USD_STAGE, BABYLON_SCENE (each with
+_(milestone 07)_ the three **representation** kinds GLTF*DOCUMENT, USD_STAGE, BABYLON_SCENE (each with
 its own port color) plus the NODE_GEOMETRY resource kind. There is no generic "representation" port —
 each representation is its own colored kind, so a lossy transcode is a visible node, never an implicit
-wire. _Avoid_: connection point (runtime's word), socket, pin.
+wire. \_Avoid*: connection point (runtime's word), socket, pin.
 
 **wire** (`IGraphWire`):
 The visual bezier link from an output port to an input port. The editor's render of a runtime
@@ -60,11 +60,12 @@ model, graph store.
 
 **palette** (`IPaletteCategory` / `IPaletteItem`, `PaletteView`):
 The left pane's categorized, filterable list of block kinds; dragging an item onto the canvas creates a
-node. As the catalog grows the categories are Sources, Operators, Values, Selectors, Image, and
-Composition; _(milestone 07)_ a **Transcoders** category (USD2glTF, USD2Babylon, glTF2Babylon,
-Babylon2glTF). Search includes labels, categories, concise descriptions, and workflow aliases such as
-`decimate`, `optimize`, and `compress`; descriptions appear below item labels. _Avoid_: toolbox, node
-list.
+node. Categories appear in deterministic order: **Imports**, **glTF**, **USD**, **Babylon**, **Image**,
+**Node Geometry**, **Transcoders**, and **Values**. The five concrete-domain sections group blocks by
+their primary operands; Imports and Transcoders intentionally group cross-domain workflow boundaries,
+while Values contains only scalar literal sources. Search includes labels, categories, concise
+descriptions, and workflow aliases such as `decimate`, `optimize`, and `compress`; descriptions appear
+below item labels. _Avoid_: toolbox, node list.
 
 **resource lane** _(milestone 07)_:
 An editor-only **grouping / metadata** axis for organizing nodes and ports by the resource they work on

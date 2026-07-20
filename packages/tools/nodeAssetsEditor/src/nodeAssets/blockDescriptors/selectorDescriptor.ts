@@ -1,14 +1,14 @@
 import { Selector } from "node-assets/Blocks/selector";
 
-import { RegisterBlockDescriptor, SelectorsCategory, SelectorsHeaderColor } from "../blockCatalog";
+import { GltfCategory, GltfHeaderColor, RegisterBlockDescriptor } from "../blockCatalog";
 
 RegisterBlockDescriptor({
     paletteItemId: "selector",
     label: "Selector",
     description: "Address a scene property with a glTF object-model pointer.",
     keywords: ["find", "select", "pointer", "path", "KHR_animation_pointer"],
-    headerColor: SelectorsHeaderColor,
-    category: SelectorsCategory,
+    headerColor: GltfHeaderColor,
+    category: GltfCategory,
     className: Selector.ClassName,
     create: (nodeAsset) => new Selector("Selector", nodeAsset),
     getPropertySection: (block, { refresh }) => {

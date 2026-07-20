@@ -1,14 +1,14 @@
 import { QuantizeBlock } from "node-assets/Blocks/quantizeBlock";
 
-import { OperatorCategory, OperatorHeaderColor, RegisterBlockDescriptor } from "../blockCatalog";
+import { GltfCategory, GltfHeaderColor, RegisterBlockDescriptor } from "../blockCatalog";
 
 RegisterBlockDescriptor({
     paletteItemId: "quantize",
     label: "Quantize",
     description: "Reduce vertex attribute precision to shrink scene data.",
     keywords: ["optimize", "compress", "precision", "mesh size"],
-    headerColor: OperatorHeaderColor,
-    category: OperatorCategory,
+    headerColor: GltfHeaderColor,
+    category: GltfCategory,
     className: QuantizeBlock.ClassName,
     create: (nodeAsset) => new QuantizeBlock("Quantize", nodeAsset),
     getPropertySection: (block, { refresh }) => {

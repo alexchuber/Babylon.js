@@ -1,10 +1,7 @@
 import { ImportBabylonBlock } from "node-assets/Blocks/importBabylonBlock";
 
-import { ConfigureBlockForEditor, RegisterBlockDescriptor } from "../blockCatalog";
+import { ConfigureBlockForEditor, ImportsCategory, ImportsHeaderColor, RegisterBlockDescriptor } from "../blockCatalog";
 import { PromptForFileAsync } from "../browserFiles";
-
-// Data-driven node header color for the Babylon import block.
-const ImportHeaderColor = "#3f6fd9";
 
 /**
  * Prompts for a `.babylon` file, creates an object URL from it, and sets it on the block's
@@ -24,10 +21,10 @@ async function PromptForBabylonFileAsync(block: ImportBabylonBlock, refresh: () 
 RegisterBlockDescriptor({
     paletteItemId: "import-babylon",
     label: "Import Babylon",
-    category: "Sources",
+    category: ImportsCategory,
     description: "Load a .babylon scene into a Babylon representation.",
     keywords: ["babylon", ".babylon", "scene", "load"],
-    headerColor: ImportHeaderColor,
+    headerColor: ImportsHeaderColor,
     className: ImportBabylonBlock.ClassName,
     create: (nodeAsset) => ConfigureBlockForEditor(new ImportBabylonBlock("Import Babylon", nodeAsset)),
     getPropertySection: (block, { refresh }) => {

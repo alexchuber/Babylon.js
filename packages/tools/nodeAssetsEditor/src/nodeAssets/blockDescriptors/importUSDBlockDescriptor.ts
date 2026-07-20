@@ -1,10 +1,7 @@
 import { ImportUSDBlock } from "node-assets/Blocks/importUSDBlock";
 
-import { ConfigureBlockForEditor, RegisterBlockDescriptor } from "../blockCatalog";
+import { ConfigureBlockForEditor, ImportsCategory, ImportsHeaderColor, RegisterBlockDescriptor } from "../blockCatalog";
 import { PromptForFileAsync } from "../browserFiles";
-
-// Data-driven node header color for the USD import boundary block (shared with the other Sources).
-const ImportHeaderColor = "#3f7d4e";
 
 /**
  * Prompts for a source USD file and stores its bytes on the block, then refreshes the property pane
@@ -27,8 +24,8 @@ RegisterBlockDescriptor({
     label: "Import USD",
     description: "Transcode a USD, USDA, or USDZ source onto the scene spine.",
     keywords: ["open", "load", "source", "Pixar", "USDZ"],
-    category: "Sources",
-    headerColor: ImportHeaderColor,
+    category: ImportsCategory,
+    headerColor: ImportsHeaderColor,
     className: ImportUSDBlock.ClassName,
     create: (nodeAsset) => ConfigureBlockForEditor(new ImportUSDBlock("Import USD", nodeAsset)),
     getPropertySection: (block, { refresh }) => {

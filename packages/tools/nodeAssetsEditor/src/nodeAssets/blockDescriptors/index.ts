@@ -6,6 +6,10 @@
 
 import "./importGLTFBlockDescriptor";
 import "./importUSDBlockDescriptor";
+import "./importImageBlockDescriptor";
+import "./importBabylonBlockDescriptor";
+import "./importNodeGeometryBlockDescriptor";
+
 import "./dracoCompressionBlockDescriptor";
 import "./exportGLTFBlockDescriptor";
 import "./ktx2CompressionBlockDescriptor";
@@ -18,34 +22,37 @@ import "./flattenBlockDescriptor";
 import "./joinBlockDescriptor";
 import "./normalsBlockDescriptor";
 import "./centerBlockDescriptor";
-import "./numberLiteralDescriptor";
-import "./stringLiteralDescriptor";
-import "./jsonLiteralDescriptor";
 import "./mergeScenesDescriptor";
 import "./selectorDescriptor";
 import "./getPropertyDescriptor";
 import "./setPropertyDescriptor";
-import "./importImageBlockDescriptor";
-import "./exportImageBlockDescriptor";
 import "./buildPBRMaterialDescriptor";
+import "./decomposeGLTFMaterialBlockDescriptor";
+import "./composeGLTFMaterialBlockDescriptor";
+import "./gltfSelectorBlockDescriptor";
+
+import "./getUSDPrimBlockDescriptor";
+import "./usdSelectorBlockDescriptor";
+
+import "./getBabylonMeshBlockDescriptor";
+import "./setBabylonPropertyBlockDescriptor";
+import "./babylonSelectorBlockDescriptor";
+
+import "./exportImageBlockDescriptor";
 import "./resizeImageBlockDescriptor";
 import "./convertImageFormatBlockDescriptor";
 import "./flipImageBlockDescriptor";
 import "./extractTextureDescriptor";
 import "./compositeImageBlockDescriptor";
 import "./setTextureDescriptor";
-import "./importBabylonBlockDescriptor";
-import "./importNodeGeometryBlockDescriptor";
+
+import "./evaluateNodeGeometryBlockDescriptor";
+
 import "./usd2GLTFBlockDescriptor";
 import "./usd2BabylonBlockDescriptor";
 import "./gltf2BabylonBlockDescriptor";
 import "./babylon2GLTFBlockDescriptor";
-import "./evaluateNodeGeometryBlockDescriptor";
-import "./decomposeGLTFMaterialBlockDescriptor";
-import "./composeGLTFMaterialBlockDescriptor";
-import "./getBabylonMeshBlockDescriptor";
-import "./setBabylonPropertyBlockDescriptor";
-import "./getUSDPrimBlockDescriptor";
-import "./gltfSelectorBlockDescriptor";
-import "./usdSelectorBlockDescriptor";
-import "./babylonSelectorBlockDescriptor";
+
+import "./numberLiteralDescriptor";
+import "./stringLiteralDescriptor";
+import "./jsonLiteralDescriptor";

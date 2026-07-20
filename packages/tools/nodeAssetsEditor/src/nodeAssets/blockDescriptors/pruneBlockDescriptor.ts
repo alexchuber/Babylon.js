@@ -1,14 +1,14 @@
 import { PruneBlock } from "node-assets/Blocks/pruneBlock";
 
-import { OperatorCategory, OperatorHeaderColor, RegisterBlockDescriptor } from "../blockCatalog";
+import { GltfCategory, GltfHeaderColor, RegisterBlockDescriptor } from "../blockCatalog";
 
 RegisterBlockDescriptor({
     paletteItemId: "prune",
     label: "Prune",
     description: "Remove unused scene resources from the output.",
     keywords: ["optimize", "cleanup", "remove unused", "dead assets"],
-    headerColor: OperatorHeaderColor,
-    category: OperatorCategory,
+    headerColor: GltfHeaderColor,
+    category: GltfCategory,
     className: PruneBlock.ClassName,
     create: (nodeAsset) => new PruneBlock("Prune", nodeAsset),
     getPropertySection: (block, { refresh }) => {

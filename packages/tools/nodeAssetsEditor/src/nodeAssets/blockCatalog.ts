@@ -31,28 +31,30 @@ export const NumberPortColor = "#3f79d9";
 export const StringPortColor = "#3fa86b";
 export const JsonPortColor = "#b163c9";
 
-/** Palette category and shared node header color for the SCENE-to-SCENE operator block family. */
-export const OperatorCategory = "Operators";
-export const OperatorHeaderColor = "#2f8f83";
+/** Palette category and shared node header color for import boundary blocks. */
+export const ImportsCategory = "Imports";
+export const ImportsHeaderColor = "#3f7d4e";
+
+/** Palette category and shared node header color for blocks that operate on glTF documents. */
+export const GltfCategory = "glTF";
+export const GltfHeaderColor = "#2f8f83";
+
+/** Legacy aliases used by the glTF material descriptors pending removal. */
+export const OperatorCategory = GltfCategory;
+export const OperatorHeaderColor = GltfHeaderColor;
+export const CompositionCategory = GltfCategory;
+export const CompositionHeaderColor = GltfHeaderColor;
 
 /** Palette category and shared node header color for the value-literal source block family. */
 export const ValuesCategory = "Values";
 export const ValuesHeaderColor = "#5a5fb0";
 
-/** Palette category and shared node header color for the composition block family (e.g. MergeScenes). */
-export const CompositionCategory = "Composition";
-export const CompositionHeaderColor = "#a84f5a";
-
 /** Data-driven dot color for IMAGE-typed ports, distinct from the scene and scalar port kinds. */
 export const ImagePortColor = "#38b2c4";
 
-/** Palette category and shared node header color for the IMAGE boundary block family. */
+/** Palette category and shared node header color for blocks that operate on image resources. */
 export const ImageCategory = "Image";
 export const ImageHeaderColor = "#a0568f";
-
-/** Palette category and shared node header color for the selector/property-access block family. */
-export const SelectorsCategory = "Selectors";
-export const SelectorsHeaderColor = "#b0506a";
 
 /** Data-driven dot color for USD_STAGE-typed ports. */
 export const UsdStagePortColor = "#C4A265";
@@ -63,15 +65,19 @@ export const BabylonScenePortColor = "#4A90D9";
 /** Data-driven dot color for NODE_GEOMETRY-typed ports. */
 export const NodeGeometryPortColor = "#7B68EE";
 
+/** Palette category and shared node header color for Node Geometry resource blocks. */
+export const NodeGeometryCategory = "Node Geometry";
+export const NodeGeometryHeaderColor = "#7B68EE";
+
 /** Palette category and shared node header color for the transcoder block family. */
 export const TranscodersCategory = "Transcoders";
 export const TranscodersHeaderColor = "#6B4C8A";
 
-/** Palette category and shared node header color for the Babylon operator block family. */
+/** Palette category and shared node header color for blocks that operate on Babylon scenes. */
 export const BabylonCategory = "Babylon";
 export const BabylonHeaderColor = "#4A90D9";
 
-/** Palette category and shared node header color for the USD operator block family. */
+/** Palette category and shared node header color for blocks that operate on USD stages. */
 // eslint-disable-next-line @typescript-eslint/naming-convention
 export const USDCategory = "USD";
 // eslint-disable-next-line @typescript-eslint/naming-convention
@@ -94,8 +100,8 @@ export interface IBlockDescriptor {
     readonly headerColor: string;
     /** The backend class name this descriptor maps to, used to recover the descriptor on load. */
     readonly className: string;
-    /** Optional palette category label; entries without one fall into the default category. */
-    readonly category?: string;
+    /** Palette category label. */
+    readonly category: string;
     /** Constructs the backing block, registering it with the given node asset. */
     readonly create: (nodeAsset: NodeAsset) => NodeAssetBlock;
     /**

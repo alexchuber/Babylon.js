@@ -1,9 +1,6 @@
 import { DracoCompressionBlock, DracoEncoderMethod } from "node-assets/Blocks/dracoCompressionBlock";
 
-import { RegisterBlockDescriptor } from "../blockCatalog";
-
-// Data-driven node header color for the Draco compression block.
-const DracoHeaderColor = "#6f5b9e";
+import { GltfCategory, GltfHeaderColor, RegisterBlockDescriptor } from "../blockCatalog";
 
 const DracoMethodLabels = ["Edgebreaker", "Sequential"] as const;
 type DracoMethodLabel = (typeof DracoMethodLabels)[number];
@@ -48,7 +45,8 @@ RegisterBlockDescriptor({
     label: "Apply Draco",
     description: "Compress mesh geometry with Draco during glTF export.",
     keywords: ["compress", "mesh compression", "geometry", "KHR_draco_mesh_compression"],
-    headerColor: DracoHeaderColor,
+    headerColor: GltfHeaderColor,
+    category: GltfCategory,
     className: DracoCompressionBlock.ClassName,
     create: (nodeAsset) => new DracoCompressionBlock("Apply Draco", nodeAsset),
     getPropertySection: (block, { refresh }) => {

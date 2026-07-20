@@ -1,14 +1,14 @@
 import { MergeScenes } from "node-assets/Blocks/mergeScenes";
 
-import { CompositionCategory, CompositionHeaderColor, RegisterBlockDescriptor } from "../blockCatalog";
+import { GltfCategory, GltfHeaderColor, RegisterBlockDescriptor } from "../blockCatalog";
 
 RegisterBlockDescriptor({
     paletteItemId: "merge-scenes",
     label: "Merge Scenes",
     description: "Compose multiple scene inputs into one output scene.",
     keywords: ["combine assets", "composition", "assemble", "multi source"],
-    headerColor: CompositionHeaderColor,
-    category: CompositionCategory,
+    headerColor: GltfHeaderColor,
+    category: GltfCategory,
     className: MergeScenes.ClassName,
     create: (nodeAsset) => new MergeScenes("Merge Scenes", nodeAsset),
     getPropertySection: (block, { refresh }) => {

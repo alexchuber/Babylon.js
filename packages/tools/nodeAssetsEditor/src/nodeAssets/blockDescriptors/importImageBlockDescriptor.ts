@@ -1,6 +1,6 @@
 import { ImportImageBlock } from "node-assets/Blocks/importImageBlock";
 
-import { ConfigureBlockForEditor, ImageCategory, ImageHeaderColor, RegisterBlockDescriptor } from "../blockCatalog";
+import { ConfigureBlockForEditor, ImportsCategory, ImportsHeaderColor, RegisterBlockDescriptor } from "../blockCatalog";
 import { PromptForFileAsync } from "../browserFiles";
 
 /**
@@ -26,8 +26,8 @@ RegisterBlockDescriptor({
     label: "Import Image",
     description: "Load a PNG, JPEG, WebP, GIF, or BMP source image.",
     keywords: ["open", "load", "source", "texture", "PNG", "JPEG", "WebP", "GIF", "BMP"],
-    headerColor: ImageHeaderColor,
-    category: ImageCategory,
+    headerColor: ImportsHeaderColor,
+    category: ImportsCategory,
     className: ImportImageBlock.ClassName,
     create: (nodeAsset) => ConfigureBlockForEditor(new ImportImageBlock("Import Image", nodeAsset)),
     getPropertySection: (block, { refresh }) => {

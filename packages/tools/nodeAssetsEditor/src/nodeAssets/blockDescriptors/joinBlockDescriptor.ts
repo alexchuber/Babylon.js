@@ -1,14 +1,14 @@
 import { JoinBlock } from "node-assets/Blocks/joinBlock";
 
-import { OperatorCategory, OperatorHeaderColor, RegisterBlockDescriptor } from "../blockCatalog";
+import { GltfCategory, GltfHeaderColor, RegisterBlockDescriptor } from "../blockCatalog";
 
 RegisterBlockDescriptor({
     paletteItemId: "join",
     label: "Join",
     description: "Combine compatible primitives to reduce draw calls.",
     keywords: ["optimize", "cleanup", "merge meshes", "batch", "draw calls"],
-    headerColor: OperatorHeaderColor,
-    category: OperatorCategory,
+    headerColor: GltfHeaderColor,
+    category: GltfCategory,
     className: JoinBlock.ClassName,
     create: (nodeAsset) => new JoinBlock("Join", nodeAsset),
     getPropertySection: (block, { refresh }) => {

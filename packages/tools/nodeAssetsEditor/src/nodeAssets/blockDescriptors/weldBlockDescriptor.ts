@@ -1,14 +1,14 @@
 import { WeldBlock } from "node-assets/Blocks/weldBlock";
 
-import { OperatorCategory, OperatorHeaderColor, RegisterBlockDescriptor } from "../blockCatalog";
+import { GltfCategory, GltfHeaderColor, RegisterBlockDescriptor } from "../blockCatalog";
 
 RegisterBlockDescriptor({
     paletteItemId: "weld",
     label: "Weld",
     description: "Merge equivalent vertices to reduce mesh duplication.",
     keywords: ["optimize", "cleanup", "vertices", "deduplicate", "topology"],
-    headerColor: OperatorHeaderColor,
-    category: OperatorCategory,
+    headerColor: GltfHeaderColor,
+    category: GltfCategory,
     className: WeldBlock.ClassName,
     create: (nodeAsset) => new WeldBlock("Weld", nodeAsset),
     getPropertySection: (block, { refresh }) => {

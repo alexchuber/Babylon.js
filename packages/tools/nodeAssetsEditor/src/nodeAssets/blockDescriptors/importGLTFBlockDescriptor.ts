@@ -1,10 +1,7 @@
 import { ImportGLTFBlock } from "node-assets/Blocks/importGLTFBlock";
 
-import { ConfigureBlockForEditor, RegisterBlockDescriptor } from "../blockCatalog";
+import { ConfigureBlockForEditor, ImportsCategory, ImportsHeaderColor, RegisterBlockDescriptor } from "../blockCatalog";
 import { PromptForFileAsync } from "../browserFiles";
-
-// Data-driven node header color for the import boundary block.
-const ImportHeaderColor = "#3f7d4e";
 
 /**
  * Prompts for a source glTF file and stores its bytes on the block, then refreshes the property pane
@@ -27,8 +24,8 @@ RegisterBlockDescriptor({
     label: "Import glTF",
     description: "Load a glTF or GLB source scene.",
     keywords: ["open", "load", "source", "model", "GLB"],
-    category: "Sources",
-    headerColor: ImportHeaderColor,
+    category: ImportsCategory,
+    headerColor: ImportsHeaderColor,
     className: ImportGLTFBlock.ClassName,
     create: (nodeAsset) => ConfigureBlockForEditor(new ImportGLTFBlock("Import glTF", nodeAsset)),
     getPropertySection: (block, { refresh }) => {

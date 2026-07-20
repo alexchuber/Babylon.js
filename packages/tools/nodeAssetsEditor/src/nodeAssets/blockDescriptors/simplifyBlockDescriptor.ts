@@ -1,14 +1,14 @@
 import { SimplifyBlock } from "node-assets/Blocks/simplifyBlock";
 
-import { OperatorCategory, OperatorHeaderColor, RegisterBlockDescriptor } from "../blockCatalog";
+import { GltfCategory, GltfHeaderColor, RegisterBlockDescriptor } from "../blockCatalog";
 
 RegisterBlockDescriptor({
     paletteItemId: "simplify",
     label: "Simplify",
     description: "Reduce mesh polygon count to a target ratio.",
     keywords: ["decimate", "reduce polygons", "LOD", "optimize mesh"],
-    headerColor: OperatorHeaderColor,
-    category: OperatorCategory,
+    headerColor: GltfHeaderColor,
+    category: GltfCategory,
     className: SimplifyBlock.ClassName,
     create: (nodeAsset) => new SimplifyBlock("Simplify", nodeAsset),
     getPropertySection: (block, { refresh }) => {

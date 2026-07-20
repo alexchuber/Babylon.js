@@ -1,14 +1,14 @@
 import { USDSelectorBlock } from "node-assets/Blocks/usdSelectorBlock";
 
-import { RegisterBlockDescriptor, SelectorsCategory, SelectorsHeaderColor } from "../blockCatalog";
+import { RegisterBlockDescriptor, USDCategory, USDHeaderColor } from "../blockCatalog";
 
 RegisterBlockDescriptor({
     paletteItemId: "usd-selector",
     label: "USD Selector",
-    category: SelectorsCategory,
+    category: USDCategory,
     description: "Select USD prims by path, glob, or kind.",
     keywords: ["usd", "query", "prim", "path", "glob", "kind"],
-    headerColor: SelectorsHeaderColor,
+    headerColor: USDHeaderColor,
     className: USDSelectorBlock.ClassName,
     create: (nodeAsset) => new USDSelectorBlock("USD Selector", nodeAsset),
 });

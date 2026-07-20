@@ -7,19 +7,16 @@
 import { type IPaletteCategory, type IPaletteItem } from "../nodeGraph/paletteModel";
 import { type IBlockDescriptor } from "./blockCatalog";
 
-/** Palette category label for blocks whose descriptor does not specify one. */
-const DefaultPaletteCategory = "Blocks";
-
 /**
  * Groups block descriptors into palette categories, preserving registration order both across and
- * within categories. Descriptors without a category fall into the default one.
+ * within categories.
  * @param descriptors - The registered block descriptors, in registration (display) order.
  * @returns The palette categories.
  */
 export function BuildPaletteCategories(descriptors: readonly IBlockDescriptor[]): readonly IPaletteCategory[] {
     const itemsByCategory = new Map<string, IPaletteItem[]>();
     for (const descriptor of descriptors) {
-        const label = descriptor.category ?? DefaultPaletteCategory;
+        const label = descriptor.category;
         let items = itemsByCategory.get(label);
         if (!items) {
             items = [];
