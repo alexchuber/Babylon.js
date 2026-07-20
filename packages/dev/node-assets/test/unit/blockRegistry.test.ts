@@ -20,6 +20,7 @@ import {
     ExportImageBlock,
     ExtractTexture,
     FlattenBlock,
+    FlattenHierarchyBlock,
     FlipImageBlock,
     GetBabylonMeshBlock,
     GetProperty,
@@ -34,9 +35,11 @@ import {
     ImportUSDBlock,
     ImportImageBlock,
     JoinBlock,
+    JoinMeshesBlock,
     JsonLiteral,
     KTX2CompressionBlock,
     MergeScenes,
+    MergeScenesBlock,
     NodeAsset,
     NormalsBlock,
     NumberLiteral,
@@ -48,6 +51,7 @@ import {
     SetProperty,
     SetTexture,
     SimplifyBlock,
+    SplitMeshesByMaterialBlock,
     StringLiteral,
     UniversalToGLTFBlock,
     USD2BabylonBlock,
@@ -177,6 +181,10 @@ describe("block self-registration", () => {
                     SimplifyBlock.ClassName,
                     FlattenBlock.ClassName,
                     JoinBlock.ClassName,
+                    FlattenHierarchyBlock.ClassName,
+                    JoinMeshesBlock.ClassName,
+                    SplitMeshesByMaterialBlock.ClassName,
+                    MergeScenesBlock.ClassName,
                     NormalsBlock.ClassName,
                     CenterBlock.ClassName,
                     NumberLiteral.ClassName,
@@ -218,7 +226,7 @@ describe("block self-registration", () => {
                     ExportGLTFAggregateBlock.ClassName,
                 ])
             );
-            expect(registeredClassNames).toHaveLength(52);
+            expect(registeredClassNames).toHaveLength(56);
         });
 
         it.each(registeredClassNames)("round-trips %s through serialize/Parse", (className) => {
