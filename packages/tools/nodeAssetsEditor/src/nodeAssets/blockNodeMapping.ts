@@ -62,6 +62,7 @@ const PortStyleByType: Partial<Record<NodeAssetConnectionPointType, { readonly n
     [NodeAssetConnectionPointType.JSON]: { name: "Json", color: JsonPortColor },
     [NodeAssetConnectionPointType.IMAGE]: { name: "Image", color: ImagePortColor },
     [NodeAssetConnectionPointType.USD_STAGE]: { name: "USD Stage", color: UsdStagePortColor },
+    [NodeAssetConnectionPointType.USD_SOURCE]: { name: "USD", color: UsdStagePortColor },
     [NodeAssetConnectionPointType.BABYLON_SCENE]: { name: "Babylon Scene", color: BabylonScenePortColor },
     [NodeAssetConnectionPointType.NODE_GEOMETRY]: { name: "Node Geometry", color: NodeGeometryPortColor },
     [NodeAssetConnectionPointType.UNIVERSAL]: { name: "Universal", color: UniversalPortColor },

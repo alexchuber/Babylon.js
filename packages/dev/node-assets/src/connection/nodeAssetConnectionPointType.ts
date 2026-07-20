@@ -51,4 +51,7 @@ export enum NodeAssetConnectionPointType {
 
     /** A shallow `.babylon` source payload consumed only by Babylon to Universal. */
     BABYLON_SOURCE = 9,
+
+    /** Lightweight resolved USD source bytes consumed only by USD-to-Universal transcoding. */
+    USD_SOURCE = 10,
 }

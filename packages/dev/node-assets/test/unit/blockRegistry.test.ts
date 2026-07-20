@@ -42,6 +42,7 @@ import {
     ImportNodeGeometryAggregateBlock,
     ImportNodeGeometryBlock,
     ImportUSDBlock,
+    ImportUSDAggregateBlock,
     ImportImageBlock,
     JoinBlock,
     JoinMeshesBlock,
@@ -81,6 +82,8 @@ import {
     ReadNodeGeometryBlock,
     ReadBabylonBlock,
     ReuseIdenticalMeshesBlock,
+    ReadUSDBlock,
+    USDToUniversalBlock,
     CustomAggregateBlock,
     // eslint-disable-next-line import/no-internal-modules
 } from "../../src/index";
@@ -266,9 +269,12 @@ describe("block self-registration", () => {
                     ReadBabylonBlock.ClassName,
                     BabylonToUniversalBlock.ClassName,
                     ImportBabylonAggregateBlock.ClassName,
+                    ReadUSDBlock.ClassName,
+                    USDToUniversalBlock.ClassName,
+                    ImportUSDAggregateBlock.ClassName,
                 ])
             );
-            expect(registeredClassNames).toHaveLength(77);
+            expect(registeredClassNames).toHaveLength(80);
         });
 
         it.each(registeredClassNames)("round-trips %s through serialize/Parse", (className) => {

@@ -9,6 +9,9 @@ const SourceErrors = new WeakMap<ReadGLTFBlock, string>();
 
 async function PromptForGLTFAsync(block: ReadGLTFBlock, context: IPropertySectionContext): Promise<void> {
     const authoredBlock = context.prepareEdit(block);
+    if (!authoredBlock) {
+        return;
+    }
     const file = await PromptForFileAsync(".glb,.gltf");
     if (!file) {
         return;
@@ -20,6 +23,9 @@ async function PromptForGLTFAsync(block: ReadGLTFBlock, context: IPropertySectio
 
 async function SetGLTFUrlAsync(block: ReadGLTFBlock, url: string, context: IPropertySectionContext): Promise<void> {
     const authoredBlock = context.prepareEdit(block);
+    if (!authoredBlock) {
+        return;
+    }
     try {
         await authoredBlock.setUrlAsync(url);
         SourceErrors.delete(authoredBlock);
@@ -49,6 +55,9 @@ export function CreateReadGLTFPropertySection(block: ReadGLTFBlock, context: IPr
                 onChange: (value) => {
                     if (!value) {
                         const authoredBlock = context.prepareEdit(block);
+                        if (!authoredBlock) {
+                            return;
+                        }
                         authoredBlock.data = null;
                         authoredBlock.source = null;
                         authoredBlock.sourceKind = null;

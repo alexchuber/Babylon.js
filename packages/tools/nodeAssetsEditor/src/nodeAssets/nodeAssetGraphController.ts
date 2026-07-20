@@ -310,6 +310,8 @@ export class NodeAssetGraphController {
     private readonly _orbGltfBlock: ImportGLTFAggregateBlock;
     private readonly _aggregateRootByChildNodeId = new Map<string, string>();
     private _projectingAggregate = false;
+    private _graphRevision = 0;
+    private _isDisposed = false;
 
     /**
      * Creates a controller seeded with the "energy orb" showcase graph. Two ImportImage blocks (a dark
@@ -592,9 +594,15 @@ export class NodeAssetGraphController {
 
         const block = this._reconciler.getBlock(node.id);
         if (block) {
+            const graphRevision = this._graphRevision;
+            const aggregateRootNodeId = this._aggregateRootByChildNodeId.get(node.id) ?? (block instanceof AggregateBlock ? node.id : undefined);
             const propertyContext = {
-                prepareEdit: <BlockT extends NodeAssetBlock>(editedBlock: BlockT): BlockT => this._preparePropertyEdit(node.id, editedBlock),
+                prepareEdit: <BlockT extends NodeAssetBlock>(editedBlock: BlockT): BlockT | undefined =>
+                    !this._isDisposed && graphRevision === this._graphRevision ? this._preparePropertyEdit(node.id, editedBlock, aggregateRootNodeId) : undefined,
                 refresh: () => {
+                    if (this._isDisposed || graphRevision !== this._graphRevision) {
+                        return;
+                    }
                     this._detachAggregateContainingNode(node.id);
                     this.state.notifyChanged();
                 },
@@ -761,6 +769,7 @@ export class NodeAssetGraphController {
 
         // Commit only after the complete candidate file has parsed and mapped successfully.
         this._nodeAsset = asset;
+        this._graphRevision++;
         this._reconciler.reset(asset);
         this._aggregateRootByChildNodeId.clear();
         for (const { block, node } of blockNodes) {
@@ -778,6 +787,11 @@ export class NodeAssetGraphController {
 
     /** Releases the state subscription. */
     public dispose(): void {
+        if (this._isDisposed) {
+            return;
+        }
+        this._isDisposed = true;
+        this._graphRevision++;
         this._onChangedObserver.remove();
         this.onExportRequested.clear();
         this.onBuildRelevantChanged.clear();
@@ -873,20 +887,20 @@ export class NodeAssetGraphController {
         }
     }
 
-    private _preparePropertyEdit<BlockT extends NodeAssetBlock>(nodeId: string, block: BlockT): BlockT {
-        const nodeBlock = this._reconciler.getBlock(nodeId);
-        const rootNodeId =
-            this._aggregateRootByChildNodeId.get(nodeId) ??
-            (nodeBlock instanceof AggregateBlock && nodeBlock.subgraph.attachedBlocks.some((candidate) => candidate.uniqueId === block.uniqueId) ? nodeId : undefined);
+    private _preparePropertyEdit<BlockT extends NodeAssetBlock>(nodeId: string, block: BlockT, rootNodeId: string | undefined): BlockT | undefined {
         if (!rootNodeId) {
-            return block;
+            return this._reconciler.getBlock(nodeId) === block ? block : undefined;
+        }
+        const currentAggregate = this._reconciler.getBlock(rootNodeId);
+        if (!(currentAggregate instanceof AggregateBlock) || !currentAggregate.subgraph.attachedBlocks.some((candidate) => candidate.uniqueId === block.uniqueId)) {
+            return undefined;
         }
 
         this._detachAggregate(rootNodeId);
         const aggregate = this._reconciler.getBlock(rootNodeId);
         const authoredBlock = aggregate instanceof AggregateBlock ? aggregate.subgraph.attachedBlocks.find((candidate) => candidate.uniqueId === block.uniqueId) : undefined;
         if (!authoredBlock) {
-            throw new Error(`Cannot edit aggregate child "${block.name}" because its authored block is missing.`);
+            return undefined;
         }
         return authoredBlock as BlockT;
     }

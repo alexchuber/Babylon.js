@@ -12,6 +12,7 @@ import { BabylonAsset, IsBabylonAsset } from "../../src/representations/babylonA
 import { GltfAsset, IsGltfAsset } from "../../src/representations/gltfAsset";
 import { IsNodeGeometryAsset, NodeGeometryAsset } from "../../src/representations/nodeGeometryAsset";
 import { IsUsdAsset, UsdAsset } from "../../src/representations/usdAsset";
+import { UsdSourceAsset } from "../../src/representations/usdSourceAsset";
 
 function CreateResolvedStage(): IResolvedStage {
     return {
@@ -101,6 +102,8 @@ describe("typed representations", () => {
         expect(NodeAssetConnectionPointType.USD_STAGE).toBe(5);
         expect(NodeAssetConnectionPointType.BABYLON_SCENE).toBe(6);
         expect(NodeAssetConnectionPointType.NODE_GEOMETRY).toBe(7);
+        expect(NodeAssetConnectionPointType.UNIVERSAL).toBe(8);
+        expect(NodeAssetConnectionPointType.USD_SOURCE).toBe(10);
         expect("REPRESENTATION" in NodeAssetConnectionPointType).toBe(false);
         expect(NodeAssetConnectionPointType[NodeAssetConnectionPointType.GLTF_DOCUMENT]).toBe("GLTF_DOCUMENT");
     });
@@ -108,6 +111,7 @@ describe("typed representations", () => {
     it("correlates every kind with its concrete value type", () => {
         expectTypeOf<NodeAssetValueMap[NodeAssetConnectionPointType.GLTF_DOCUMENT]>().toEqualTypeOf<GltfAsset>();
         expectTypeOf<NodeAssetValueMap[NodeAssetConnectionPointType.USD_STAGE]>().toEqualTypeOf<UsdAsset>();
+        expectTypeOf<NodeAssetValueMap[NodeAssetConnectionPointType.USD_SOURCE]>().toEqualTypeOf<UsdSourceAsset>();
         expectTypeOf<NodeAssetValueMap[NodeAssetConnectionPointType.BABYLON_SCENE]>().toEqualTypeOf<BabylonAsset>();
         expectTypeOf<NodeAssetValueMap[NodeAssetConnectionPointType.NODE_GEOMETRY]>().toEqualTypeOf<NodeGeometryAsset>();
         expectTypeOf<NodeAssetValueMap[NodeAssetConnectionPointType.NUMBER]>().toEqualTypeOf<number>();

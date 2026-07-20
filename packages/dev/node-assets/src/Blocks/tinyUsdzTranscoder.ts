@@ -42,6 +42,13 @@ interface ITinyUsdzMesh {
     readonly texcoords?: Float32Array;
     readonly materialId: number;
     readonly doubleSided?: boolean;
+    readonly submeshes?: readonly ITinyUsdzSubmesh[];
+}
+
+interface ITinyUsdzSubmesh {
+    readonly start: number;
+    readonly count: number;
+    readonly materialId: number;
 }
 
 interface ITinyUsdzSceneMetadata {
@@ -63,6 +70,7 @@ interface ITinyUsdzLoaderNative {
     numSkeletons(): number;
     numAnimations(): number;
     numInstances(): number;
+    delete(): void;
 }
 
 interface ITinyUsdzModule {
@@ -152,6 +160,26 @@ function ConvertMaterial(document: Document, native: ITinyUsdzLoaderNative, mate
     return material;
 }
 
+function GetOrCreateMaterial(
+    document: Document,
+    native: ITinyUsdzLoaderNative,
+    materialId: number,
+    doubleSided: boolean | undefined,
+    materials: Map<string, Material>
+): Nullable<Material> {
+    if (materialId < 0) {
+        return null;
+    }
+    const materialKey = `${materialId}:${doubleSided === true ? "double" : "single"}`;
+    let material = materials.get(materialKey);
+    if (!material) {
+        material = ConvertMaterial(document, native, materialId);
+        material.setDoubleSided(doubleSided === true);
+        materials.set(materialKey, material);
+    }
+    return material;
+}
+
 /**
  * Converts one tinyusdz render-scene node (and its geometry-bearing descendants) into a gltf-transform
  * node subtree. Nodes that neither carry geometry nor have any geometry below them — USD material and
@@ -159,10 +187,10 @@ function ConvertMaterial(document: Document, native: ITinyUsdzLoaderNative, mate
  * @param document - The document nodes and meshes are created in.
  * @param native - The tinyusdz loader holding the parsed stage.
  * @param usdNode - The USD node to convert.
- * @param materials - Cache of already-converted materials, keyed by stage material index.
+ * @param materials - Cache of already-converted materials, keyed by stage material index and sidedness.
  * @returns The converted node, or null when the subtree contains no geometry.
  */
-function ConvertNode(document: Document, native: ITinyUsdzLoaderNative, usdNode: ITinyUsdzNode, materials: Map<number, Material>): Nullable<GltfNode> {
+function ConvertNode(document: Document, native: ITinyUsdzLoaderNative, usdNode: ITinyUsdzNode, materials: Map<string, Material>): Nullable<GltfNode> {
     const childNodes: GltfNode[] = [];
     for (const child of usdNode.children ?? []) {
         const convertedChild = ConvertNode(document, native, child, materials);
@@ -171,38 +199,54 @@ function ConvertNode(document: Document, native: ITinyUsdzLoaderNative, usdNode:
         }
     }
 
-    const isMesh = usdNode.nodeType === "mesh" && usdNode.contentId >= 0;
-    if (!isMesh && childNodes.length === 0) {
+    const usdMesh = usdNode.nodeType === "mesh" && usdNode.contentId >= 0 ? native.getMesh(usdNode.contentId) : null;
+    const hasGeometry = usdMesh !== null && usdMesh.faceVertexIndices.length > 0;
+    if (!hasGeometry && childNodes.length === 0) {
         return null;
     }
 
     const node = document.createNode(usdNode.primName || usdNode.displayName || "node");
     node.setMatrix(Array.from(usdNode.localMatrix) as Parameters<GltfNode["setMatrix"]>[0]);
 
-    if (isMesh) {
-        const usdMesh = native.getMesh(usdNode.contentId);
+    if (usdMesh && hasGeometry) {
         const buffer = document.getRoot().listBuffers()[0];
-        const primitive = document.createPrimitive();
-        primitive.setAttribute("POSITION", document.createAccessor().setType("VEC3").setArray(new Float32Array(usdMesh.points)).setBuffer(buffer));
-        primitive.setIndices(document.createAccessor().setType("SCALAR").setArray(new Uint32Array(usdMesh.faceVertexIndices)).setBuffer(buffer));
-        if (usdMesh.normals && usdMesh.normals.length > 0) {
-            primitive.setAttribute("NORMAL", document.createAccessor().setType("VEC3").setArray(DecodeNormals(usdMesh.normals, usdMesh.normalsFormat)).setBuffer(buffer));
-        }
-        if (usdMesh.texcoords && usdMesh.texcoords.length > 0) {
-            primitive.setAttribute("TEXCOORD_0", document.createAccessor().setType("VEC2").setArray(FlipTexcoordV(usdMesh.texcoords)).setBuffer(buffer));
-        }
-        if (usdMesh.materialId >= 0) {
-            let material = materials.get(usdMesh.materialId);
-            if (!material) {
-                material = ConvertMaterial(document, native, usdMesh.materialId);
-                materials.set(usdMesh.materialId, material);
+        const position = document.createAccessor().setType("VEC3").setArray(new Float32Array(usdMesh.points)).setBuffer(buffer);
+        const normal =
+            usdMesh.normals && usdMesh.normals.length > 0
+                ? document.createAccessor().setType("VEC3").setArray(DecodeNormals(usdMesh.normals, usdMesh.normalsFormat)).setBuffer(buffer)
+                : null;
+        const texcoord =
+            usdMesh.texcoords && usdMesh.texcoords.length > 0 ? document.createAccessor().setType("VEC2").setArray(FlipTexcoordV(usdMesh.texcoords)).setBuffer(buffer) : null;
+        const mesh = document.createMesh(usdMesh.primName || usdNode.primName);
+        const submeshes =
+            usdMesh.submeshes && usdMesh.submeshes.length > 0 ? usdMesh.submeshes : [{ start: 0, count: usdMesh.faceVertexIndices.length, materialId: usdMesh.materialId }];
+        for (const submesh of submeshes) {
+            const end = submesh.start + submesh.count;
+            if (submesh.start < 0 || submesh.count <= 0 || end > usdMesh.faceVertexIndices.length) {
+                throw new Error(`tinyusdz returned an invalid submesh range (${submesh.start}, ${submesh.count}) for "${usdMesh.primName}".`);
             }
-            primitive.setMaterial(material);
-            if (usdMesh.doubleSided) {
-                material.setDoubleSided(true);
+            const primitive = document.createPrimitive();
+            primitive.setAttribute("POSITION", position);
+            primitive.setIndices(
+                document
+                    .createAccessor()
+                    .setType("SCALAR")
+                    .setArray(new Uint32Array(usdMesh.faceVertexIndices.subarray(submesh.start, end)))
+                    .setBuffer(buffer)
+            );
+            if (normal) {
+                primitive.setAttribute("NORMAL", normal);
             }
+            if (texcoord) {
+                primitive.setAttribute("TEXCOORD_0", texcoord);
+            }
+            const material = GetOrCreateMaterial(document, native, submesh.materialId, usdMesh.doubleSided, materials);
+            if (material) {
+                primitive.setMaterial(material);
+            }
+            mesh.addPrimitive(primitive);
         }
-        node.setMesh(document.createMesh(usdMesh.primName || usdNode.primName).addPrimitive(primitive));
+        node.setMesh(mesh);
     }
 
     for (const childNode of childNodes) {
@@ -237,90 +281,94 @@ export async function TranscodeUsdToDocumentAsync(bytes: Uint8Array, options: IT
 
     const wasmModule = (await createTinyUsdzModule(moduleOptions)) as ITinyUsdzModule;
     const native = new wasmModule.TinyUSDZLoaderNative();
-    const filename = `asset.${options.sourceFormat === "usd" ? "usd" : options.sourceFormat}`;
-    if (!native.loadFromBinary(bytes, filename)) {
-        throw new Error(`tinyusdz failed to parse the USD (${options.sourceFormat}) content: ${native.error()}`);
-    }
-
-    const document = new Document();
-    document.createBuffer();
-    const scene = document.createScene("USD");
-    const metadata = native.getSceneMetadata();
-
-    // USD roots attach to the scene directly, unless the stage's up-axis or unit scale differs from
-    // glTF's (Y-up, metres) — then a single conversion node carries the whole scene into glTF space.
-    const upAxis = metadata.upAxis || "Y";
-    const metersPerUnit = typeof metadata.metersPerUnit === "number" && metadata.metersPerUnit > 0 ? metadata.metersPerUnit : 1;
-    const needsConversion = upAxis !== "Y" || metersPerUnit !== 1;
-    let conversionRoot: Nullable<GltfNode> = null;
-    if (needsConversion) {
-        conversionRoot = document.createNode("USD_Root");
-        if (upAxis === "Z") {
-            // Rotate USD Z-up into glTF Y-up: -90 degrees about X (quaternion (-sqrt(1/2), 0, 0, sqrt(1/2))).
-            conversionRoot.setRotation([-Math.SQRT1_2, 0, 0, Math.SQRT1_2]);
+    try {
+        const filename = `asset.${options.sourceFormat === "usd" ? "usd" : options.sourceFormat}`;
+        if (!native.loadFromBinary(bytes, filename)) {
+            throw new Error(`tinyusdz failed to parse the USD (${options.sourceFormat}) content: ${native.error()}`);
         }
-        conversionRoot.setScale([metersPerUnit, metersPerUnit, metersPerUnit]);
-        scene.addChild(conversionRoot);
-    }
 
-    const materials = new Map<number, Material>();
-    const rootCount = native.numRootNodes();
-    for (let index = 0; index < rootCount; index++) {
-        const converted = ConvertNode(document, native, native.getRootNode(index), materials);
-        if (!converted) {
-            continue;
+        const document = new Document();
+        document.createBuffer();
+        const scene = document.createScene("USD");
+        const metadata = native.getSceneMetadata();
+
+        // USD roots attach to the scene directly, unless the stage's up-axis or unit scale differs from
+        // glTF's (Y-up, metres) — then a single conversion node carries the whole scene into glTF space.
+        const upAxis = metadata.upAxis || "Y";
+        const metersPerUnit = typeof metadata.metersPerUnit === "number" && metadata.metersPerUnit > 0 ? metadata.metersPerUnit : 1;
+        const needsConversion = upAxis !== "Y" || metersPerUnit !== 1;
+        let conversionRoot: Nullable<GltfNode> = null;
+        if (needsConversion) {
+            conversionRoot = document.createNode("USD_Root");
+            if (upAxis === "Z") {
+                // Rotate USD Z-up into glTF Y-up: -90 degrees about X (quaternion (-sqrt(1/2), 0, 0, sqrt(1/2))).
+                conversionRoot.setRotation([-Math.SQRT1_2, 0, 0, Math.SQRT1_2]);
+            }
+            conversionRoot.setScale([metersPerUnit, metersPerUnit, metersPerUnit]);
+            scene.addChild(conversionRoot);
         }
-        if (conversionRoot) {
-            conversionRoot.addChild(converted);
-        } else {
-            scene.addChild(converted);
+
+        const materials = new Map<string, Material>();
+        const rootCount = native.numRootNodes();
+        for (let index = 0; index < rootCount; index++) {
+            const converted = ConvertNode(document, native, native.getRootNode(index), materials);
+            if (!converted) {
+                continue;
+            }
+            if (conversionRoot) {
+                conversionRoot.addChild(converted);
+            } else {
+                scene.addChild(converted);
+            }
         }
-    }
 
-    // Record the loss profile so dropped USD features are inspectable rather than silent. tinyusdz
-    // resolves composition arcs (references/payloads/variants) during load, so those are composed, not
-    // dropped; what this transcoder does not yet map is counted below.
-    const droppedTextureCount = native.numTextures();
-    const droppedLightCount = native.numLights();
-    const droppedCameraCount = native.numCameras();
-    const droppedSkeletonCount = native.numSkeletons();
-    const droppedAnimationCount = native.numAnimations();
-    const droppedInstanceCount = native.numInstances();
-    const notes: string[] = [];
-    if (droppedTextureCount > 0) {
-        notes.push(`Dropped ${droppedTextureCount} texture(s): USD texture bindings are not yet mapped to glTF.`);
-    }
-    if (droppedLightCount > 0) {
-        notes.push(`Dropped ${droppedLightCount} light(s).`);
-    }
-    if (droppedCameraCount > 0) {
-        notes.push(`Dropped ${droppedCameraCount} camera(s).`);
-    }
-    if (droppedSkeletonCount > 0) {
-        notes.push(`Dropped ${droppedSkeletonCount} skeleton(s): skinning is not mapped.`);
-    }
-    if (droppedAnimationCount > 0) {
-        notes.push(`Dropped ${droppedAnimationCount} animation(s).`);
-    }
-    if (droppedInstanceCount > 0) {
-        notes.push(`Dropped ${droppedInstanceCount} point-instancer instance set(s).`);
-    }
+        // Record the loss profile so dropped USD features are inspectable rather than silent. tinyusdz
+        // resolves composition arcs (references/payloads/variants) during load, so those are composed, not
+        // dropped; what this transcoder does not yet map is counted below.
+        const droppedTextureCount = native.numTextures();
+        const droppedLightCount = native.numLights();
+        const droppedCameraCount = native.numCameras();
+        const droppedSkeletonCount = native.numSkeletons();
+        const droppedAnimationCount = native.numAnimations();
+        const droppedInstanceCount = native.numInstances();
+        const notes: string[] = [];
+        if (droppedTextureCount > 0) {
+            notes.push(`Dropped ${droppedTextureCount} texture(s): USD texture bindings are not yet mapped to glTF.`);
+        }
+        if (droppedLightCount > 0) {
+            notes.push(`Dropped ${droppedLightCount} light(s).`);
+        }
+        if (droppedCameraCount > 0) {
+            notes.push(`Dropped ${droppedCameraCount} camera(s).`);
+        }
+        if (droppedSkeletonCount > 0) {
+            notes.push(`Dropped ${droppedSkeletonCount} skeleton(s): skinning is not mapped.`);
+        }
+        if (droppedAnimationCount > 0) {
+            notes.push(`Dropped ${droppedAnimationCount} animation(s).`);
+        }
+        if (droppedInstanceCount > 0) {
+            notes.push(`Dropped ${droppedInstanceCount} point-instancer instance set(s).`);
+        }
 
-    document.getRoot().setExtras({
-        usdImport: {
-            parser: "tinyusdz",
-            sourceFormat: options.sourceFormat,
-            upAxis,
-            metersPerUnit,
-            droppedTextureCount,
-            droppedLightCount,
-            droppedCameraCount,
-            droppedSkeletonCount,
-            droppedAnimationCount,
-            droppedInstanceCount,
-            notes,
-        },
-    });
+        document.getRoot().setExtras({
+            usdImport: {
+                parser: "tinyusdz",
+                sourceFormat: options.sourceFormat,
+                upAxis,
+                metersPerUnit,
+                droppedTextureCount,
+                droppedLightCount,
+                droppedCameraCount,
+                droppedSkeletonCount,
+                droppedAnimationCount,
+                droppedInstanceCount,
+                notes,
+            },
+        });
 
-    return document;
+        return document;
+    } finally {
+        native.delete();
+    }
 }
