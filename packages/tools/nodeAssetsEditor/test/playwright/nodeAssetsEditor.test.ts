@@ -1,5 +1,6 @@
 import { test, expect, type Page, type Download } from "@playwright/test";
 import { readFileSync } from "node:fs";
+import { resolve } from "node:path";
 
 import { CreateBuiltInNodeAssetLibraryEntries } from "../../src/nodeAssets/builtInLibraryEntries";
 import { BuiltInLibraryFixtures } from "../../src/nodeAssets/builtInLibraryFixtures";
@@ -389,7 +390,7 @@ test.describe("Node Assets Editor — maintained default pipeline", () => {
             ["Import Beta", "Merge Scenes"],
             ["Merge Scenes", "Export glTF"],
         ]);
-        await editor.waitForNextSuccessfulPreviewBuild();
+        await editor.waitForSuccessfulPreviewBuild();
         await expect(editor.previewCanvas).toBeVisible();
 
         await editor.selectNode("Export glTF");
@@ -733,7 +734,8 @@ test.describe("Node Assets Editor — Universal glTF aggregates", () => {
             await editor.waitForNextSuccessfulPreviewBuild();
 
             await editor.connectPorts(editor.portOfNode("Import glTF", "out"), editor.portOfNode("Export glTF", "in"));
-            await editor.waitForNextSuccessfulPreviewBuild();
+            await expect(page.locator('[data-testid="graph-wire"][data-from-node-title="Import glTF"][data-to-node-title="Export glTF"]')).toHaveCount(1);
+            await editor.waitForSuccessfulPreviewBuild();
 
             await editor.dropPaletteItem("Quantize Attributes", { x: 0.45, y: 0.35 });
             await editor.connectPorts(editor.portOfNode("Import glTF", "out"), editor.portOfNode("Quantize Attributes", "in"));
@@ -766,6 +768,12 @@ test.describe("Node Assets Editor — Universal glTF aggregates", () => {
             ]) {
                 await expect(page.locator(`[data-testid="graph-wire"][data-from-node-title="${from}"][data-to-node-title="${to}"]`)).toHaveCount(1);
             }
+
+            await editor.selectNode("Export glTF");
+            const downloadPromise = page.waitForEvent("download");
+            await page.getByRole("button", { name: "Export .glb" }).click();
+            const gltf = parseGlbJson(await readDownloadedGlb(await downloadPromise));
+            expect(gltf.extensionsUsed).toContain("KHR_mesh_quantization");
         });
     });
 
@@ -1022,6 +1030,11 @@ test.describe("Node Assets Editor — Universal glTF aggregates", () => {
         await editor.waitForNextSuccessfulPreviewBuild();
 
         await editor.connectPorts(editor.portOfNode("Import glTF", "out"), editor.portOfNode("Export glTF", "in"));
+        for (const title of ["Weld Vertices", "Remove Unused Resources"]) {
+            await editor.selectNode(title);
+            await page.keyboard.press("Delete");
+            await expect(editor.nodeByTitle(title)).toHaveCount(0);
+        }
         await editor.dropPaletteItem("Weld Vertices", { x: 0.28, y: 0.2 });
         await editor.dropPaletteItem("Remove Unused Resources", { x: 0.43, y: 0.35 });
         await editor.dropPaletteItem("Remove Degenerate Geometry", { x: 0.58, y: 0.5 });

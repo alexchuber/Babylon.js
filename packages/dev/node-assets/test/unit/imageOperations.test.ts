@@ -15,8 +15,8 @@ import { NodeAsset } from "../../src/nodeAsset";
 // Stubbing that single seam lets the ops build here so the wiring, the operation each op delegates,
 // and the output metadata (dimensions / mime type) can be asserted without a browser. The stub
 // echoes the requested operation into the produced payload — exactly the contract the real helper
-// fulfills — so pixel-level correctness (mirroring, valid re-encode) is left to the editor Playwright
-// seam while the metadata split asserted here runs headless.
+// fulfills — so this load-only compatibility coverage can assert runtime delegation and metadata
+// without restoring the retired image lane to the editor product surface.
 const { processImageMock } = vi.hoisted(() => ({ processImageMock: vi.fn() }));
 vi.mock("../../src/Blocks/imageCanvas", () => ({ ProcessImageAsync: processImageMock }));
 

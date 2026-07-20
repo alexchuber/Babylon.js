@@ -23,8 +23,8 @@ vi.mock("draco3dgltf", async () => await vi.importActual("draco3dgltf"));
 // `createImageBitmap`/`OffscreenCanvas` path is unavailable in this headless (Node) environment.
 // Stubbing that single seam lets the round-trip build here: the stub swaps in distinctive "resized"
 // bytes and echoes the requested dimensions — exactly the shape the real decode -> redraw -> encode
-// helper returns — so the swap-through and diamond isolation can be asserted without a browser, while
-// pixel-level correctness is left to the editor Playwright seam per slice 04.
+// helper returns — so this load-only compatibility coverage can assert swap-through and diamond
+// isolation without restoring the retired image lane to the editor product surface.
 const { processImageMock } = vi.hoisted(() => ({ processImageMock: vi.fn() }));
 vi.mock("../../src/Blocks/imageCanvas", () => ({ ProcessImageAsync: processImageMock }));
 
