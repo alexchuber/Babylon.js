@@ -215,4 +215,55 @@ describe("DracoCompressionBlock", () => {
 
         await expect(block._buildBlockAsync()).rejects.toThrow(/exactly one scene.*choose Mesh or Custom bounds/i);
     });
+
+    it("rejects a non-indexed primitive before enabling Draco compression, instead of silently exporting it uncompressed", async () => {
+        // gltf-transform's own KHRDracoMeshCompression writer only `logger.warn`s and skips
+        // non-indexed / non-TRIANGLES primitives (and omits the extension entirely if nothing
+        // compressed), so without this block validating up front, the build would "succeed" while
+        // silently doing nothing.
+        const { Document } = await import("@gltf-transform/core");
+        const document = new Document();
+        const buffer = document.createBuffer();
+        const position = document
+            .createAccessor()
+            .setType("VEC3")
+            .setArray(new Float32Array([0, 0, 0, 1, 0, 0, 0, 1, 0]))
+            .setBuffer(buffer);
+        const primitive = document.createPrimitive().setAttribute("POSITION", position); // No indices set.
+        const mesh = document.createMesh("points").addPrimitive(primitive);
+        const node = document.createNode("node0").setMesh(mesh);
+        document.createScene("scene0").addChild(node);
+
+        const block = new DracoCompressionBlock("draco", new NodeAsset("non-indexed"));
+        block.input.value = CreateTestGltfAsset(document);
+
+        await expect(block._buildBlockAsync()).rejects.toThrow(/indexed.*TRIANGLES/i);
+        expect(block.output.value).toBeNull();
+    });
+
+    it("rejects a non-TRIANGLES primitive before enabling Draco compression", async () => {
+        const { Document, Primitive } = await import("@gltf-transform/core");
+        const document = new Document();
+        const buffer = document.createBuffer();
+        const position = document
+            .createAccessor()
+            .setType("VEC3")
+            .setArray(new Float32Array([0, 0, 0, 1, 0, 0, 0, 1, 0]))
+            .setBuffer(buffer);
+        const index = document
+            .createAccessor()
+            .setType("SCALAR")
+            .setArray(new Uint16Array([0, 1, 2]))
+            .setBuffer(buffer);
+        const primitive = document.createPrimitive().setAttribute("POSITION", position).setIndices(index).setMode(Primitive.Mode.LINE_STRIP);
+        const mesh = document.createMesh("lines").addPrimitive(primitive);
+        const node = document.createNode("node0").setMesh(mesh);
+        document.createScene("scene0").addChild(node);
+
+        const block = new DracoCompressionBlock("draco", new NodeAsset("non-triangles"));
+        block.input.value = CreateTestGltfAsset(document);
+
+        await expect(block._buildBlockAsync()).rejects.toThrow(/indexed.*TRIANGLES/i);
+        expect(block.output.value).toBeNull();
+    });
 });

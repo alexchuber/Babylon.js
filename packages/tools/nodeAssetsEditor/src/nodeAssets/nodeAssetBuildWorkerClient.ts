@@ -103,6 +103,62 @@ function CreateErrorFromSerializedError(serializedError: ISerializedNodeAssetBui
     return error;
 }
 
+const Ktx2CompressionBlockClassName = "KTX2CompressionBlock";
+
+/** A serialized graph's shape as far as this client cares: just its block list. */
+interface ISerializedGraphLike {
+    readonly blocks?: ReadonlyArray<ISerializedKtx2BlockLike>;
+}
+
+/**
+ * A serialized block's shape as far as this client cares: identity, optional KTX2 encoder URLs, and
+ * an optional nested aggregate subgraph (see `AggregateBlock.serialize`, which nests an aggregate's
+ * contents under `subgraph` rather than inlining them into the parent graph's `blocks` array).
+ */
+interface ISerializedKtx2BlockLike {
+    readonly customType?: unknown;
+    readonly jsUrl?: unknown;
+    readonly wasmUrl?: unknown;
+    readonly subgraph?: ISerializedGraphLike;
+}
+
+/**
+ * Collects every KTX2 compression block's authored `jsUrl`/`wasmUrl` pair in a serialized graph,
+ * recursing into aggregate blocks' nested `subgraph`s so a KTX2 block hidden inside a Custom
+ * Aggregate is still found.
+ * @param graph - The serialized graph (or nested subgraph) to scan.
+ * @param urls - The signature strings collected so far; appended to in place.
+ */
+function CollectKtx2EncoderResourceUrls(graph: ISerializedGraphLike | null | undefined, urls: string[]): void {
+    const blocks = graph?.blocks;
+    if (!Array.isArray(blocks)) {
+        return;
+    }
+    for (const block of blocks) {
+        if (block?.customType === Ktx2CompressionBlockClassName) {
+            urls.push(`${String(block.jsUrl ?? "")}|${String(block.wasmUrl ?? "")}`);
+        }
+        if (block?.subgraph) {
+            CollectKtx2EncoderResourceUrls(block.subgraph, urls);
+        }
+    }
+}
+
+/**
+ * Computes a signature of every KTX2 compression block's authored `jsUrl`/`wasmUrl` in a serialized
+ * graph (including ones nested inside aggregate subgraphs), so builds can detect when they changed.
+ * `ktx2-encoder`'s Basis WASM module init is memoized at module scope the first time it runs, so a
+ * worker that already initialized it would otherwise keep using the old resource even after the user
+ * points the block at a new URL.
+ * @param graph - The serialized `NodeAsset` graph passed to {@link NodeAssetBuildWorkerClient.buildAsync}.
+ * @returns A string signature; equal signatures mean the same encoder resources would be used.
+ */
+function GetKtx2EncoderResourceSignature(graph: unknown): string {
+    const urls: string[] = [];
+    CollectKtx2EncoderResourceUrls(graph as ISerializedGraphLike | null, urls);
+    return JSON.stringify(urls);
+}
+
 /**
  * Sends serialized `NodeAsset` graphs to a dedicated worker and resolves only the latest build result.
  */
@@ -113,6 +169,7 @@ export class NodeAssetBuildWorkerClient implements INodeAssetBuildClient {
     private _pendingBuild: IPendingBuild | null = null;
     private _generation = 0;
     private _isDisposed = false;
+    private _lastKtx2EncoderResourceSignature: string | null = null;
 
     /**
      * Creates a worker-backed NodeAsset build client.
@@ -132,6 +189,7 @@ export class NodeAssetBuildWorkerClient implements INodeAssetBuildClient {
         }
 
         this._supersedePendingBuild();
+        this._restartWorkerIfKtx2EncoderResourcesChanged(graph);
 
         const generation = ++this._generation;
         const worker = this._worker ?? this._createWorker();
@@ -218,6 +276,19 @@ export class NodeAssetBuildWorkerClient implements INodeAssetBuildClient {
             this._worker = null;
         }
         pendingBuild.reject(new NodeAssetBuildSupersededError());
+    }
+
+    private _restartWorkerIfKtx2EncoderResourcesChanged(graph: unknown): void {
+        const signature = GetKtx2EncoderResourceSignature(graph);
+        if (this._worker && this._lastKtx2EncoderResourceSignature !== null && signature !== this._lastKtx2EncoderResourceSignature) {
+            // The worker's ktx2-encoder module memoizes its Basis WASM init the first time it runs,
+            // so reusing the same worker would silently keep encoding with the old jsUrl/wasmUrl.
+            // Restart the worker (a fresh module instance) so the new build actually uses the newly
+            // authored resource URLs.
+            this._worker.terminate();
+            this._worker = null;
+        }
+        this._lastKtx2EncoderResourceSignature = signature;
     }
 
     private _clearPendingBuild(pendingBuild: IPendingBuild): void {

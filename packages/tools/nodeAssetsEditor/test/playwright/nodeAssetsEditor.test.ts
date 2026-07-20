@@ -369,7 +369,11 @@ test.describe("Node Assets Editor — explicit glTF delivery codecs", () => {
         await page.getByRole("textbox").nth(2).fill("requested-codec-delivery");
         const downloadPromise = page.waitForEvent("download");
         await page.getByRole("button", { name: "Export .glb" }).click();
-        await readDownloadedGlb(await downloadPromise, "requested-codec-delivery.glb");
+        const exported = parseGlbJson(await readDownloadedGlb(await downloadPromise, "requested-codec-delivery.glb"));
+        // orb.glb (the raw fixture read here) is untextured geometry, so KTX2 has nothing to encode;
+        // Draco does have indexed TRIANGLES geometry to compress, so assert its extension actually
+        // landed instead of only checking the download is a well-formed (but arbitrary) GLB.
+        expect(exported.extensionsUsed ?? []).toContain("KHR_draco_mesh_compression");
     });
 });
 

@@ -156,6 +156,100 @@ describe("NodeAssetBuildWorkerClient", () => {
         client.dispose();
     });
 
+    describe("authored KTX2 encoder resource URLs", () => {
+        function GraphWithKtx2Urls(jsUrl: string | null, wasmUrl: string | null): { name: string; blocks: unknown[]; connections: unknown[] } {
+            return {
+                name: "nodeAsset",
+                blocks: [{ customType: "KTX2CompressionBlock", id: 1, name: "ktx2", jsUrl, wasmUrl }],
+                connections: [],
+            };
+        }
+
+        it("reuses the worker across builds when authored KTX2 jsUrl/wasmUrl are unchanged", async () => {
+            const { workers, createWorker } = CreateWorkerFactory();
+            const client = new NodeAssetBuildWorkerClient(createWorker);
+
+            const firstBuild = client.buildAsync(GraphWithKtx2Urls("/encoder.js", "/encoder.wasm"));
+            workers[0].sendResponse({ type: "success", generation: 1, bytes: new Uint8Array([1]).buffer });
+            await expect(firstBuild).resolves.toEqual(new Uint8Array([1]));
+
+            const secondBuild = client.buildAsync(GraphWithKtx2Urls("/encoder.js", "/encoder.wasm"));
+            expect(workers).toHaveLength(1);
+            expect(workers[0].terminated).toBe(false);
+            workers[0].sendResponse({ type: "success", generation: 2, bytes: new Uint8Array([2]).buffer });
+            await expect(secondBuild).resolves.toEqual(new Uint8Array([2]));
+
+            client.dispose();
+        });
+
+        it("restarts the worker when authored KTX2 jsUrl/wasmUrl change between builds", async () => {
+            // ktx2-encoder's browser Basis module init is memoized at the module scope the first
+            // time it runs (`let promise = null` in BrowserBasisEncoder), so reusing the same worker
+            // after the user changes jsUrl/wasmUrl would silently keep using the old resource forever.
+            // A successful preview followed by pointing the URL at a missing resource must actually
+            // attempt the new URL (and fail), not silently reuse the old cached encoder.
+            const { workers, createWorker } = CreateWorkerFactory();
+            const client = new NodeAssetBuildWorkerClient(createWorker);
+
+            const firstBuild = client.buildAsync(GraphWithKtx2Urls("/encoder.js", "/encoder.wasm"));
+            workers[0].sendResponse({ type: "success", generation: 1, bytes: new Uint8Array([1]).buffer });
+            await expect(firstBuild).resolves.toEqual(new Uint8Array([1]));
+
+            const secondBuild = client.buildAsync(GraphWithKtx2Urls("/missing-encoder.js", "/missing-encoder.wasm")).catch((error: unknown) => error);
+
+            expect(workers).toHaveLength(2);
+            expect(workers[0].terminated).toBe(true);
+            expect(workers[1].postedRequests).toEqual([{ type: "build", generation: 2, graph: GraphWithKtx2Urls("/missing-encoder.js", "/missing-encoder.wasm") }]);
+
+            workers[1].sendResponse({ type: "error", generation: 2, error: { name: "Error", message: "Failed to fetch the Basis encoder resource." } });
+            await expect(secondBuild).resolves.toBeInstanceOf(Error);
+
+            client.dispose();
+        });
+
+        it("restarts the worker when a KTX2 block nested inside an aggregate's subgraph changes URLs", async () => {
+            // Aggregate blocks (e.g. a user-detached Custom Aggregate) nest their contents under a
+            // `subgraph` property rather than the parent graph's top-level `blocks` array, so the
+            // signature must recurse into it or a KTX2 block hidden inside an aggregate would never
+            // trigger a worker restart.
+            function GraphWithNestedKtx2Urls(jsUrl: string, wasmUrl: string): { name: string; blocks: unknown[]; connections: unknown[] } {
+                return {
+                    name: "nodeAsset",
+                    blocks: [
+                        {
+                            customType: "CustomAggregateBlock",
+                            id: 1,
+                            name: "aggregate",
+                            subgraph: {
+                                name: "aggregate subgraph",
+                                blocks: [{ customType: "KTX2CompressionBlock", id: 2, name: "ktx2", jsUrl, wasmUrl }],
+                                connections: [],
+                            },
+                        },
+                    ],
+                    connections: [],
+                };
+            }
+
+            const { workers, createWorker } = CreateWorkerFactory();
+            const client = new NodeAssetBuildWorkerClient(createWorker);
+
+            const firstBuild = client.buildAsync(GraphWithNestedKtx2Urls("/encoder.js", "/encoder.wasm"));
+            workers[0].sendResponse({ type: "success", generation: 1, bytes: new Uint8Array([1]).buffer });
+            await expect(firstBuild).resolves.toEqual(new Uint8Array([1]));
+
+            const secondBuild = client.buildAsync(GraphWithNestedKtx2Urls("/missing-encoder.js", "/missing-encoder.wasm")).catch((error: unknown) => error);
+
+            expect(workers).toHaveLength(2);
+            expect(workers[0].terminated).toBe(true);
+
+            workers[1].sendResponse({ type: "error", generation: 2, error: { name: "Error", message: "Failed to fetch the Basis encoder resource." } });
+            await expect(secondBuild).resolves.toBeInstanceOf(Error);
+
+            client.dispose();
+        });
+    });
+
     describe("build watchdog timeout", () => {
         beforeEach(() => vi.useFakeTimers());
         afterEach(() => vi.useRealTimers());

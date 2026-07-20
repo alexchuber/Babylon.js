@@ -1,4 +1,5 @@
 import { type KTX2Options } from "ktx2-encoder/gltf-transform";
+import { type Document, type Texture } from "@gltf-transform/core";
 
 import { RegisterBlock } from "../blockFoundation/blockRegistry";
 import { NodeAssetBlock } from "../blockFoundation/nodeAssetBlock";
@@ -15,6 +16,86 @@ import {
     type NodeAssetBlockSerialization,
 } from "../serialization/nodeAssetSerialization";
 import { GetGltfAsset } from "../representations/gltfAsset";
+
+/** Source mime types the Basis encoder accepts; mirrors `ktx2-encoder`'s own filter. */
+const Ktx2SupportedSourceMimeTypes: readonly string[] = ["image/jpeg", "image/png", "image/webp"];
+
+/**
+ * The standard glTF core material texture slot edge names the `colorTextureSlots` /
+ * `dataTextureSlots` filters are designed to select between (base color / emissive as color,
+ * normal / metallic-roughness / occlusion as data). Used to detect filter patterns that would
+ * match the same slot for both codecs.
+ */
+const KnownTextureSlotEdgeNames: readonly string[] = ["baseColorTexture", "emissiveTexture", "normalTexture", "metallicRoughnessTexture", "occlusionTexture"];
+
+/**
+ * Lists the known texture slots matched by both the color and data slot filters.
+ * @param colorSlotsRe - The color slot filter.
+ * @param dataSlotsRe - The data slot filter.
+ * @returns The overlapping slot names; an empty list means the filters do not conflict.
+ */
+function GetOverlappingTextureSlots(colorSlotsRe: RegExp, dataSlotsRe: RegExp): string[] {
+    return KnownTextureSlotEdgeNames.filter((slot) => colorSlotsRe.test(slot) && dataSlotsRe.test(slot));
+}
+
+/**
+ * Lists the named material/extension slots a texture is attached to (e.g. `baseColorTexture`,
+ * `normalTexture`), mirroring the slot resolution `ktx2-encoder`'s gltf-transform integration
+ * uses to filter textures by the block's `colorTextureSlots` / `dataTextureSlots` patterns.
+ * @param document - The document the texture belongs to.
+ * @param texture - The texture to inspect.
+ * @returns The distinct parent edge names.
+ */
+function ListTextureSlotNames(document: Document, texture: Texture): string[] {
+    const root = document.getRoot();
+    const slots = texture
+        .getGraph()
+        .listParentEdges(texture)
+        .filter((edge) => edge.getParent() !== root)
+        .map((edge) => edge.getName());
+    return Array.from(new Set(slots));
+}
+
+/**
+ * Determines whether `ktx2-encoder` would attempt to encode this texture under the given pattern
+ * and slot filters, replicating its own eligibility checks (mime type, pattern, slots) so a
+ * texture that qualifies but does not end up KTX2-encoded can be treated as a genuine failure
+ * rather than an intentional skip.
+ * @param document - The document the texture belongs to.
+ * @param texture - The texture to check.
+ * @param patternRe - The optional texture name/URI pattern filter.
+ * @param slotsRe - The color or data slot filter.
+ * @returns Whether the texture is eligible for encoding under these filters.
+ */
+function IsEligibleForKtx2Encode(document: Document, texture: Texture, patternRe: RegExp | null, slotsRe: RegExp): boolean {
+    if (texture.getMimeType() === "image/ktx2") {
+        return false;
+    }
+    if (!Ktx2SupportedSourceMimeTypes.includes(texture.getMimeType())) {
+        return false;
+    }
+    if (!texture.getImage()) {
+        return false;
+    }
+    if (patternRe && !patternRe.test(texture.getName()) && !patternRe.test(texture.getURI())) {
+        return false;
+    }
+    const slots = ListTextureSlotNames(document, texture);
+    if (slots.length > 0 && !slots.some((slot) => slotsRe.test(slot))) {
+        return false;
+    }
+    return true;
+}
+
+/**
+ * Labels a texture for diagnostics, preferring its URI, then its name, then its position.
+ * @param texture - The texture to label.
+ * @param textures - All textures in the document, used to compute a positional fallback.
+ * @returns A human-readable texture label.
+ */
+function GetTextureLabel(texture: Texture, textures: readonly Texture[]): string {
+    return texture.getURI() || texture.getName() || `texture ${textures.indexOf(texture) + 1}/${textures.length}`;
+}
 
 /** The texture payload container emitted by the Basis encoder. */
 // eslint-disable-next-line @typescript-eslint/naming-convention
@@ -191,12 +272,26 @@ export class KTX2CompressionBlock extends NodeAssetBlock {
             throw new Error(`The "${this.name}" KTX2 block has no input document to compress.`);
         }
         const asset = GetGltfAsset(this.input.value, this.input.name);
-        const compatibilityIssues = this.getCompatibilityIssues();
+        const compatibilityIssues = this.getCompatibilityIssues(asset.document);
         if (compatibilityIssues.length > 0) {
             throw new Error(`The "${this.name}" KTX2 options are incompatible: ${compatibilityIssues.join(" ")}`);
         }
 
         const { ktx2 } = await import("ktx2-encoder/gltf-transform");
+
+        const patternRe = this.texturePattern === null ? null : new RegExp(this.texturePattern);
+        const colorSlotsRe = new RegExp(this.colorTextureSlots, "i");
+        const dataSlotsRe = new RegExp(this.dataTextureSlots, "i");
+
+        // ktx2-encoder catches per-texture encode failures internally and only logs a warning
+        // (see its gltf-transform integration), so a failing encode never rejects `transform` and
+        // would otherwise look like a successful build that quietly left some textures unconverted.
+        // Snapshot which textures the encoder is expected to touch before running it, so any of them
+        // still not KTX2 afterward can be reported as an actionable build failure.
+        const textures = asset.document.getRoot().listTextures();
+        const eligibleTextures = textures.filter(
+            (texture) => IsEligibleForKtx2Encode(asset.document, texture, patternRe, colorSlotsRe) || IsEligibleForKtx2Encode(asset.document, texture, patternRe, dataSlotsRe)
+        );
 
         // The encoder's option names (isUASTC, isKTX2File, ...) are external API and do not follow
         // the repo's camelCase convention, hence the scoped disable.
@@ -204,7 +299,7 @@ export class KTX2CompressionBlock extends NodeAssetBlock {
         const baseOptions: Partial<KTX2Options> = {
             isKTX2File: this.outputContainer === "ktx2",
             generateMipmap: this.generateMipmaps,
-            pattern: this.texturePattern === null ? null : new RegExp(this.texturePattern),
+            pattern: patternRe,
             isYFlip: this.flipY,
             kvData: Object.keys(this.metadata).length === 0 ? undefined : this.metadata,
             enableDebug: this.enableDebug,
@@ -222,7 +317,7 @@ export class KTX2CompressionBlock extends NodeAssetBlock {
             compressionLevel: this.etc1sCompressionLevel,
             isPerceptual: this.colorPerceptual,
             isSetKTX2SRGBTransferFunc: this.colorSRGBTransferFunction,
-            slots: new RegExp(this.colorTextureSlots, "i"),
+            slots: colorSlotsRe,
         });
 
         // UASTC for non-color (linear) data textures. Color textures are already KTX2 by now and
@@ -238,20 +333,32 @@ export class KTX2CompressionBlock extends NodeAssetBlock {
             isNormalMap: this.normalMapTuning,
             isPerceptual: this.dataPerceptual,
             isSetKTX2SRGBTransferFunc: this.dataSRGBTransferFunction,
-            slots: new RegExp(this.dataTextureSlots, "i"),
+            slots: dataSlotsRe,
         });
         /* eslint-enable @typescript-eslint/naming-convention */
 
         await asset.document.transform(compressColor, compressData);
+
+        const failedTextures = eligibleTextures.filter((texture) => texture.getMimeType() !== "image/ktx2");
+        if (failedTextures.length > 0) {
+            const labels = failedTextures.map((texture) => GetTextureLabel(texture, textures));
+            throw new Error(
+                `The "${this.name}" KTX2 block failed to encode ${failedTextures.length} eligible texture(s) to KTX2: ${labels.join(", ")}. Check the console for the encoder's underlying error.`
+            );
+        }
 
         this.output.value = asset;
     }
 
     /**
      * Lists option combinations that the glTF KTX2 delivery adapter cannot encode safely.
+     * @param document - The optional document to validate texture slot overlap against. Without it,
+     * overlap is only checked against the known core PBR slot names (used for editor display before
+     * a document is available); with it, every texture's actual slots are checked, which also catches
+     * extension texture slots and a texture shared between a color and a data slot.
      * @returns Actionable compatibility issues; an empty list means the current options are supported.
      */
-    public getCompatibilityIssues(): readonly string[] {
+    public getCompatibilityIssues(document?: Document): readonly string[] {
         const issues: string[] = [];
         if (this.outputContainer !== "ktx2") {
             issues.push("glTF KHR_texture_basisu requires the KTX2 output container; choose KTX2.");
@@ -264,6 +371,31 @@ export class KTX2CompressionBlock extends NodeAssetBlock {
         }
         if (this.normalMapTuning && this.dataSRGBTransferFunction) {
             issues.push("Normal map tuning requires the Data sRGB transfer function to be disabled.");
+        }
+        try {
+            const colorSlotsRe = new RegExp(this.colorTextureSlots, "i");
+            const dataSlotsRe = new RegExp(this.dataTextureSlots, "i");
+            if (document) {
+                const patternRe = this.texturePattern === null ? null : new RegExp(this.texturePattern);
+                const textures = document.getRoot().listTextures();
+                const overlappingTextures = textures.filter(
+                    (texture) => IsEligibleForKtx2Encode(document, texture, patternRe, colorSlotsRe) && IsEligibleForKtx2Encode(document, texture, patternRe, dataSlotsRe)
+                );
+                if (overlappingTextures.length > 0) {
+                    const labels = overlappingTextures.map((texture) => GetTextureLabel(texture, textures));
+                    issues.push(`Color and data texture slot filters both match ${labels.join(", ")}; use non-overlapping patterns so a texture is only encoded by one codec.`);
+                }
+            } else {
+                const overlappingSlots = GetOverlappingTextureSlots(colorSlotsRe, dataSlotsRe);
+                if (overlappingSlots.length > 0) {
+                    issues.push(
+                        `Color and data texture slot filters both match ${overlappingSlots.join(", ")}; use non-overlapping patterns so a texture is only encoded by one codec.`
+                    );
+                }
+            }
+        } catch {
+            // An invalid pattern already fails loudly with a SyntaxError when the encode runs
+            // (`new RegExp(...)` in `_buildBlockAsync`); skip the overlap check rather than mask it.
         }
         return issues;
     }

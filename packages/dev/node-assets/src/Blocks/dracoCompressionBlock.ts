@@ -1,4 +1,4 @@
-import { type bbox, type Document } from "@gltf-transform/core";
+import { Primitive, type bbox, type Document } from "@gltf-transform/core";
 
 import { type Nullable } from "core/types";
 
@@ -41,6 +41,26 @@ function ValidateQuantizationBits(quantizationBits: Nullable<Record<string, numb
     if (quantizationBits && !Object.values(quantizationBits).every((value) => Number.isInteger(value) && value >= 1 && value <= 30)) {
         throw new TypeError('Invalid serialized block property "quantizationBits".');
     }
+}
+
+/**
+ * Counts primitives `KHR_draco_mesh_compression` cannot compress: only indexed, mode=TRIANGLES
+ * primitives are supported. gltf-transform's own writer silently skips these (a `logger.warn`
+ * and nothing else), and omits the extension entirely if nothing ends up compressed, so an
+ * uncaught mismatch here would otherwise look like a successful, silently-uncompressed export.
+ * @param document - The document to inspect.
+ * @returns The number of primitives that are non-indexed or not mode=TRIANGLES.
+ */
+function CountDracoIncompatiblePrimitives(document: Document): number {
+    let count = 0;
+    for (const mesh of document.getRoot().listMeshes()) {
+        for (const primitive of mesh.listPrimitives()) {
+            if (!primitive.getIndices() || primitive.getMode() !== Primitive.Mode.TRIANGLES) {
+                count++;
+            }
+        }
+    }
+    return count;
 }
 
 /**
@@ -134,6 +154,15 @@ export class DracoCompressionBlock extends NodeAssetBlock {
         }
         if (this.quantizationVolume === "scene" && document && document.getRoot().listScenes().length !== 1) {
             issues.push("Scene quantization requires exactly one scene; choose Mesh or Custom bounds.");
+        }
+        if (document) {
+            const incompatiblePrimitiveCount = CountDracoIncompatiblePrimitives(document);
+            if (incompatiblePrimitiveCount > 0) {
+                const plural = incompatiblePrimitiveCount === 1 ? "primitive is" : "primitives are";
+                issues.push(
+                    `Draco requires indexed, TRIANGLES-mode primitives; ${incompatiblePrimitiveCount} ${plural} non-indexed or use a different mode. Convert them to indexed triangle lists before compressing.`
+                );
+            }
         }
         return issues;
     }
