@@ -148,6 +148,30 @@ export function GetSerializedStringUnion<T extends string>(serializationObject: 
 }
 
 /**
+ * Reads an optional array whose entries belong to a string union.
+ * @param serializationObject The serialized block.
+ * @param property The property to read.
+ * @param allowedValues The accepted string values.
+ * @param defaultValue The value used when the property is absent.
+ * @returns The validated string array.
+ */
+export function GetSerializedStringUnionArray<T extends string>(
+    serializationObject: NodeAssetBlockSerialization,
+    property: string,
+    allowedValues: readonly T[],
+    defaultValue: readonly T[]
+): T[] {
+    const value = serializationObject[property];
+    if (value === undefined) {
+        return [...defaultValue];
+    }
+    if (!Array.isArray(value) || !value.every((entry) => typeof entry === "string" && allowedValues.includes(entry as T))) {
+        throw InvalidBlockProperty(property);
+    }
+    return [...new Set(value as T[])];
+}
+
+/**
  * Reads a fixed-length numeric tuple, rejecting malformed arrays.
  * @param serializationObject The serialized block.
  * @param property The property to read.

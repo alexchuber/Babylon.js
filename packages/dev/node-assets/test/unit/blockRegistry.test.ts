@@ -39,6 +39,9 @@ import {
     MergeScenes,
     NodeAsset,
     NormalsBlock,
+    RecomputeNormalsBlock,
+    GenerateTangentsBlock,
+    StripAttributesBlock,
     NumberLiteral,
     PruneBlock,
     QuantizeBlock,
@@ -178,6 +181,9 @@ describe("block self-registration", () => {
                     FlattenBlock.ClassName,
                     JoinBlock.ClassName,
                     NormalsBlock.ClassName,
+                    RecomputeNormalsBlock.ClassName,
+                    GenerateTangentsBlock.ClassName,
+                    StripAttributesBlock.ClassName,
                     CenterBlock.ClassName,
                     NumberLiteral.ClassName,
                     StringLiteral.ClassName,
@@ -218,7 +224,7 @@ describe("block self-registration", () => {
                     ExportGLTFAggregateBlock.ClassName,
                 ])
             );
-            expect(registeredClassNames).toHaveLength(52);
+            expect(registeredClassNames).toHaveLength(55);
         });
 
         it.each(registeredClassNames)("round-trips %s through serialize/Parse", (className) => {

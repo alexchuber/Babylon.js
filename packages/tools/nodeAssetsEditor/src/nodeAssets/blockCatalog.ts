@@ -38,6 +38,10 @@ export const JsonPortColor = "#b163c9";
 export const OperatorCategory = "Operators";
 export const OperatorHeaderColor = "#2f8f83";
 
+/** Palette family and shared node header color for Universal attribute operators. */
+export const UniversalAttributesCategory = "Universal / Attributes";
+export const UniversalAttributesHeaderColor = "#2f8f83";
+
 /** Palette category and shared node header color for the value-literal source block family. */
 export const ValuesCategory = "Values";
 export const ValuesHeaderColor = "#5a5fb0";
