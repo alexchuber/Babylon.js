@@ -8,6 +8,7 @@ import {
     BabylonSelectorBlock,
     BuildPBRMaterial,
     CenterBlock,
+    CenterSceneBlock,
     ComposeGLTFMaterialBlock,
     CompositeImageBlock,
     ConvertImageFormatBlock,
@@ -43,12 +44,14 @@ import {
     PruneBlock,
     QuantizeBlock,
     ResizeImageBlock,
+    ResizeTexturesBlock,
     Selector,
     SetBabylonPropertyBlock,
     SetProperty,
     SetTexture,
     SimplifyBlock,
     StringLiteral,
+    TransformSceneBlock,
     UniversalToGLTFBlock,
     USD2BabylonBlock,
     USD2GLTFBlock,
@@ -179,6 +182,9 @@ describe("block self-registration", () => {
                     JoinBlock.ClassName,
                     NormalsBlock.ClassName,
                     CenterBlock.ClassName,
+                    TransformSceneBlock.ClassName,
+                    CenterSceneBlock.ClassName,
+                    ResizeTexturesBlock.ClassName,
                     NumberLiteral.ClassName,
                     StringLiteral.ClassName,
                     JsonLiteral.ClassName,
@@ -218,7 +224,7 @@ describe("block self-registration", () => {
                     ExportGLTFAggregateBlock.ClassName,
                 ])
             );
-            expect(registeredClassNames).toHaveLength(52);
+            expect(registeredClassNames).toHaveLength(55);
         });
 
         it.each(registeredClassNames)("round-trips %s through serialize/Parse", (className) => {

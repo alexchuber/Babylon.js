@@ -390,6 +390,59 @@ test.describe("Node Assets Editor — Universal glTF aggregates", () => {
         await expect(page.getByRole("textbox").nth(3)).toHaveValue("scenes/nodeAssets/orb.glb");
         await expect(page.getByRole("textbox").nth(4)).toHaveValue(/404/);
     });
+
+    test("edits ordered Transform Scene, Center Scene, and Resize Textures decisions and exports the preview", async ({ page }) => {
+        const editor = new NodeAssetsEditorPage(page);
+        await editor.goto();
+        await editor.waitForNextSuccessfulPreviewBuild();
+
+        await editor.dropPaletteItem("Transform Scene", { x: 0.25, y: 0.75 });
+        await editor.dropPaletteItem("Center Scene", { x: 0.5, y: 0.75 });
+        await editor.dropPaletteItem("Resize Textures", { x: 0.75, y: 0.75 });
+        await editor.connectPorts(editor.portOfNode("Import glTF", "out"), editor.portOfNode("Transform Scene", "in"));
+        await editor.connectPorts(editor.portOfNode("Transform Scene", "out"), editor.portOfNode("Center Scene", "in"));
+        await editor.connectPorts(editor.portOfNode("Center Scene", "out"), editor.portOfNode("Resize Textures", "in"));
+        await editor.connectPorts(editor.portOfNode("Resize Textures", "out"), editor.portOfNode("Export glTF", "in"));
+        for (const [from, to] of [
+            ["Import glTF", "Transform Scene"],
+            ["Transform Scene", "Center Scene"],
+            ["Center Scene", "Resize Textures"],
+            ["Resize Textures", "Export glTF"],
+        ] as const) {
+            await expect(page.locator(`[data-testid="graph-wire"][data-from-node-title="${from}"][data-to-node-title="${to}"]`)).toHaveCount(1);
+        }
+
+        await editor.selectNode("Transform Scene");
+        await page.getByRole("combobox").first().click();
+        await page.getByRole("option", { name: "centimeters", exact: true }).click();
+        await page.getByRole("combobox").nth(1).click();
+        await page.getByRole("option", { name: "Z", exact: true }).click();
+
+        await editor.selectNode("Center Scene");
+        await page.getByRole("combobox").click();
+        await page.getByRole("option", { name: "custom-point", exact: true }).click();
+        await page.getByRole("button", { name: "Expand/Collapse property" }).click();
+        await page.getByRole("textbox").nth(2).fill("1");
+        await page.getByRole("textbox").nth(3).fill("2");
+        await page.getByRole("textbox").nth(4).fill("3");
+        await page.getByRole("textbox").nth(4).press("Enter");
+
+        await editor.selectNode("Resize Textures");
+        await page.getByRole("textbox").nth(2).fill("256");
+        await page.getByRole("textbox").nth(2).press("Enter");
+        await page.getByRole("textbox").nth(3).fill("256");
+        await page.getByRole("textbox").nth(3).press("Enter");
+        await page.getByRole("combobox").click();
+        await page.getByRole("option", { name: "smooth", exact: true }).click();
+
+        await editor.waitForSuccessfulPreviewBuild();
+        await expect(editor.previewCanvas).toBeVisible();
+
+        await editor.selectNode("Export glTF");
+        const downloadPromise = page.waitForEvent("download");
+        await page.getByRole("button", { name: "Export .glb" }).click();
+        await readDownloadedGlb(await downloadPromise);
+    });
 });
 
 test.describe("Node Assets Editor — Library", () => {
