@@ -1,49 +1,44 @@
 # Context Map
 
-Per-package domain glossaries for this repo, and how they relate. See `docs/agents/domain.md` for how
-the engineering skills consume this map. Each `CONTEXT.md` is a pure glossary in the format defined by
-`.agents/skills/domain-modeling/CONTEXT-FORMAT.md`. Contexts are added here as they are written; most
-packages do not (yet) have one.
+Per-package glossaries for the NodeAssets runtime and Node Assets Editor. Each `CONTEXT.md` is a pure
+glossary using the format in `.agents/skills/domain-modeling/CONTEXT-FORMAT.md`.
 
 ## Contexts
 
-- [NodeAssets (runtime)](./packages/dev/node-assets/CONTEXT.md) — the `@babylonjs/node-assets` node
-  graph and blocks that build a Babylon-ready asset. Milestone 01 does glTF in/out with Draco + KTX2;
-  milestones 02–06 add the (now-retired) SCENE spine, more source formats, scalar payloads, the generic
-  selector, an image lane, and scene composition. Milestone 07 replaces the single spine with three
-  first-class 3D representations (glTF / USD / Babylon) connected by explicit transcoders.
-- [Node Assets Editor](./packages/tools/nodeAssetsEditor/CONTEXT.md) — the Fluent tool that visually
-  authors and previews those graphs.
+- [NodeAssets (runtime)](./packages/dev/node-assets/CONTEXT.md) - the typed asset-processing graph that
+  funnels supported source payloads into Universal, applies reusable optimization, and produces GLB.
+- [Node Assets Editor](./packages/tools/nodeAssetsEditor/CONTEXT.md) - the visual authoring tool for
+  NodeAssets graphs, including aggregates, palette discovery, properties, preview, and the pipeline
+  library.
 
 ## Relationships
 
-- **Node Assets Editor → NodeAssets (runtime)**: the editor authors and previews what the runtime
-  builds. Its `NodeAssetGraphController` adapter owns a live `NodeAsset` (the runtime graph) and mirrors
-  it into the editor's visual `GraphEditorState`; the reusable node-graph framework underneath stays
-  free of runtime and gltf-transform types so it can later be promoted into a shared node editor.
-- **Vocabulary split (same concept, different word per side)**: the runtime's **block / connection
-  point / connection** are rendered by the editor as **node / port / wire**. Keep each word in its own
-  context; each glossary lists the other side under `_Avoid_`.
-- **The three representations, not a single spine** _(milestone 07)_: milestones 01–06 funnelled every
-  3D format through one normalized gltf-transform `Document` (the **SCENE** spine). Milestone 07 retires
-  the spine: a graph carries three first-class representations — **GLTF_DOCUMENT**, **USD_STAGE**,
-  **BABYLON_SCENE** — with no common supertype, and the editor wires each as its own colored port kind.
-  Conversion is an explicit **transcoder** node, never an implicit wire; glTF is the only export
-  terminal. `SCENE` remains only as a deprecated alias for `GLTF_DOCUMENT`.
+- **Node Assets Editor -> NodeAssets**: the editor authors, builds, saves, loads, and previews runtime
+  graphs.
+- **Vocabulary split**: the runtime's block, connection point, and connection are rendered by the editor
+  as node, port, and wire. Keep each word in its own context.
+- **Universal funnel**: glTF, USD, Babylon, and Node Geometry source payloads cross explicit transcoders
+  into Universal. Universal is the content-optimization trunk and exits only to glTF; glTF is the sole
+  delivery lane and GLB is the sole output.
+- **Aggregate presentation**: runtime aggregate blocks are displayed as compact aggregate nodes. The
+  editor can expand them into their primitive subgraphs without changing graph behavior.
 
-## Decisions (ADRs)
+## Current Decision Source
 
-Cross-cutting decisions that shape both contexts live in `docs/adr/`:
+The canonical proof-of-concept product model is
+[PRD 08 - Universal funnel palette](./.scratch/08-universal-funnel-palette/PRD.md). When older milestone
+documents conflict with that model, PRD 08 and these glossaries take precedence.
 
-- `0001` — the SCENE spine is the gltf-transform `Document` (every format funnels through glTF's data
-  model; format lives only at import/export). **Superseded by `0004`.**
-- `0002` — a wire carries a kind plus an opaque value, with a flat enum of kinds (no format/capability
-  abstraction). **Superseded by `0005`.**
-- `0003` — generic property access uses glTF Object Model JSON Pointers (one Selector + GetProperty +
-  SetProperty triad instead of a block per property). **Extended/scoped by `0006`.**
-- `0004` — three first-class 3D representations (glTF / USD / Babylon), no common supertype, glTF is the
-  only export terminal; four explicit named transcoders and no implicit conversion.
-- `0005` — typed representation payloads (`GltfAsset` / `UsdAsset` / `BabylonAsset`) with a build-owned
-  lifecycle (cancellation, limits, disposal ledger, transferables, `LossRecord`, affine Babylon fan-out).
-- `0006` — selections are domain-owned and versioned (owner / version / target kind / cardinality /
-  addresses); mutators remap or invalidate them; USD edits are immutable overlays.
+## Earlier ADRs
+
+- `0001` defined the retired SCENE spine. The current model uses the distinct public term Universal and
+  preserves explicit source and target format types.
+- `0002` established typed wire payloads. Its flat-kind principle remains compatible with the current
+  model.
+- `0003` defined selector-based property access. Selectors and values are outside the current product
+  surface.
+- `0004` defined three independently operable representations and pairwise transcoders. That direction
+  is superseded for the proof of concept by the Universal funnel.
+- `0005` established build-owned lifecycle behavior. That behavior remains, but its old
+  representation-specific product promises are not part of the current palette.
+- `0006` defined domain-owned selections. Selections are outside the current product surface.
