@@ -111,6 +111,157 @@ def Xform "World"
 }
 `;
 
+const EmptyMeshUsda = `#usda 1.0
+def Xform "World"
+{
+    def Mesh "Empty"
+    {
+        int[] faceVertexCounts = []
+        int[] faceVertexIndices = []
+        point3f[] points = []
+    }
+    def Mesh "Tri"
+    {
+        int[] faceVertexCounts = [3]
+        int[] faceVertexIndices = [0, 1, 2]
+        point3f[] points = [(0, 0, 0), (1, 0, 0), (0, 1, 0)]
+    }
+}
+`;
+
+const GeomSubsetMaterialsUsda = `#usda 1.0
+(
+    defaultPrim = "World"
+    upAxis = "Y"
+    metersPerUnit = 1
+)
+
+def Xform "World"
+{
+    def Mesh "TwoFaces"
+    {
+        int[] faceVertexCounts = [3, 3]
+        int[] faceVertexIndices = [0, 1, 2, 0, 2, 3]
+        point3f[] points = [(0, 0, 0), (1, 0, 0), (1, 1, 0), (0, 1, 0)]
+
+        def GeomSubset "RedFaces"
+        {
+            uniform token elementType = "face"
+            uniform token familyName = "materialBind"
+            int[] indices = [0]
+            rel material:binding = </World/RedMat>
+        }
+
+        def GeomSubset "BlueFaces"
+        {
+            uniform token elementType = "face"
+            uniform token familyName = "materialBind"
+            int[] indices = [1]
+            rel material:binding = </World/BlueMat>
+        }
+    }
+
+    def Material "RedMat"
+    {
+        token outputs:surface.connect = </World/RedMat/Shader.outputs:surface>
+        def Shader "Shader"
+        {
+            uniform token info:id = "UsdPreviewSurface"
+            color3f inputs:diffuseColor = (1, 0, 0)
+            token outputs:surface
+        }
+    }
+
+    def Material "BlueMat"
+    {
+        token outputs:surface.connect = </World/BlueMat/Shader.outputs:surface>
+        def Shader "Shader"
+        {
+            uniform token info:id = "UsdPreviewSurface"
+            color3f inputs:diffuseColor = (0, 0, 1)
+            token outputs:surface
+        }
+    }
+}
+`;
+
+function CreateGeomSubsetFallbackUsda(useTopLevelMaterial: boolean): string {
+    return `#usda 1.0
+def Xform "World"
+{
+    def Mesh "TwoFaces"
+    {
+        int[] faceVertexCounts = [3, 3]
+        int[] faceVertexIndices = [0, 1, 2, 0, 2, 3]
+        point3f[] points = [(0, 0, 0), (1, 0, 0), (1, 1, 0), (0, 1, 0)]
+        ${useTopLevelMaterial ? "rel material:binding = </World/BlueMat>" : ""}
+
+        def GeomSubset "RedFaces"
+        {
+            uniform token elementType = "face"
+            uniform token familyName = "materialBind"
+            int[] indices = [0]
+            rel material:binding = </World/RedMat>
+        }
+    }
+
+    def Material "RedMat"
+    {
+        token outputs:surface.connect = </World/RedMat/Shader.outputs:surface>
+        def Shader "Shader"
+        {
+            uniform token info:id = "UsdPreviewSurface"
+            color3f inputs:diffuseColor = (1, 0, 0)
+            token outputs:surface
+        }
+    }
+
+    def Material "BlueMat"
+    {
+        token outputs:surface.connect = </World/BlueMat/Shader.outputs:surface>
+        def Shader "Shader"
+        {
+            uniform token info:id = "UsdPreviewSurface"
+            color3f inputs:diffuseColor = (0, 0, 1)
+            token outputs:surface
+        }
+    }
+}
+`;
+}
+
+const SharedMaterialSidednessUsda = `#usda 1.0
+def Xform "World"
+{
+    def Mesh "FrontOnly"
+    {
+        int[] faceVertexCounts = [3]
+        int[] faceVertexIndices = [0, 1, 2]
+        point3f[] points = [(0, 0, 0), (1, 0, 0), (0, 1, 0)]
+        uniform bool doubleSided = false
+        rel material:binding = </World/SharedMat>
+    }
+    def Mesh "DoubleSided"
+    {
+        int[] faceVertexCounts = [3]
+        int[] faceVertexIndices = [0, 1, 2]
+        point3f[] points = [(0, 0, 1), (1, 0, 1), (0, 1, 1)]
+        uniform bool doubleSided = true
+        rel material:binding = </World/SharedMat>
+    }
+    def Material "SharedMat"
+    {
+        token outputs:surface.connect = </World/SharedMat/Shader.outputs:surface>
+        def Shader "Shader"
+        {
+            uniform token info:id = "UsdPreviewSurface"
+            color3f inputs:diffuseColor = (0.5, 0.5, 0.5)
+            token outputs:surface
+        }
+    }
+}
+`;
+
 /**
  * Runs USD bytes through {@link ImportUSDBlock} and returns the transcoded document.
  * @param bytes - The source USD bytes.
@@ -251,6 +402,58 @@ describe("ImportUSDBlock", () => {
         expect(material.getAlphaMode()).toBe("BLEND");
     });
 
+    it("preserves GeomSubset face materials as indexed primitives through GLB export", async () => {
+        const asset = new NodeAsset("usd-subsets");
+        const importer = new ImportUSDBlock("import", asset);
+        importer.data = new TextEncoder().encode(GeomSubsetMaterialsUsda);
+        const exporter = new ExportGLTFBlock("export", asset);
+        importer.output.connectTo(exporter.input);
+
+        const glb = await asset.buildAsync();
+        const reimporter = new ImportGLTFBlock("reimport", new NodeAsset("reimport"));
+        reimporter.data = glb;
+        await reimporter._buildBlockAsync();
+        const root = GetTestGltfDocument(reimporter.output.value).getRoot();
+        const primitives = root.listMeshes()[0].listPrimitives();
+
+        expect(glb.byteLength).toBeGreaterThan(0);
+        expect(root.listMaterials()).toHaveLength(2);
+        expect(primitives).toHaveLength(2);
+        expect(primitives.map((primitive) => primitive.getIndices()?.getCount())).toEqual([3, 3]);
+        expect(primitives.reduce((count, primitive) => count + (primitive.getIndices()?.getCount() ?? 0), 0)).toBe(6);
+        expect(primitives[0].getAttribute("POSITION")).toBe(primitives[1].getAttribute("POSITION"));
+        expect(primitives.map((primitive) => primitive.getMaterial()?.getBaseColorFactor().slice(0, 3)).sort((left, right) => (left?.[0] ?? 0) - (right?.[0] ?? 0))).toEqual([
+            [0, 0, 1],
+            [1, 0, 0],
+        ]);
+    });
+
+    it.each([
+        { fallback: "top-level mesh material", useTopLevelMaterial: true, expectedMaterialCount: 2 },
+        { fallback: "unassigned material", useTopLevelMaterial: false, expectedMaterialCount: 1 },
+    ])("preserves faces with a $fallback outside a GeomSubset", async ({ useTopLevelMaterial, expectedMaterialCount }) => {
+        const root = (await ImportUsdAsync(new TextEncoder().encode(CreateGeomSubsetFallbackUsda(useTopLevelMaterial)))).getRoot();
+        const primitives = root.listMeshes()[0].listPrimitives();
+
+        expect(root.listMaterials()).toHaveLength(expectedMaterialCount);
+        expect(primitives).toHaveLength(2);
+        expect(primitives.reduce((count, primitive) => count + (primitive.getIndices()?.getCount() ?? 0), 0)).toBe(6);
+        expect(primitives.filter((primitive) => primitive.getMaterial() === null)).toHaveLength(useTopLevelMaterial ? 0 : 1);
+        expect(primitives.some((primitive) => primitive.getMaterial()?.getBaseColorFactor()[0] === 1)).toBe(true);
+        expect(primitives.some((primitive) => primitive.getMaterial()?.getBaseColorFactor()[2] === 1)).toBe(useTopLevelMaterial);
+    });
+
+    it("keeps single- and double-sided variants separate when meshes share a USD material", async () => {
+        const root = (await ImportUsdAsync(new TextEncoder().encode(SharedMaterialSidednessUsda))).getRoot();
+        const sidedness = root
+            .listMeshes()
+            .map((mesh) => mesh.listPrimitives()[0].getMaterial()?.getDoubleSided())
+            .sort();
+
+        expect(root.listMaterials()).toHaveLength(2);
+        expect(sidedness).toEqual([false, true]);
+    });
+
     it("flips the texcoord V so USD st maps to the glTF top-left convention", async () => {
         const document = await ImportUsdAsync(new TextEncoder().encode(QuadUsda));
         const uv = document.getRoot().listMeshes()[0].listPrimitives()[0].getAttribute("TEXCOORD_0")?.getElement(0, [0, 0]);
@@ -317,6 +520,15 @@ describe("ImportUSDBlock", () => {
         expect(root.listMeshes()).toHaveLength(1);
         expect(root.listMeshes()[0].listPrimitives()[0].getIndices()?.getCount()).toBe(3);
         expect((root.getExtras() as { usdImport?: { sourceFormat?: string } }).usdImport?.sourceFormat).toBe("usdz");
+    });
+
+    it("prunes empty placeholder meshes without aborting renderable siblings", async () => {
+        const root = (await ImportUsdAsync(new TextEncoder().encode(EmptyMeshUsda))).getRoot();
+
+        expect(root.listMeshes()).toHaveLength(1);
+        expect(root.listMeshes()[0].getName()).toBe("Tri");
+        expect(root.listMeshes()[0].listPrimitives()[0].getIndices()?.getCount()).toBe(3);
+        expect(root.listNodes().some((node) => node.getName() === "Empty")).toBe(false);
     });
 
     it("builds through ImportUSD -> ExportGLTF and re-imports to the same mesh and material", async () => {

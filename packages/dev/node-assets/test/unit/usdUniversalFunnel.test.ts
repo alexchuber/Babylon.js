@@ -231,4 +231,61 @@ describe("USD Universal funnel", () => {
         expect(read.source).toBeNull();
         expect(read.sourceKind).toBeNull();
     });
+
+    it.each(["URL", "upload", "clear"] as const)("does not let a delayed upload overwrite a newer successful %s action", async (replacement) => {
+        const asset = new NodeAsset(`delayed-upload-${replacement}`);
+        const read = new ReadUSDBlock("Read USD", asset);
+        let resolveUpload: ((data: ArrayBuffer) => void) | undefined;
+        const pendingUpload = read.setUploadedSourceAsync(
+            async () =>
+                await new Promise<ArrayBuffer>((resolve) => {
+                    resolveUpload = resolve;
+                }),
+            "stale.usda"
+        );
+
+        if (replacement === "URL") {
+            await read.setUrlAsync("https://example.com/current.usda", async () => ({
+                ok: true,
+                status: 200,
+                statusText: "OK",
+                arrayBuffer: async () => TriangleUsdBytes.slice().buffer,
+            }));
+        } else if (replacement === "upload") {
+            read.setUploadedSource(TriangleUsdBytes, "current.usda");
+        } else {
+            read.clearSource();
+        }
+        resolveUpload?.(new Uint8Array([99]).buffer);
+        await pendingUpload;
+
+        expect(read.source).toBe(replacement === "URL" ? "https://example.com/current.usda" : replacement === "upload" ? "current.usda" : null);
+        expect(read.data).toEqual(replacement === "clear" ? null : TriangleUsdBytes);
+    });
+
+    it("allows an earlier pending upload to become active after a newer URL fails", async () => {
+        const read = new ReadUSDBlock("Read USD", new NodeAsset("failed-newer-url"));
+        let resolveUpload: ((data: ArrayBuffer) => void) | undefined;
+        const pendingUpload = read.setUploadedSourceAsync(
+            async () =>
+                await new Promise<ArrayBuffer>((resolve) => {
+                    resolveUpload = resolve;
+                }),
+            "eventual.usda"
+        );
+
+        await expect(
+            read.setUrlAsync("https://example.invalid/missing.usda", async () => ({
+                ok: false,
+                status: 404,
+                statusText: "Not Found",
+                arrayBuffer: async () => new ArrayBuffer(0),
+            }))
+        ).rejects.toThrow(/404 Not Found/);
+        resolveUpload?.(TriangleUsdBytes.slice().buffer);
+        await pendingUpload;
+
+        expect(read.source).toBe("eventual.usda");
+        expect(read.data).toEqual(TriangleUsdBytes);
+    });
 });

@@ -23,6 +23,13 @@ export interface IUSDSourceResponse {
 // eslint-disable-next-line @typescript-eslint/naming-convention
 export type USDSourceFetcher = (url: string) => Promise<IUSDSourceResponse>;
 
+/** Reports whether an asynchronous source operation became the active source. */
+// eslint-disable-next-line @typescript-eslint/naming-convention
+export interface IUSDSourceApplyResult {
+    /** Whether the operation's resolved bytes became active. */
+    applied: boolean;
+}
+
 /** Resolves USD bytes from a URL or upload into a lightweight USD source payload. */
 export class ReadUSDBlock extends NodeAssetBlock {
     /** The class name, used for identification and safe under minification. */
@@ -66,6 +73,36 @@ export class ReadUSDBlock extends NodeAssetBlock {
     }
 
     /**
+     * Reads uploaded bytes and makes them active only if no newer source has succeeded.
+     * @param loadDataAsync The uploaded file reader.
+     * @param fileName The uploaded file name.
+     * @param canApplyResult Optional ownership guard checked immediately before resolved bytes become active.
+     * @param applyResult Optional operation result populated after the ownership and source-order checks.
+     */
+    public async setUploadedSourceAsync(
+        loadDataAsync: () => Promise<ArrayBuffer>,
+        fileName: string,
+        canApplyResult: () => boolean = () => true,
+        applyResult?: IUSDSourceApplyResult
+    ): Promise<void> {
+        if (applyResult) {
+            applyResult.applied = false;
+        }
+        const sourceAttempt = ++this._sourceAttempt;
+        const data = new Uint8Array(await loadDataAsync());
+        if (!canApplyResult() || sourceAttempt < this._lastSuccessfulSourceAttempt) {
+            return;
+        }
+        this._lastSuccessfulSourceAttempt = sourceAttempt;
+        this.data = data;
+        this.source = fileName;
+        this.sourceKind = "upload";
+        if (applyResult) {
+            applyResult.applied = true;
+        }
+    }
+
+    /**
      * Clears the active source and invalidates every pending URL request.
      */
     public clearSource(): void {
@@ -79,21 +116,34 @@ export class ReadUSDBlock extends NodeAssetBlock {
      * Loads a URL and makes it active only after the request succeeds.
      * @param url The USD URL.
      * @param fetcher The fetch-compatible loader.
+     * @param canApplyResult Optional ownership guard checked immediately before resolved bytes become active.
+     * @param applyResult Optional operation result populated after the ownership and source-order checks.
      */
-    public async setUrlAsync(url: string, fetcher: USDSourceFetcher = async (sourceUrl) => await fetch(sourceUrl)): Promise<void> {
+    public async setUrlAsync(
+        url: string,
+        fetcher: USDSourceFetcher = async (sourceUrl) => await fetch(sourceUrl),
+        canApplyResult: () => boolean = () => true,
+        applyResult?: IUSDSourceApplyResult
+    ): Promise<void> {
+        if (applyResult) {
+            applyResult.applied = false;
+        }
         const sourceAttempt = ++this._sourceAttempt;
         const response = await fetcher(url);
         if (!response.ok) {
             throw new Error(`Could not load USD from "${url}" (${response.status} ${response.statusText}).`);
         }
         const data = new Uint8Array(await response.arrayBuffer());
-        if (sourceAttempt < this._lastSuccessfulSourceAttempt) {
+        if (!canApplyResult() || sourceAttempt < this._lastSuccessfulSourceAttempt) {
             return;
         }
         this._lastSuccessfulSourceAttempt = sourceAttempt;
         this.data = data;
         this.source = url;
         this.sourceKind = "url";
+        if (applyResult) {
+            applyResult.applied = true;
+        }
     }
 
     /**

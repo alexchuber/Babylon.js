@@ -6,7 +6,7 @@ import { PromptForFileAsync } from "../browserFiles";
 
 const ReadHeaderColor = "#3f7d4e";
 const SourceErrors = new WeakMap<ReadUSDBlock, string>();
-const PendingUrlRequests = new WeakMap<ReadUSDBlock, Promise<void>>();
+const PendingSourceRequests = new WeakMap<ReadUSDBlock, Promise<void>>();
 
 // eslint-disable-next-line @typescript-eslint/naming-convention
 async function PromptForUSDAsync(block: ReadUSDBlock, context: IPropertySectionContext): Promise<void> {
@@ -18,11 +18,31 @@ async function PromptForUSDAsync(block: ReadUSDBlock, context: IPropertySectionC
     if (!authoredBlock) {
         return;
     }
-    const data = new Uint8Array(await file.arrayBuffer());
-    authoredBlock.setUploadedSource(data, file.name);
-    PendingUrlRequests.delete(authoredBlock);
-    SourceErrors.delete(authoredBlock);
-    context.refresh();
+    const applyResult = { applied: false };
+    const request = authoredBlock.setUploadedSourceAsync(
+        async () => await file.arrayBuffer(),
+        file.name,
+        () => context.prepareEdit(authoredBlock) === authoredBlock,
+        applyResult
+    );
+    PendingSourceRequests.set(authoredBlock, request);
+    try {
+        await request;
+        if (context.prepareEdit(authoredBlock) === authoredBlock && applyResult.applied) {
+            SourceErrors.delete(authoredBlock);
+        }
+    } catch (error) {
+        if (context.prepareEdit(authoredBlock) === authoredBlock && PendingSourceRequests.get(authoredBlock) === request) {
+            SourceErrors.set(authoredBlock, error instanceof Error ? error.message : String(error));
+        }
+    } finally {
+        if (PendingSourceRequests.get(authoredBlock) === request) {
+            PendingSourceRequests.delete(authoredBlock);
+        }
+        if (context.prepareEdit(authoredBlock) === authoredBlock) {
+            context.refresh();
+        }
+    }
 }
 
 // eslint-disable-next-line @typescript-eslint/naming-convention
@@ -31,22 +51,25 @@ async function SetUSDUrlAsync(block: ReadUSDBlock, url: string, context: IProper
     if (!authoredBlock) {
         return;
     }
-    const request = authoredBlock.setUrlAsync(url);
-    PendingUrlRequests.set(authoredBlock, request);
+    const applyResult = { applied: false };
+    const request = authoredBlock.setUrlAsync(url, undefined, () => context.prepareEdit(authoredBlock) === authoredBlock, applyResult);
+    PendingSourceRequests.set(authoredBlock, request);
     try {
         await request;
-        if (PendingUrlRequests.get(authoredBlock) === request) {
+        if (context.prepareEdit(authoredBlock) === authoredBlock && applyResult.applied) {
             SourceErrors.delete(authoredBlock);
         }
     } catch (error) {
-        if (PendingUrlRequests.get(authoredBlock) === request) {
+        if (context.prepareEdit(authoredBlock) === authoredBlock && PendingSourceRequests.get(authoredBlock) === request) {
             SourceErrors.set(authoredBlock, error instanceof Error ? error.message : String(error));
         }
     } finally {
-        if (PendingUrlRequests.get(authoredBlock) === request) {
-            PendingUrlRequests.delete(authoredBlock);
+        if (PendingSourceRequests.get(authoredBlock) === request) {
+            PendingSourceRequests.delete(authoredBlock);
         }
-        context.refresh();
+        if (context.prepareEdit(authoredBlock) === authoredBlock) {
+            context.refresh();
+        }
     }
 }
 
@@ -75,7 +98,7 @@ export function CreateReadUSDPropertySection(block: ReadUSDBlock, context: IProp
                             return;
                         }
                         authoredBlock.clearSource();
-                        PendingUrlRequests.delete(authoredBlock);
+                        PendingSourceRequests.delete(authoredBlock);
                         SourceErrors.delete(authoredBlock);
                         context.refresh();
                         return;

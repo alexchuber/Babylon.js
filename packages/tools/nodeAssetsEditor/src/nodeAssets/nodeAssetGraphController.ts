@@ -315,6 +315,7 @@ export class NodeAssetGraphController {
     private readonly _aggregateRootByChildNodeId = new Map<string, string>();
     private _projectingAggregate = false;
     private _graphRevision = 0;
+    private _isDisposed = false;
 
     /**
      * Creates a controller seeded with the "energy orb" showcase graph. Two ImportImage blocks (a dark
@@ -588,9 +589,9 @@ export class NodeAssetGraphController {
             const aggregateRootNodeId = this._aggregateRootByChildNodeId.get(node.id) ?? (block instanceof AggregateBlock ? node.id : undefined);
             const propertyContext = {
                 prepareEdit: <BlockT extends NodeAssetBlock>(editedBlock: BlockT): BlockT | undefined =>
-                    graphRevision === this._graphRevision ? this._preparePropertyEdit(node.id, editedBlock, aggregateRootNodeId) : undefined,
+                    !this._isDisposed && graphRevision === this._graphRevision ? this._preparePropertyEdit(node.id, editedBlock, aggregateRootNodeId) : undefined,
                 refresh: () => {
-                    if (graphRevision !== this._graphRevision) {
+                    if (this._isDisposed || graphRevision !== this._graphRevision) {
                         return;
                     }
                     this._detachAggregateContainingNode(node.id);
@@ -777,6 +778,11 @@ export class NodeAssetGraphController {
 
     /** Releases the state subscription. */
     public dispose(): void {
+        if (this._isDisposed) {
+            return;
+        }
+        this._isDisposed = true;
+        this._graphRevision++;
         this._onChangedObserver.remove();
         this.onExportRequested.clear();
         this.onBuildRelevantChanged.clear();

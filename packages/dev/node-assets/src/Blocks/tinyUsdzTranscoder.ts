@@ -42,6 +42,13 @@ interface ITinyUsdzMesh {
     readonly texcoords?: Float32Array;
     readonly materialId: number;
     readonly doubleSided?: boolean;
+    readonly submeshes?: readonly ITinyUsdzSubmesh[];
+}
+
+interface ITinyUsdzSubmesh {
+    readonly start: number;
+    readonly count: number;
+    readonly materialId: number;
 }
 
 interface ITinyUsdzSceneMetadata {
@@ -153,6 +160,26 @@ function ConvertMaterial(document: Document, native: ITinyUsdzLoaderNative, mate
     return material;
 }
 
+function GetOrCreateMaterial(
+    document: Document,
+    native: ITinyUsdzLoaderNative,
+    materialId: number,
+    doubleSided: boolean | undefined,
+    materials: Map<string, Material>
+): Nullable<Material> {
+    if (materialId < 0) {
+        return null;
+    }
+    const materialKey = `${materialId}:${doubleSided === true ? "double" : "single"}`;
+    let material = materials.get(materialKey);
+    if (!material) {
+        material = ConvertMaterial(document, native, materialId);
+        material.setDoubleSided(doubleSided === true);
+        materials.set(materialKey, material);
+    }
+    return material;
+}
+
 /**
  * Converts one tinyusdz render-scene node (and its geometry-bearing descendants) into a gltf-transform
  * node subtree. Nodes that neither carry geometry nor have any geometry below them — USD material and
@@ -160,10 +187,10 @@ function ConvertMaterial(document: Document, native: ITinyUsdzLoaderNative, mate
  * @param document - The document nodes and meshes are created in.
  * @param native - The tinyusdz loader holding the parsed stage.
  * @param usdNode - The USD node to convert.
- * @param materials - Cache of already-converted materials, keyed by stage material index.
+ * @param materials - Cache of already-converted materials, keyed by stage material index and sidedness.
  * @returns The converted node, or null when the subtree contains no geometry.
  */
-function ConvertNode(document: Document, native: ITinyUsdzLoaderNative, usdNode: ITinyUsdzNode, materials: Map<number, Material>): Nullable<GltfNode> {
+function ConvertNode(document: Document, native: ITinyUsdzLoaderNative, usdNode: ITinyUsdzNode, materials: Map<string, Material>): Nullable<GltfNode> {
     const childNodes: GltfNode[] = [];
     for (const child of usdNode.children ?? []) {
         const convertedChild = ConvertNode(document, native, child, materials);
@@ -172,38 +199,54 @@ function ConvertNode(document: Document, native: ITinyUsdzLoaderNative, usdNode:
         }
     }
 
-    const isMesh = usdNode.nodeType === "mesh" && usdNode.contentId >= 0;
-    if (!isMesh && childNodes.length === 0) {
+    const usdMesh = usdNode.nodeType === "mesh" && usdNode.contentId >= 0 ? native.getMesh(usdNode.contentId) : null;
+    const hasGeometry = usdMesh !== null && usdMesh.faceVertexIndices.length > 0;
+    if (!hasGeometry && childNodes.length === 0) {
         return null;
     }
 
     const node = document.createNode(usdNode.primName || usdNode.displayName || "node");
     node.setMatrix(Array.from(usdNode.localMatrix) as Parameters<GltfNode["setMatrix"]>[0]);
 
-    if (isMesh) {
-        const usdMesh = native.getMesh(usdNode.contentId);
+    if (usdMesh && hasGeometry) {
         const buffer = document.getRoot().listBuffers()[0];
-        const primitive = document.createPrimitive();
-        primitive.setAttribute("POSITION", document.createAccessor().setType("VEC3").setArray(new Float32Array(usdMesh.points)).setBuffer(buffer));
-        primitive.setIndices(document.createAccessor().setType("SCALAR").setArray(new Uint32Array(usdMesh.faceVertexIndices)).setBuffer(buffer));
-        if (usdMesh.normals && usdMesh.normals.length > 0) {
-            primitive.setAttribute("NORMAL", document.createAccessor().setType("VEC3").setArray(DecodeNormals(usdMesh.normals, usdMesh.normalsFormat)).setBuffer(buffer));
-        }
-        if (usdMesh.texcoords && usdMesh.texcoords.length > 0) {
-            primitive.setAttribute("TEXCOORD_0", document.createAccessor().setType("VEC2").setArray(FlipTexcoordV(usdMesh.texcoords)).setBuffer(buffer));
-        }
-        if (usdMesh.materialId >= 0) {
-            let material = materials.get(usdMesh.materialId);
-            if (!material) {
-                material = ConvertMaterial(document, native, usdMesh.materialId);
-                materials.set(usdMesh.materialId, material);
+        const position = document.createAccessor().setType("VEC3").setArray(new Float32Array(usdMesh.points)).setBuffer(buffer);
+        const normal =
+            usdMesh.normals && usdMesh.normals.length > 0
+                ? document.createAccessor().setType("VEC3").setArray(DecodeNormals(usdMesh.normals, usdMesh.normalsFormat)).setBuffer(buffer)
+                : null;
+        const texcoord =
+            usdMesh.texcoords && usdMesh.texcoords.length > 0 ? document.createAccessor().setType("VEC2").setArray(FlipTexcoordV(usdMesh.texcoords)).setBuffer(buffer) : null;
+        const mesh = document.createMesh(usdMesh.primName || usdNode.primName);
+        const submeshes =
+            usdMesh.submeshes && usdMesh.submeshes.length > 0 ? usdMesh.submeshes : [{ start: 0, count: usdMesh.faceVertexIndices.length, materialId: usdMesh.materialId }];
+        for (const submesh of submeshes) {
+            const end = submesh.start + submesh.count;
+            if (submesh.start < 0 || submesh.count <= 0 || end > usdMesh.faceVertexIndices.length) {
+                throw new Error(`tinyusdz returned an invalid submesh range (${submesh.start}, ${submesh.count}) for "${usdMesh.primName}".`);
             }
-            primitive.setMaterial(material);
-            if (usdMesh.doubleSided) {
-                material.setDoubleSided(true);
+            const primitive = document.createPrimitive();
+            primitive.setAttribute("POSITION", position);
+            primitive.setIndices(
+                document
+                    .createAccessor()
+                    .setType("SCALAR")
+                    .setArray(new Uint32Array(usdMesh.faceVertexIndices.subarray(submesh.start, end)))
+                    .setBuffer(buffer)
+            );
+            if (normal) {
+                primitive.setAttribute("NORMAL", normal);
             }
+            if (texcoord) {
+                primitive.setAttribute("TEXCOORD_0", texcoord);
+            }
+            const material = GetOrCreateMaterial(document, native, submesh.materialId, usdMesh.doubleSided, materials);
+            if (material) {
+                primitive.setMaterial(material);
+            }
+            mesh.addPrimitive(primitive);
         }
-        node.setMesh(document.createMesh(usdMesh.primName || usdNode.primName).addPrimitive(primitive));
+        node.setMesh(mesh);
     }
 
     for (const childNode of childNodes) {
@@ -265,7 +308,7 @@ export async function TranscodeUsdToDocumentAsync(bytes: Uint8Array, options: IT
             scene.addChild(conversionRoot);
         }
 
-        const materials = new Map<number, Material>();
+        const materials = new Map<string, Material>();
         const rootCount = native.numRootNodes();
         for (let index = 0; index < rootCount; index++) {
             const converted = ConvertNode(document, native, native.getRootNode(index), materials);

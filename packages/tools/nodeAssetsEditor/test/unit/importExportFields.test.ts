@@ -1,6 +1,7 @@
 import { describe, expect, it, vi } from "vitest";
 
 import { ImportImageBlock } from "node-assets/Blocks/importImageBlock";
+import { ReadUSDBlock, type USDSourceFetcher } from "node-assets/Blocks/readUSDBlock";
 import { NodeAsset } from "node-assets/nodeAsset";
 
 import { type IGraphNode } from "../../src/nodeGraph/graphModel";
@@ -292,6 +293,430 @@ describe("Import block source label", () => {
 
             const reloaded = JSON.parse(controller.serialize()) as { graph: { blocks: Array<{ name: string; customType: string }> } };
             expect(reloaded.graph.blocks.find((block) => block.name === "Import USD")?.customType).toBe("ImportUSDAggregateBlock");
+        } finally {
+            vi.unstubAllGlobals();
+            controller.dispose();
+        }
+    });
+
+    it("does not apply a delayed URL success to an obsolete child after same-id reload", async () => {
+        const controller = new NodeAssetGraphController();
+        let resolveResponse: ((response: Response) => void) | undefined;
+        let resolveCompletionObserved: (() => void) | undefined;
+        let obsoleteBlock: ReadUSDBlock | undefined;
+        const response = new Promise<Response>((resolve) => {
+            resolveResponse = resolve;
+        });
+        const completionObserved = new Promise<void>((resolve) => {
+            resolveCompletionObserved = resolve;
+        });
+        const fetchMock = vi.fn(async () => await response);
+        const originalSetUrlAsync = ReadUSDBlock.prototype.setUrlAsync;
+        const setUrlSpy = vi.spyOn(ReadUSDBlock.prototype, "setUrlAsync").mockImplementation(async function (
+            url: string,
+            fetcher?: USDSourceFetcher,
+            canApplyResult?: () => boolean
+        ): Promise<void> {
+            obsoleteBlock = this;
+            await originalSetUrlAsync.call(this, url, fetcher, canApplyResult);
+        });
+        vi.stubGlobal("fetch", fetchMock);
+        try {
+            const importNode = AddPaletteNode(controller, "import-usd");
+            controller.setAggregateExpanded(importNode.id, true);
+            const savedBuiltInGraph = controller.serialize();
+            const readNode = FindNode(controller, "Read USD");
+            FindPropertyInSection(controller, readNode, "SOURCE", "URL", "text").onChange("https://example.com/obsolete.usda");
+            await vi.waitFor(() => {
+                expect(fetchMock).toHaveBeenCalledTimes(1);
+            });
+
+            controller.load(savedBuiltInGraph);
+            resolveResponse?.({
+                ok: true,
+                status: 200,
+                statusText: "OK",
+                arrayBuffer: async () => {
+                    resolveCompletionObserved?.();
+                    return new TextEncoder().encode("#usda 1.0").buffer;
+                },
+            } as Response);
+            await completionObserved;
+            await Promise.resolve();
+            await Promise.resolve();
+
+            expect(obsoleteBlock?.data).toBeNull();
+            expect(obsoleteBlock?.source).toBeNull();
+            const reloadedImport = FindNode(controller, "Import USD");
+            expect(FindPropertyInSection(controller, reloadedImport, "READ USD", "Active source", "text").value).toBe("No source loaded");
+            expect(
+                controller
+                    .buildPropertySections(reloadedImport)
+                    .flatMap((section) => section.properties)
+                    .find((property) => property.label === "Source error")
+            ).toBeUndefined();
+        } finally {
+            setUrlSpy.mockRestore();
+            vi.unstubAllGlobals();
+            controller.dispose();
+        }
+    });
+
+    it("does not apply delayed uploaded bytes to an obsolete child after same-id reload", async () => {
+        const controller = new NodeAssetGraphController();
+        let resolveData: ((data: ArrayBuffer) => void) | undefined;
+        vi.mocked(PromptForFileAsync).mockResolvedValueOnce({
+            name: "obsolete.usda",
+            arrayBuffer: async () =>
+                await new Promise<ArrayBuffer>((resolve) => {
+                    resolveData = resolve;
+                }),
+        } as unknown as File);
+        try {
+            const importNode = AddPaletteNode(controller, "import-usd");
+            controller.setAggregateExpanded(importNode.id, true);
+            const savedBuiltInGraph = controller.serialize();
+            const readNode = FindNode(controller, "Read USD");
+            FindPropertyInSection(controller, readNode, "SOURCE", UploadUSDButtonLabel, "button").onClick();
+            await vi.waitFor(() => {
+                expect(resolveData).toBeDefined();
+            });
+
+            controller.load(savedBuiltInGraph);
+            resolveData?.(new TextEncoder().encode("#usda 1.0").buffer);
+            await Promise.resolve();
+            await Promise.resolve();
+
+            const reloadedImport = FindNode(controller, "Import USD");
+            expect(FindPropertyInSection(controller, reloadedImport, "READ USD", "Active source", "text").value).toBe("No source loaded");
+            expect(
+                controller
+                    .buildPropertySections(reloadedImport)
+                    .flatMap((section) => section.properties)
+                    .find((property) => property.label === "Source error")
+            ).toBeUndefined();
+        } finally {
+            controller.dispose();
+        }
+    });
+
+    it("does not apply or publish a delayed URL success after controller disposal", async () => {
+        const controller = new NodeAssetGraphController();
+        let resolveResponse: ((response: Response) => void) | undefined;
+        let resolveCompletionObserved: (() => void) | undefined;
+        let obsoleteBlock: ReadUSDBlock | undefined;
+        const response = new Promise<Response>((resolve) => {
+            resolveResponse = resolve;
+        });
+        const completionObserved = new Promise<void>((resolve) => {
+            resolveCompletionObserved = resolve;
+        });
+        const fetchMock = vi.fn(async () => await response);
+        const originalSetUrlAsync = ReadUSDBlock.prototype.setUrlAsync;
+        const setUrlSpy = vi.spyOn(ReadUSDBlock.prototype, "setUrlAsync").mockImplementation(async function (
+            url: string,
+            fetcher?: USDSourceFetcher,
+            canApplyResult?: () => boolean
+        ): Promise<void> {
+            obsoleteBlock = this;
+            await originalSetUrlAsync.call(this, url, fetcher, canApplyResult);
+        });
+        vi.stubGlobal("fetch", fetchMock);
+        let changedCount = 0;
+        const observer = controller.state.onChanged.add(() => {
+            changedCount++;
+        });
+        try {
+            const importNode = AddPaletteNode(controller, "import-usd");
+            controller.setAggregateExpanded(importNode.id, true);
+            const readNode = FindNode(controller, "Read USD");
+            FindPropertyInSection(controller, readNode, "SOURCE", "URL", "text").onChange("https://example.com/disposed.usda");
+            await vi.waitFor(() => {
+                expect(fetchMock).toHaveBeenCalledTimes(1);
+            });
+            changedCount = 0;
+            controller.dispose();
+
+            resolveResponse?.({
+                ok: true,
+                status: 200,
+                statusText: "OK",
+                arrayBuffer: async () => {
+                    resolveCompletionObserved?.();
+                    return new TextEncoder().encode("#usda 1.0").buffer;
+                },
+            } as Response);
+            await completionObserved;
+            await Promise.resolve();
+            await Promise.resolve();
+
+            expect(obsoleteBlock?.data).toBeNull();
+            expect(obsoleteBlock?.source).toBeNull();
+            expect(changedCount).toBe(0);
+        } finally {
+            observer.remove();
+            setUrlSpy.mockRestore();
+            vi.unstubAllGlobals();
+            controller.dispose();
+        }
+    });
+
+    it("does not apply or publish delayed uploaded bytes after controller disposal", async () => {
+        const controller = new NodeAssetGraphController();
+        let resolveData: ((data: ArrayBuffer) => void) | undefined;
+        vi.mocked(PromptForFileAsync).mockResolvedValueOnce({
+            name: "disposed.usda",
+            arrayBuffer: async () =>
+                await new Promise<ArrayBuffer>((resolve) => {
+                    resolveData = resolve;
+                }),
+        } as unknown as File);
+        let resolveUploadCompleted: (() => void) | undefined;
+        const uploadCompleted = new Promise<void>((resolve) => {
+            resolveUploadCompleted = resolve;
+        });
+        const originalSetUploadedSourceAsync = ReadUSDBlock.prototype.setUploadedSourceAsync;
+        let obsoleteBlock: ReadUSDBlock | undefined;
+        const setUploadedSourceSpy = vi.spyOn(ReadUSDBlock.prototype, "setUploadedSourceAsync").mockImplementation(async function (
+            loadDataAsync: () => Promise<ArrayBuffer>,
+            fileName: string,
+            canApplyResult?: () => boolean
+        ): Promise<void> {
+            obsoleteBlock = this;
+            await originalSetUploadedSourceAsync.call(this, loadDataAsync, fileName, canApplyResult);
+            resolveUploadCompleted?.();
+        });
+        let changedCount = 0;
+        const observer = controller.state.onChanged.add(() => {
+            changedCount++;
+        });
+        try {
+            const importNode = AddPaletteNode(controller, "import-usd");
+            controller.setAggregateExpanded(importNode.id, true);
+            const readNode = FindNode(controller, "Read USD");
+            FindPropertyInSection(controller, readNode, "SOURCE", UploadUSDButtonLabel, "button").onClick();
+            await vi.waitFor(() => {
+                expect(resolveData).toBeDefined();
+            });
+            changedCount = 0;
+            controller.dispose();
+
+            resolveData?.(new TextEncoder().encode("#usda 1.0").buffer);
+            await uploadCompleted;
+
+            expect(obsoleteBlock?.data).toBeNull();
+            expect(obsoleteBlock?.source).toBeNull();
+            expect(changedCount).toBe(0);
+        } finally {
+            observer.remove();
+            setUploadedSourceSpy.mockRestore();
+            controller.dispose();
+        }
+    });
+
+    it("does not let a delayed upload overwrite a newer successful URL", async () => {
+        const controller = new NodeAssetGraphController();
+        let resolveUpload: ((data: ArrayBuffer) => void) | undefined;
+        vi.mocked(PromptForFileAsync).mockResolvedValueOnce({
+            name: "stale.usda",
+            arrayBuffer: async () =>
+                await new Promise<ArrayBuffer>((resolve) => {
+                    resolveUpload = resolve;
+                }),
+        } as unknown as File);
+        vi.stubGlobal(
+            "fetch",
+            vi.fn(async () => ({
+                ok: true,
+                status: 200,
+                statusText: "OK",
+                arrayBuffer: async () => new TextEncoder().encode("#usda 1.0").buffer,
+            }))
+        );
+        let resolveUploadCompleted: (() => void) | undefined;
+        const uploadCompleted = new Promise<void>((resolve) => {
+            resolveUploadCompleted = resolve;
+        });
+        const originalSetUploadedSourceAsync = ReadUSDBlock.prototype.setUploadedSourceAsync;
+        const setUploadedSourceSpy = vi.spyOn(ReadUSDBlock.prototype, "setUploadedSourceAsync").mockImplementation(async function (
+            loadDataAsync: () => Promise<ArrayBuffer>,
+            fileName: string,
+            canApplyResult?: () => boolean
+        ): Promise<void> {
+            await originalSetUploadedSourceAsync.call(this, loadDataAsync, fileName, canApplyResult);
+            resolveUploadCompleted?.();
+        });
+        try {
+            const importNode = AddPaletteNode(controller, "import-usd");
+            FindPropertyInSection(controller, importNode, "READ USD", UploadUSDButtonLabel, "button").onClick();
+            await vi.waitFor(() => {
+                expect(resolveUpload).toBeDefined();
+            });
+
+            const currentUrl = "https://example.com/current.usda";
+            FindPropertyInSection(controller, importNode, "READ USD", "URL", "text").onChange(currentUrl);
+            await vi.waitFor(() => {
+                expect(FindPropertyInSection(controller, importNode, "READ USD", "Active source", "text").value).toBe(currentUrl);
+            });
+
+            resolveUpload?.(new TextEncoder().encode("#usda 1.0").buffer);
+            await uploadCompleted;
+            expect(FindPropertyInSection(controller, importNode, "READ USD", "Active source", "text").value).toBe(currentUrl);
+        } finally {
+            setUploadedSourceSpy.mockRestore();
+            vi.unstubAllGlobals();
+            controller.dispose();
+        }
+    });
+
+    it("shows an active USD upload read failure as a source error", async () => {
+        const controller = new NodeAssetGraphController();
+        vi.mocked(PromptForFileAsync).mockResolvedValueOnce({
+            name: "unreadable.usda",
+            arrayBuffer: async () => {
+                throw new Error("Could not read unreadable.usda");
+            },
+        } as unknown as File);
+        try {
+            const importNode = AddPaletteNode(controller, "import-usd");
+            FindPropertyInSection(controller, importNode, "READ USD", UploadUSDButtonLabel, "button").onClick();
+
+            await vi.waitFor(() => {
+                expect(FindPropertyInSection(controller, importNode, "READ USD", "Source error", "text").value).toBe("Could not read unreadable.usda");
+            });
+            expect(FindPropertyInSection(controller, importNode, "READ USD", "Active source", "text").value).toBe("No source loaded");
+        } finally {
+            controller.dispose();
+        }
+    });
+
+    it("does not publish a delayed upload read failure after same-id reload", async () => {
+        const controller = new NodeAssetGraphController();
+        let rejectUpload: ((error: Error) => void) | undefined;
+        vi.mocked(PromptForFileAsync).mockResolvedValueOnce({
+            name: "obsolete.usda",
+            arrayBuffer: async () =>
+                await new Promise<ArrayBuffer>((_resolve, reject) => {
+                    rejectUpload = reject;
+                }),
+        } as unknown as File);
+        try {
+            const importNode = AddPaletteNode(controller, "import-usd");
+            const savedGraph = controller.serialize();
+            FindPropertyInSection(controller, importNode, "READ USD", UploadUSDButtonLabel, "button").onClick();
+            await vi.waitFor(() => {
+                expect(rejectUpload).toBeDefined();
+            });
+
+            controller.load(savedGraph);
+            rejectUpload?.(new Error("Could not read obsolete.usda"));
+            await Promise.resolve();
+            await Promise.resolve();
+
+            const reloadedImport = FindNode(controller, "Import USD");
+            expect(
+                controller
+                    .buildPropertySections(reloadedImport)
+                    .flatMap((section) => section.properties)
+                    .find((property) => property.label === "Source error")
+            ).toBeUndefined();
+            expect(FindPropertyInSection(controller, reloadedImport, "READ USD", "Active source", "text").value).toBe("No source loaded");
+        } finally {
+            controller.dispose();
+        }
+    });
+
+    it("clears a newer URL failure when an older pending URL later becomes active", async () => {
+        const controller = new NodeAssetGraphController();
+        let resolveOlderResponse: ((response: Response) => void) | undefined;
+        const olderResponse = new Promise<Response>((resolve) => {
+            resolveOlderResponse = resolve;
+        });
+        const fetchMock = vi
+            .fn()
+            .mockImplementationOnce(async () => await olderResponse)
+            .mockResolvedValueOnce({
+                ok: false,
+                status: 404,
+                statusText: "Not Found",
+                arrayBuffer: async () => new ArrayBuffer(0),
+            } as Response);
+        vi.stubGlobal("fetch", fetchMock);
+        try {
+            const importNode = AddPaletteNode(controller, "import-usd");
+            const olderUrl = "https://example.com/eventual.usda";
+            FindPropertyInSection(controller, importNode, "READ USD", "URL", "text").onChange(olderUrl);
+            await vi.waitFor(() => {
+                expect(fetchMock).toHaveBeenCalledTimes(1);
+            });
+
+            FindPropertyInSection(controller, importNode, "READ USD", "URL", "text").onChange("https://example.invalid/missing.usda");
+            await vi.waitFor(() => {
+                expect(FindPropertyInSection(controller, importNode, "READ USD", "Source error", "text").value).toContain("404 Not Found");
+            });
+
+            resolveOlderResponse?.({
+                ok: true,
+                status: 200,
+                statusText: "OK",
+                arrayBuffer: async () => new TextEncoder().encode("#usda 1.0").buffer,
+            } as Response);
+            await vi.waitFor(() => {
+                expect(FindPropertyInSection(controller, importNode, "READ USD", "Active source", "text").value).toBe(olderUrl);
+            });
+            expect(
+                controller
+                    .buildPropertySections(importNode)
+                    .flatMap((section) => section.properties)
+                    .find((property) => property.label === "Source error")
+            ).toBeUndefined();
+        } finally {
+            vi.unstubAllGlobals();
+            controller.dispose();
+        }
+    });
+
+    it("clears a newer URL failure when an older pending upload later becomes active", async () => {
+        const controller = new NodeAssetGraphController();
+        let resolveUpload: ((data: ArrayBuffer) => void) | undefined;
+        vi.mocked(PromptForFileAsync).mockResolvedValueOnce({
+            name: "eventual.usda",
+            arrayBuffer: async () =>
+                await new Promise<ArrayBuffer>((resolve) => {
+                    resolveUpload = resolve;
+                }),
+        } as unknown as File);
+        vi.stubGlobal(
+            "fetch",
+            vi.fn(async () => ({
+                ok: false,
+                status: 404,
+                statusText: "Not Found",
+                arrayBuffer: async () => new ArrayBuffer(0),
+            }))
+        );
+        try {
+            const importNode = AddPaletteNode(controller, "import-usd");
+            FindPropertyInSection(controller, importNode, "READ USD", UploadUSDButtonLabel, "button").onClick();
+            await vi.waitFor(() => {
+                expect(resolveUpload).toBeDefined();
+            });
+
+            FindPropertyInSection(controller, importNode, "READ USD", "URL", "text").onChange("https://example.invalid/missing.usda");
+            await vi.waitFor(() => {
+                expect(FindPropertyInSection(controller, importNode, "READ USD", "Source error", "text").value).toContain("404 Not Found");
+            });
+
+            resolveUpload?.(new TextEncoder().encode("#usda 1.0").buffer);
+            await vi.waitFor(() => {
+                expect(FindPropertyInSection(controller, importNode, "READ USD", "Active source", "text").value).toBe("eventual.usda");
+            });
+            expect(
+                controller
+                    .buildPropertySections(importNode)
+                    .flatMap((section) => section.properties)
+                    .find((property) => property.label === "Source error")
+            ).toBeUndefined();
         } finally {
             vi.unstubAllGlobals();
             controller.dispose();
