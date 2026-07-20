@@ -37,8 +37,8 @@ export function ConfigureNodeAssetBuildResources(nodeAsset: NodeAsset, resourceU
         } else if (block instanceof ExportGLTFBlock || block instanceof WriteGLTFBlock) {
             block.dracoEncoderWasmUrl = resourceUrls.dracoEncoderWasmUrl;
         } else if (block instanceof KTX2CompressionBlock) {
-            block.jsUrl = resourceUrls.basisEncoderJsUrl;
-            block.wasmUrl = resourceUrls.basisEncoderWasmUrl;
+            block.jsUrl ??= resourceUrls.basisEncoderJsUrl;
+            block.wasmUrl ??= resourceUrls.basisEncoderWasmUrl;
         }
         if (block instanceof AggregateBlock) {
             for (const child of block.subgraph.attachedBlocks) {

@@ -1,4 +1,4 @@
-export { NodeAsset } from "./nodeAsset";
+export { NodeAsset, Ktx2EncoderResourceConflictError } from "./nodeAsset";
 export { BuildFanOutError } from "./evaluation/fanOutCopy";
 export {
     BuildResourceIdentities,
@@ -65,8 +65,8 @@ export { ImportBabylonAggregateBlock } from "./Blocks/importBabylonAggregateBloc
 export { type IUSDSourceResponse, ReadUSDBlock, type USDSourceFetcher } from "./Blocks/readUSDBlock";
 export { USDToUniversalBlock } from "./Blocks/usdToUniversalBlock";
 export { ImportUSDAggregateBlock } from "./Blocks/importUSDAggregateBlock";
-export { DracoCompressionBlock, DracoEncoderMethod } from "./Blocks/dracoCompressionBlock";
-export { KTX2CompressionBlock } from "./Blocks/ktx2CompressionBlock";
+export { DracoCompressionBlock, DracoEncoderMethod, type DracoQuantizationVolume } from "./Blocks/dracoCompressionBlock";
+export { KTX2CompressionBlock, type KTX2HDRSourceType, type KTX2OutputContainer } from "./Blocks/ktx2CompressionBlock";
 export { DedupBlock } from "./Blocks/dedupBlock";
 export { DeduplicateDataBlock } from "./Blocks/deduplicateDataBlock";
 export { DeduplicateMaterialsBlock } from "./Blocks/deduplicateMaterialsBlock";

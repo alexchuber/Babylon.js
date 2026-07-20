@@ -118,7 +118,7 @@ export class NodeAssetsEditorPage {
     /**
      * Locate a connection port of a node, optionally disambiguated by direction. Boundary nodes have a
      * single port (Import: one output, Export: one input), so the direction is optional; blocks with both
-     * an input and an output (e.g. Apply BasisU) need it to pick the right side.
+     * an input and an output (e.g. Compress Textures (KTX2)) need it to pick the right side.
      * @param title - The node's visible title.
      * @param direction - Optional port direction to filter to ("in" or "out").
      * @param occurrence - Optional disambiguator when several nodes share the title (see {@link nodeByTitle}).
@@ -150,7 +150,7 @@ export class NodeAssetsEditorPage {
      * The app drops each node at exactly the cursor with no collision offset, so dropping several nodes at
      * the same point stacks them and makes their ports unhittable. Pass distinct `at` points to lay out
      * nodes that must be wired together.
-     * @param label - The palette item's label, e.g. "Apply BasisU".
+     * @param label - The palette item's label, e.g. "Compress Textures (KTX2)".
      * @param at - Drop point as canvas-rect fractions (0..1); defaults to the center.
      */
     async dropPaletteItem(label: string, at: CanvasPoint = { x: 0.5, y: 0.5 }): Promise<void> {

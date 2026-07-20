@@ -1,6 +1,7 @@
 import { NodeAssetBuildError } from "node-assets/nodeAssetBuildError";
 
 import { type INodeAssetBuildRequest, type ISerializedNodeAssetBuildError, type NodeAssetBuildResponse } from "./nodeAssetBuildMessages";
+import { Ktx2EncoderResourceFallbacks, type IKtx2EncoderResourceFallbacks } from "./ktx2EncoderResourceFallbacks";
 
 type BuildWorkerMessageListener = (event: MessageEvent<NodeAssetBuildResponse>) => void;
 type BuildWorkerErrorListener = (event: ErrorEvent) => void;
@@ -80,7 +81,7 @@ export class NodeAssetBuildTimeoutError extends Error {
     public constructor(timeoutMs: number) {
         super(
             `The build did not finish within ${Math.round(timeoutMs / 1000)}s and was stopped. Firefox compresses ` +
-                `KTX2 / Basis textures far slower than Chromium-based browsers; use Chrome or Edge, or remove the Apply BasisU node.`
+                `KTX2 / Basis textures far slower than Chromium-based browsers; use Chrome or Edge, or remove the Compress Textures (KTX2) node.`
         );
         this.name = "NodeAssetBuildTimeoutError";
         this.timeoutMs = timeoutMs;
@@ -103,26 +104,195 @@ function CreateErrorFromSerializedError(serializedError: ISerializedNodeAssetBui
     return error;
 }
 
+const Ktx2CompressionBlockClassName = "KTX2CompressionBlock";
+
+/** A serialized graph's shape as far as this client cares: just its block list. */
+interface ISerializedGraphLike {
+    readonly blocks?: ReadonlyArray<ISerializedKtx2BlockLike>;
+}
+
+/**
+ * A serialized block's shape as far as this client cares: identity, optional KTX2 encoder URLs, and
+ * an optional nested aggregate subgraph (see `AggregateBlock.serialize`, which nests an aggregate's
+ * contents under `subgraph` rather than inlining them into the parent graph's `blocks` array).
+ */
+interface ISerializedKtx2BlockLike {
+    readonly id?: unknown;
+    readonly name?: unknown;
+    readonly customType?: unknown;
+    readonly jsUrl?: unknown;
+    readonly wasmUrl?: unknown;
+    readonly subgraph?: ISerializedGraphLike;
+}
+
+/** One KTX2 compression block's authored encoder resource pair, plus enough identity for diagnostics. */
+interface IKtx2EncoderResourceUsage {
+    readonly blockId: number | undefined;
+    readonly blockName: string;
+    readonly jsUrl: string;
+    readonly wasmUrl: string;
+}
+
+/**
+ * Normalizes an authored KTX2 URL value to its effective (post-fallback) value: the exact string a
+ * block authors (including `""`), or the given fallback for a `null`/`undefined` (unauthored) value —
+ * mirroring `ConfigureNodeAssetBuildResources`'s `block.jsUrl ??= resourceUrls.basisEncoderJsUrl`
+ * nullish-coalescing semantics exactly, so `""` is never replaced by the fallback.
+ * @param value - The raw serialized `jsUrl`/`wasmUrl` value.
+ * @param fallback - The fallback value `ConfigureNodeAssetBuildResources` would apply.
+ * @returns The value's effective string.
+ */
+function GetEffectiveKtx2Url(value: unknown, fallback: string): string {
+    return typeof value === "string" ? value : fallback;
+}
+
+/**
+ * Collects every KTX2 compression block's effective (post-fallback) `jsUrl`/`wasmUrl` pair (plus block
+ * identity) in a serialized graph, recursing into aggregate blocks' nested `subgraph`s so a KTX2 block
+ * hidden inside a Custom Aggregate is still found.
+ * @param graph - The serialized graph (or nested subgraph) to scan.
+ * @param fallbacks - The fallback URLs applied to an unauthored `jsUrl`/`wasmUrl`.
+ * @param usages - The usages collected so far; appended to in place.
+ */
+function CollectKtx2EncoderResourceUsages(graph: ISerializedGraphLike | null | undefined, fallbacks: IKtx2EncoderResourceFallbacks, usages: IKtx2EncoderResourceUsage[]): void {
+    const blocks = graph?.blocks;
+    if (!Array.isArray(blocks)) {
+        return;
+    }
+    for (const block of blocks) {
+        if (block?.customType === Ktx2CompressionBlockClassName) {
+            usages.push({
+                blockId: typeof block.id === "number" ? block.id : undefined,
+                blockName: typeof block.name === "string" && block.name.length > 0 ? block.name : "(unnamed)",
+                jsUrl: GetEffectiveKtx2Url(block.jsUrl, fallbacks.jsUrl),
+                wasmUrl: GetEffectiveKtx2Url(block.wasmUrl, fallbacks.wasmUrl),
+            });
+        }
+        if (block?.subgraph) {
+            CollectKtx2EncoderResourceUsages(block.subgraph, fallbacks, usages);
+        }
+    }
+}
+
+/**
+ * Computes a signature of every KTX2 compression block's effective (post-fallback) `jsUrl`/`wasmUrl`
+ * in a serialized graph (including ones nested inside aggregate subgraphs), so builds can detect when
+ * they changed. `ktx2-encoder`'s Basis WASM module init is memoized at module scope the first time it
+ * runs, so a worker that already initialized it would otherwise keep using the old resource even after
+ * the user points the block at a new URL.
+ *
+ * Each pair is serialized as a structured `[jsUrl, wasmUrl]` tuple (rather than a delimiter-joined
+ * string such as "jsUrl|wasmUrl") so that URLs containing the delimiter can never collide; for
+ * example `("a|b", "c")` and `("a", "b|c")` remain distinguishable. Because both fields are resolved
+ * to their effective (never-null) value first, a change from unauthored to an explicit URL matching
+ * the exact fallback correctly produces the same signature (no unnecessary worker restart).
+ * @param graph - The serialized `NodeAsset` graph passed to {@link NodeAssetBuildWorkerClient.buildAsync}.
+ * @param fallbacks - The fallback URLs applied to an unauthored `jsUrl`/`wasmUrl`.
+ * @returns A string signature; equal signatures mean the same encoder resources would be used.
+ */
+function GetKtx2EncoderResourceSignature(graph: unknown, fallbacks: IKtx2EncoderResourceFallbacks): string {
+    const usages: IKtx2EncoderResourceUsage[] = [];
+    CollectKtx2EncoderResourceUsages(graph as ISerializedGraphLike | null, fallbacks, usages);
+    return JSON.stringify(usages.map((usage) => [usage.jsUrl, usage.wasmUrl]));
+}
+
+/**
+ * Error thrown when an authored graph contains more than one distinct KTX2 encoder resource
+ * (`jsUrl`/`wasmUrl`) pair. `ktx2-encoder` memoizes a single Basis WASM module Promise at module
+ * scope, so a single build with divergent pairs would otherwise silently encode every KTX2 block
+ * with whichever pair happened to initialize the module first.
+ */
+export class Ktx2EncoderResourceConflictError extends Error {
+    /** The unique ids of every KTX2 compression block involved in the conflict, for node attribution. */
+    public readonly blockIds: readonly number[];
+
+    /**
+     * Creates a KTX2 encoder resource conflict error.
+     * @param message - Human-readable description of the divergent block configuration.
+     * @param blockIds - Unique ids of every KTX2 compression block involved in the conflict.
+     */
+    public constructor(message: string, blockIds: readonly number[]) {
+        super(message);
+        this.name = "Ktx2EncoderResourceConflictError";
+        this.blockIds = blockIds;
+    }
+}
+
+/**
+ * Rejects an authored graph containing more than one distinct effective KTX2 `jsUrl`/`wasmUrl` pair
+ * (including ones nested inside aggregate subgraphs), after resolving each unauthored URL against the
+ * given fallbacks. Zero KTX2 blocks, exactly one distinct effective pair, or several KTX2 blocks that
+ * all share the exact same effective pair are all allowed; the URLs are public, per-block
+ * serialized/editor properties, so silently picking one pair for the whole build would be invalid.
+ * @param graph - The serialized `NodeAsset` graph passed to {@link NodeAssetBuildWorkerClient.buildAsync}.
+ * @param fallbacks - The fallback URLs applied to an unauthored `jsUrl`/`wasmUrl`.
+ * @throws {@link Ktx2EncoderResourceConflictError} when more than one distinct effective pair is authored.
+ */
+function ValidateKtx2EncoderResourcePairs(graph: unknown, fallbacks: IKtx2EncoderResourceFallbacks): void {
+    const usages: IKtx2EncoderResourceUsage[] = [];
+    CollectKtx2EncoderResourceUsages(graph as ISerializedGraphLike | null, fallbacks, usages);
+
+    const usagesByPair = new Map<string, IKtx2EncoderResourceUsage[]>();
+    for (const usage of usages) {
+        const pairKey = JSON.stringify([usage.jsUrl, usage.wasmUrl]);
+        const existing = usagesByPair.get(pairKey);
+        if (existing) {
+            existing.push(usage);
+        } else {
+            usagesByPair.set(pairKey, [usage]);
+        }
+    }
+
+    if (usagesByPair.size <= 1) {
+        return;
+    }
+
+    const pairDescriptions = Array.from(usagesByPair.values()).map((group) => {
+        const blockDescriptions = group.map((usage) => `"${usage.blockName}" (id ${usage.blockId ?? "?"})`).join(", ");
+        return `${blockDescriptions} -> effective jsUrl=${JSON.stringify(group[0].jsUrl)}, wasmUrl=${JSON.stringify(group[0].wasmUrl)}`;
+    });
+    const blockIds = usages.map((usage) => usage.blockId).filter((blockId): blockId is number => blockId !== undefined);
+
+    throw new Ktx2EncoderResourceConflictError(
+        `Multiple Compress Textures (KTX2) blocks resolve to different encoder resource URLs (jsUrl/wasmUrl), after applying the ` +
+            `configured fallback to any unauthored URL: ${pairDescriptions.join("; ")}. ` +
+            "The ktx2-encoder library initializes its Basis WASM module once per worker (JavaScript execution context), so every " +
+            "KTX2 block in one build (including ones nested inside a Custom Aggregate) must resolve to the exact same effective " +
+            "jsUrl/wasmUrl pair. Point them at the same encoder resources, or move the divergent block into a separate build.",
+        blockIds
+    );
+}
+
 /**
  * Sends serialized `NodeAsset` graphs to a dedicated worker and resolves only the latest build result.
  */
 export class NodeAssetBuildWorkerClient implements INodeAssetBuildClient {
     private readonly _createWorker: () => INodeAssetBuildWorker;
     private readonly _buildTimeoutMs: number;
+    private readonly _ktx2EncoderResourceFallbacks: IKtx2EncoderResourceFallbacks;
     private _worker: INodeAssetBuildWorker | null = null;
     private _pendingBuild: IPendingBuild | null = null;
     private _generation = 0;
     private _isDisposed = false;
+    private _lastKtx2EncoderResourceSignature: string | null = null;
 
     /**
      * Creates a worker-backed NodeAsset build client.
      * @param createWorker - Optional worker factory for tests.
      * @param buildTimeoutMs - Time budget for a single build before the worker is stopped and the build
      * rejected with a {@link NodeAssetBuildTimeoutError}. Defaults to {@link DefaultNodeAssetBuildTimeoutMs}.
+     * @param ktx2EncoderResourceFallbacks - The fallback URLs `ConfigureNodeAssetBuildResources` applies
+     * to an unauthored KTX2 `jsUrl`/`wasmUrl` inside the worker. Defaults to the real worker resource
+     * URLs so pre-flight checks agree with what the worker will actually configure.
      */
-    public constructor(createWorker: () => INodeAssetBuildWorker = CreateDefaultBuildWorker, buildTimeoutMs: number = DefaultNodeAssetBuildTimeoutMs) {
+    public constructor(
+        createWorker: () => INodeAssetBuildWorker = CreateDefaultBuildWorker,
+        buildTimeoutMs: number = DefaultNodeAssetBuildTimeoutMs,
+        ktx2EncoderResourceFallbacks: IKtx2EncoderResourceFallbacks = Ktx2EncoderResourceFallbacks
+    ) {
         this._createWorker = createWorker;
         this._buildTimeoutMs = buildTimeoutMs;
+        this._ktx2EncoderResourceFallbacks = ktx2EncoderResourceFallbacks;
     }
 
     /** @inheritdoc */
@@ -131,7 +301,12 @@ export class NodeAssetBuildWorkerClient implements INodeAssetBuildClient {
             throw new Error("The node asset build worker client has been disposed.");
         }
 
+        // Validate before touching any worker state: an invalid graph must not supersede an in-flight
+        // build or spawn/restart a worker for work that can never safely run.
+        ValidateKtx2EncoderResourcePairs(graph, this._ktx2EncoderResourceFallbacks);
+
         this._supersedePendingBuild();
+        this._restartWorkerIfKtx2EncoderResourcesChanged(graph);
 
         const generation = ++this._generation;
         const worker = this._worker ?? this._createWorker();
@@ -218,6 +393,19 @@ export class NodeAssetBuildWorkerClient implements INodeAssetBuildClient {
             this._worker = null;
         }
         pendingBuild.reject(new NodeAssetBuildSupersededError());
+    }
+
+    private _restartWorkerIfKtx2EncoderResourcesChanged(graph: unknown): void {
+        const signature = GetKtx2EncoderResourceSignature(graph, this._ktx2EncoderResourceFallbacks);
+        if (this._worker && this._lastKtx2EncoderResourceSignature !== null && signature !== this._lastKtx2EncoderResourceSignature) {
+            // The worker's ktx2-encoder module memoizes its Basis WASM init the first time it runs,
+            // so reusing the same worker would silently keep encoding with the old jsUrl/wasmUrl.
+            // Restart the worker (a fresh module instance) so the new build actually uses the newly
+            // authored resource URLs.
+            this._worker.terminate();
+            this._worker = null;
+        }
+        this._lastKtx2EncoderResourceSignature = signature;
     }
 
     private _clearPendingBuild(pendingBuild: IPendingBuild): void {

@@ -8,6 +8,126 @@ import { _SetNodeAssetBuildErrorContext, NodeAssetBuildError } from "./nodeAsset
 import { IsNodeAssetSerializedGraph, type NodeAssetConnectionSerialization, type NodeAssetSerializedGraph } from "./serialization/nodeAssetSerialization";
 import { UniqueIdGenerator } from "./utils/uniqueIdGenerator";
 
+const Ktx2CompressionBlockClassName = "KTX2CompressionBlock";
+
+/** One KTX2 compression block's authored encoder resource pair, plus enough identity for diagnostics. */
+interface IKtx2EncoderResourceUsage {
+    readonly blockId: number;
+    readonly blockName: string;
+    readonly jsUrl: string | null;
+    readonly wasmUrl: string | null;
+}
+
+/**
+ * Duck-typed shape of a KTX2 compression block's authored encoder resource URLs. Checked structurally
+ * (via {@link NodeAssetBlock.getClassName}) rather than with a concrete import, so this generic graph
+ * engine does not depend on one specific block's class.
+ */
+interface IKtx2EncoderResourceBlockLike {
+    readonly jsUrl?: unknown;
+    readonly wasmUrl?: unknown;
+}
+
+/**
+ * Normalizes an authored KTX2 URL value to either its exact string (including `""`) or `null` for
+ * "unauthored". `undefined` (the block property's default) means "let the encoder fall back to its
+ * own default", while `""` is a distinct, explicit authored value and must not collide with it.
+ * @param value - The raw `jsUrl`/`wasmUrl` property value.
+ * @returns The value's exact string, or `null` when unauthored.
+ */
+function NormalizeKtx2Url(value: unknown): string | null {
+    return typeof value === "string" ? value : null;
+}
+
+/**
+ * Recursively collects every KTX2 compression block's authored `jsUrl`/`wasmUrl` pair reachable from
+ * a node asset, including ones nested inside aggregate blocks' owned subgraphs (an aggregate's
+ * `subgraph` is itself a {@link NodeAsset}; see `AggregateBlock`).
+ * @param nodeAsset - The node asset (or nested aggregate subgraph) to scan.
+ * @param usages - The usages collected so far; appended to in place.
+ */
+function CollectKtx2EncoderResourceUsages(nodeAsset: NodeAsset, usages: IKtx2EncoderResourceUsage[]): void {
+    for (const block of nodeAsset.attachedBlocks) {
+        if (block.getClassName() === Ktx2CompressionBlockClassName) {
+            const ktx2Block = block as unknown as IKtx2EncoderResourceBlockLike;
+            usages.push({
+                blockId: block.uniqueId,
+                blockName: block.name,
+                jsUrl: NormalizeKtx2Url(ktx2Block.jsUrl),
+                wasmUrl: NormalizeKtx2Url(ktx2Block.wasmUrl),
+            });
+        }
+        const subgraph = (block as unknown as { subgraph?: unknown }).subgraph;
+        if (subgraph instanceof NodeAsset) {
+            CollectKtx2EncoderResourceUsages(subgraph, usages);
+        }
+    }
+}
+
+/**
+ * Error thrown when a node asset graph contains more than one distinct KTX2 encoder resource
+ * (`jsUrl`/`wasmUrl`) pair. `ktx2-encoder` memoizes a single Basis WASM module Promise at module
+ * scope, so a single build with divergent pairs would otherwise silently encode every KTX2 block
+ * with whichever pair happened to initialize the module first.
+ */
+export class Ktx2EncoderResourceConflictError extends Error {
+    /** The unique ids of every KTX2 compression block involved in the conflict, for node attribution. */
+    public readonly blockIds: readonly number[];
+
+    /**
+     * Creates a KTX2 encoder resource conflict error.
+     * @param message - Human-readable description of the divergent block configuration.
+     * @param blockIds - Unique ids of every KTX2 compression block involved in the conflict.
+     */
+    public constructor(message: string, blockIds: readonly number[]) {
+        super(message);
+        this.name = "Ktx2EncoderResourceConflictError";
+        this.blockIds = blockIds;
+    }
+}
+
+/**
+ * Rejects a node asset graph containing more than one distinct KTX2 `jsUrl`/`wasmUrl` pair (including
+ * ones nested inside aggregate subgraphs). Zero KTX2 blocks, exactly one distinct pair, or several
+ * KTX2 blocks that all share the exact same pair are all allowed; the URLs are public, per-block
+ * properties, so silently picking one pair for the whole build would be invalid.
+ * @param nodeAsset - The node asset about to be built.
+ * @throws {@link Ktx2EncoderResourceConflictError} when more than one distinct pair is authored.
+ */
+function ValidateKtx2EncoderResourcePairs(nodeAsset: NodeAsset): void {
+    const usages: IKtx2EncoderResourceUsage[] = [];
+    CollectKtx2EncoderResourceUsages(nodeAsset, usages);
+
+    const usagesByPair = new Map<string, IKtx2EncoderResourceUsage[]>();
+    for (const usage of usages) {
+        const pairKey = JSON.stringify([usage.jsUrl, usage.wasmUrl]);
+        const existing = usagesByPair.get(pairKey);
+        if (existing) {
+            existing.push(usage);
+        } else {
+            usagesByPair.set(pairKey, [usage]);
+        }
+    }
+
+    if (usagesByPair.size <= 1) {
+        return;
+    }
+
+    const pairDescriptions = Array.from(usagesByPair.values()).map((group) => {
+        const blockDescriptions = group.map((usage) => `"${usage.blockName}" (id ${usage.blockId})`).join(", ");
+        return `${blockDescriptions} -> jsUrl=${JSON.stringify(group[0].jsUrl)}, wasmUrl=${JSON.stringify(group[0].wasmUrl)}`;
+    });
+    const blockIds = usages.map((usage) => usage.blockId);
+
+    throw new Ktx2EncoderResourceConflictError(
+        `Multiple Compress Textures (KTX2) blocks author different encoder resource URLs (jsUrl/wasmUrl): ${pairDescriptions.join("; ")}. ` +
+            "The ktx2-encoder library initializes its Basis WASM module once per worker (JavaScript execution context), so every " +
+            "KTX2 block in one build (including ones nested inside a Custom Aggregate) must share the exact same jsUrl/wasmUrl pair. " +
+            "Point them at the same encoder resources, or move the divergent block into a separate build.",
+        blockIds
+    );
+}
+
 /**
  * A node graph of {@link NodeAssetBlock}s. Blocks register themselves with the asset on
  * construction. The graph is run by pulling from the terminal export block.
@@ -153,6 +273,10 @@ export class NodeAsset {
     // eslint-disable-next-line no-restricted-syntax
     public buildAsync(options: INodeAssetBuildOptions): Promise<NodeAssetBuildResult>;
     public async buildAsync(signalOrOptions?: AbortSignal | INodeAssetBuildOptions): Promise<NodeAssetBuildResult> {
+        // Validate before locating the export block or touching build-queue state: an authored graph
+        // conflict must fail the same way regardless of what else is (or isn't) wired up yet.
+        ValidateKtx2EncoderResourcePairs(this);
+
         const exportBlock = this._attachedBlocks.find(IsExportBlock);
         if (!exportBlock) {
             throw new Error(`The "${this.name}" node asset has no export block to build.`);

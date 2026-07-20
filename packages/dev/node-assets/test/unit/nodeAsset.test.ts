@@ -6,6 +6,7 @@ import { ExportGLTFBlock } from "../../src/Blocks/exportGLTFBlock";
 import { ImportGLTFBlock } from "../../src/Blocks/importGLTFBlock";
 import { KTX2CompressionBlock } from "../../src/Blocks/ktx2CompressionBlock";
 import { PruneBlock } from "../../src/Blocks/pruneBlock";
+import { CustomAggregateBlock } from "../../src/blockFoundation/customAggregateBlock";
 import { type IExportBlock } from "../../src/blockFoundation/exportBlock";
 import { NodeAssetBlock } from "../../src/blockFoundation/nodeAssetBlock";
 import { type NodeAssetConnectionPoint } from "../../src/connection/nodeAssetConnectionPoint";
@@ -302,39 +303,145 @@ describe("NodeAsset", () => {
         const parsedExporter = parsed.attachedBlocks[3] as ExportGLTFBlock;
         expect(parsedKtx2).toBeInstanceOf(KTX2CompressionBlock);
         expect(parsedDraco).toBeInstanceOf(DracoCompressionBlock);
+        expect(parsedKtx2.dataSRGBTransferFunction).toBe(false);
 
         expect(parsedImporter.output.connectedPoints[0]).toBe(parsedKtx2.input);
         expect(parsedKtx2.output.connectedPoints[0]).toBe(parsedDraco.input);
         expect(parsedDraco.output.connectedPoints[0]).toBe(parsedExporter.input);
     });
 
-    it("roundtrips compression options through serialize/Parse", () => {
+    it("roundtrips the complete delivery codec options through serialize/Parse", () => {
         const asset = new NodeAsset("compression-options");
         const ktx2 = new KTX2CompressionBlock("ktx2", asset);
         ktx2.generateMipmaps = true;
+        ktx2.texturePattern = "hero-.*";
+        ktx2.colorTextureSlots = "baseColor";
+        ktx2.dataTextureSlots = "normal";
+        ktx2.outputContainer = "ktx2";
+        ktx2.etc1sQualityLevel = 200;
+        ktx2.etc1sCompressionLevel = 4;
+        ktx2.uastcQualityLevel = 3;
+        ktx2.colorPerceptual = false;
+        ktx2.dataPerceptual = true;
+        ktx2.colorSRGBTransferFunction = false;
+        ktx2.dataSRGBTransferFunction = false;
+        ktx2.enableRDO = true;
+        ktx2.rdoQualityLevel = 0;
+        ktx2.useZstandard = false;
+        ktx2.normalMapTuning = true;
+        ktx2.flipY = true;
+        ktx2.hdr = false;
+        ktx2.hdrSourceType = "exr";
+        ktx2.hdrQualityLevel = 4;
+        ktx2.metadata = { author: "Babylon.js" };
+        ktx2.enableDebug = true;
+        ktx2.jsUrl = "/encoder/basis.js";
+        ktx2.wasmUrl = "/encoder/basis.wasm";
         const draco = new DracoCompressionBlock("draco", asset);
         draco.method = DracoEncoderMethod.Sequential;
         draco.encodeSpeed = 2;
         draco.decodeSpeed = 8;
-        draco.quantizationBits = { POSITION: 12, NORMAL: 8 };
+        draco.quantizationBits = { POSITION: 12, NORMAL: 8, COLOR: 7, TEX_COORD: 11, GENERIC: 9 };
+        draco.quantizationVolume = "custom";
+        draco.customBoundsMin = [-2, -3, -4];
+        draco.customBoundsMax = [2, 3, 4];
 
         const serialized = JSON.parse(JSON.stringify(asset.serialize()));
-        expect(serialized.blocks[0]).toMatchObject({ generateMipmaps: true });
+        expect(serialized.blocks[0]).toMatchObject({
+            generateMipmaps: true,
+            texturePattern: "hero-.*",
+            colorTextureSlots: "baseColor",
+            dataTextureSlots: "normal",
+            outputContainer: "ktx2",
+            etc1sQualityLevel: 200,
+            etc1sCompressionLevel: 4,
+            uastcQualityLevel: 3,
+            colorPerceptual: false,
+            dataPerceptual: true,
+            colorSRGBTransferFunction: false,
+            dataSRGBTransferFunction: false,
+            enableRDO: true,
+            rdoQualityLevel: 0,
+            useZstandard: false,
+            normalMapTuning: true,
+            flipY: true,
+            hdr: false,
+            hdrSourceType: "exr",
+            hdrQualityLevel: 4,
+            metadata: { author: "Babylon.js" },
+            enableDebug: true,
+            jsUrl: "/encoder/basis.js",
+            wasmUrl: "/encoder/basis.wasm",
+        });
         expect(serialized.blocks[1]).toMatchObject({
             method: DracoEncoderMethod.Sequential,
             encodeSpeed: 2,
             decodeSpeed: 8,
-            quantizationBits: { POSITION: 12, NORMAL: 8 },
+            quantizationBits: { POSITION: 12, NORMAL: 8, COLOR: 7, TEX_COORD: 11, GENERIC: 9 },
+            quantizationVolume: "custom",
+            customBoundsMin: [-2, -3, -4],
+            customBoundsMax: [2, 3, 4],
         });
 
         const parsed = NodeAsset.Parse(serialized);
         const parsedKtx2 = parsed.attachedBlocks[0] as KTX2CompressionBlock;
         const parsedDraco = parsed.attachedBlocks[1] as DracoCompressionBlock;
-        expect(parsedKtx2.generateMipmaps).toBe(true);
+        expect(parsedKtx2).toMatchObject({
+            generateMipmaps: true,
+            texturePattern: "hero-.*",
+            colorTextureSlots: "baseColor",
+            dataTextureSlots: "normal",
+            outputContainer: "ktx2",
+            etc1sQualityLevel: 200,
+            etc1sCompressionLevel: 4,
+            uastcQualityLevel: 3,
+            colorPerceptual: false,
+            dataPerceptual: true,
+            colorSRGBTransferFunction: false,
+            dataSRGBTransferFunction: false,
+            enableRDO: true,
+            rdoQualityLevel: 0,
+            useZstandard: false,
+            normalMapTuning: true,
+            flipY: true,
+            hdr: false,
+            hdrSourceType: "exr",
+            hdrQualityLevel: 4,
+            metadata: { author: "Babylon.js" },
+            enableDebug: true,
+            jsUrl: "/encoder/basis.js",
+            wasmUrl: "/encoder/basis.wasm",
+        });
         expect(parsedDraco.method).toBe(DracoEncoderMethod.Sequential);
         expect(parsedDraco.encodeSpeed).toBe(2);
         expect(parsedDraco.decodeSpeed).toBe(8);
-        expect(parsedDraco.quantizationBits).toEqual({ POSITION: 12, NORMAL: 8 });
+        expect(parsedDraco.quantizationBits).toEqual({ POSITION: 12, NORMAL: 8, COLOR: 7, TEX_COORD: 11, GENERIC: 9 });
+        expect(parsedDraco.quantizationVolume).toBe("custom");
+        expect(parsedDraco.customBoundsMin).toEqual([-2, -3, -4]);
+        expect(parsedDraco.customBoundsMax).toEqual([2, 3, 4]);
+    });
+
+    it("rejects malformed serialized delivery codec options", () => {
+        const asset = new NodeAsset("invalid-compression-options");
+        const ktx2 = new KTX2CompressionBlock("ktx2", asset);
+        const draco = new DracoCompressionBlock("draco", asset);
+        const serialized = JSON.parse(JSON.stringify(asset.serialize()));
+
+        serialized.blocks[0].texturePattern = "[";
+        expect(() => NodeAsset.Parse(serialized)).toThrow(/texturePattern/);
+
+        serialized.blocks[0] = ktx2.serialize();
+        serialized.blocks[1] = draco.serialize();
+        serialized.blocks[1].encodeSpeed = 11;
+        expect(() => NodeAsset.Parse(serialized)).toThrow(/encodeSpeed/);
+
+        serialized.blocks[1] = draco.serialize();
+        serialized.blocks[1].customBoundsMin = [1, 0, 0];
+        serialized.blocks[1].customBoundsMax = [0, 1, 1];
+        expect(() => NodeAsset.Parse(serialized)).not.toThrow();
+
+        serialized.blocks[1].quantizationVolume = "custom";
+        expect(() => NodeAsset.Parse(serialized)).toThrow(/custom bounds/);
     });
 
     it("deduplicates a concurrently reached upstream across fan-in", async () => {
@@ -362,5 +469,52 @@ describe("NodeAsset", () => {
 
         await expect(asset.buildAsync()).resolves.toEqual(new Uint8Array([7]));
         await expect(asset.buildAsync()).rejects.toThrow('The "one-shot export" node asset produced no result.');
+    });
+
+    describe("KTX2 encoder resource pair validation", () => {
+        it("rejects a direct build with two KTX2 blocks authoring different encoder resource URLs", async () => {
+            const asset = new NodeAsset("ktx2-conflict");
+            const ktx2A = new KTX2CompressionBlock("ktx2 A", asset);
+            ktx2A.jsUrl = "/a.js";
+            ktx2A.wasmUrl = "/a.wasm";
+            const ktx2B = new KTX2CompressionBlock("ktx2 B", asset);
+            ktx2B.jsUrl = "/b.js";
+            ktx2B.wasmUrl = "/b.wasm";
+
+            await expect(asset.buildAsync()).rejects.toThrow(/ktx2 A.*ktx2 B|ktx2 B.*ktx2 A/is);
+        });
+
+        it("allows multiple KTX2 blocks that author the exact same encoder resource URLs", async () => {
+            const asset = new NodeAsset("ktx2-same-pair");
+            const importer = new ImportGLTFBlock("import", asset);
+            importer.data = await CreateFixtureGlbAsync();
+            const ktx2A = new KTX2CompressionBlock("ktx2 A", asset);
+            ktx2A.jsUrl = "/shared.js";
+            ktx2A.wasmUrl = "/shared.wasm";
+            const ktx2B = new KTX2CompressionBlock("ktx2 B", asset);
+            ktx2B.jsUrl = "/shared.js";
+            ktx2B.wasmUrl = "/shared.wasm";
+            const exporter = new ExportGLTFBlock("export", asset);
+            importer.output.connectTo(ktx2A.input);
+            ktx2A.output.connectTo(ktx2B.input);
+            ktx2B.output.connectTo(exporter.input);
+
+            // The fixture has no textures, so both KTX2 blocks trivially succeed once past validation;
+            // this proves the same-pair graph is allowed through (never rejected as a resource conflict).
+            await expect(asset.buildAsync()).resolves.toBeInstanceOf(Uint8Array);
+        });
+
+        it("rejects a divergent KTX2 pair nested inside a custom aggregate's owned subgraph", async () => {
+            const asset = new NodeAsset("ktx2-aggregate-conflict");
+            const topLevelKtx2 = new KTX2CompressionBlock("top-level ktx2", asset);
+            topLevelKtx2.jsUrl = "/top.js";
+            topLevelKtx2.wasmUrl = "/top.wasm";
+            const aggregate = new CustomAggregateBlock("aggregate", asset);
+            const nestedKtx2 = new KTX2CompressionBlock("nested ktx2", aggregate.subgraph);
+            nestedKtx2.jsUrl = "/nested.js";
+            nestedKtx2.wasmUrl = "/nested.wasm";
+
+            await expect(asset.buildAsync()).rejects.toThrow(/top-level ktx2.*nested ktx2|nested ktx2.*top-level ktx2/is);
+        });
     });
 });
