@@ -1,34 +1,16 @@
-import { ImportNodeGeometryBlock } from "node-assets/Blocks/importNodeGeometryBlock";
+import { ImportNodeGeometryAggregateBlock } from "node-assets/Blocks/importNodeGeometryAggregateBlock";
 
 import { ConfigureBlockForEditor, RegisterBlockDescriptor } from "../blockCatalog";
 
-// Data-driven node header color for the Node Geometry import block.
-const ImportHeaderColor = "#3f6fd9";
+const ImportHeaderColor = "#3f7d4e";
 
 RegisterBlockDescriptor({
     paletteItemId: "import-node-geometry",
     label: "Import Node Geometry",
-    category: "Sources",
-    description: "Load a Node Geometry graph from a URL or Playground snippet.",
-    keywords: ["node geometry", "NGE", "procedural geometry", "snippet", "load"],
+    category: "Inputs",
+    description: "Read and evaluate Node Geometry into Universal.",
+    keywords: ["node geometry", "NGE", "procedural geometry", "snippet", "Universal"],
     headerColor: ImportHeaderColor,
-    className: ImportNodeGeometryBlock.ClassName,
-    create: (nodeAsset) => ConfigureBlockForEditor(new ImportNodeGeometryBlock("Import Node Geometry", nodeAsset)),
-    getPropertySection: (block, { refresh }) => {
-        const importBlock = block as ImportNodeGeometryBlock;
-        return {
-            title: "IMPORT",
-            properties: [
-                {
-                    kind: "text",
-                    label: "URL or #snippetId",
-                    value: (importBlock.url.value as string) ?? "",
-                    onChange: (value: string) => {
-                        importBlock.url.value = value;
-                        refresh();
-                    },
-                },
-            ],
-        };
-    },
+    className: ImportNodeGeometryAggregateBlock.ClassName,
+    create: (nodeAsset) => ConfigureBlockForEditor(new ImportNodeGeometryAggregateBlock("Import Node Geometry", nodeAsset)),
 });

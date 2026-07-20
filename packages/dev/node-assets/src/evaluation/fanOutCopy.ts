@@ -3,6 +3,7 @@ import { type BuildScope, type IBuildDiagnostic, type IBuildDiagnosticProducer }
 import { IsBabylonAsset } from "../representations/babylonAsset";
 import { GetGltfAsset } from "../representations/gltfAsset";
 import { IsNodeGeometryAsset } from "../representations/nodeGeometryAsset";
+import { IsNodeGeometrySource } from "../representations/nodeGeometrySource";
 import { IsUsdAsset } from "../representations/usdAsset";
 
 /** Raised when implicit fan-out violates a payload's representation policy. */
@@ -66,8 +67,11 @@ export async function CloneForFanOutAsync(type: NodeAssetConnectionPointType, va
             throw new BuildFanOutError(diagnostic);
         }
         case NodeAssetConnectionPointType.NODE_GEOMETRY:
+            if (IsNodeGeometrySource(value)) {
+                return value.cloneForFanOut();
+            }
             if (!IsNodeGeometryAsset(value)) {
-                throw new Error('The "fan-out" connection point did not receive a NodeGeometryAsset.');
+                throw new Error('The "fan-out" connection point did not receive a Node Geometry source payload.');
             }
             return value.cloneForFanOut();
         default:

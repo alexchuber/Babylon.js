@@ -10,5 +10,6 @@ RegisterBlockDescriptor({
     keywords: ["node geometry", "NGE", "evaluate", "procedural geometry", "vertex data"],
     headerColor: TranscodersHeaderColor,
     className: EvaluateNodeGeometryBlock.ClassName,
+    isPaletteVisible: false,
     create: (nodeAsset) => new EvaluateNodeGeometryBlock("Evaluate Node Geometry", nodeAsset),
 });

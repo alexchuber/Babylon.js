@@ -57,6 +57,26 @@ describe("block property sections (unified descriptor path)", () => {
         }
     });
 
+    it("forwards the exact Read Node Geometry source controls from the aggregate", () => {
+        const controller = new NodeAssetGraphController();
+        try {
+            const importNode = AddPaletteNode(controller, "import-node-geometry");
+            const section = FindSection(controller, importNode, "READ NODE GEOMETRY");
+
+            expect(section.properties.map((property) => property.label)).toEqual(["Snippet ID", "Active source", "Upload Node Geometry\u2026"]);
+            expect(FindProperty(controller, importNode, "Active source", "text").value).toBe("No source loaded");
+            expect(FindProperty(controller, importNode, "Upload Node Geometry\u2026", "button")).toBeDefined();
+
+            const paletteLabels = controller.paletteCategories.flatMap((category) => category.items.map((item) => item.label));
+            expect(paletteLabels).toContain("Import Node Geometry");
+            expect(paletteLabels).not.toContain("Read Node Geometry");
+            expect(paletteLabels).not.toContain("Node Geometry to Universal");
+            expect(paletteLabels).not.toContain("Evaluate Node Geometry");
+        } finally {
+            controller.dispose();
+        }
+    });
+
     it("fires an export request from the EXPORT section button", () => {
         const controller = new NodeAssetGraphController();
         let exportRequests = 0;
