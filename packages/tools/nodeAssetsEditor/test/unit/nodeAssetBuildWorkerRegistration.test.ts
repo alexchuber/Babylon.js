@@ -80,6 +80,9 @@ const ExpectedBlockClassNames = [
     "ImportGLTFAggregateBlock",
     "ExportGLTFAggregateBlock",
     "CustomAggregateBlock",
+    "ReadBabylonBlock",
+    "BabylonToUniversalBlock",
+    "ImportBabylonAggregateBlock",
 ] as const;
 
 // The energy-orb showcase graph the editor seeds on open: a dark-metal base and a cyan pattern composite

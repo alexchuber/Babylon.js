@@ -1,0 +1,47 @@
+{
+    "producer": {
+        "name": "NodeAssets Playwright fixture",
+        "version": "1.0.0",
+        "exporter_version": "1.0.0",
+        "file": "triangle.babylon"
+    },
+    "autoClear": true,
+    "clearColor": [0, 0, 0, 1],
+    "ambientColor": [0, 0, 0],
+    "gravity": [0, -9.81, 0],
+    "collisionsEnabled": false,
+    "useRightHandedSystem": false,
+    "meshes": [
+        {
+            "name": "babylon-triangle",
+            "id": "babylon-triangle",
+            "position": [0, 0, 0],
+            "rotation": [0, 0, 0],
+            "scaling": [1, 1, 1],
+            "isVisible": true,
+            "isEnabled": true,
+            "checkCollisions": false,
+            "billboardMode": 0,
+            "receiveShadows": false,
+            "positions": [0, 0, 0, 1, 0, 0, 0, 1, 0],
+            "normals": [0, 0, 1, 0, 0, 1, 0, 0, 1],
+            "indices": [0, 1, 2],
+            "subMeshes": [
+                {
+                    "materialIndex": 0,
+                    "verticesStart": 0,
+                    "verticesCount": 3,
+                    "indexStart": 0,
+                    "indexCount": 3
+                }
+            ],
+            "instances": []
+        }
+    ],
+    "materials": [],
+    "multiMaterials": [],
+    "skeletons": [],
+    "particleSystems": [],
+    "lights": [],
+    "cameras": []
+}
