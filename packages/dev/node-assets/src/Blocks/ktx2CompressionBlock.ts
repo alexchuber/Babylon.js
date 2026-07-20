@@ -5,8 +5,53 @@ import { NodeAssetBlock } from "../blockFoundation/nodeAssetBlock";
 import { type NodeAssetConnectionPoint } from "../connection/nodeAssetConnectionPoint";
 import { NodeAssetConnectionPointType } from "../connection/nodeAssetConnectionPointType";
 import { type NodeAsset } from "../nodeAsset";
-import { GetSerializedBoolean, type NodeAssetBlockSerialization } from "../serialization/nodeAssetSerialization";
+import {
+    GetSerializedBoolean,
+    GetSerializedIntegerInRange,
+    GetSerializedNullableString,
+    GetSerializedNumber,
+    GetSerializedString,
+    GetSerializedStringUnion,
+    type NodeAssetBlockSerialization,
+} from "../serialization/nodeAssetSerialization";
 import { GetGltfAsset } from "../representations/gltfAsset";
+
+/** The texture payload container emitted by the Basis encoder. */
+// eslint-disable-next-line @typescript-eslint/naming-convention
+export type KTX2OutputContainer = "ktx2" | "basis";
+
+/** The source interpretation used by the Basis HDR encoder. */
+export type KTX2HDRSourceType = "hdr" | "exr" | "raster";
+
+function ValidateRegularExpression(value: string | null, property: string): void {
+    if (value === null) {
+        return;
+    }
+    try {
+        new RegExp(value);
+    } catch {
+        throw new TypeError(`Invalid serialized block property "${property}".`);
+    }
+}
+
+function GetSerializedNumberInRange(serializationObject: NodeAssetBlockSerialization, property: string, minimum: number, maximum: number, defaultValue: number): number {
+    const value = GetSerializedNumber(serializationObject, property, defaultValue);
+    if (value < minimum || value > maximum) {
+        throw new TypeError(`Invalid serialized block property "${property}".`);
+    }
+    return value;
+}
+
+function GetSerializedStringRecord(serializationObject: NodeAssetBlockSerialization, property: string): Record<string, string> {
+    const value = serializationObject[property];
+    if (value === undefined) {
+        return {};
+    }
+    if (typeof value !== "object" || value === null || Array.isArray(value) || !Object.values(value).every((entry) => typeof entry === "string")) {
+        throw new TypeError(`Invalid serialized block property "${property}".`);
+    }
+    return value as Record<string, string>;
+}
 
 /**
  * Compresses a glTF `Document`'s textures to KTX2 / Basis Universal in place and flags the
@@ -41,6 +86,70 @@ export class KTX2CompressionBlock extends NodeAssetBlock {
 
     /** Whether to generate mipmaps while encoding. */
     public generateMipmaps = false;
+
+    /** Optional regular expression matched against texture names and URIs. */
+    public texturePattern: string | null = null;
+
+    /** Regular expression matching color texture slots encoded with ETC1S. */
+    public colorTextureSlots = "baseColor|emissive";
+
+    /** Regular expression matching data texture slots encoded with UASTC. */
+    public dataTextureSlots = "normal|metallicRoughness|occlusion";
+
+    /** The Basis encoder output container. glTF delivery requires `ktx2`. */
+    public outputContainer: KTX2OutputContainer = "ktx2";
+
+    /** ETC1S quality level from 1 to 255. */
+    public etc1sQualityLevel = 150;
+
+    /** ETC1S encoder compression level from 0 to 6. */
+    public etc1sCompressionLevel = 2;
+
+    /** UASTC LDR quality level from 0 to 3. */
+    public uastcQualityLevel = 1;
+
+    /** Whether color textures use perceptual metrics. */
+    public colorPerceptual = true;
+
+    /** Whether data textures use perceptual metrics. */
+    public dataPerceptual = false;
+
+    /** Whether color textures declare the sRGB transfer function. */
+    public colorSRGBTransferFunction = true;
+
+    /** Whether data textures declare the sRGB transfer function. */
+    public dataSRGBTransferFunction = true;
+
+    /** Whether UASTC LDR rate-distortion optimization is enabled. */
+    // eslint-disable-next-line @typescript-eslint/naming-convention
+    public enableRDO = false;
+
+    /** UASTC RDO quality scalar from 0.001 to 10. */
+    public rdoQualityLevel = 1;
+
+    /** Whether UASTC textures use Zstandard supercompression. */
+    public useZstandard = true;
+
+    /** Whether UASTC data textures use the encoder's normal-map tuning. */
+    public normalMapTuning = false;
+
+    /** Whether source textures are flipped vertically before encoding. */
+    public flipY = false;
+
+    /** Whether UASTC data textures use HDR encoding. */
+    public hdr = false;
+
+    /** The HDR source format passed to the Basis encoder. */
+    public hdrSourceType: KTX2HDRSourceType = "hdr";
+
+    /** UASTC HDR quality level from 0 to 4. */
+    public hdrQualityLevel = 1;
+
+    /** String metadata written into each encoded KTX2 payload. */
+    public metadata: Record<string, string> = {};
+
+    /** Whether the Basis encoder writes debug output. */
+    public enableDebug = false;
 
     /**
      * Decodes a source image (png/jpeg/webp bytes) to raw RGBA for the encoder. Required in non-DOM
@@ -82,6 +191,10 @@ export class KTX2CompressionBlock extends NodeAssetBlock {
             throw new Error(`The "${this.name}" KTX2 block has no input document to compress.`);
         }
         const asset = GetGltfAsset(this.input.value, this.input.name);
+        const compatibilityIssues = this.getCompatibilityIssues();
+        if (compatibilityIssues.length > 0) {
+            throw new Error(`The "${this.name}" KTX2 options are incompatible: ${compatibilityIssues.join(" ")}`);
+        }
 
         const { ktx2 } = await import("ktx2-encoder/gltf-transform");
 
@@ -89,8 +202,12 @@ export class KTX2CompressionBlock extends NodeAssetBlock {
         // the repo's camelCase convention, hence the scoped disable.
         /* eslint-disable @typescript-eslint/naming-convention */
         const baseOptions: Partial<KTX2Options> = {
-            isKTX2File: true,
+            isKTX2File: this.outputContainer === "ktx2",
             generateMipmap: this.generateMipmaps,
+            pattern: this.texturePattern === null ? null : new RegExp(this.texturePattern),
+            isYFlip: this.flipY,
+            kvData: Object.keys(this.metadata).length === 0 ? undefined : this.metadata,
+            enableDebug: this.enableDebug,
             imageDecoder: this.imageDecoder,
             wasmUrl: this.wasmUrl,
             jsUrl: this.jsUrl,
@@ -100,9 +217,12 @@ export class KTX2CompressionBlock extends NodeAssetBlock {
         const compressColor = ktx2({
             ...baseOptions,
             isUASTC: false,
-            isPerceptual: true,
-            isSetKTX2SRGBTransferFunc: true,
-            slots: /baseColor|emissive/i,
+            isHDR: false,
+            qualityLevel: this.etc1sQualityLevel,
+            compressionLevel: this.etc1sCompressionLevel,
+            isPerceptual: this.colorPerceptual,
+            isSetKTX2SRGBTransferFunc: this.colorSRGBTransferFunction,
+            slots: new RegExp(this.colorTextureSlots, "i"),
         });
 
         // UASTC for non-color (linear) data textures. Color textures are already KTX2 by now and
@@ -110,8 +230,15 @@ export class KTX2CompressionBlock extends NodeAssetBlock {
         const compressData = ktx2({
             ...baseOptions,
             isUASTC: true,
-            isPerceptual: false,
-            slots: /normal|metallicRoughness|occlusion/i,
+            isHDR: false,
+            uastcLDRQualityLevel: this.uastcQualityLevel,
+            enableRDO: this.enableRDO,
+            rdoQualityLevel: this.rdoQualityLevel,
+            needSupercompression: this.useZstandard,
+            isNormalMap: this.normalMapTuning,
+            isPerceptual: this.dataPerceptual,
+            isSetKTX2SRGBTransferFunc: this.dataSRGBTransferFunction,
+            slots: new RegExp(this.dataTextureSlots, "i"),
         });
         /* eslint-enable @typescript-eslint/naming-convention */
 
@@ -121,12 +248,65 @@ export class KTX2CompressionBlock extends NodeAssetBlock {
     }
 
     /**
+     * Lists option combinations that the glTF KTX2 delivery adapter cannot encode safely.
+     * @returns Actionable compatibility issues; an empty list means the current options are supported.
+     */
+    public getCompatibilityIssues(): readonly string[] {
+        const issues: string[] = [];
+        if (this.outputContainer !== "ktx2") {
+            issues.push("glTF KHR_texture_basisu requires the KTX2 output container; choose KTX2.");
+        }
+        if (this.hdr) {
+            issues.push("The current glTF texture adapter accepts JPEG, PNG, and WebP sources only; disable HDR.");
+        }
+        if (this.normalMapTuning && this.dataPerceptual) {
+            issues.push("Normal map tuning requires Data perceptual metric to be disabled.");
+        }
+        if (this.normalMapTuning && this.dataSRGBTransferFunction) {
+            issues.push("Normal map tuning requires the Data sRGB transfer function to be disabled.");
+        }
+        return issues;
+    }
+
+    /**
+     * Describes the active KTX2 codec split or any incompatible selections.
+     * @returns Compatibility guidance suitable for editor display.
+     */
+    public getCompatibilitySummary(): string {
+        const issues = this.getCompatibilityIssues();
+        return issues.length > 0 ? issues.join(" ") : "Compatible with glTF: color slots use ETC1S and data slots use UASTC in KTX2.";
+    }
+
+    /**
      * Serializes this block's build-affecting options.
      * @returns The serialization object.
      */
     public override serialize(): NodeAssetBlockSerialization {
         const serializationObject = super.serialize();
         serializationObject.generateMipmaps = this.generateMipmaps;
+        serializationObject.texturePattern = this.texturePattern;
+        serializationObject.colorTextureSlots = this.colorTextureSlots;
+        serializationObject.dataTextureSlots = this.dataTextureSlots;
+        serializationObject.outputContainer = this.outputContainer;
+        serializationObject.etc1sQualityLevel = this.etc1sQualityLevel;
+        serializationObject.etc1sCompressionLevel = this.etc1sCompressionLevel;
+        serializationObject.uastcQualityLevel = this.uastcQualityLevel;
+        serializationObject.colorPerceptual = this.colorPerceptual;
+        serializationObject.dataPerceptual = this.dataPerceptual;
+        serializationObject.colorSRGBTransferFunction = this.colorSRGBTransferFunction;
+        serializationObject.dataSRGBTransferFunction = this.dataSRGBTransferFunction;
+        serializationObject.enableRDO = this.enableRDO;
+        serializationObject.rdoQualityLevel = this.rdoQualityLevel;
+        serializationObject.useZstandard = this.useZstandard;
+        serializationObject.normalMapTuning = this.normalMapTuning;
+        serializationObject.flipY = this.flipY;
+        serializationObject.hdr = this.hdr;
+        serializationObject.hdrSourceType = this.hdrSourceType;
+        serializationObject.hdrQualityLevel = this.hdrQualityLevel;
+        serializationObject.metadata = this.metadata;
+        serializationObject.enableDebug = this.enableDebug;
+        serializationObject.jsUrl = this.jsUrl ?? null;
+        serializationObject.wasmUrl = this.wasmUrl ?? null;
         return serializationObject;
     }
 
@@ -137,6 +317,32 @@ export class KTX2CompressionBlock extends NodeAssetBlock {
     public override _deserialize(serializationObject: NodeAssetBlockSerialization): void {
         super._deserialize(serializationObject);
         this.generateMipmaps = GetSerializedBoolean(serializationObject, "generateMipmaps", false);
+        this.texturePattern = GetSerializedNullableString(serializationObject, "texturePattern");
+        this.colorTextureSlots = GetSerializedString(serializationObject, "colorTextureSlots", "baseColor|emissive");
+        this.dataTextureSlots = GetSerializedString(serializationObject, "dataTextureSlots", "normal|metallicRoughness|occlusion");
+        ValidateRegularExpression(this.texturePattern, "texturePattern");
+        ValidateRegularExpression(this.colorTextureSlots, "colorTextureSlots");
+        ValidateRegularExpression(this.dataTextureSlots, "dataTextureSlots");
+        this.outputContainer = GetSerializedStringUnion(serializationObject, "outputContainer", ["ktx2", "basis"] as const, "ktx2");
+        this.etc1sQualityLevel = GetSerializedIntegerInRange(serializationObject, "etc1sQualityLevel", 1, 255, 150);
+        this.etc1sCompressionLevel = GetSerializedIntegerInRange(serializationObject, "etc1sCompressionLevel", 0, 6, 2);
+        this.uastcQualityLevel = GetSerializedIntegerInRange(serializationObject, "uastcQualityLevel", 0, 3, 1);
+        this.colorPerceptual = GetSerializedBoolean(serializationObject, "colorPerceptual", true);
+        this.dataPerceptual = GetSerializedBoolean(serializationObject, "dataPerceptual", false);
+        this.colorSRGBTransferFunction = GetSerializedBoolean(serializationObject, "colorSRGBTransferFunction", true);
+        this.dataSRGBTransferFunction = GetSerializedBoolean(serializationObject, "dataSRGBTransferFunction", true);
+        this.enableRDO = GetSerializedBoolean(serializationObject, "enableRDO", false);
+        this.rdoQualityLevel = GetSerializedNumberInRange(serializationObject, "rdoQualityLevel", 0.001, 10, 1);
+        this.useZstandard = GetSerializedBoolean(serializationObject, "useZstandard", true);
+        this.normalMapTuning = GetSerializedBoolean(serializationObject, "normalMapTuning", false);
+        this.flipY = GetSerializedBoolean(serializationObject, "flipY", false);
+        this.hdr = GetSerializedBoolean(serializationObject, "hdr", false);
+        this.hdrSourceType = GetSerializedStringUnion(serializationObject, "hdrSourceType", ["hdr", "exr", "raster"] as const, "hdr");
+        this.hdrQualityLevel = GetSerializedIntegerInRange(serializationObject, "hdrQualityLevel", 0, 4, 1);
+        this.metadata = GetSerializedStringRecord(serializationObject, "metadata");
+        this.enableDebug = GetSerializedBoolean(serializationObject, "enableDebug", false);
+        this.jsUrl = GetSerializedNullableString(serializationObject, "jsUrl") ?? undefined;
+        this.wasmUrl = GetSerializedNullableString(serializationObject, "wasmUrl") ?? undefined;
     }
 }
 

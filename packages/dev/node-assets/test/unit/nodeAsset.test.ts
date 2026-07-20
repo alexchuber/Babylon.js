@@ -308,33 +308,138 @@ describe("NodeAsset", () => {
         expect(parsedDraco.output.connectedPoints[0]).toBe(parsedExporter.input);
     });
 
-    it("roundtrips compression options through serialize/Parse", () => {
+    it("roundtrips the complete delivery codec options through serialize/Parse", () => {
         const asset = new NodeAsset("compression-options");
         const ktx2 = new KTX2CompressionBlock("ktx2", asset);
         ktx2.generateMipmaps = true;
+        ktx2.texturePattern = "hero-.*";
+        ktx2.colorTextureSlots = "baseColor";
+        ktx2.dataTextureSlots = "normal";
+        ktx2.outputContainer = "ktx2";
+        ktx2.etc1sQualityLevel = 200;
+        ktx2.etc1sCompressionLevel = 4;
+        ktx2.uastcQualityLevel = 3;
+        ktx2.colorPerceptual = false;
+        ktx2.dataPerceptual = true;
+        ktx2.colorSRGBTransferFunction = false;
+        ktx2.dataSRGBTransferFunction = false;
+        ktx2.enableRDO = true;
+        ktx2.rdoQualityLevel = 0.75;
+        ktx2.useZstandard = false;
+        ktx2.normalMapTuning = true;
+        ktx2.flipY = true;
+        ktx2.hdr = false;
+        ktx2.hdrSourceType = "exr";
+        ktx2.hdrQualityLevel = 4;
+        ktx2.metadata = { author: "Babylon.js" };
+        ktx2.enableDebug = true;
+        ktx2.jsUrl = "/encoder/basis.js";
+        ktx2.wasmUrl = "/encoder/basis.wasm";
         const draco = new DracoCompressionBlock("draco", asset);
         draco.method = DracoEncoderMethod.Sequential;
         draco.encodeSpeed = 2;
         draco.decodeSpeed = 8;
-        draco.quantizationBits = { POSITION: 12, NORMAL: 8 };
+        draco.quantizationBits = { POSITION: 12, NORMAL: 8, COLOR: 7, TEX_COORD: 11, GENERIC: 9 };
+        draco.quantizationVolume = "custom";
+        draco.customBoundsMin = [-2, -3, -4];
+        draco.customBoundsMax = [2, 3, 4];
 
         const serialized = JSON.parse(JSON.stringify(asset.serialize()));
-        expect(serialized.blocks[0]).toMatchObject({ generateMipmaps: true });
+        expect(serialized.blocks[0]).toMatchObject({
+            generateMipmaps: true,
+            texturePattern: "hero-.*",
+            colorTextureSlots: "baseColor",
+            dataTextureSlots: "normal",
+            outputContainer: "ktx2",
+            etc1sQualityLevel: 200,
+            etc1sCompressionLevel: 4,
+            uastcQualityLevel: 3,
+            colorPerceptual: false,
+            dataPerceptual: true,
+            colorSRGBTransferFunction: false,
+            dataSRGBTransferFunction: false,
+            enableRDO: true,
+            rdoQualityLevel: 0.75,
+            useZstandard: false,
+            normalMapTuning: true,
+            flipY: true,
+            hdr: false,
+            hdrSourceType: "exr",
+            hdrQualityLevel: 4,
+            metadata: { author: "Babylon.js" },
+            enableDebug: true,
+            jsUrl: "/encoder/basis.js",
+            wasmUrl: "/encoder/basis.wasm",
+        });
         expect(serialized.blocks[1]).toMatchObject({
             method: DracoEncoderMethod.Sequential,
             encodeSpeed: 2,
             decodeSpeed: 8,
-            quantizationBits: { POSITION: 12, NORMAL: 8 },
+            quantizationBits: { POSITION: 12, NORMAL: 8, COLOR: 7, TEX_COORD: 11, GENERIC: 9 },
+            quantizationVolume: "custom",
+            customBoundsMin: [-2, -3, -4],
+            customBoundsMax: [2, 3, 4],
         });
 
         const parsed = NodeAsset.Parse(serialized);
         const parsedKtx2 = parsed.attachedBlocks[0] as KTX2CompressionBlock;
         const parsedDraco = parsed.attachedBlocks[1] as DracoCompressionBlock;
-        expect(parsedKtx2.generateMipmaps).toBe(true);
+        expect(parsedKtx2).toMatchObject({
+            generateMipmaps: true,
+            texturePattern: "hero-.*",
+            colorTextureSlots: "baseColor",
+            dataTextureSlots: "normal",
+            outputContainer: "ktx2",
+            etc1sQualityLevel: 200,
+            etc1sCompressionLevel: 4,
+            uastcQualityLevel: 3,
+            colorPerceptual: false,
+            dataPerceptual: true,
+            colorSRGBTransferFunction: false,
+            dataSRGBTransferFunction: false,
+            enableRDO: true,
+            rdoQualityLevel: 0.75,
+            useZstandard: false,
+            normalMapTuning: true,
+            flipY: true,
+            hdr: false,
+            hdrSourceType: "exr",
+            hdrQualityLevel: 4,
+            metadata: { author: "Babylon.js" },
+            enableDebug: true,
+            jsUrl: "/encoder/basis.js",
+            wasmUrl: "/encoder/basis.wasm",
+        });
         expect(parsedDraco.method).toBe(DracoEncoderMethod.Sequential);
         expect(parsedDraco.encodeSpeed).toBe(2);
         expect(parsedDraco.decodeSpeed).toBe(8);
-        expect(parsedDraco.quantizationBits).toEqual({ POSITION: 12, NORMAL: 8 });
+        expect(parsedDraco.quantizationBits).toEqual({ POSITION: 12, NORMAL: 8, COLOR: 7, TEX_COORD: 11, GENERIC: 9 });
+        expect(parsedDraco.quantizationVolume).toBe("custom");
+        expect(parsedDraco.customBoundsMin).toEqual([-2, -3, -4]);
+        expect(parsedDraco.customBoundsMax).toEqual([2, 3, 4]);
+    });
+
+    it("rejects malformed serialized delivery codec options", () => {
+        const asset = new NodeAsset("invalid-compression-options");
+        const ktx2 = new KTX2CompressionBlock("ktx2", asset);
+        const draco = new DracoCompressionBlock("draco", asset);
+        const serialized = JSON.parse(JSON.stringify(asset.serialize()));
+
+        serialized.blocks[0].texturePattern = "[";
+        expect(() => NodeAsset.Parse(serialized)).toThrow(/texturePattern/);
+
+        serialized.blocks[0] = ktx2.serialize();
+        serialized.blocks[1] = draco.serialize();
+        serialized.blocks[1].encodeSpeed = 11;
+        expect(() => NodeAsset.Parse(serialized)).toThrow(/encodeSpeed/);
+
+        serialized.blocks[1] = draco.serialize();
+        serialized.blocks[1].customBoundsMin = [1, 0, 0];
+        serialized.blocks[1].customBoundsMax = [0, 1, 1];
+        expect(() => NodeAsset.Parse(serialized)).not.toThrow();
+
+        serialized.blocks[1].quantizationVolume = "custom";
+        expect(() => NodeAsset.Parse(serialized)).toThrow(/custom bounds/);
     });
 
     it("deduplicates a concurrently reached upstream across fan-in", async () => {

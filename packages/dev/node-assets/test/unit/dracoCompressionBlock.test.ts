@@ -203,4 +203,16 @@ describe("DracoCompressionBlock", () => {
         expect(block.input.value).toBeNull();
         await expect(block._buildBlockAsync()).rejects.toThrow();
     });
+
+    it("rejects scene quantization when the document does not contain exactly one scene", async () => {
+        const { Document } = await import("@gltf-transform/core");
+        const document = new Document();
+        document.createScene("one");
+        document.createScene("two");
+        const block = new DracoCompressionBlock("draco", new NodeAsset("scene-bounds"));
+        block.quantizationVolume = "scene";
+        block.input.value = CreateTestGltfAsset(document);
+
+        await expect(block._buildBlockAsync()).rejects.toThrow(/exactly one scene.*choose Mesh or Custom bounds/i);
+    });
 });

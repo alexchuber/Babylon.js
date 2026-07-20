@@ -43,6 +43,22 @@ function FindProperty<TKind extends PropertyDescriptor["kind"]>(
 }
 
 describe("block property sections (unified descriptor path)", () => {
+    it("publishes only the approved glTF delivery codec names", () => {
+        const controller = new NodeAssetGraphController();
+        try {
+            const labels = controller.paletteCategories.flatMap((category) => category.items.map((item) => item.label));
+            expect(labels).toContain("Compress Geometry (Draco)");
+            expect(labels).toContain("Compress Textures (KTX2)");
+            expect(labels).not.toContain("Apply Draco");
+            expect(labels).not.toContain("Apply BasisU");
+
+            expect(AddPaletteNode(controller, "draco-compression").title).toBe("Compress Geometry (Draco)");
+            expect(AddPaletteNode(controller, "ktx2-compression").title).toBe("Compress Textures (KTX2)");
+        } finally {
+            controller.dispose();
+        }
+    });
+
     it("builds the forwarded Read glTF section for the aggregate import block", () => {
         const controller = new NodeAssetGraphController();
         try {
@@ -63,6 +79,7 @@ describe("block property sections (unified descriptor path)", () => {
         const observer = controller.onExportRequested.add(() => {
             exportRequests++;
         });
+
         try {
             const exportNode = FindNode(controller, "Export glTF");
             FindSection(controller, exportNode, "WRITE GLTF");
@@ -76,16 +93,69 @@ describe("block property sections (unified descriptor path)", () => {
         }
     });
 
-    it("writes back the KTX2 generate-mipmaps switch", () => {
+    it("keeps codec decisions off the Export glTF aggregate properties", () => {
+        const controller = new NodeAssetGraphController();
+        try {
+            const exportNode = FindNode(controller, "Export glTF");
+            const labels = controller.buildPropertySections(exportNode).flatMap((section) => section.properties.map((property) => property.label));
+
+            expect(labels).not.toContain("Method");
+            expect(labels).not.toContain("Generate mipmaps");
+            expect(labels).not.toContain("Output container");
+        } finally {
+            controller.dispose();
+        }
+    });
+
+    it("exposes and writes back the complete KTX2 property surface", () => {
         const controller = new NodeAssetGraphController();
         try {
             const ktx2Node = AddPaletteNode(controller, "ktx2-compression");
-            FindSection(controller, ktx2Node, "KTX2");
+            const section = FindSection(controller, ktx2Node, "KTX2");
+            expect(section.properties.map((property) => property.label)).toEqual([
+                "Generate mipmaps",
+                "Texture filter",
+                "Color slot filter",
+                "Data slot filter",
+                "Output container",
+                "ETC1S quality",
+                "ETC1S compression level",
+                "UASTC quality",
+                "Color perceptual metric",
+                "Data perceptual metric",
+                "Color sRGB transfer function",
+                "Data sRGB transfer function",
+                "UASTC RDO",
+                "RDO quality",
+                "Zstandard supercompression",
+                "Normal map tuning",
+                "Flip Y",
+                "HDR",
+                "HDR source type",
+                "HDR quality",
+                "Metadata",
+                "Debug output",
+                "Encoder JavaScript URL",
+                "Encoder WASM URL",
+                "Compatibility",
+            ]);
 
-            const initial = FindProperty(controller, ktx2Node, "Generate mipmaps", "switch").value;
-            FindProperty(controller, ktx2Node, "Generate mipmaps", "switch").onChange(!initial);
+            FindProperty(controller, ktx2Node, "Generate mipmaps", "switch").onChange(true);
+            FindProperty(controller, ktx2Node, "Texture filter", "text").onChange("hero-.*");
+            FindProperty(controller, ktx2Node, "Output container", "dropdown").onChange("Basis");
+            FindProperty(controller, ktx2Node, "ETC1S quality", "slider").onChange(200);
+            FindProperty(controller, ktx2Node, "UASTC RDO", "switch").onChange(true);
+            FindProperty(controller, ktx2Node, "Metadata", "text").onChange('{"author":"Babylon.js"}');
+            FindProperty(controller, ktx2Node, "Encoder WASM URL", "text").onChange("/encoder/basis.wasm");
 
-            expect(FindProperty(controller, ktx2Node, "Generate mipmaps", "switch").value).toBe(!initial);
+            expect(FindProperty(controller, ktx2Node, "Generate mipmaps", "switch").value).toBe(true);
+            expect(FindProperty(controller, ktx2Node, "Texture filter", "text").value).toBe("hero-.*");
+            expect(FindProperty(controller, ktx2Node, "Output container", "dropdown").value).toBe("Basis");
+            expect(FindProperty(controller, ktx2Node, "ETC1S quality", "slider").value).toBe(200);
+            expect(FindProperty(controller, ktx2Node, "UASTC RDO", "switch").value).toBe(true);
+            expect(FindProperty(controller, ktx2Node, "Metadata", "text").value).toBe('{"author":"Babylon.js"}');
+            expect(FindProperty(controller, ktx2Node, "Encoder WASM URL", "text").value).toBe("/encoder/basis.wasm");
+            expect(FindProperty(controller, ktx2Node, "Compatibility", "text").value).toMatch(/KTX2/);
         } finally {
             controller.dispose();
         }
@@ -107,25 +177,39 @@ describe("block property sections (unified descriptor path)", () => {
         }
     });
 
-    it("validates and round-trips the DRACO quantization-bits field", () => {
+    it("exposes, validates, and writes back the complete Draco property surface", () => {
         const controller = new NodeAssetGraphController();
         try {
             const dracoNode = AddPaletteNode(controller, "draco-compression");
-            const quantization = FindProperty(controller, dracoNode, "Quantization bits", "text");
-            const validator = quantization.validator!;
+            const section = FindSection(controller, dracoNode, "DRACO");
+            expect(section.properties.map((property) => property.label)).toEqual([
+                "Method",
+                "Encode speed",
+                "Decode speed",
+                "Position bits",
+                "Normal bits",
+                "Color bits",
+                "Texture coordinate bits",
+                "Generic bits",
+                "Quantization volume",
+                "Custom bounds minimum",
+                "Custom bounds maximum",
+                "Compatibility",
+            ]);
 
-            expect(validator("")).toBe(true);
-            expect(validator('{"POSITION":11}')).toBe(true);
-            expect(validator("not json")).toBe(false);
-            expect(validator("[1,2]")).toBe(false);
-            expect(validator('{"POSITION":0}')).toBe(false);
-            expect(validator('{"POSITION":1.5}')).toBe(false);
+            FindProperty(controller, dracoNode, "Position bits", "slider").onChange(11);
+            FindProperty(controller, dracoNode, "Quantization volume", "dropdown").onChange("Custom bounds");
+            const minimum = FindProperty(controller, dracoNode, "Custom bounds minimum", "text");
+            expect(minimum.validator?.("-1, -2, -3")).toBe(true);
+            expect(minimum.validator?.("1, 2")).toBe(false);
+            minimum.onChange("-1, -2, -3");
+            FindProperty(controller, dracoNode, "Custom bounds maximum", "text").onChange("1, 2, 3");
 
-            quantization.onChange('{"POSITION":11}');
-            expect(FindProperty(controller, dracoNode, "Quantization bits", "text").value).toBe('{"POSITION":11}');
-
-            FindProperty(controller, dracoNode, "Quantization bits", "text").onChange("");
-            expect(FindProperty(controller, dracoNode, "Quantization bits", "text").value).toBe("");
+            expect(FindProperty(controller, dracoNode, "Position bits", "slider").value).toBe(11);
+            expect(FindProperty(controller, dracoNode, "Quantization volume", "dropdown").value).toBe("Custom bounds");
+            expect(FindProperty(controller, dracoNode, "Custom bounds minimum", "text").value).toBe("-1, -2, -3");
+            expect(FindProperty(controller, dracoNode, "Custom bounds maximum", "text").value).toBe("1, 2, 3");
+            expect(FindProperty(controller, dracoNode, "Compatibility", "text").value).toMatch(/indexed triangle meshes/i);
         } finally {
             controller.dispose();
         }

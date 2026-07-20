@@ -3,8 +3,10 @@ import { ALL_EXTENSIONS } from "@gltf-transform/extensions";
 import { describe, expect, it, vi } from "vitest";
 
 import { GLTFToUniversalBlock } from "../../src/Blocks/gltfToUniversalBlock";
+import { DracoCompressionBlock } from "../../src/Blocks/dracoCompressionBlock";
 import { ExportGLTFAggregateBlock } from "../../src/Blocks/exportGLTFAggregateBlock";
 import { ImportGLTFAggregateBlock } from "../../src/Blocks/importGLTFAggregateBlock";
+import { KTX2CompressionBlock } from "../../src/Blocks/ktx2CompressionBlock";
 import { ReadGLTFBlock } from "../../src/Blocks/readGLTFBlock";
 import { UniversalToGLTFBlock } from "../../src/Blocks/universalToGLTFBlock";
 import { WriteGLTFBlock } from "../../src/Blocks/writeGLTFBlock";
@@ -18,6 +20,36 @@ async function CreateFixtureGlbAsync(): Promise<Uint8Array> {
     const document = new Document();
     document.createScene("fixture-scene").addChild(document.createNode("fixture-node"));
     return await new WebIO().registerExtensions(ALL_EXTENSIONS).writeBinary(document);
+}
+
+async function CreateCodecFixtureGlbAsync(): Promise<Uint8Array> {
+    const document = new Document();
+    const buffer = document.createBuffer();
+    const positions = document
+        .createAccessor()
+        .setType("VEC3")
+        .setArray(new Float32Array([-1, -1, 0, 1, -1, 0, 1, 1, 0, -1, 1, 0]))
+        .setBuffer(buffer);
+    const indices = document.createAccessor().setType("SCALAR").setArray(new Uint16Array([0, 1, 2, 0, 2, 3])).setBuffer(buffer);
+    const baseColor = document.createTexture("baseColor").setImage(new Uint8Array(32).fill(1)).setMimeType("image/png");
+    const normal = document.createTexture("normal").setImage(new Uint8Array(32).fill(2)).setMimeType("image/png");
+    const material = document.createMaterial("material").setBaseColorTexture(baseColor).setNormalTexture(normal);
+    const primitive = document.createPrimitive().setAttribute("POSITION", positions).setIndices(indices).setMaterial(material);
+    document.createScene("codec-scene").addChild(document.createNode("codec-node").setMesh(document.createMesh("codec-mesh").addPrimitive(primitive)));
+    return await new WebIO().registerExtensions(ALL_EXTENSIONS).writeBinary(document);
+}
+
+async function DecodeCodecFixtureAsync(): Promise<{ width: number; height: number; data: Uint8Array }> {
+    const width = 16;
+    const height = 16;
+    return { width, height, data: new Uint8Array(width * height * 4).fill(128) };
+}
+
+function ReadGlbJson(glb: Uint8Array): { extensionsUsed?: string[]; images?: { mimeType?: string }[] } {
+    const view = new DataView(glb.buffer, glb.byteOffset, glb.byteLength);
+    const jsonChunkLength = view.getUint32(12, true);
+    const jsonBytes = new Uint8Array(glb.buffer, glb.byteOffset + 20, jsonChunkLength);
+    return JSON.parse(new TextDecoder().decode(jsonBytes));
 }
 
 describe("Universal glTF funnel", () => {
@@ -73,6 +105,51 @@ describe("Universal glTF funnel", () => {
                 .map((node) => node.getName())
         ).toEqual(["fixture-node"]);
     });
+
+    it("keeps both delivery codecs on the explicit glTF target lane", () => {
+        const asset = new NodeAsset("codec-lane-types");
+        const toUniversal = new GLTFToUniversalBlock("glTF to Universal", asset);
+        const toGltf = new UniversalToGLTFBlock("Universal to glTF", asset);
+        const ktx2 = new KTX2CompressionBlock("Compress Textures (KTX2)", asset);
+        const draco = new DracoCompressionBlock("Compress Geometry (Draco)", asset);
+
+        expect(ktx2.input.type).toBe(NodeAssetConnectionPointType.GLTF_DOCUMENT);
+        expect(ktx2.output.type).toBe(NodeAssetConnectionPointType.GLTF_DOCUMENT);
+        expect(draco.input.type).toBe(NodeAssetConnectionPointType.GLTF_DOCUMENT);
+        expect(draco.output.type).toBe(NodeAssetConnectionPointType.GLTF_DOCUMENT);
+        expect(() => toUniversal.output.connectTo(ktx2.input)).toThrow(/incompatible connection point types/);
+        expect(() => toUniversal.output.connectTo(draco.input)).toThrow(/incompatible connection point types/);
+        expect(() => toGltf.output.connectTo(ktx2.input)).not.toThrow();
+        expect(() => ktx2.output.connectTo(draco.input)).not.toThrow();
+    });
+
+    it("builds KTX2 textures and Draco geometry through the advanced explicit delivery lane", async () => {
+        const asset = new NodeAsset("advanced-codec-lane");
+        const read = new ReadGLTFBlock("Read glTF", asset);
+        read.data = await CreateCodecFixtureGlbAsync();
+        read.source = "codec-fixture.glb";
+        const toUniversal = new GLTFToUniversalBlock("glTF to Universal", asset);
+        const toGltf = new UniversalToGLTFBlock("Universal to glTF", asset);
+        const ktx2 = new KTX2CompressionBlock("Compress Textures (KTX2)", asset);
+        ktx2.imageDecoder = DecodeCodecFixtureAsync;
+        const draco = new DracoCompressionBlock("Compress Geometry (Draco)", asset);
+        const write = new WriteGLTFBlock("Write glTF", asset);
+        write.fileName = "advanced-codecs";
+
+        read.output.connectTo(toUniversal.input);
+        toUniversal.output.connectTo(toGltf.input);
+        toGltf.output.connectTo(ktx2.input);
+        ktx2.output.connectTo(draco.input);
+        draco.output.connectTo(write.input);
+
+        const result = await asset.buildAsync();
+        const built = ReadGlbJson(result);
+
+        expect(result.byteLength).toBeGreaterThan(0);
+        expect(built.extensionsUsed).toContain("KHR_texture_basisu");
+        expect(built.extensionsUsed).toContain("KHR_draco_mesh_compression");
+        expect(built.images?.map((image) => image.mimeType)).toEqual(["image/ktx2", "image/ktx2"]);
+    }, 20000);
 
     it("round-trips aggregate subgraphs and builds the same asset facts as the primitive path", async () => {
         const source = await CreateFixtureGlbAsync();

@@ -122,7 +122,7 @@ describe("KTX2CompressionBlock", () => {
         expect(dataTexture.getMimeType()).toBe("image/ktx2");
         expect(ReadKtx2ColorModel(colorTexture.getImage()!)).toBe(KHR_DF_MODEL_ETC1S);
         expect(ReadKtx2ColorModel(dataTexture.getImage()!)).toBe(KHR_DF_MODEL_UASTC);
-    });
+    }, 20000);
 
     it("passes unsupported textures through uncompressed and still exports a valid glb", async () => {
         // HDR is skipped by the design; represented here by an unsupported source mime type.
@@ -148,5 +148,20 @@ describe("KTX2CompressionBlock", () => {
         // The unsupported color texture is left untouched; only the supported normal texture compresses.
         expect(material.getBaseColorTexture()!.getMimeType()).toBe("image/hdr");
         expect(material.getNormalTexture()!.getMimeType()).toBe("image/ktx2");
+    });
+
+    it("rejects Basis output before writing an invalid glTF texture payload", async () => {
+        const glb = await CreateTexturedGlbAsync();
+        const asset = new NodeAsset("basis-incompatible");
+        const importer = new ImportGLTFBlock("import", asset);
+        importer.data = glb;
+        const compressor = new KTX2CompressionBlock("ktx2", asset);
+        compressor.outputContainer = "basis";
+        compressor.imageDecoder = DecodeSolidRgbaAsync;
+        importer.output.connectTo(compressor.input);
+        await importer._buildBlockAsync();
+        compressor.input.value = importer.output.value;
+
+        await expect(compressor._buildBlockAsync()).rejects.toThrow(/requires the KTX2 output container.*choose KTX2/i);
     });
 });

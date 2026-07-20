@@ -80,7 +80,7 @@ export class NodeAssetBuildTimeoutError extends Error {
     public constructor(timeoutMs: number) {
         super(
             `The build did not finish within ${Math.round(timeoutMs / 1000)}s and was stopped. Firefox compresses ` +
-                `KTX2 / Basis textures far slower than Chromium-based browsers; use Chrome or Edge, or remove the Apply BasisU node.`
+                `KTX2 / Basis textures far slower than Chromium-based browsers; use Chrome or Edge, or remove the Compress Textures (KTX2) node.`
         );
         this.name = "NodeAssetBuildTimeoutError";
         this.timeoutMs = timeoutMs;

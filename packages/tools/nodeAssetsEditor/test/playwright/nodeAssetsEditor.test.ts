@@ -19,9 +19,9 @@ const EnergyOrbPipeline: readonly (readonly [string, string])[] = [
     ["Import Image", "Build PBR Material"],
     ["Import glTF", "Universal to glTF"],
     ["Universal to glTF", "Build PBR Material"],
-    ["Build PBR Material", "Apply BasisU"],
-    ["Apply BasisU", "Apply Draco"],
-    ["Apply Draco", "glTF to Universal"],
+    ["Build PBR Material", "Compress Textures (KTX2)"],
+    ["Compress Textures (KTX2)", "Compress Geometry (Draco)"],
+    ["Compress Geometry (Draco)", "glTF to Universal"],
     ["glTF to Universal", "Export glTF"],
 ];
 
@@ -47,6 +47,40 @@ function collectPageErrors(page: Page): string[] {
     });
     page.on("pageerror", (error) => errors.push(error.message));
     return errors;
+}
+
+function createAdvancedCodecEditorFile(): string {
+    const source = readFileSync("packages/tools/nodeAssetsEditor/src/nodeAssets/sampleAssets/orb.glb").toString("base64");
+    const blocks = [
+        { customType: "ReadGLTFBlock", id: 1, name: "Read glTF", data: source, source: "orb.glb", sourceKind: "upload" },
+        { customType: "GLTFToUniversalBlock", id: 2, name: "glTF to Universal" },
+        { customType: "UniversalToGLTFBlock", id: 3, name: "Universal to glTF" },
+        { customType: "KTX2CompressionBlock", id: 4, name: "Compress Textures (KTX2)" },
+        { customType: "DracoCompressionBlock", id: 5, name: "Compress Geometry (Draco)" },
+        { customType: "WriteGLTFBlock", id: 6, name: "Write glTF", fileName: "codec-delivery" },
+    ];
+    return JSON.stringify({
+        graph: {
+            name: "advanced-codec-delivery",
+            blocks,
+            connections: [
+                { fromBlock: 1, fromPoint: "output", toBlock: 2, toPoint: "input" },
+                { fromBlock: 2, fromPoint: "output", toBlock: 3, toPoint: "input" },
+                { fromBlock: 3, fromPoint: "output", toBlock: 4, toPoint: "input" },
+                { fromBlock: 4, fromPoint: "output", toBlock: 5, toPoint: "input" },
+                { fromBlock: 5, fromPoint: "output", toBlock: 6, toPoint: "input" },
+            ],
+        },
+        editor: {
+            blocks: blocks.map((block, index) => ({
+                id: block.id,
+                position: { x: 80 + index * 280, y: 240 },
+                title: block.name,
+                collapsed: false,
+            })),
+            frames: [],
+        },
+    });
 }
 
 async function readDownloadedGlb(download: Download, expectedFileName = "scene.glb"): Promise<Buffer> {
@@ -86,8 +120,8 @@ test.describe("Node Assets Editor — Energy orb showcase", () => {
         await expect(editor.nodeByTitle("Import Image")).toHaveCount(2);
         await expect(editor.nodeByTitle("Composite Image")).toBeVisible();
         await expect(editor.nodeByTitle("Build PBR Material")).toBeVisible();
-        await expect(editor.nodeByTitle("Apply BasisU")).toBeVisible();
-        await expect(editor.nodeByTitle("Apply Draco")).toBeVisible();
+        await expect(editor.nodeByTitle("Compress Textures (KTX2)")).toBeVisible();
+        await expect(editor.nodeByTitle("Compress Geometry (Draco)")).toBeVisible();
         await expect(editor.nodeByTitle("glTF to Universal")).toBeVisible();
         await expect(editor.nodeByTitle("Export glTF")).toBeVisible();
         await editor.expectWiredPipeline(EnergyOrbPipeline);
@@ -146,9 +180,9 @@ test.describe("Node Assets Editor — Energy orb showcase", () => {
             ["Composite Image", "Build PBR Material"],
             ["Import glTF", "Universal to glTF"],
             ["Universal to glTF", "Build PBR Material"],
-            ["Build PBR Material", "Apply BasisU"],
-            ["Apply BasisU", "Apply Draco"],
-            ["Apply Draco", "glTF to Universal"],
+            ["Build PBR Material", "Compress Textures (KTX2)"],
+            ["Compress Textures (KTX2)", "Compress Geometry (Draco)"],
+            ["Compress Geometry (Draco)", "glTF to Universal"],
             ["glTF to Universal", "Export glTF"],
         ]);
         await editor.waitForSuccessfulPreviewBuild();
@@ -234,7 +268,7 @@ test.describe("Node Assets Editor — Energy orb showcase", () => {
         for (const [query, label, description] of [
             ["decimate", "Simplify", "Reduce mesh polygon count to a target ratio."],
             ["optimize", "Prune", "Remove unused scene resources from the output."],
-            ["compress", "Apply BasisU", "Compress scene textures to KTX2 / Basis Universal."],
+            ["compress", "Compress Textures (KTX2)", "Compress scene textures to KTX2 / Basis Universal."],
         ]) {
             await search.fill(query);
             await expect(page.getByTitle(label, { exact: true })).toBeVisible();
@@ -286,11 +320,56 @@ test.describe("Node Assets Editor — Energy orb showcase", () => {
 
         await expect.poll(overlaps).toBe(false);
         const pipelineX = await Promise.all(
-            ["Import glTF", "Universal to glTF", "Build PBR Material", "Apply BasisU", "Apply Draco", "glTF to Universal", "Export glTF"].map(
+            ["Import glTF", "Universal to glTF", "Build PBR Material", "Compress Textures (KTX2)", "Compress Geometry (Draco)", "glTF to Universal", "Export glTF"].map(
                 async (title) => (await editor.nodeByTitle(title).boundingBox())?.x ?? 0
             )
         );
         expect(pipelineX).toEqual([...pipelineX].sort((left, right) => left - right));
+    });
+});
+
+test.describe("Node Assets Editor — explicit glTF delivery codecs", () => {
+    test.describe.configure({ timeout: 180_000 });
+
+    test("previews the advanced target lane and downloads its non-empty named GLB", async ({ page }) => {
+        const editor = new NodeAssetsEditorPage(page);
+        await editor.goto();
+        await editor.waitForNextSuccessfulPreviewBuild();
+
+        const fileChooserPromise = page.waitForEvent("filechooser");
+        await page.getByRole("button", { name: "Load" }).click();
+        const fileChooser = await fileChooserPromise;
+        await fileChooser.setFiles({
+            name: "advanced-codec-delivery.json",
+            mimeType: "application/json",
+            buffer: Buffer.from(createAdvancedCodecEditorFile()),
+        });
+
+        await expect(editor.nodes).toHaveCount(6);
+        await editor.expectWiredPipeline([
+            ["Read glTF", "glTF to Universal"],
+            ["glTF to Universal", "Universal to glTF"],
+            ["Universal to glTF", "Compress Textures (KTX2)"],
+            ["Compress Textures (KTX2)", "Compress Geometry (Draco)"],
+            ["Compress Geometry (Draco)", "Write glTF"],
+        ]);
+        await editor.waitForSuccessfulPreviewBuild();
+        await expect(editor.previewCanvas).toBeVisible();
+
+        await editor.selectNode("Compress Textures (KTX2)");
+        await expect(page.getByText("Output container", { exact: true })).toBeVisible();
+        await expect(page.getByText("UASTC RDO", { exact: true })).toBeVisible();
+        await expect(page.getByText("Encoder WASM URL", { exact: true })).toBeVisible();
+
+        await editor.selectNode("Compress Geometry (Draco)");
+        await expect(page.getByText("Quantization volume", { exact: true })).toBeVisible();
+        await expect(page.getByText("Custom bounds minimum", { exact: true })).toBeVisible();
+
+        await editor.selectNode("Write glTF");
+        await page.getByRole("textbox").nth(2).fill("requested-codec-delivery");
+        const downloadPromise = page.waitForEvent("download");
+        await page.getByRole("button", { name: "Export .glb" }).click();
+        await readDownloadedGlb(await downloadPromise, "requested-codec-delivery.glb");
     });
 });
 
