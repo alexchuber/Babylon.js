@@ -549,7 +549,9 @@ describe("NodeAssetGraphController", () => {
                 category.items.filter((item) => PaletteItemMatchesFilter(item, category.label, "cleanup")).map((item) => item.id)
             );
 
-            expect(matches).toEqual(expect.arrayContaining(["prune", "dedup", "weld", "join", "flatten"]));
+            expect(matches).toEqual(
+                expect.arrayContaining(["weld-vertices", "dedup", "remove-unused-resources", "remove-degenerate-geometry", "fix-face-winding", "join", "flatten"])
+            );
         } finally {
             controller.dispose();
         }

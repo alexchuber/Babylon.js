@@ -9,6 +9,7 @@ RegisterBlockDescriptor({
     keywords: ["optimize", "cleanup", "vertices", "deduplicate", "topology"],
     headerColor: OperatorHeaderColor,
     category: OperatorCategory,
+    isPaletteVisible: false,
     className: WeldBlock.ClassName,
     create: (nodeAsset) => new WeldBlock("Weld", nodeAsset),
     getPropertySection: (block, { refresh }) => {

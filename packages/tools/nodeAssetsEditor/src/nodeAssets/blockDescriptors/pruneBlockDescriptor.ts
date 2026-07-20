@@ -9,6 +9,7 @@ RegisterBlockDescriptor({
     keywords: ["optimize", "cleanup", "remove unused", "dead assets"],
     headerColor: OperatorHeaderColor,
     category: OperatorCategory,
+    isPaletteVisible: false,
     className: PruneBlock.ClassName,
     create: (nodeAsset) => new PruneBlock("Prune", nodeAsset),
     getPropertySection: (block, { refresh }) => {
