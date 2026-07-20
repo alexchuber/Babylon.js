@@ -38,10 +38,10 @@ runtime block. _Avoid_: block (that is the runtime's word), card.
 **port** (`IGraphPort`):
 The visual input/output dot on a node. The editor's render of a runtime connection point; its kind
 reflects the connection point type. Milestone 01–06 kinds are SCENE, IMAGE, NUMBER, STRING, JSON;
-_(milestone 07)_ the three **representation** kinds GLTF*DOCUMENT, USD_STAGE, BABYLON_SCENE (each with
+_(milestone 07)_ the three **representation** kinds GLTF_DOCUMENT, USD_STAGE, BABYLON_SCENE (each with
 its own port color) plus the NODE_GEOMETRY resource kind. There is no generic "representation" port —
 each representation is its own colored kind, so a lossy transcode is a visible node, never an implicit
-wire. \_Avoid*: connection point (runtime's word), socket, pin.
+wire. _Avoid_: connection point (runtime's word), socket, pin.
 
 **wire** (`IGraphWire`):
 The visual bezier link from an output port to an input port. The editor's render of a runtime
