@@ -37,30 +37,31 @@ export class DeduplicateResourcesBlock extends AggregateBlock {
 
     /** The owned Deduplicate Materials primitive. */
     public get deduplicateMaterialsBlock(): DeduplicateMaterialsBlock {
-        return this._getChildBlock(DeduplicateMaterialsBlock);
+        return this._getChildBlock(DeduplicateMaterialsBlock, DeduplicateMaterialsBlock.ClassName);
     }
 
     /** The owned Deduplicate Textures primitive. */
     public get deduplicateTexturesBlock(): DeduplicateTexturesBlock {
-        return this._getChildBlock(DeduplicateTexturesBlock);
+        return this._getChildBlock(DeduplicateTexturesBlock, DeduplicateTexturesBlock.ClassName);
     }
 
     /** The owned Reuse Identical Meshes primitive. */
     public get reuseIdenticalMeshesBlock(): ReuseIdenticalMeshesBlock {
-        return this._getChildBlock(ReuseIdenticalMeshesBlock);
+        return this._getChildBlock(ReuseIdenticalMeshesBlock, ReuseIdenticalMeshesBlock.ClassName);
     }
 
     /** The owned Deduplicate Data primitive. */
     public get deduplicateDataBlock(): DeduplicateDataBlock {
-        return this._getChildBlock(DeduplicateDataBlock);
+        return this._getChildBlock(DeduplicateDataBlock, DeduplicateDataBlock.ClassName);
     }
 
     private _getChildBlock<T extends DeduplicateMaterialsBlock | DeduplicateTexturesBlock | ReuseIdenticalMeshesBlock | DeduplicateDataBlock>(
-        blockType: abstract new (...args: never[]) => T
+        blockType: new (name: string, nodeAsset: NodeAsset) => T,
+        className: string
     ): T {
         const block = this.subgraph.attachedBlocks.find((candidate): candidate is T => candidate instanceof blockType);
         if (!block) {
-            throw new Error(`The "${this.name}" aggregate has no ${blockType.ClassName}.`);
+            throw new Error(`The "${this.name}" aggregate has no ${className}.`);
         }
         return block;
     }
