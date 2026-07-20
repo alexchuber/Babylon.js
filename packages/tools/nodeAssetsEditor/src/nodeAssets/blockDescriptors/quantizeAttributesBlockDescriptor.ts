@@ -1,6 +1,6 @@
 import { QuantizationVolume, QuantizeAttributesBlock } from "node-assets/Blocks/quantizeAttributesBlock";
 
-import { OperatorCategory, OperatorHeaderColor, RegisterBlockDescriptor } from "../blockCatalog";
+import { OperatorHeaderColor, ReductionFamily, RegisterBlockDescriptor, UniversalCategory } from "../blockCatalog";
 
 const QuantizationVolumeLabels = ["Mesh", "Scene"] as const;
 
@@ -27,7 +27,8 @@ RegisterBlockDescriptor({
     description: "Reduce selected Universal vertex attributes to configurable precision.",
     keywords: ["optimize", "compress", "precision", "mesh size"],
     headerColor: OperatorHeaderColor,
-    category: OperatorCategory,
+    category: UniversalCategory,
+    family: ReductionFamily,
     className: QuantizeAttributesBlock.ClassName,
     create: (nodeAsset) => new QuantizeAttributesBlock("Quantize Attributes", nodeAsset),
     getPropertySection: (block, { refresh }) => {

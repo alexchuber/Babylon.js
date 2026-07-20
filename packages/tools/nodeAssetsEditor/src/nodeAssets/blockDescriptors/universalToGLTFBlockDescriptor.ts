@@ -4,11 +4,11 @@ import { ConfigureBlockForEditor, RegisterBlockDescriptor, TranscodersHeaderColo
 
 RegisterBlockDescriptor({
     paletteItemId: "universal-to-gltf",
-    label: "Universal to glTF",
+    label: "Universal → glTF",
     description: "Cross explicitly from Universal into the glTF delivery lane.",
     category: "Universal",
     headerColor: TranscodersHeaderColor,
     className: UniversalToGLTFBlock.ClassName,
     abstractedBy: "export-gltf",
-    create: (nodeAsset) => ConfigureBlockForEditor(new UniversalToGLTFBlock("Universal to glTF", nodeAsset)),
+    create: (nodeAsset) => ConfigureBlockForEditor(new UniversalToGLTFBlock("Universal → glTF", nodeAsset)),
 });

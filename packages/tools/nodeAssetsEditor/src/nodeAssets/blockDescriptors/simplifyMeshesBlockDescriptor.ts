@@ -1,6 +1,6 @@
 import { SimplifyMeshesBlock } from "node-assets/Blocks/simplifyMeshesBlock";
 
-import { OperatorCategory, OperatorHeaderColor, RegisterBlockDescriptor } from "../blockCatalog";
+import { OperatorHeaderColor, ReductionFamily, RegisterBlockDescriptor, UniversalCategory } from "../blockCatalog";
 
 RegisterBlockDescriptor({
     paletteItemId: "simplify-meshes",
@@ -8,7 +8,8 @@ RegisterBlockDescriptor({
     description: "Reduce Universal mesh geometry to a target ratio and error limit.",
     keywords: ["decimate", "reduce polygons", "LOD", "optimize mesh"],
     headerColor: OperatorHeaderColor,
-    category: OperatorCategory,
+    category: UniversalCategory,
+    family: ReductionFamily,
     className: SimplifyMeshesBlock.ClassName,
     create: (nodeAsset) => new SimplifyMeshesBlock("Simplify Meshes", nodeAsset),
     getPropertySection: (block, { refresh }) => {

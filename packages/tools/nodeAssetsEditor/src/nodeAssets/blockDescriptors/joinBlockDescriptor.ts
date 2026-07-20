@@ -9,6 +9,7 @@ RegisterBlockDescriptor({
     keywords: ["optimize", "cleanup", "merge meshes", "batch", "draw calls"],
     headerColor: OperatorHeaderColor,
     category: OperatorCategory,
+    isPaletteVisible: false,
     className: JoinBlock.ClassName,
     create: (nodeAsset) => new JoinBlock("Join", nodeAsset),
     getPropertySection: (block, { refresh }) => {

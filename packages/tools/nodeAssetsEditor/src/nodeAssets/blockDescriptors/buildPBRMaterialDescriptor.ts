@@ -21,6 +21,7 @@ RegisterBlockDescriptor({
     keywords: ["material", "shader", "metallic roughness", "textures"],
     headerColor: CompositionHeaderColor,
     category: CompositionCategory,
+    isPaletteVisible: false,
     className: BuildPBRMaterial.ClassName,
     create: (nodeAsset) => new BuildPBRMaterial("Build PBR Material", nodeAsset),
     getPropertySection: (block, { refresh }) => {

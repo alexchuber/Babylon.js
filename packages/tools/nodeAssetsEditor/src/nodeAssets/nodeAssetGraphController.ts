@@ -369,6 +369,9 @@ export class NodeAssetGraphController {
         if (!descriptor) {
             throw new Error(`Unknown palette item "${paletteItemId}".`);
         }
+        if (descriptor.isPaletteVisible === false) {
+            throw new Error(`Palette item "${paletteItemId}" is load-only and cannot be authored.`);
+        }
         return this._instantiateBlock(descriptor, position);
     }
 
@@ -921,15 +924,16 @@ export class NodeAssetGraphController {
         const removedFrameIds = new Set<string>();
         const removedWireIds = new Set<string>();
         const removedRootIds = new Set(nodeIds.filter((nodeId) => this.isAggregateNode(nodeId)));
-        for (const rootNodeId of removedRootIds) {
-            const frame = this.state.frames.find((candidate) => candidate.kind === "aggregate" && candidate.aggregateNodeId === rootNodeId);
-            if (!frame) {
-                continue;
+        for (const nodeId of nodeIds) {
+            const projectedNodeIds: string[] = [];
+            const projectedFrameIds: string[] = [];
+            this._collectAggregateProjection(nodeId, projectedNodeIds, projectedFrameIds);
+            for (const projectedNodeId of projectedNodeIds) {
+                removedNodeIds.add(projectedNodeId);
+                this._aggregateRootByChildNodeId.delete(projectedNodeId);
             }
-            removedFrameIds.add(frame.id);
-            for (const childNodeId of frame.nodeIds) {
-                removedNodeIds.add(childNodeId);
-                this._aggregateRootByChildNodeId.delete(childNodeId);
+            for (const projectedFrameId of projectedFrameIds) {
+                removedFrameIds.add(projectedFrameId);
             }
         }
 

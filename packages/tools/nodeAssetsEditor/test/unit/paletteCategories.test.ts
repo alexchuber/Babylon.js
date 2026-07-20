@@ -1,7 +1,8 @@
 import { describe, expect, it } from "vitest";
 
+import "../../src/nodeAssets/blockDescriptors";
 import { BuildPaletteCategories } from "../../src/nodeAssets/paletteCategories";
-import { type IBlockDescriptor } from "../../src/nodeAssets/blockCatalog";
+import { GetAllBlockDescriptors, type IBlockDescriptor } from "../../src/nodeAssets/blockCatalog";
 import { PaletteItemMatchesFilter } from "../../src/nodeGraph/paletteModel";
 
 /** Builds a descriptor stub carrying only the fields the palette builder reads. */
@@ -17,6 +18,94 @@ function Descriptor(
 }
 
 describe("BuildPaletteCategories", () => {
+    it("publishes the exact default product palette in canonical category, family, and item order", () => {
+        const projection = BuildPaletteCategories(GetAllBlockDescriptors()).map((category) => ({
+            category: category.label,
+            items: category.items.map((item) => ({
+                family: item.family ?? null,
+                label: item.label,
+            })),
+        }));
+
+        expect(projection).toEqual([
+            {
+                category: "Inputs",
+                items: [
+                    { family: "Aggregate imports", label: "Import glTF" },
+                    { family: "Aggregate imports", label: "Import USD" },
+                    { family: "Aggregate imports", label: "Import Babylon" },
+                    { family: "Aggregate imports", label: "Import Node Geometry" },
+                ],
+            },
+            {
+                category: "Universal",
+                items: [
+                    { family: "Cleanup", label: "Weld Vertices" },
+                    { family: "Cleanup", label: "Deduplicate Resources" },
+                    { family: "Cleanup", label: "Remove Unused Resources" },
+                    { family: "Cleanup", label: "Remove Degenerate Geometry" },
+                    { family: "Cleanup", label: "Fix Face Winding" },
+                    { family: "Reduction", label: "Quantize Attributes" },
+                    { family: "Reduction", label: "Simplify Meshes" },
+                    { family: "Structure", label: "Flatten Hierarchy" },
+                    { family: "Structure", label: "Join Meshes" },
+                    { family: "Structure", label: "Split Meshes by Material" },
+                    { family: "Structure", label: "Merge Scenes" },
+                    { family: "Structure", label: "Transform Scene" },
+                    { family: "Structure", label: "Center Scene" },
+                    { family: "Attributes", label: "Recompute Normals" },
+                    { family: "Attributes", label: "Generate Tangents" },
+                    { family: "Attributes", label: "Strip Attributes" },
+                    { family: "Textures", label: "Resize Textures" },
+                ],
+            },
+            {
+                category: "glTF",
+                items: [
+                    { family: "Encoding/output", label: "Compress Geometry (Draco)" },
+                    { family: "Encoding/output", label: "Compress Textures (KTX2)" },
+                    { family: "Encoding/output", label: "Export glTF" },
+                ],
+            },
+        ]);
+    });
+
+    it("adds exactly the canonical primitives after the default product palette", () => {
+        const defaultCategories = BuildPaletteCategories(GetAllBlockDescriptors());
+        const primitiveCategories = BuildPaletteCategories(GetAllBlockDescriptors(), { showPrimitives: true });
+        const additions = primitiveCategories.map((category) => {
+            const defaultItemIds = new Set(defaultCategories.find((candidate) => candidate.label === category.label)?.items.map((item) => item.id) ?? []);
+            return {
+                category: category.label,
+                items: category.items.filter((item) => !defaultItemIds.has(item.id)).map((item) => item.label),
+            };
+        });
+
+        expect(primitiveCategories.map((category) => category.label)).toEqual(["Inputs", "Universal", "glTF", "USD", "Babylon", "Node Geometry"]);
+        for (const defaultCategory of defaultCategories) {
+            expect(primitiveCategories.find((category) => category.label === defaultCategory.label)?.items.slice(0, defaultCategory.items.length)).toEqual(defaultCategory.items);
+        }
+        expect(additions).toEqual([
+            { category: "Inputs", items: ["Read glTF", "Read USD", "Read Babylon", "Read Node Geometry"] },
+            {
+                category: "Universal",
+                items: ["Universal → glTF", "Deduplicate Materials", "Deduplicate Textures", "Reuse Identical Meshes", "Deduplicate Data"],
+            },
+            { category: "glTF", items: ["glTF → Universal", "Write glTF"] },
+            { category: "USD", items: ["USD → Universal"] },
+            { category: "Babylon", items: ["Babylon → Universal"] },
+            { category: "Node Geometry", items: ["Node Geometry → Universal"] },
+        ]);
+    });
+
+    it("uses the filtered product catalog for search", () => {
+        expect(BuildPaletteCategories(GetAllBlockDescriptors(), { filter: "selector", showPrimitives: true })).toEqual([]);
+        expect(BuildPaletteCategories(GetAllBlockDescriptors(), { filter: "Write glTF" })).toEqual([]);
+        expect(BuildPaletteCategories(GetAllBlockDescriptors(), { filter: "Write glTF", showPrimitives: true })).toMatchObject([
+            { label: "glTF", items: [{ label: "Write glTF" }] },
+        ]);
+    });
+
     it("returns no categories for an empty descriptor list", () => {
         expect(BuildPaletteCategories([])).toEqual([]);
     });
@@ -67,10 +156,7 @@ describe("BuildPaletteCategories", () => {
         ];
 
         expect(BuildPaletteCategories(descriptors).flatMap((category) => category.items.map((item) => item.label))).toEqual(["Import glTF"]);
-        expect(BuildPaletteCategories(descriptors, { showPrimitives: true }).flatMap((category) => category.items.map((item) => item.label))).toEqual([
-            "Import glTF",
-            "Read glTF",
-        ]);
+        expect(BuildPaletteCategories(descriptors, { showPrimitives: true }).flatMap((category) => category.items.map((item) => item.label))).toEqual(["Import glTF", "Read glTF"]);
     });
 
     it("uses the same primitive visibility for search and omits empty primitive-only categories", () => {

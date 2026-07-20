@@ -9,6 +9,7 @@ RegisterBlockDescriptor({
     keywords: ["save", "download", "output", "texture"],
     headerColor: ImageHeaderColor,
     category: ImageCategory,
+    isPaletteVisible: false,
     className: ExportImageBlock.ClassName,
     create: (nodeAsset) => ConfigureBlockForEditor(new ExportImageBlock("Export Image", nodeAsset)),
 });

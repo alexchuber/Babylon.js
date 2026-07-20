@@ -19,7 +19,10 @@ const DefaultPaletteCategory = "Blocks";
  */
 export function BuildPaletteCategories(descriptors: readonly IBlockDescriptor[], options: IPaletteProjectionOptions = {}): readonly IPaletteCategory[] {
     const itemsByCategory = new Map<string, IPaletteItem[]>();
-    for (const descriptor of descriptors) {
+    const orderedDescriptors = options.showPrimitives
+        ? [...descriptors.filter((descriptor) => descriptor.abstractedBy === undefined), ...descriptors.filter((descriptor) => descriptor.abstractedBy !== undefined)]
+        : descriptors;
+    for (const descriptor of orderedDescriptors) {
         if (descriptor.isPaletteVisible === false || (!options.showPrimitives && descriptor.abstractedBy !== undefined)) {
             continue;
         }
@@ -27,6 +30,7 @@ export function BuildPaletteCategories(descriptors: readonly IBlockDescriptor[],
         const item: IPaletteItem = {
             id: descriptor.paletteItemId,
             label: descriptor.label,
+            ...(descriptor.family === undefined ? {} : { family: descriptor.family }),
             ...(descriptor.description === undefined ? {} : { description: descriptor.description }),
             ...(descriptor.keywords === undefined ? {} : { keywords: descriptor.keywords }),
         };

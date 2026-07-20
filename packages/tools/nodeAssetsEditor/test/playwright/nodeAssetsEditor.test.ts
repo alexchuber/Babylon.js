@@ -503,34 +503,94 @@ test.describe("Node Assets Editor — maintained default pipeline", () => {
         const editor = new NodeAssetsEditorPage(page);
         await editor.goto();
 
+        const palette = page.getByTestId("node-palette");
+        const categories = palette.getByTestId("palette-category");
+        const families = palette.getByTestId("palette-family");
+        const items = palette.getByTestId("palette-item-label");
         const showPrimitives = page.getByRole("checkbox", { name: "Show primitives" });
         const search = page.getByPlaceholder("Search palette");
         const nodeGeometryCategory = page.getByRole("button", { name: /^Node Geometry \(/ });
         const exportNode = editor.nodeByTitle("Export glTF");
+        const defaultItems = [
+            "Import glTF",
+            "Import USD",
+            "Import Babylon",
+            "Import Node Geometry",
+            "Weld Vertices",
+            "Deduplicate Resources",
+            "Remove Unused Resources",
+            "Remove Degenerate Geometry",
+            "Fix Face Winding",
+            "Quantize Attributes",
+            "Simplify Meshes",
+            "Flatten Hierarchy",
+            "Join Meshes",
+            "Split Meshes by Material",
+            "Merge Scenes",
+            "Transform Scene",
+            "Center Scene",
+            "Recompute Normals",
+            "Generate Tangents",
+            "Strip Attributes",
+            "Resize Textures",
+            "Compress Geometry (Draco)",
+            "Compress Textures (KTX2)",
+            "Export glTF",
+        ];
 
         await expect(showPrimitives).not.toBeChecked();
         await expect(nodeGeometryCategory).toHaveCount(0);
-        await search.fill("read babylon");
-        await expect(page.getByTitle("Read Babylon", { exact: true })).toHaveCount(0);
+        await expect(categories).toHaveText(["Inputs (4)", "Universal (17)", "glTF (3)"]);
+        await expect(families).toHaveText(["Aggregate imports", "Cleanup", "Reduction", "Structure", "Attributes", "Textures", "Encoding/output"]);
+        await expect(items).toHaveText(defaultItems);
+        await search.fill("Write glTF");
+        await expect(items).toHaveCount(0);
 
         await exportNode.getByRole("button", { name: "Expand aggregate" }).click();
         await expect(editor.nodeByTitle("Write glTF")).toBeVisible();
 
         await showPrimitives.check();
-        await expect(page.getByTitle("Read Babylon", { exact: true })).toBeVisible();
+        await expect(items).toHaveText(["Write glTF"]);
         await search.clear();
+        await expect(categories).toHaveText(["Inputs (8)", "Universal (22)", "glTF (5)", "USD (1)", "Babylon (1)", "Node Geometry (1)"]);
+        await expect(families).toHaveText(["Aggregate imports", "Cleanup", "Reduction", "Structure", "Attributes", "Textures", "Encoding/output"]);
+        await expect(items).toHaveText([
+            ...defaultItems.slice(0, 4),
+            "Read glTF",
+            "Read USD",
+            "Read Babylon",
+            "Read Node Geometry",
+            ...defaultItems.slice(4, 21),
+            "Universal → glTF",
+            "Deduplicate Materials",
+            "Deduplicate Textures",
+            "Reuse Identical Meshes",
+            "Deduplicate Data",
+            ...defaultItems.slice(21),
+            "glTF → Universal",
+            "Write glTF",
+            "USD → Universal",
+            "Babylon → Universal",
+            "Node Geometry → Universal",
+        ]);
         await expect(nodeGeometryCategory).toBeVisible();
         await editor.dropPaletteItem("Read Babylon", { x: 0.45, y: 0.75 });
 
+        await search.fill("selector");
+        await expect(items).toHaveCount(0);
+        await search.clear();
         await showPrimitives.uncheck();
         await expect(nodeGeometryCategory).toHaveCount(0);
         await expect(page.getByTitle("Read Babylon", { exact: true })).toHaveCount(0);
+        await expect(categories).toHaveText(["Inputs (4)", "Universal (17)", "glTF (3)"]);
+        await expect(items).toHaveText(defaultItems);
         await expect(editor.nodeByTitle("Read Babylon")).toBeVisible();
         await expect(editor.nodeByTitle("Write glTF")).toBeVisible();
 
         await showPrimitives.check();
         await page.reload({ waitUntil: "load" });
         await expect(showPrimitives).toBeChecked();
+        await expect(categories).toHaveText(["Inputs (8)", "Universal (22)", "glTF (5)", "USD (1)", "Babylon (1)", "Node Geometry (1)"]);
     });
 
     test("extends node selection with the platform multi-select modifier", async ({ page }) => {

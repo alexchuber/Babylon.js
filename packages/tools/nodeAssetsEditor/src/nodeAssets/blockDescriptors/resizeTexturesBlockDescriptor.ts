@@ -1,6 +1,6 @@
 import { ResizeTexturesBlock, type TextureResizeMode } from "node-assets/Blocks/resizeTexturesBlock";
 
-import { OperatorCategory, OperatorHeaderColor, RegisterBlockDescriptor } from "../blockCatalog";
+import { OperatorHeaderColor, RegisterBlockDescriptor, TexturesFamily, UniversalCategory } from "../blockCatalog";
 
 const ResizeModeOptions: readonly TextureResizeMode[] = ["sharp", "smooth"];
 
@@ -10,7 +10,8 @@ RegisterBlockDescriptor({
     description: "Reduce texture dimensions inside Universal content.",
     keywords: ["texture", "dimensions", "resolution", "downsample"],
     headerColor: OperatorHeaderColor,
-    category: OperatorCategory,
+    category: UniversalCategory,
+    family: TexturesFamily,
     className: ResizeTexturesBlock.ClassName,
     create: (nodeAsset) => new ResizeTexturesBlock("Resize Textures", nodeAsset),
     getPropertySection: (block, { refresh }) => {

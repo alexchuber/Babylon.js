@@ -9,6 +9,7 @@ RegisterBlockDescriptor({
     keywords: ["read", "inspect", "selector", "pointer", "value"],
     headerColor: SelectorsHeaderColor,
     category: SelectorsCategory,
+    isPaletteVisible: false,
     className: GetProperty.ClassName,
     create: (nodeAsset) => new GetProperty("Get Property", nodeAsset),
 });

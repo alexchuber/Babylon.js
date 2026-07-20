@@ -9,6 +9,7 @@ RegisterBlockDescriptor({
     keywords: ["find", "select", "pointer", "path", "KHR_animation_pointer"],
     headerColor: SelectorsHeaderColor,
     category: SelectorsCategory,
+    isPaletteVisible: false,
     className: Selector.ClassName,
     create: (nodeAsset) => new Selector("Selector", nodeAsset),
     getPropertySection: (block, { refresh }) => {

@@ -11,6 +11,7 @@ RegisterBlockDescriptor({
     keywords: ["image conversion", "encode", "PNG", "JPEG", "WebP"],
     headerColor: ImageHeaderColor,
     category: ImageCategory,
+    isPaletteVisible: false,
     className: ConvertImageFormatBlock.ClassName,
     create: (nodeAsset) => new ConvertImageFormatBlock("Convert Image Format", nodeAsset),
     getPropertySection: (block, { refresh }) => {

@@ -1,6 +1,6 @@
 import { TransformSceneBlock, type SceneUnits, type SceneUpAxis } from "node-assets/Blocks/transformSceneBlock";
 
-import { OperatorCategory, OperatorHeaderColor, RegisterBlockDescriptor } from "../blockCatalog";
+import { OperatorHeaderColor, RegisterBlockDescriptor, StructureFamily, UniversalCategory } from "../blockCatalog";
 
 const UnitsOptions: readonly SceneUnits[] = ["meters", "centimeters", "millimeters", "inches", "feet"];
 const UpAxisOptions: readonly SceneUpAxis[] = ["X", "Y", "Z"];
@@ -11,7 +11,8 @@ RegisterBlockDescriptor({
     description: "Normalize source coordinates, then apply an authored scale and rotation.",
     keywords: ["units", "scale", "rotation", "up axis", "coordinates"],
     headerColor: OperatorHeaderColor,
-    category: OperatorCategory,
+    category: UniversalCategory,
+    family: StructureFamily,
     className: TransformSceneBlock.ClassName,
     create: (nodeAsset) => new TransformSceneBlock("Transform Scene", nodeAsset),
     getPropertySection: (block, { refresh }) => {

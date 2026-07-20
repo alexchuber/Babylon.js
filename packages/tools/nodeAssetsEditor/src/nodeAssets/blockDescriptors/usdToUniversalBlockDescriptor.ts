@@ -4,11 +4,11 @@ import { ConfigureBlockForEditor, RegisterBlockDescriptor, TranscodersHeaderColo
 
 RegisterBlockDescriptor({
     paletteItemId: "usd-to-universal",
-    label: "USD to Universal",
+    label: "USD → Universal",
     description: "Parse USD and cross explicitly into Universal.",
     category: "USD",
     headerColor: TranscodersHeaderColor,
     className: USDToUniversalBlock.ClassName,
     abstractedBy: "import-usd",
-    create: (nodeAsset) => ConfigureBlockForEditor(new USDToUniversalBlock("USD to Universal", nodeAsset)),
+    create: (nodeAsset) => ConfigureBlockForEditor(new USDToUniversalBlock("USD → Universal", nodeAsset)),
 });

@@ -46,8 +46,23 @@ export const UniversalCategory = "Universal";
 /** Palette family for Universal cleanup decisions. */
 export const CleanupFamily = "Cleanup";
 
+/** Palette family for compact source aggregates. */
+export const AggregateImportsFamily = "Aggregate imports";
+
+/** Palette family for Universal geometry reduction decisions. */
+export const ReductionFamily = "Reduction";
+
+/** Palette family for Universal hierarchy and composition decisions. */
+export const StructureFamily = "Structure";
+
 /** Palette family for Universal attribute decisions. */
 export const AttributesFamily = "Attributes";
+
+/** Palette family for Universal texture decisions. */
+export const TexturesFamily = "Textures";
+
+/** Palette family for glTF encoding and output decisions. */
+export const EncodingOutputFamily = "Encoding/output";
 
 /** Palette category and shared node header color for the value-literal source block family. */
 export const ValuesCategory = "Values";

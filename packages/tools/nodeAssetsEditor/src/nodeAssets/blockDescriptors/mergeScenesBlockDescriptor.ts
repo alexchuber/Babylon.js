@@ -1,6 +1,6 @@
 import { MergeScenesBlock } from "node-assets/Blocks/mergeScenesBlock";
 
-import { CompositionCategory, CompositionHeaderColor, RegisterBlockDescriptor } from "../blockCatalog";
+import { CompositionHeaderColor, RegisterBlockDescriptor, StructureFamily, UniversalCategory } from "../blockCatalog";
 
 RegisterBlockDescriptor({
     paletteItemId: "merge-scenes-universal",
@@ -8,7 +8,8 @@ RegisterBlockDescriptor({
     description: "Merge multiple Universal sources into one scene.",
     keywords: ["structure", "combine assets", "composition", "assemble", "multi source"],
     headerColor: CompositionHeaderColor,
-    category: CompositionCategory,
+    category: UniversalCategory,
+    family: StructureFamily,
     className: MergeScenesBlock.ClassName,
     create: (nodeAsset) => new MergeScenesBlock("Merge Scenes", nodeAsset),
     getPropertySection: (block, { refresh }) => {

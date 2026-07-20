@@ -9,6 +9,7 @@ RegisterBlockDescriptor({
     keywords: ["combine images", "overlay", "layer", "texture atlas"],
     headerColor: ImageHeaderColor,
     category: ImageCategory,
+    isPaletteVisible: false,
     className: CompositeImageBlock.ClassName,
     create: (nodeAsset) => new CompositeImageBlock("Composite Image", nodeAsset),
     getPropertySection: (block, { refresh }) => {

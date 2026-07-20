@@ -9,6 +9,7 @@ RegisterBlockDescriptor({
     keywords: ["optimize", "cleanup", "deduplicate", "reduce size"],
     headerColor: OperatorHeaderColor,
     category: OperatorCategory,
+    isPaletteVisible: false,
     className: DedupBlock.ClassName,
     create: (nodeAsset) => new DedupBlock("Dedup", nodeAsset),
     getPropertySection: (block, { refresh }) => {

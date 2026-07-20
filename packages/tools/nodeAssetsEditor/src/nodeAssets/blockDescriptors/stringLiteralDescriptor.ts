@@ -9,6 +9,7 @@ RegisterBlockDescriptor({
     keywords: ["text", "literal", "constant", "value"],
     headerColor: ValuesHeaderColor,
     category: ValuesCategory,
+    isPaletteVisible: false,
     className: StringLiteral.ClassName,
     create: (nodeAsset) => new StringLiteral("String", nodeAsset),
     getPropertySection: (block, { refresh }) => {

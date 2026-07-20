@@ -9,6 +9,7 @@ RegisterBlockDescriptor({
     keywords: ["optimize", "cleanup", "bake transforms", "hierarchy"],
     headerColor: OperatorHeaderColor,
     category: OperatorCategory,
+    isPaletteVisible: false,
     className: FlattenBlock.ClassName,
     create: (nodeAsset) => new FlattenBlock("Flatten", nodeAsset),
     getPropertySection: (block, { refresh }) => {

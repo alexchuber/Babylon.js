@@ -9,6 +9,7 @@ RegisterBlockDescriptor({
     keywords: ["combine assets", "composition", "assemble", "multi source"],
     headerColor: CompositionHeaderColor,
     category: CompositionCategory,
+    isPaletteVisible: false,
     className: MergeScenes.ClassName,
     create: (nodeAsset) => new MergeScenes("Merge Scenes", nodeAsset),
     getPropertySection: (block, { refresh }) => {

@@ -857,10 +857,17 @@ describe("Import block source label", () => {
         const descriptor = GetBlockDescriptorByPaletteItemId("legacy-import-babylon");
         const controller = new NodeAssetGraphController();
         try {
-            const node = controller.createNodeFromPaletteItem("legacy-import-babylon", { x: 600, y: 600 });
-            controller.state.addNode(node);
             expect(descriptor?.isPaletteVisible).toBe(false);
-            expect(FindPropertyInSection(controller, node, "IMPORT", "Import .babylon file\u2026", "button")).toBeDefined();
+            expect(() => controller.createNodeFromPaletteItem("legacy-import-babylon", { x: 600, y: 600 })).toThrow("load-only");
+
+            const legacyImport = descriptor!.create(new NodeAsset());
+            const section = descriptor!.getPropertySection!(legacyImport, {
+                prepareEdit: (block) => block,
+                refresh: vi.fn(),
+                requestExport: vi.fn(),
+            });
+            expect(section.title).toBe("IMPORT");
+            expect(section.properties).toContainEqual(expect.objectContaining({ kind: "button", label: "Import .babylon file\u2026" }));
         } finally {
             controller.dispose();
         }

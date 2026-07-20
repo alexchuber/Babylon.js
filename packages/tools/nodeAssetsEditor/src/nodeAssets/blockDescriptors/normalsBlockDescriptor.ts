@@ -9,6 +9,7 @@ RegisterBlockDescriptor({
     keywords: ["recalculate normals", "shading", "lighting", "mesh repair"],
     headerColor: OperatorHeaderColor,
     category: OperatorCategory,
+    isPaletteVisible: false,
     className: NormalsBlock.ClassName,
     create: (nodeAsset) => new NormalsBlock("Normals", nodeAsset),
     getPropertySection: (block, { refresh }) => {

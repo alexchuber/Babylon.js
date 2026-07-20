@@ -6,6 +6,7 @@ RegisterBlockDescriptor({
     paletteItemId: "gltf-selector",
     label: "glTF Selector",
     category: SelectorsCategory,
+    isPaletteVisible: false,
     description: "Select glTF JSON data using a JSON Pointer.",
     keywords: ["gltf", "query", "JSON Pointer", "path", "material", "node"],
     headerColor: SelectorsHeaderColor,

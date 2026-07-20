@@ -9,6 +9,7 @@ RegisterBlockDescriptor({
     keywords: ["edit", "override", "selector", "pointer", "value"],
     headerColor: SelectorsHeaderColor,
     category: SelectorsCategory,
+    isPaletteVisible: false,
     className: SetProperty.ClassName,
     create: (nodeAsset) => new SetProperty("Set Property", nodeAsset),
 });

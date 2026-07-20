@@ -11,6 +11,7 @@ RegisterBlockDescriptor({
     keywords: ["mirror", "invert", "horizontal", "vertical"],
     headerColor: ImageHeaderColor,
     category: ImageCategory,
+    isPaletteVisible: false,
     className: FlipImageBlock.ClassName,
     create: (nodeAsset) => new FlipImageBlock("Flip Image", nodeAsset),
     getPropertySection: (block, { refresh }) => {

@@ -23,6 +23,7 @@ RegisterBlockDescriptor({
     keywords: ["literal", "constant", "object", "array", "value"],
     headerColor: ValuesHeaderColor,
     category: ValuesCategory,
+    isPaletteVisible: false,
     className: JsonLiteral.ClassName,
     create: (nodeAsset) => new JsonLiteral("JSON", nodeAsset),
     getPropertySection: (block, { refresh }) => {

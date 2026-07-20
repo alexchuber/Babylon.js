@@ -11,6 +11,7 @@ import { NodeAssetBuildError } from "node-assets/nodeAssetBuildError";
 import { type IGraphNode } from "../../src/nodeGraph/graphModel";
 import { PaletteItemMatchesFilter } from "../../src/nodeGraph/paletteModel";
 import { type PropertyDescriptor } from "../../src/nodeGraph/propertyModel";
+import { GetBlockDescriptorByPaletteItemId } from "../../src/nodeAssets/blockCatalog";
 import { NodeIdForBlockId } from "../../src/nodeAssets/blockNodeMapping";
 import { CreateBuiltInNodeAssetLibraryEntries } from "../../src/nodeAssets/builtInLibraryEntries";
 import { NodeAssetGraphController } from "../../src/nodeAssets/nodeAssetGraphController";
@@ -71,8 +72,18 @@ describe("NodeAssetGraphController", () => {
 
             expect(FindNode(controller, "Universal to glTF")).toBeDefined();
             expect(FindNode(controller, "Write glTF")).toBeDefined();
-            expect(controller.getPaletteCategories({ showPrimitives: false }).flatMap((category) => category.items).some((item) => item.id === "write-gltf")).toBe(false);
-            expect(controller.getPaletteCategories({ showPrimitives: true }).flatMap((category) => category.items).some((item) => item.id === "write-gltf")).toBe(true);
+            expect(
+                controller
+                    .getPaletteCategories({ showPrimitives: false })
+                    .flatMap((category) => category.items)
+                    .some((item) => item.id === "write-gltf")
+            ).toBe(false);
+            expect(
+                controller
+                    .getPaletteCategories({ showPrimitives: true })
+                    .flatMap((category) => category.items)
+                    .some((item) => item.id === "write-gltf")
+            ).toBe(true);
 
             expect(controller.state.nodes.map((node) => node.id)).toEqual(nodeIdsBefore);
             expect(controller.state.wires.map((wire) => wire.id)).toEqual(wireIdsBefore);
@@ -87,20 +98,20 @@ describe("NodeAssetGraphController", () => {
     it("rejects incompatible NodeAsset port kinds before adding a wire", () => {
         const controller = new NodeAssetGraphController();
         try {
-            const exportImage = controller.createNodeFromPaletteItem("export-image", { x: 1800, y: 320 });
-            controller.state.addNode(exportImage);
+            const draco = controller.createNodeFromPaletteItem("draco-compression", { x: 1800, y: 320 });
+            controller.state.addNode(draco);
             const weld = FindNode(controller, "Weld Vertices");
             const sceneOutput = weld.ports.find((port) => port.direction === "output");
-            const imageInput = exportImage.ports.find((port) => port.direction === "input");
-            if (!sceneOutput || !imageInput) {
-                throw new Error("Could not find the SCENE output and IMAGE input for the compatibility test.");
+            const gltfInput = draco.ports.find((port) => port.direction === "input");
+            if (!sceneOutput || !gltfInput) {
+                throw new Error("Could not find the Universal output and glTF input for the compatibility test.");
             }
             const serializedBefore = controller.serialize();
             const wireCountBefore = controller.state.wires.length;
             const changes = CountBuildRelevantChanges(controller);
 
             try {
-                expect(controller.state.addWire(sceneOutput.id, imageInput.id)).toBeUndefined();
+                expect(controller.state.addWire(sceneOutput.id, gltfInput.id)).toBeUndefined();
                 expect(controller.state.wires).toHaveLength(wireCountBefore);
                 expect(controller.serialize()).toBe(serializedBefore);
                 expect(changes.count()).toBe(0);
@@ -660,6 +671,71 @@ describe("NodeAssetGraphController", () => {
         }
     });
 
+    it("recursively removes nested aggregate projections when deleting their visible ancestor", () => {
+        const asset = new NodeAsset("scratch-nested-removal");
+        const aggregateA = new CustomAggregateBlock("aggregate A", asset);
+        const aggregateB = new CustomAggregateBlock("aggregate B", aggregateA.subgraph);
+        const nestedKtx2C = new KTX2CompressionBlock("nested ktx2 C", aggregateB.subgraph);
+        const file = JSON.stringify({
+            graph: asset.serialize(),
+            editor: {
+                blocks: [{ id: aggregateA.uniqueId, position: { x: 0, y: 0 }, title: aggregateA.name, collapsed: false, aggregateExpanded: true }],
+                frames: [],
+            },
+        });
+
+        const controller = new NodeAssetGraphController();
+        try {
+            controller.load(file);
+            const aNodeId = NodeIdForBlockId(aggregateA.uniqueId);
+            const bNodeId = NodeIdForBlockId(aggregateB.uniqueId);
+            const cNodeId = NodeIdForBlockId(nestedKtx2C.uniqueId);
+            controller.setAggregateExpanded(bNodeId, true);
+            expect(controller.state.frames.filter((frame) => frame.kind === "aggregate")).toHaveLength(2);
+
+            controller.state.removeNodes([aNodeId]);
+
+            expect(controller.state.getNode(aNodeId)).toBeUndefined();
+            expect(controller.state.getNode(bNodeId)).toBeUndefined();
+            expect(controller.state.getNode(cNodeId)).toBeUndefined();
+            expect(controller.state.frames.filter((frame) => frame.kind === "aggregate")).toHaveLength(0);
+        } finally {
+            controller.dispose();
+        }
+    });
+
+    it("recursively removes a nested aggregate projection when deleting that aggregate child", () => {
+        const asset = new NodeAsset("scratch-nested-child-removal");
+        const aggregateA = new CustomAggregateBlock("aggregate A", asset);
+        const aggregateB = new CustomAggregateBlock("aggregate B", aggregateA.subgraph);
+        const nestedKtx2C = new KTX2CompressionBlock("nested ktx2 C", aggregateB.subgraph);
+        const file = JSON.stringify({
+            graph: asset.serialize(),
+            editor: {
+                blocks: [{ id: aggregateA.uniqueId, position: { x: 0, y: 0 }, title: aggregateA.name, collapsed: false, aggregateExpanded: true }],
+                frames: [],
+            },
+        });
+
+        const controller = new NodeAssetGraphController();
+        try {
+            controller.load(file);
+            const aNodeId = NodeIdForBlockId(aggregateA.uniqueId);
+            const bNodeId = NodeIdForBlockId(aggregateB.uniqueId);
+            const cNodeId = NodeIdForBlockId(nestedKtx2C.uniqueId);
+            controller.setAggregateExpanded(bNodeId, true);
+
+            controller.state.removeNodes([bNodeId]);
+
+            expect(controller.state.getNode(aNodeId)).not.toBeUndefined();
+            expect(controller.state.getNode(bNodeId)).toBeUndefined();
+            expect(controller.state.getNode(cNodeId)).toBeUndefined();
+            expect(controller.state.frames.filter((frame) => frame.kind === "aggregate")).toHaveLength(1);
+        } finally {
+            controller.dispose();
+        }
+    });
+
     it("preserves a custom aggregate's internal wiring across a collapse and re-expand", () => {
         // Collapsing an aggregate removes its projected children's visual nodes/wires, which fires a
         // "content" state change that the controller reacts to by reconciling. That reconcile pass
@@ -752,25 +828,21 @@ describe("NodeAssetGraphController", () => {
         }
     });
 
-    it("groups MergeScenes under a Composition palette category", () => {
+    it("groups Merge Scenes under the Universal palette category", () => {
         const controller = new NodeAssetGraphController();
         try {
-            const composition = controller.getPaletteCategories().find((category) => category.label === "Composition");
-            expect(composition).toBeDefined();
-            expect(composition!.items.map((item) => item.id)).toContain("merge-scenes");
+            const universal = controller.getPaletteCategories().find((category) => category.label === "Universal");
+            expect(universal).toBeDefined();
+            expect(universal!.items.map((item) => item.id)).toContain("merge-scenes-universal");
         } finally {
             controller.dispose();
         }
     });
 
-    it("orders the Composition palette category immediately before Selectors", () => {
+    it("projects only the canonical default categories through the controller", () => {
         const controller = new NodeAssetGraphController();
         try {
-            const labels = controller.getPaletteCategories().map((category) => category.label);
-            const compositionIndex = labels.indexOf("Composition");
-            const selectorsIndex = labels.indexOf("Selectors");
-            expect(compositionIndex).toBeGreaterThanOrEqual(0);
-            expect(selectorsIndex).toBe(compositionIndex + 1);
+            expect(controller.getPaletteCategories().map((category) => category.label)).toEqual(["Inputs", "Universal", "glTF"]);
         } finally {
             controller.dispose();
         }
@@ -791,55 +863,58 @@ describe("NodeAssetGraphController", () => {
     it("finds every cleanup-oriented optimization block by intent", () => {
         const controller = new NodeAssetGraphController();
         try {
-            const matches = controller.getPaletteCategories().flatMap((category) =>
-                category.items.filter((item) => PaletteItemMatchesFilter(item, category.label, "cleanup")).map((item) => item.id)
-            );
+            const matches = controller
+                .getPaletteCategories()
+                .flatMap((category) => category.items.filter((item) => PaletteItemMatchesFilter(item, category.label, "cleanup")).map((item) => item.id));
 
             expect(matches).toEqual(
-                expect.arrayContaining(["weld-vertices", "dedup", "remove-unused-resources", "remove-degenerate-geometry", "fix-face-winding", "join", "flatten"])
+                expect.arrayContaining(["weld-vertices", "deduplicate-resources", "remove-unused-resources", "remove-degenerate-geometry", "fix-face-winding"])
             );
+            expect(matches).not.toEqual(expect.arrayContaining(["dedup", "join", "flatten"]));
         } finally {
             controller.dispose();
         }
     });
 
-    it("registers the Selector block with an editable, build-relevant pointer property", () => {
+    it("keeps Selector load-compatible without allowing new palette authoring", () => {
         const controller = new NodeAssetGraphController();
-        const changes = CountBuildRelevantChanges(controller);
         try {
-            const selectorNode = controller.createNodeFromPaletteItem("selector", { x: 400, y: 400 });
-            controller.state.addNode(selectorNode);
+            const descriptor = GetBlockDescriptorByPaletteItemId("selector");
+            expect(descriptor?.isPaletteVisible).toBe(false);
+            expect(() => controller.createNodeFromPaletteItem("selector", { x: 400, y: 400 })).toThrow("load-only");
 
-            expect(FindProperty(controller, selectorNode, "Pointer", "text").value).toBe("");
-
-            const before = changes.count();
-            FindProperty(controller, selectorNode, "Pointer", "text").onChange("/materials/0/emissiveFactor");
-            expect(changes.count()).toBe(before + 1);
-
-            expect(FindProperty(controller, selectorNode, "Pointer", "text").value).toBe("/materials/0/emissiveFactor");
+            const selector = descriptor!.create(new NodeAsset());
+            const refresh = vi.fn();
+            const pointer = descriptor!.getPropertySection!(selector, { prepareEdit: (block) => block, refresh, requestExport: vi.fn() }).properties.find(
+                (property) => property.kind === "text" && property.label === "Pointer"
+            );
+            if (!pointer || pointer.kind !== "text") {
+                throw new Error("Could not find the load-compatible Selector pointer property.");
+            }
+            expect(pointer.value).toBe("");
+            pointer.onChange("/materials/0/emissiveFactor");
+            expect(refresh).toHaveBeenCalledOnce();
+            expect((selector as { pointer: string }).pointer).toBe("/materials/0/emissiveFactor");
         } finally {
-            changes.dispose();
             controller.dispose();
         }
     });
 
-    it("adds a MergeScenes node with two SCENE inputs that grows via its Add input affordance", () => {
+    it("adds a Merge Scenes node with two Universal inputs that grows via its Add input affordance", () => {
         const controller = new NodeAssetGraphController();
         const changes = CountBuildRelevantChanges(controller);
         try {
-            const mergeNode = controller.createNodeFromPaletteItem("merge-scenes", { x: 100, y: 400 });
+            const mergeNode = controller.createNodeFromPaletteItem("merge-scenes-universal", { x: 100, y: 400 });
             controller.state.addNode(mergeNode);
             expect(changes.count()).toBe(1);
 
             expect(mergeNode.ports.filter((port) => port.direction === "input")).toHaveLength(2);
             expect(mergeNode.ports.filter((port) => port.direction === "output")).toHaveLength(1);
-            expect(FindProperty(controller, mergeNode, "Inputs", "text").value).toBe("2");
 
             FindProperty(controller, mergeNode, "Add input", "button").onClick();
 
             expect(mergeNode.ports.filter((port) => port.direction === "input")).toHaveLength(3);
             expect(mergeNode.ports.filter((port) => port.direction === "output")).toHaveLength(1);
-            expect(FindProperty(controller, mergeNode, "Inputs", "text").value).toBe("3");
             // Growing the input set changes the serialized graph, so it is a build-relevant edit.
             expect(changes.count()).toBe(2);
         } finally {
@@ -851,7 +926,7 @@ describe("NodeAssetGraphController", () => {
     it("preserves a grown MergeScenes input count through save and load", () => {
         const controller = new NodeAssetGraphController();
         try {
-            const mergeNode = controller.createNodeFromPaletteItem("merge-scenes", { x: 100, y: 400 });
+            const mergeNode = controller.createNodeFromPaletteItem("merge-scenes-universal", { x: 100, y: 400 });
             controller.state.addNode(mergeNode);
             FindProperty(controller, mergeNode, "Add input", "button").onClick();
             expect(mergeNode.ports.filter((port) => port.direction === "input")).toHaveLength(3);

@@ -1,4 +1,4 @@
-import { type DragEvent, type FunctionComponent, useEffect, useMemo, useState } from "react";
+import { Fragment, type DragEvent, type FunctionComponent, useEffect, useMemo, useState } from "react";
 
 import { Accordion, AccordionHeader, AccordionItem, AccordionPanel, Body1, Caption1, Checkbox, makeStyles, tokens } from "@fluentui/react-components";
 import { SearchBar } from "shared-ui-components/fluent/primitives/searchBar";
@@ -33,6 +33,11 @@ const useStyles = makeStyles({
         flexDirection: "column",
         gap: tokens.spacingVerticalXS,
         paddingBottom: tokens.spacingVerticalS,
+    },
+    family: {
+        color: tokens.colorNeutralForeground2,
+        fontWeight: tokens.fontWeightSemibold,
+        marginTop: tokens.spacingVerticalXS,
     },
     row: {
         alignItems: "flex-start",
@@ -106,7 +111,7 @@ export const PaletteView: FunctionComponent<{ context: EditorContextValue; prefe
     };
 
     return (
-        <div className={classes.root}>
+        <div className={classes.root} data-testid="node-palette">
             <div className={classes.header}>
                 <Checkbox
                     checked={showPrimitives}
@@ -136,23 +141,30 @@ export const PaletteView: FunctionComponent<{ context: EditorContextValue; prefe
                         return (
                             <AccordionItem key={value} value={value}>
                                 <AccordionHeader>
-                                    <Body1>
+                                    <Body1 data-testid="palette-category">
                                         {category.label} ({category.items.length})
                                     </Body1>
                                 </AccordionHeader>
                                 <AccordionPanel>
                                     <div className={classes.panel}>
-                                        {category.items.map((item) => (
-                                            <div
-                                                key={item.id}
-                                                className={classes.row}
-                                                draggable={true}
-                                                title={item.label}
-                                                onDragStart={(event) => onDragStart(event, item)}
-                                            >
-                                                <Body1>{item.label}</Body1>
-                                                {item.description && <Caption1 className={classes.description}>{item.description}</Caption1>}
-                                            </div>
+                                        {category.items.map((item, itemIndex) => (
+                                            <Fragment key={item.id}>
+                                                {item.family !== undefined && item.family !== category.items[itemIndex - 1]?.family && (
+                                                    <Caption1 className={classes.family} data-testid="palette-family">
+                                                        {item.family}
+                                                    </Caption1>
+                                                )}
+                                                <div
+                                                    className={classes.row}
+                                                    data-testid="palette-item"
+                                                    draggable={true}
+                                                    title={item.label}
+                                                    onDragStart={(event) => onDragStart(event, item)}
+                                                >
+                                                    <Body1 data-testid="palette-item-label">{item.label}</Body1>
+                                                    {item.description && <Caption1 className={classes.description}>{item.description}</Caption1>}
+                                                </div>
+                                            </Fragment>
                                         ))}
                                     </div>
                                 </AccordionPanel>

@@ -6,6 +6,7 @@ RegisterBlockDescriptor({
     paletteItemId: "usd2gltf",
     label: "USD → glTF",
     category: TranscodersCategory,
+    isPaletteVisible: false,
     description: "Convert a USD stage into a glTF document.",
     keywords: ["convert", "transcode", "usd", "gltf", "glb"],
     headerColor: TranscodersHeaderColor,

@@ -4,11 +4,11 @@ import { ConfigureBlockForEditor, RegisterBlockDescriptor, TranscodersHeaderColo
 
 RegisterBlockDescriptor({
     paletteItemId: "node-geometry-to-universal",
-    label: "Node Geometry to Universal",
+    label: "Node Geometry → Universal",
     description: "Parse and evaluate Node Geometry directly into Universal.",
     category: "Node Geometry",
     headerColor: TranscodersHeaderColor,
     className: NodeGeometryToUniversalBlock.ClassName,
     abstractedBy: "import-node-geometry",
-    create: (nodeAsset) => ConfigureBlockForEditor(new NodeGeometryToUniversalBlock("Node Geometry to Universal", nodeAsset)),
+    create: (nodeAsset) => ConfigureBlockForEditor(new NodeGeometryToUniversalBlock("Node Geometry → Universal", nodeAsset)),
 });

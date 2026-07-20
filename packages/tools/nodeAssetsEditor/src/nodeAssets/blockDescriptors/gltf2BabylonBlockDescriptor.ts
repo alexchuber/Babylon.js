@@ -6,6 +6,7 @@ RegisterBlockDescriptor({
     paletteItemId: "gltf2babylon",
     label: "glTF → Babylon",
     category: TranscodersCategory,
+    isPaletteVisible: false,
     description: "Convert a glTF document into a Babylon scene.",
     keywords: ["convert", "transcode", "gltf", "glb", "babylon", "scene"],
     headerColor: TranscodersHeaderColor,

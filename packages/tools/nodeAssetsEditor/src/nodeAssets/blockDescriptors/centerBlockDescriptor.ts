@@ -11,6 +11,7 @@ RegisterBlockDescriptor({
     keywords: ["origin", "pivot", "position", "align", "recenter"],
     headerColor: OperatorHeaderColor,
     category: OperatorCategory,
+    isPaletteVisible: false,
     className: CenterBlock.ClassName,
     create: (nodeAsset) => new CenterBlock("Center", nodeAsset),
     getPropertySection: (block, { refresh }) => {

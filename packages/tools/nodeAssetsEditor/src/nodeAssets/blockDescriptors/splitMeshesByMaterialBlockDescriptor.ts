@@ -1,6 +1,6 @@
 import { SplitMeshesByMaterialBlock } from "node-assets/Blocks/splitMeshesByMaterialBlock";
 
-import { OperatorCategory, OperatorHeaderColor, RegisterBlockDescriptor } from "../blockCatalog";
+import { OperatorHeaderColor, RegisterBlockDescriptor, StructureFamily, UniversalCategory } from "../blockCatalog";
 
 RegisterBlockDescriptor({
     paletteItemId: "split-meshes-by-material",
@@ -8,7 +8,8 @@ RegisterBlockDescriptor({
     description: "Split Universal meshes so each resulting mesh uses one material.",
     keywords: ["structure", "mesh", "material", "separate"],
     headerColor: OperatorHeaderColor,
-    category: OperatorCategory,
+    category: UniversalCategory,
+    family: StructureFamily,
     className: SplitMeshesByMaterialBlock.ClassName,
     create: (nodeAsset) => new SplitMeshesByMaterialBlock("Split Meshes by Material", nodeAsset),
 });

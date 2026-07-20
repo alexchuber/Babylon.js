@@ -9,6 +9,7 @@ RegisterBlockDescriptor({
     keywords: ["literal", "constant", "scalar", "value"],
     headerColor: ValuesHeaderColor,
     category: ValuesCategory,
+    isPaletteVisible: false,
     className: NumberLiteral.ClassName,
     create: (nodeAsset) => new NumberLiteral("Number", nodeAsset),
     getPropertySection: (block, { refresh }) => {

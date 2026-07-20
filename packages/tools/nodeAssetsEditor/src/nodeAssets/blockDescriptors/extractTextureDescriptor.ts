@@ -9,6 +9,7 @@ RegisterBlockDescriptor({
     keywords: ["get texture", "material", "image", "texture slot", "selector"],
     headerColor: SelectorsHeaderColor,
     category: SelectorsCategory,
+    isPaletteVisible: false,
     className: ExtractTexture.ClassName,
     create: (nodeAsset) => new ExtractTexture("Extract Texture", nodeAsset),
 });

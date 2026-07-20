@@ -12,6 +12,8 @@ export interface IPaletteItem {
     readonly id: string;
     /** Human readable label shown in the list. */
     readonly label: string;
+    /** Optional family heading shown within the containing category. */
+    readonly family?: string;
     /** Concise explanation shown below the label. */
     readonly description?: string;
     /** Workflow terms and aliases used by palette search. */
@@ -53,7 +55,7 @@ export function PaletteItemMatchesFilter(item: IPaletteItem, categoryLabel: stri
     if (!normalizedFilter) {
         return true;
     }
-    return [item.label, categoryLabel, item.description ?? "", ...(item.keywords ?? [])].some((value) => value.toLowerCase().includes(normalizedFilter));
+    return [item.label, item.family ?? "", categoryLabel, item.description ?? "", ...(item.keywords ?? [])].some((value) => value.toLowerCase().includes(normalizedFilter));
 }
 
 /**

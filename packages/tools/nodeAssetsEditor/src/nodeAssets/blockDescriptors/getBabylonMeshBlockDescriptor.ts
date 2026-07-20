@@ -6,6 +6,7 @@ RegisterBlockDescriptor({
     paletteItemId: "get-babylon-mesh",
     label: "Get Babylon Mesh",
     category: BabylonCategory,
+    isPaletteVisible: false,
     description: "Read geometry and transform properties from a Babylon mesh by name.",
     keywords: ["babylon", "mesh", "geometry", "transform", "vertices", "lookup"],
     headerColor: BabylonHeaderColor,

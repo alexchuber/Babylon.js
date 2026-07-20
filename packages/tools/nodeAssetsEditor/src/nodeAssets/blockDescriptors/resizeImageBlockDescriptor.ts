@@ -13,6 +13,7 @@ RegisterBlockDescriptor({
     keywords: ["scale texture", "dimensions", "resolution", "downsample"],
     headerColor: ImageHeaderColor,
     category: ImageCategory,
+    isPaletteVisible: false,
     className: ResizeImageBlock.ClassName,
     create: (nodeAsset) => new ResizeImageBlock("Resize Image", nodeAsset),
     getPropertySection: (block, { refresh }) => {

@@ -9,6 +9,7 @@ RegisterBlockDescriptor({
     keywords: ["replace texture", "material", "image", "texture slot", "selector"],
     headerColor: SelectorsHeaderColor,
     category: SelectorsCategory,
+    isPaletteVisible: false,
     className: SetTexture.ClassName,
     create: (nodeAsset) => new SetTexture("Set Texture", nodeAsset),
 });

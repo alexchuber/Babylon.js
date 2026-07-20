@@ -28,6 +28,7 @@ RegisterBlockDescriptor({
     keywords: ["open", "load", "source", "texture", "PNG", "JPEG", "WebP", "GIF", "BMP"],
     headerColor: ImageHeaderColor,
     category: ImageCategory,
+    isPaletteVisible: false,
     className: ImportImageBlock.ClassName,
     create: (nodeAsset) => ConfigureBlockForEditor(new ImportImageBlock("Import Image", nodeAsset)),
     getPropertySection: (block, { refresh }) => {
