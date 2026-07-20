@@ -9,6 +9,7 @@ import {
     BabylonSelectorBlock,
     BuildPBRMaterial,
     CenterBlock,
+    CenterSceneBlock,
     ComposeGLTFMaterialBlock,
     CompositeImageBlock,
     ConvertImageFormatBlock,
@@ -60,6 +61,7 @@ import {
     RemoveDegenerateGeometryBlock,
     RemoveUnusedResourcesBlock,
     ResizeImageBlock,
+    ResizeTexturesBlock,
     Selector,
     SetBabylonPropertyBlock,
     SetProperty,
@@ -67,6 +69,7 @@ import {
     SimplifyMeshesBlock,
     SplitMeshesByMaterialBlock,
     StringLiteral,
+    TransformSceneBlock,
     UniversalToGLTFBlock,
     USD2BabylonBlock,
     USD2GLTFBlock,
@@ -217,6 +220,9 @@ describe("block self-registration", () => {
                     GenerateTangentsBlock.ClassName,
                     StripAttributesBlock.ClassName,
                     CenterBlock.ClassName,
+                    TransformSceneBlock.ClassName,
+                    CenterSceneBlock.ClassName,
+                    ResizeTexturesBlock.ClassName,
                     NumberLiteral.ClassName,
                     StringLiteral.ClassName,
                     JsonLiteral.ClassName,
@@ -262,7 +268,7 @@ describe("block self-registration", () => {
                     ImportBabylonAggregateBlock.ClassName,
                 ])
             );
-            expect(registeredClassNames).toHaveLength(74);
+            expect(registeredClassNames).toHaveLength(77);
         });
 
         it.each(registeredClassNames)("round-trips %s through serialize/Parse", (className) => {

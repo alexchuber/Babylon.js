@@ -191,6 +191,81 @@ describe("block property sections (unified descriptor path)", () => {
         }
     });
 
+    it("edits the approved Transform Scene properties through shared controls", () => {
+        const controller = new NodeAssetGraphController();
+        try {
+            const transformNode = AddPaletteNode(controller, "transform-scene");
+            const section = FindSection(controller, transformNode, "TRANSFORM SCENE");
+
+            expect(section.properties.map((property) => [property.label, property.kind])).toEqual([
+                ["Units", "dropdown"],
+                ["Scale", "vector3"],
+                ["Rotation", "vector3"],
+                ["Up axis", "dropdown"],
+            ]);
+
+            FindProperty(controller, transformNode, "Units", "dropdown").onChange("centimeters");
+            FindProperty(controller, transformNode, "Scale", "vector3").onChange([2, 3, 4]);
+            FindProperty(controller, transformNode, "Rotation", "vector3").onChange([10, 20, 30]);
+            FindProperty(controller, transformNode, "Up axis", "dropdown").onChange("Z");
+
+            expect(FindProperty(controller, transformNode, "Units", "dropdown").value).toBe("centimeters");
+            expect(FindProperty(controller, transformNode, "Scale", "vector3").value).toEqual([2, 3, 4]);
+            expect(FindProperty(controller, transformNode, "Rotation", "vector3").value).toEqual([10, 20, 30]);
+            expect(FindProperty(controller, transformNode, "Up axis", "dropdown").value).toBe("Z");
+        } finally {
+            controller.dispose();
+        }
+    });
+
+    it("edits the approved Center Scene pivot and custom point", () => {
+        const controller = new NodeAssetGraphController();
+        try {
+            const centerNode = AddPaletteNode(controller, "center-scene");
+            const section = FindSection(controller, centerNode, "CENTER SCENE");
+
+            expect(section.properties.map((property) => [property.label, property.kind])).toEqual([
+                ["Pivot", "dropdown"],
+                ["Custom point", "vector3"],
+            ]);
+            expect(FindProperty(controller, centerNode, "Pivot", "dropdown").options).toEqual(["center", "above", "below", "custom-point"]);
+
+            FindProperty(controller, centerNode, "Pivot", "dropdown").onChange("custom-point");
+            FindProperty(controller, centerNode, "Custom point", "vector3").onChange([1, 2, 3]);
+
+            expect(FindProperty(controller, centerNode, "Pivot", "dropdown").value).toBe("custom-point");
+            expect(FindProperty(controller, centerNode, "Custom point", "vector3").value).toEqual([1, 2, 3]);
+        } finally {
+            controller.dispose();
+        }
+    });
+
+    it("edits only the approved in-Universal Resize Textures properties", () => {
+        const controller = new NodeAssetGraphController();
+        try {
+            const resizeNode = AddPaletteNode(controller, "resize-textures");
+            const section = FindSection(controller, resizeNode, "RESIZE TEXTURES");
+
+            expect(section.properties.map((property) => [property.label, property.kind])).toEqual([
+                ["Maximum width", "slider"],
+                ["Maximum height", "slider"],
+                ["Resize mode", "dropdown"],
+            ]);
+            expect(FindProperty(controller, resizeNode, "Resize mode", "dropdown").options).toEqual(["sharp", "smooth"]);
+
+            FindProperty(controller, resizeNode, "Maximum width", "slider").onChange(1024);
+            FindProperty(controller, resizeNode, "Maximum height", "slider").onChange(512);
+            FindProperty(controller, resizeNode, "Resize mode", "dropdown").onChange("smooth");
+
+            expect(FindProperty(controller, resizeNode, "Maximum width", "slider").value).toBe(1024);
+            expect(FindProperty(controller, resizeNode, "Maximum height", "slider").value).toBe(512);
+            expect(FindProperty(controller, resizeNode, "Resize mode", "dropdown").value).toBe("smooth");
+            expect(section.properties.map((property) => property.label).join(" ")).not.toMatch(/image|channel|format|encoding/i);
+        } finally {
+            controller.dispose();
+        }
+    });
+
     it("validates and round-trips the DRACO quantization-bits field", () => {
         const controller = new NodeAssetGraphController();
         try {

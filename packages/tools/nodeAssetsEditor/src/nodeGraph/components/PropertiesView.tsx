@@ -1,6 +1,7 @@
 import { useCallback, type FunctionComponent, type ReactElement } from "react";
 
 import { makeStyles, tokens, Body1Strong } from "@fluentui/react-components";
+import { Vector3 } from "core/Maths/math.vector";
 
 import { type EditorContextValue } from "../editorContext";
 import { type IPropertySection, type PropertyDescriptor } from "../propertyModel";
@@ -11,6 +12,7 @@ import { StringDropdownPropertyLine } from "shared-ui-components/fluent/hoc/prop
 import { SyncedSliderPropertyLine } from "shared-ui-components/fluent/hoc/propertyLines/syncedSliderPropertyLine";
 import { SwitchPropertyLine } from "shared-ui-components/fluent/hoc/propertyLines/switchPropertyLine";
 import { ButtonLine } from "shared-ui-components/fluent/hoc/buttonLine";
+import { Vector3PropertyLine } from "shared-ui-components/fluent/hoc/propertyLines/vectorPropertyLine";
 
 const useStyles = makeStyles({
     placeholder: {
@@ -57,6 +59,20 @@ function RenderPropertyLine(descriptor: PropertyDescriptor, key: string): ReactE
                     max={descriptor.max}
                     step={descriptor.step}
                     onChange={descriptor.onChange}
+                />
+            );
+        case "vector3":
+            return (
+                <Vector3PropertyLine
+                    key={key}
+                    uniqueId={key}
+                    label={descriptor.label}
+                    value={Vector3.FromArray(descriptor.value)}
+                    min={descriptor.min}
+                    max={descriptor.max}
+                    step={descriptor.step}
+                    unit={descriptor.unit}
+                    onChange={(value) => descriptor.onChange([value.x, value.y, value.z])}
                 />
             );
         case "switch":

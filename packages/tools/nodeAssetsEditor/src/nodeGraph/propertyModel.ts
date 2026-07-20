@@ -60,6 +60,26 @@ export interface ISliderPropertyDescriptor {
     readonly onChange: (value: number) => void;
 }
 
+/** An editable three-component numeric vector. */
+export interface IVector3PropertyDescriptor {
+    /** Discriminant identifying this as a vector property line. */
+    readonly kind: "vector3";
+    /** Label shown beside the expandable vector value. */
+    readonly label: string;
+    /** Current XYZ value. */
+    readonly value: readonly [number, number, number];
+    /** Optional shared minimum for each component. */
+    readonly min?: number;
+    /** Optional shared maximum for each component. */
+    readonly max?: number;
+    /** Component input step. */
+    readonly step?: number;
+    /** Optional displayed unit. */
+    readonly unit?: string;
+    /** Called with the new XYZ value. */
+    readonly onChange: (value: [number, number, number]) => void;
+}
+
 /**
  * A boolean switch property.
  */
@@ -107,6 +127,7 @@ export type PropertyDescriptor =
     | ITextPropertyDescriptor
     | IDropdownPropertyDescriptor
     | ISliderPropertyDescriptor
+    | IVector3PropertyDescriptor
     | ISwitchPropertyDescriptor
     | IColorPropertyDescriptor
     | IButtonPropertyDescriptor;
