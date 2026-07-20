@@ -205,4 +205,30 @@ describe("USD Universal funnel", () => {
         expect(parsedRead.sourceKind).toBe("url");
         expect(parsedRead.data).toEqual(TriangleUsdBytes);
     });
+
+    it("keeps the source cleared when an earlier URL request succeeds later", async () => {
+        const asset = new NodeAsset("cleared-usd-source");
+        const read = new ReadUSDBlock("Read USD", asset);
+        let resolveResponse: ((response: { ok: boolean; status: number; statusText: string; arrayBuffer: () => Promise<ArrayBuffer> }) => void) | undefined;
+        const pendingUrl = read.setUrlAsync(
+            "https://example.com/delayed.usda",
+            async () =>
+                await new Promise((resolve) => {
+                    resolveResponse = resolve;
+                })
+        );
+
+        read.clearSource();
+        resolveResponse?.({
+            ok: true,
+            status: 200,
+            statusText: "OK",
+            arrayBuffer: async () => TriangleUsdBytes.slice().buffer,
+        });
+        await pendingUrl;
+
+        expect(read.data).toBeNull();
+        expect(read.source).toBeNull();
+        expect(read.sourceKind).toBeNull();
+    });
 });

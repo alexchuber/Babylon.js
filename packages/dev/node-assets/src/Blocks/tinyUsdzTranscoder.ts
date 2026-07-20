@@ -63,6 +63,7 @@ interface ITinyUsdzLoaderNative {
     numSkeletons(): number;
     numAnimations(): number;
     numInstances(): number;
+    delete(): void;
 }
 
 interface ITinyUsdzModule {
@@ -237,90 +238,94 @@ export async function TranscodeUsdToDocumentAsync(bytes: Uint8Array, options: IT
 
     const wasmModule = (await createTinyUsdzModule(moduleOptions)) as ITinyUsdzModule;
     const native = new wasmModule.TinyUSDZLoaderNative();
-    const filename = `asset.${options.sourceFormat === "usd" ? "usd" : options.sourceFormat}`;
-    if (!native.loadFromBinary(bytes, filename)) {
-        throw new Error(`tinyusdz failed to parse the USD (${options.sourceFormat}) content: ${native.error()}`);
-    }
-
-    const document = new Document();
-    document.createBuffer();
-    const scene = document.createScene("USD");
-    const metadata = native.getSceneMetadata();
-
-    // USD roots attach to the scene directly, unless the stage's up-axis or unit scale differs from
-    // glTF's (Y-up, metres) — then a single conversion node carries the whole scene into glTF space.
-    const upAxis = metadata.upAxis || "Y";
-    const metersPerUnit = typeof metadata.metersPerUnit === "number" && metadata.metersPerUnit > 0 ? metadata.metersPerUnit : 1;
-    const needsConversion = upAxis !== "Y" || metersPerUnit !== 1;
-    let conversionRoot: Nullable<GltfNode> = null;
-    if (needsConversion) {
-        conversionRoot = document.createNode("USD_Root");
-        if (upAxis === "Z") {
-            // Rotate USD Z-up into glTF Y-up: -90 degrees about X (quaternion (-sqrt(1/2), 0, 0, sqrt(1/2))).
-            conversionRoot.setRotation([-Math.SQRT1_2, 0, 0, Math.SQRT1_2]);
+    try {
+        const filename = `asset.${options.sourceFormat === "usd" ? "usd" : options.sourceFormat}`;
+        if (!native.loadFromBinary(bytes, filename)) {
+            throw new Error(`tinyusdz failed to parse the USD (${options.sourceFormat}) content: ${native.error()}`);
         }
-        conversionRoot.setScale([metersPerUnit, metersPerUnit, metersPerUnit]);
-        scene.addChild(conversionRoot);
-    }
 
-    const materials = new Map<number, Material>();
-    const rootCount = native.numRootNodes();
-    for (let index = 0; index < rootCount; index++) {
-        const converted = ConvertNode(document, native, native.getRootNode(index), materials);
-        if (!converted) {
-            continue;
+        const document = new Document();
+        document.createBuffer();
+        const scene = document.createScene("USD");
+        const metadata = native.getSceneMetadata();
+
+        // USD roots attach to the scene directly, unless the stage's up-axis or unit scale differs from
+        // glTF's (Y-up, metres) — then a single conversion node carries the whole scene into glTF space.
+        const upAxis = metadata.upAxis || "Y";
+        const metersPerUnit = typeof metadata.metersPerUnit === "number" && metadata.metersPerUnit > 0 ? metadata.metersPerUnit : 1;
+        const needsConversion = upAxis !== "Y" || metersPerUnit !== 1;
+        let conversionRoot: Nullable<GltfNode> = null;
+        if (needsConversion) {
+            conversionRoot = document.createNode("USD_Root");
+            if (upAxis === "Z") {
+                // Rotate USD Z-up into glTF Y-up: -90 degrees about X (quaternion (-sqrt(1/2), 0, 0, sqrt(1/2))).
+                conversionRoot.setRotation([-Math.SQRT1_2, 0, 0, Math.SQRT1_2]);
+            }
+            conversionRoot.setScale([metersPerUnit, metersPerUnit, metersPerUnit]);
+            scene.addChild(conversionRoot);
         }
-        if (conversionRoot) {
-            conversionRoot.addChild(converted);
-        } else {
-            scene.addChild(converted);
+
+        const materials = new Map<number, Material>();
+        const rootCount = native.numRootNodes();
+        for (let index = 0; index < rootCount; index++) {
+            const converted = ConvertNode(document, native, native.getRootNode(index), materials);
+            if (!converted) {
+                continue;
+            }
+            if (conversionRoot) {
+                conversionRoot.addChild(converted);
+            } else {
+                scene.addChild(converted);
+            }
         }
-    }
 
-    // Record the loss profile so dropped USD features are inspectable rather than silent. tinyusdz
-    // resolves composition arcs (references/payloads/variants) during load, so those are composed, not
-    // dropped; what this transcoder does not yet map is counted below.
-    const droppedTextureCount = native.numTextures();
-    const droppedLightCount = native.numLights();
-    const droppedCameraCount = native.numCameras();
-    const droppedSkeletonCount = native.numSkeletons();
-    const droppedAnimationCount = native.numAnimations();
-    const droppedInstanceCount = native.numInstances();
-    const notes: string[] = [];
-    if (droppedTextureCount > 0) {
-        notes.push(`Dropped ${droppedTextureCount} texture(s): USD texture bindings are not yet mapped to glTF.`);
-    }
-    if (droppedLightCount > 0) {
-        notes.push(`Dropped ${droppedLightCount} light(s).`);
-    }
-    if (droppedCameraCount > 0) {
-        notes.push(`Dropped ${droppedCameraCount} camera(s).`);
-    }
-    if (droppedSkeletonCount > 0) {
-        notes.push(`Dropped ${droppedSkeletonCount} skeleton(s): skinning is not mapped.`);
-    }
-    if (droppedAnimationCount > 0) {
-        notes.push(`Dropped ${droppedAnimationCount} animation(s).`);
-    }
-    if (droppedInstanceCount > 0) {
-        notes.push(`Dropped ${droppedInstanceCount} point-instancer instance set(s).`);
-    }
+        // Record the loss profile so dropped USD features are inspectable rather than silent. tinyusdz
+        // resolves composition arcs (references/payloads/variants) during load, so those are composed, not
+        // dropped; what this transcoder does not yet map is counted below.
+        const droppedTextureCount = native.numTextures();
+        const droppedLightCount = native.numLights();
+        const droppedCameraCount = native.numCameras();
+        const droppedSkeletonCount = native.numSkeletons();
+        const droppedAnimationCount = native.numAnimations();
+        const droppedInstanceCount = native.numInstances();
+        const notes: string[] = [];
+        if (droppedTextureCount > 0) {
+            notes.push(`Dropped ${droppedTextureCount} texture(s): USD texture bindings are not yet mapped to glTF.`);
+        }
+        if (droppedLightCount > 0) {
+            notes.push(`Dropped ${droppedLightCount} light(s).`);
+        }
+        if (droppedCameraCount > 0) {
+            notes.push(`Dropped ${droppedCameraCount} camera(s).`);
+        }
+        if (droppedSkeletonCount > 0) {
+            notes.push(`Dropped ${droppedSkeletonCount} skeleton(s): skinning is not mapped.`);
+        }
+        if (droppedAnimationCount > 0) {
+            notes.push(`Dropped ${droppedAnimationCount} animation(s).`);
+        }
+        if (droppedInstanceCount > 0) {
+            notes.push(`Dropped ${droppedInstanceCount} point-instancer instance set(s).`);
+        }
 
-    document.getRoot().setExtras({
-        usdImport: {
-            parser: "tinyusdz",
-            sourceFormat: options.sourceFormat,
-            upAxis,
-            metersPerUnit,
-            droppedTextureCount,
-            droppedLightCount,
-            droppedCameraCount,
-            droppedSkeletonCount,
-            droppedAnimationCount,
-            droppedInstanceCount,
-            notes,
-        },
-    });
+        document.getRoot().setExtras({
+            usdImport: {
+                parser: "tinyusdz",
+                sourceFormat: options.sourceFormat,
+                upAxis,
+                metersPerUnit,
+                droppedTextureCount,
+                droppedLightCount,
+                droppedCameraCount,
+                droppedSkeletonCount,
+                droppedAnimationCount,
+                droppedInstanceCount,
+                notes,
+            },
+        });
 
-    return document;
+        return document;
+    } finally {
+        native.delete();
+    }
 }

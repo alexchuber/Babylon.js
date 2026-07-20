@@ -17,6 +17,8 @@ import { type IPropertySection } from "../nodeGraph/propertyModel";
  * builds its section through one seam.
  */
 export interface IPropertySectionContext {
+    /** Detaches aggregate-owned state when needed and returns the stable block an edit must target. */
+    readonly prepareEdit: <BlockT extends NodeAssetBlock>(block: BlockT) => BlockT;
     /** Re-renders the property pane after an edit (and marks the graph changed). */
     readonly refresh: () => void;
     /** Requests that the editor export the current graph, optionally named by the export block's file name. */

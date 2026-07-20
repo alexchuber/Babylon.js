@@ -183,6 +183,115 @@ describe("Import block source label", () => {
         }
     });
 
+    it("targets an authored Read USD child before an expanded upload waits for a file", async () => {
+        const controller = new NodeAssetGraphController();
+        let resolveFile: ((file: File) => void) | undefined;
+        vi.mocked(PromptForFileAsync).mockImplementationOnce(
+            async () =>
+                await new Promise<File>((resolve) => {
+                    resolveFile = resolve;
+                })
+        );
+        try {
+            const importNode = AddPaletteNode(controller, "import-usd");
+            controller.setAggregateExpanded(importNode.id, true);
+            const readNode = FindNode(controller, "Read USD");
+
+            FindPropertyInSection(controller, readNode, "SOURCE", UploadUSDButtonLabel, "button").onClick();
+
+            const startedUpload = JSON.parse(controller.serialize()) as {
+                graph: { blocks: Array<{ name: string; customType: string; subgraph?: { blocks: Array<{ customType: string; source?: string }> } }> };
+            };
+            expect(startedUpload.graph.blocks.find((block) => block.name === "Import USD")?.customType).toBe("CustomAggregateBlock");
+
+            controller.setAggregateExpanded(importNode.id, false);
+            resolveFile?.({
+                name: "authored.usda",
+                arrayBuffer: async () => new TextEncoder().encode("#usda 1.0").buffer,
+            } as unknown as File);
+            await vi.waitFor(() => {
+                expect(FindPropertyInSection(controller, importNode, "READ USD", "Active source", "text").value).toBe("authored.usda");
+            });
+
+            const completedUpload = JSON.parse(controller.serialize()) as {
+                graph: { blocks: Array<{ name: string; customType: string; subgraph?: { blocks: Array<{ customType: string; source?: string }> } }> };
+            };
+            const authoredImport = completedUpload.graph.blocks.find((block) => block.name === "Import USD");
+            expect(authoredImport?.customType).toBe("CustomAggregateBlock");
+            expect(authoredImport?.subgraph?.blocks).toContainEqual(expect.objectContaining({ customType: "ReadUSDBlock", source: "authored.usda" }));
+        } finally {
+            controller.dispose();
+        }
+    });
+
+    it.each([
+        { replacement: "newer URL", activeSource: "https://example.com/current.usda" },
+        { replacement: "upload", activeSource: "current.usda" },
+    ])("does not show a stale USD URL failure after a $replacement succeeds", async ({ replacement, activeSource }) => {
+        const controller = new NodeAssetGraphController();
+        let resolveStaleResponse: ((response: Response) => void) | undefined;
+        const staleResponse = new Promise<Response>((resolve) => {
+            resolveStaleResponse = resolve;
+        });
+        const fetchMock = vi.fn(async () => await staleResponse);
+        vi.stubGlobal("fetch", fetchMock);
+        try {
+            const importNode = AddPaletteNode(controller, "import-usd");
+            FindPropertyInSection(controller, importNode, "READ USD", "URL", "text").onChange("https://example.com/stale.usda");
+            await vi.waitFor(() => {
+                expect(fetchMock).toHaveBeenCalledTimes(1);
+            });
+
+            if (replacement === "newer URL") {
+                fetchMock.mockResolvedValueOnce({
+                    ok: true,
+                    status: 200,
+                    statusText: "OK",
+                    arrayBuffer: async () => new TextEncoder().encode("#usda 1.0").buffer,
+                } as Response);
+                FindPropertyInSection(controller, importNode, "READ USD", "URL", "text").onChange(activeSource);
+            } else {
+                vi.mocked(PromptForFileAsync).mockResolvedValue({
+                    name: activeSource,
+                    arrayBuffer: async () => new TextEncoder().encode("#usda 1.0").buffer,
+                } as unknown as File);
+                FindPropertyInSection(controller, importNode, "READ USD", UploadUSDButtonLabel, "button").onClick();
+            }
+            await vi.waitFor(() => {
+                expect(FindPropertyInSection(controller, importNode, "READ USD", "Active source", "text").value).toBe(activeSource);
+            });
+
+            let refreshCount = 0;
+            const observer = controller.state.onChanged.add(() => {
+                refreshCount++;
+            });
+            try {
+                resolveStaleResponse?.({
+                    ok: false,
+                    status: 404,
+                    statusText: "Not Found",
+                    arrayBuffer: async () => new ArrayBuffer(0),
+                } as Response);
+                await vi.waitFor(() => {
+                    expect(refreshCount).toBeGreaterThan(0);
+                });
+            } finally {
+                observer.remove();
+            }
+
+            expect(FindPropertyInSection(controller, importNode, "READ USD", "Active source", "text").value).toBe(activeSource);
+            expect(
+                controller
+                    .buildPropertySections(importNode)
+                    .flatMap((section) => section.properties)
+                    .find((property) => property.label === "Source error")
+            ).toBeUndefined();
+        } finally {
+            vi.unstubAllGlobals();
+            controller.dispose();
+        }
+    });
+
     it("shows a source URL verbatim in the image import Source field", () => {
         const asset = new NodeAsset("image-source");
         const block = new ImportImageBlock("Import Image", asset);

@@ -66,6 +66,16 @@ export class ReadUSDBlock extends NodeAssetBlock {
     }
 
     /**
+     * Clears the active source and invalidates every pending URL request.
+     */
+    public clearSource(): void {
+        this._lastSuccessfulSourceAttempt = ++this._sourceAttempt;
+        this.data = null;
+        this.source = null;
+        this.sourceKind = null;
+    }
+
+    /**
      * Loads a URL and makes it active only after the request succeeds.
      * @param url The USD URL.
      * @param fetcher The fetch-compatible loader.

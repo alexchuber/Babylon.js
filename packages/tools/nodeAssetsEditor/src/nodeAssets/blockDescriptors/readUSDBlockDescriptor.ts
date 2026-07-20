@@ -6,27 +6,41 @@ import { PromptForFileAsync } from "../browserFiles";
 
 const ReadHeaderColor = "#3f7d4e";
 const SourceErrors = new WeakMap<ReadUSDBlock, string>();
+const PendingUrlRequests = new WeakMap<ReadUSDBlock, Promise<void>>();
 
 // eslint-disable-next-line @typescript-eslint/naming-convention
-async function PromptForUSDAsync(block: ReadUSDBlock, refresh: () => void): Promise<void> {
+async function PromptForUSDAsync(block: ReadUSDBlock, context: IPropertySectionContext): Promise<void> {
+    const authoredBlock = context.prepareEdit(block);
     const file = await PromptForFileAsync(".usd,.usda,.usdc,.usdz");
     if (!file) {
         return;
     }
-    block.setUploadedSource(new Uint8Array(await file.arrayBuffer()), file.name);
-    SourceErrors.delete(block);
-    refresh();
+    authoredBlock.setUploadedSource(new Uint8Array(await file.arrayBuffer()), file.name);
+    PendingUrlRequests.delete(authoredBlock);
+    SourceErrors.delete(authoredBlock);
+    context.refresh();
 }
 
 // eslint-disable-next-line @typescript-eslint/naming-convention
-async function SetUSDUrlAsync(block: ReadUSDBlock, url: string, refresh: () => void): Promise<void> {
+async function SetUSDUrlAsync(block: ReadUSDBlock, url: string, context: IPropertySectionContext): Promise<void> {
+    const authoredBlock = context.prepareEdit(block);
+    const request = authoredBlock.setUrlAsync(url);
+    PendingUrlRequests.set(authoredBlock, request);
     try {
-        await block.setUrlAsync(url);
-        SourceErrors.delete(block);
+        await request;
+        if (PendingUrlRequests.get(authoredBlock) === request) {
+            SourceErrors.delete(authoredBlock);
+        }
     } catch (error) {
-        SourceErrors.set(block, error instanceof Error ? error.message : String(error));
+        if (PendingUrlRequests.get(authoredBlock) === request) {
+            SourceErrors.set(authoredBlock, error instanceof Error ? error.message : String(error));
+        }
+    } finally {
+        if (PendingUrlRequests.get(authoredBlock) === request) {
+            PendingUrlRequests.delete(authoredBlock);
+        }
+        context.refresh();
     }
-    refresh();
 }
 
 /**
@@ -49,14 +63,14 @@ export function CreateReadUSDPropertySection(block: ReadUSDBlock, context: IProp
                 validateOnlyOnBlur: true,
                 onChange: (value) => {
                     if (!value) {
-                        block.data = null;
-                        block.source = null;
-                        block.sourceKind = null;
-                        SourceErrors.delete(block);
+                        const authoredBlock = context.prepareEdit(block);
+                        authoredBlock.clearSource();
+                        PendingUrlRequests.delete(authoredBlock);
+                        SourceErrors.delete(authoredBlock);
                         context.refresh();
                         return;
                     }
-                    void SetUSDUrlAsync(block, value, context.refresh);
+                    void SetUSDUrlAsync(block, value, context);
                 },
             },
             {
@@ -70,7 +84,7 @@ export function CreateReadUSDPropertySection(block: ReadUSDBlock, context: IProp
                 kind: "button",
                 label: "Upload USD\u2026",
                 onClick: () => {
-                    void PromptForUSDAsync(block, context.refresh);
+                    void PromptForUSDAsync(block, context);
                 },
             },
             ...(sourceError

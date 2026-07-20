@@ -584,6 +584,7 @@ export class NodeAssetGraphController {
         const block = this._reconciler.getBlock(node.id);
         if (block) {
             const propertyContext = {
+                prepareEdit: <BlockT extends NodeAssetBlock>(editedBlock: BlockT): BlockT => this._preparePropertyEdit(node.id, editedBlock),
                 refresh: () => {
                     this._detachAggregateContainingNode(node.id);
                     this.state.notifyChanged();
@@ -835,6 +836,10 @@ export class NodeAssetGraphController {
         if (!rootNodeId) {
             return;
         }
+        this._detachAggregate(rootNodeId);
+    }
+
+    private _detachAggregate(rootNodeId: string): void {
         const aggregate = this._reconciler.getBlock(rootNodeId);
         if (!(aggregate instanceof AggregateBlock) || aggregate instanceof CustomAggregateBlock) {
             return;
@@ -857,6 +862,24 @@ export class NodeAssetGraphController {
                 this._reconciler.registerNode(childBlock, childNode);
             }
         }
+    }
+
+    private _preparePropertyEdit<BlockT extends NodeAssetBlock>(nodeId: string, block: BlockT): BlockT {
+        const nodeBlock = this._reconciler.getBlock(nodeId);
+        const rootNodeId =
+            this._aggregateRootByChildNodeId.get(nodeId) ??
+            (nodeBlock instanceof AggregateBlock && nodeBlock.subgraph.attachedBlocks.some((candidate) => candidate.uniqueId === block.uniqueId) ? nodeId : undefined);
+        if (!rootNodeId) {
+            return block;
+        }
+
+        this._detachAggregate(rootNodeId);
+        const aggregate = this._reconciler.getBlock(rootNodeId);
+        const authoredBlock = aggregate instanceof AggregateBlock ? aggregate.subgraph.attachedBlocks.find((candidate) => candidate.uniqueId === block.uniqueId) : undefined;
+        if (!authoredBlock) {
+            throw new Error(`Cannot edit aggregate child "${block.name}" because its authored block is missing.`);
+        }
+        return authoredBlock as BlockT;
     }
 
     private async _fetchAssetBytesAsync(url: string): Promise<Uint8Array> {
