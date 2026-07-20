@@ -28,6 +28,7 @@
         "draco3dgltf": "^1.5.7",
         "ktx2-encoder": "^0.5.3",
         "meshoptimizer": "^1.0.1",
+        "mikktspace": "^1.1.1",
         "tinyusdz": "0.9.9"
     },
     "devDependencies": {

@@ -44,6 +44,9 @@ export const UniversalCategory = "Universal";
 /** Palette family for Universal cleanup decisions. */
 export const CleanupFamily = "Cleanup";
 
+/** Palette family for Universal attribute decisions. */
+export const AttributesFamily = "Attributes";
+
 /** Palette category and shared node header color for the value-literal source block family. */
 export const ValuesCategory = "Values";
 export const ValuesHeaderColor = "#5a5fb0";

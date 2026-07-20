@@ -760,6 +760,52 @@ test.describe("Node Assets Editor — Universal glTF aggregates", () => {
     });
 });
 
+test.describe("Node Assets Editor — Universal attribute operators", () => {
+    test.describe.configure({ timeout: 180_000 });
+
+    test("inserts, configures, previews, and exports an attribute chain", async ({ page }) => {
+        const editor = new NodeAssetsEditorPage(page);
+        await editor.goto();
+        await editor.waitForNextSuccessfulPreviewBuild();
+
+        await editor.dropPaletteItem("Recompute Normals", { x: 0.35, y: 0.2 });
+        await editor.dropPaletteItem("Generate Tangents", { x: 0.5, y: 0.2 });
+        await editor.dropPaletteItem("Strip Attributes", { x: 0.65, y: 0.2 });
+        await expect(editor.nodeByTitle("Recompute Normals")).toBeVisible();
+        await expect(editor.nodeByTitle("Generate Tangents")).toBeVisible();
+        await expect(editor.nodeByTitle("Strip Attributes")).toBeVisible();
+
+        await editor.selectNode("Recompute Normals");
+        const overwrite = page.getByText("Overwrite existing", { exact: true }).locator("..").locator("..").getByRole("switch");
+        await overwrite.click();
+        await expect(overwrite).toBeChecked();
+
+        await editor.selectNode("Strip Attributes");
+        const colors = page.getByText("Colors", { exact: true }).locator("..").locator("..").getByRole("switch");
+        await colors.click();
+        await expect(colors).toBeChecked();
+
+        await editor.connectPorts(editor.portOfNode("Import glTF", "out"), editor.portOfNode("Recompute Normals", "in"));
+        await editor.connectPorts(editor.portOfNode("Recompute Normals", "out"), editor.portOfNode("Generate Tangents", "in"));
+        await editor.connectPorts(editor.portOfNode("Generate Tangents", "out"), editor.portOfNode("Strip Attributes", "in"));
+        await editor.connectPorts(editor.portOfNode("Strip Attributes", "out"), editor.portOfNode("Export glTF", "in"));
+        await editor.expectWiredPipeline([
+            ...EnergyOrbPipeline.slice(0, -1),
+            ["Import glTF", "Recompute Normals"],
+            ["Recompute Normals", "Generate Tangents"],
+            ["Generate Tangents", "Strip Attributes"],
+            ["Strip Attributes", "Export glTF"],
+        ]);
+        await editor.waitForSuccessfulPreviewBuild();
+        await expect(editor.previewCanvas).toBeVisible();
+
+        await editor.selectNode("Export glTF");
+        const downloadPromise = page.waitForEvent("download");
+        await page.getByRole("button", { name: "Export .glb" }).click();
+        await readDownloadedGlb(await downloadPromise);
+    });
+});
+
 test.describe("Node Assets Editor — Library", () => {
     test.describe.configure({ timeout: 180_000 });
 
