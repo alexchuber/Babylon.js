@@ -183,9 +183,10 @@ describe("Import block source label", () => {
         }
     });
 
-    it("targets an authored Read USD child before an expanded upload waits for a file", async () => {
+    it("targets an authored Read USD child before an expanded upload reads file bytes", async () => {
         const controller = new NodeAssetGraphController();
         let resolveFile: ((file: File) => void) | undefined;
+        let resolveData: ((data: ArrayBuffer) => void) | undefined;
         vi.mocked(PromptForFileAsync).mockImplementationOnce(
             async () =>
                 await new Promise<File>((resolve) => {
@@ -199,16 +200,24 @@ describe("Import block source label", () => {
 
             FindPropertyInSection(controller, readNode, "SOURCE", UploadUSDButtonLabel, "button").onClick();
 
-            const startedUpload = JSON.parse(controller.serialize()) as {
+            const waitingForFile = JSON.parse(controller.serialize()) as {
                 graph: { blocks: Array<{ name: string; customType: string; subgraph?: { blocks: Array<{ customType: string; source?: string }> } }> };
             };
-            expect(startedUpload.graph.blocks.find((block) => block.name === "Import USD")?.customType).toBe("CustomAggregateBlock");
-
-            controller.setAggregateExpanded(importNode.id, false);
+            expect(waitingForFile.graph.blocks.find((block) => block.name === "Import USD")?.customType).toBe("ImportUSDAggregateBlock");
             resolveFile?.({
                 name: "authored.usda",
-                arrayBuffer: async () => new TextEncoder().encode("#usda 1.0").buffer,
+                arrayBuffer: async () =>
+                    await new Promise<ArrayBuffer>((resolve) => {
+                        resolveData = resolve;
+                    }),
             } as unknown as File);
+            await vi.waitFor(() => {
+                const readingFile = JSON.parse(controller.serialize()) as { graph: { blocks: Array<{ name: string; customType: string }> } };
+                expect(readingFile.graph.blocks.find((block) => block.name === "Import USD")?.customType).toBe("CustomAggregateBlock");
+            });
+
+            controller.setAggregateExpanded(importNode.id, false);
+            resolveData?.(new TextEncoder().encode("#usda 1.0").buffer);
             await vi.waitFor(() => {
                 expect(FindPropertyInSection(controller, importNode, "READ USD", "Active source", "text").value).toBe("authored.usda");
             });
@@ -220,6 +229,71 @@ describe("Import block source label", () => {
             expect(authoredImport?.customType).toBe("CustomAggregateBlock");
             expect(authoredImport?.subgraph?.blocks).toContainEqual(expect.objectContaining({ customType: "ReadUSDBlock", source: "authored.usda" }));
         } finally {
+            controller.dispose();
+        }
+    });
+
+    it("keeps an expanded Import USD built in when the upload picker is canceled", async () => {
+        const controller = new NodeAssetGraphController();
+        vi.mocked(PromptForFileAsync).mockResolvedValueOnce(null);
+        try {
+            const importNode = AddPaletteNode(controller, "import-usd");
+            controller.setAggregateExpanded(importNode.id, true);
+            const readNode = FindNode(controller, "Read USD");
+
+            FindPropertyInSection(controller, readNode, "SOURCE", UploadUSDButtonLabel, "button").onClick();
+            await vi.waitFor(() => {
+                expect(PromptForFileAsync).toHaveBeenCalled();
+            });
+            await Promise.resolve();
+
+            const canceledUpload = JSON.parse(controller.serialize()) as { graph: { blocks: Array<{ name: string; customType: string }> } };
+            expect(canceledUpload.graph.blocks.find((block) => block.name === "Import USD")?.customType).toBe("ImportUSDAggregateBlock");
+        } finally {
+            controller.dispose();
+        }
+    });
+
+    it("ignores a stale URL completion after loading a graph that reuses the child ids", async () => {
+        const controller = new NodeAssetGraphController();
+        let resolveResponse: ((response: Response) => void) | undefined;
+        let resolveFailureObserved: (() => void) | undefined;
+        const failureObserved = new Promise<void>((resolve) => {
+            resolveFailureObserved = resolve;
+        });
+        const response = new Promise<Response>((resolve) => {
+            resolveResponse = resolve;
+        });
+        const fetchMock = vi.fn(async () => await response);
+        vi.stubGlobal("fetch", fetchMock);
+        try {
+            const importNode = AddPaletteNode(controller, "import-usd");
+            controller.setAggregateExpanded(importNode.id, true);
+            const savedBuiltInGraph = controller.serialize();
+            const readNode = FindNode(controller, "Read USD");
+            FindPropertyInSection(controller, readNode, "SOURCE", "URL", "text").onChange("https://example.com/stale.usda");
+            await vi.waitFor(() => {
+                expect(fetchMock).toHaveBeenCalledTimes(1);
+            });
+
+            controller.load(savedBuiltInGraph);
+            resolveResponse?.({
+                ok: false,
+                status: 404,
+                get statusText() {
+                    resolveFailureObserved?.();
+                    return "Not Found";
+                },
+                arrayBuffer: async () => new ArrayBuffer(0),
+            } as Response);
+            await failureObserved;
+            await Promise.resolve();
+            await Promise.resolve();
+
+            const reloaded = JSON.parse(controller.serialize()) as { graph: { blocks: Array<{ name: string; customType: string }> } };
+            expect(reloaded.graph.blocks.find((block) => block.name === "Import USD")?.customType).toBe("ImportUSDAggregateBlock");
+        } finally {
+            vi.unstubAllGlobals();
             controller.dispose();
         }
     });

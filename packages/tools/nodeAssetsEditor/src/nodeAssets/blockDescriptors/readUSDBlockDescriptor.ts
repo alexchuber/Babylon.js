@@ -10,12 +10,16 @@ const PendingUrlRequests = new WeakMap<ReadUSDBlock, Promise<void>>();
 
 // eslint-disable-next-line @typescript-eslint/naming-convention
 async function PromptForUSDAsync(block: ReadUSDBlock, context: IPropertySectionContext): Promise<void> {
-    const authoredBlock = context.prepareEdit(block);
     const file = await PromptForFileAsync(".usd,.usda,.usdc,.usdz");
     if (!file) {
         return;
     }
-    authoredBlock.setUploadedSource(new Uint8Array(await file.arrayBuffer()), file.name);
+    const authoredBlock = context.prepareEdit(block);
+    if (!authoredBlock) {
+        return;
+    }
+    const data = new Uint8Array(await file.arrayBuffer());
+    authoredBlock.setUploadedSource(data, file.name);
     PendingUrlRequests.delete(authoredBlock);
     SourceErrors.delete(authoredBlock);
     context.refresh();
@@ -24,6 +28,9 @@ async function PromptForUSDAsync(block: ReadUSDBlock, context: IPropertySectionC
 // eslint-disable-next-line @typescript-eslint/naming-convention
 async function SetUSDUrlAsync(block: ReadUSDBlock, url: string, context: IPropertySectionContext): Promise<void> {
     const authoredBlock = context.prepareEdit(block);
+    if (!authoredBlock) {
+        return;
+    }
     const request = authoredBlock.setUrlAsync(url);
     PendingUrlRequests.set(authoredBlock, request);
     try {
@@ -64,6 +71,9 @@ export function CreateReadUSDPropertySection(block: ReadUSDBlock, context: IProp
                 onChange: (value) => {
                     if (!value) {
                         const authoredBlock = context.prepareEdit(block);
+                        if (!authoredBlock) {
+                            return;
+                        }
                         authoredBlock.clearSource();
                         PendingUrlRequests.delete(authoredBlock);
                         SourceErrors.delete(authoredBlock);
