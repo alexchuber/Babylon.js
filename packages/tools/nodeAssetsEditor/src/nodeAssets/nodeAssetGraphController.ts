@@ -15,7 +15,6 @@ import { Observable } from "core/Misc/observable";
 
 import { type BuildPBRMaterial } from "node-assets/Blocks/buildPBRMaterial";
 import { ExportGLTFBlock } from "node-assets/Blocks/exportGLTFBlock";
-import { ExportGLTFAggregateBlock } from "node-assets/Blocks/exportGLTFAggregateBlock";
 import { type ImportGLTFAggregateBlock } from "node-assets/Blocks/importGLTFAggregateBlock";
 import { type ImportImageBlock } from "node-assets/Blocks/importImageBlock";
 import { type KTX2CompressionBlock } from "node-assets/Blocks/ktx2CompressionBlock";
