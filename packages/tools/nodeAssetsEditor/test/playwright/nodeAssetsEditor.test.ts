@@ -2,31 +2,21 @@ import { test, expect, type Page, type Download } from "@playwright/test";
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 
+import { BuiltInLibraryFixtures } from "../../src/nodeAssets/builtInLibraryFixtures";
 import { NodeAssetsEditorPage, useLocalGltfValidator } from "./nae.utils";
 
 type GltfJson = {
     readonly accessors?: readonly { readonly count?: number; readonly type?: string }[];
     readonly extensionsUsed?: readonly string[];
     readonly extensionsRequired?: readonly string[];
-    readonly images?: readonly { readonly mimeType?: string }[];
-    readonly materials?: readonly unknown[];
     readonly nodes?: readonly { readonly name?: string }[];
     readonly meshes?: readonly { readonly primitives?: readonly { readonly attributes?: { readonly POSITION?: number }; readonly indices?: number }[] }[];
 };
 
-// The energy-orb showcase composites a metal base and a cyan pattern into the base color, fans the same
-// pattern out to the emissive input, builds a self-lit PBR orb, then compresses it with KTX2 + Draco.
-const EnergyOrbPipeline: readonly (readonly [string, string])[] = [
-    ["Import Image", "Composite Image"],
-    ["Import Image", "Composite Image"],
-    ["Composite Image", "Build PBR Material"],
-    ["Import Image", "Build PBR Material"],
-    ["Import glTF", "Universal to glTF"],
-    ["Universal to glTF", "Build PBR Material"],
-    ["Build PBR Material", "Apply BasisU"],
-    ["Apply BasisU", "Apply Draco"],
-    ["Apply Draco", "glTF to Universal"],
-    ["glTF to Universal", "Export glTF"],
+const DefaultOptimizationPipeline: readonly (readonly [string, string])[] = [
+    ["Import glTF", "Weld Vertices"],
+    ["Weld Vertices", "Remove Unused Resources"],
+    ["Remove Unused Resources", "Export glTF"],
 ];
 
 /**
@@ -269,58 +259,41 @@ function createNodeGeometryEditorFile(): Buffer {
     );
 }
 
-test.describe("Node Assets Editor — Energy orb showcase", () => {
+test.describe("Node Assets Editor — maintained default pipeline", () => {
     test.describe.configure({ timeout: 180_000 });
     test.beforeEach(async ({ page }) => await useLocalGltfValidator(page));
 
-    test("opens to the energy-orb graph and auto-previews the compressed, self-lit orb without console errors", async ({ page }) => {
+    test("opens to the maintained catalog graph and auto-previews without network requests or console errors", async ({ page }) => {
         const pageErrors = collectPageErrors(page);
         const editor = new NodeAssetsEditorPage(page);
-        const editorOrigin = new URL(editor.baseUrl).origin;
-
-        // Regression guard for the "Preview build failed / Failed to fetch" bug: the default graph's sample
-        // assets are bundled with the editor, so each is fetched from the editor's own origin rather than a
-        // separate sample-asset CDN. If any of these resolved back to the CDN port, the standalone editor's
-        // first build would fail before it could compose the orb.
-        const orbGlbResponse = page.waitForResponse((response) => response.url().startsWith(editorOrigin) && response.url().includes("orb.glb") && response.ok());
-        const orbMetalResponse = page.waitForResponse((response) => response.url().startsWith(editorOrigin) && response.url().includes("orbMetal") && response.ok());
-        const orbPatternResponse = page.waitForResponse((response) => response.url().startsWith(editorOrigin) && response.url().includes("orbPattern") && response.ok());
+        const sourceRequests: string[] = [];
+        page.on("request", (request) => {
+            if (request.url().match(/\.(?:glb|gltf|png|jpe?g|webp)(?:\?|$)/i)) {
+                sourceRequests.push(request.url());
+            }
+        });
 
         await editor.goto();
-        await orbGlbResponse;
-        await orbMetalResponse;
-        await orbPatternResponse;
 
-        await expect(editor.nodes).toHaveCount(10);
+        await expect(editor.nodes).toHaveCount(4);
         await expect(editor.nodeByTitle("Import glTF")).toBeVisible();
-        await expect(editor.nodeByTitle("Universal to glTF")).toBeVisible();
-        await expect(editor.nodeByTitle("Import Image")).toHaveCount(2);
-        await expect(editor.nodeByTitle("Composite Image")).toBeVisible();
-        await expect(editor.nodeByTitle("Build PBR Material")).toBeVisible();
-        await expect(editor.nodeByTitle("Apply BasisU")).toBeVisible();
-        await expect(editor.nodeByTitle("Apply Draco")).toBeVisible();
-        await expect(editor.nodeByTitle("glTF to Universal")).toBeVisible();
+        await expect(editor.nodeByTitle("Weld Vertices")).toBeVisible();
+        await expect(editor.nodeByTitle("Remove Unused Resources")).toBeVisible();
         await expect(editor.nodeByTitle("Export glTF")).toBeVisible();
-        await editor.expectWiredPipeline(EnergyOrbPipeline);
-
-        // The KTX2 + Draco stages are grouped under a labeled "Compression" frame to signal the two-stage optimization.
-        await expect(page.locator('[data-testid="graph-frame"]')).toHaveCount(1);
-        await expect(page.getByText("Compression", { exact: true })).toBeVisible();
+        await editor.expectWiredPipeline(DefaultOptimizationPipeline);
+        await expect(page.locator('[data-testid="graph-frame"]')).toHaveCount(0);
 
         await editor.waitForNextSuccessfulPreviewBuild();
         await expect(editor.previewCanvas).toBeVisible();
 
-        // Each import block is seeded on open with a stable, human-readable provenance label, so the
-        // read-only Source field shows each asset's sample path.
         await editor.selectNode("Import glTF");
-        await expect(page.getByRole("textbox").nth(3)).toHaveValue("scenes/nodeAssets/orb.glb");
-        await editor.selectNode("Import Image", 0);
-        await expect(page.getByRole("textbox").nth(2)).toHaveValue(/^scenes\/nodeAssets\/orb(Metal|Pattern)\.png$/);
+        await expect(page.getByRole("textbox").nth(3)).toHaveValue("catalog-triangle.glb");
 
+        expect(sourceRequests).toEqual([]);
         expect(pageErrors).toEqual([]);
     });
 
-    test("exports the compressed orb the preview rendered", async ({ page }) => {
+    test("exports the optimized catalog triangle the preview rendered", async ({ page }) => {
         const editor = new NodeAssetsEditorPage(page);
         await editor.goto();
         await editor.waitForNextSuccessfulPreviewBuild();
@@ -333,13 +306,9 @@ test.describe("Node Assets Editor — Energy orb showcase", () => {
         await exportButton.click();
         const exported = await readDownloadedGlb(await downloadPromise);
         const gltf = parseGlbJson(exported);
-        // The default graph runs the built orb through KTX2 + Draco, so the export carries both compression
-        // extensions and its textures are KTX2 rather than PNG.
-        expect((gltf.materials ?? []).length).toBeGreaterThan(0);
-        expect(gltf.extensionsUsed ?? []).toContain("KHR_texture_basisu");
-        expect(gltf.extensionsUsed ?? []).toContain("KHR_draco_mesh_compression");
-        expect((gltf.images ?? []).map((image) => image.mimeType)).toContain("image/ktx2");
-        expect((gltf.images ?? []).map((image) => image.mimeType)).not.toContain("image/png");
+        expect((gltf.nodes ?? []).map((node) => node.name)).toContain("Catalog Triangle");
+        expect(gltf.extensionsUsed ?? []).not.toContain("KHR_texture_basisu");
+        expect(gltf.extensionsUsed ?? []).not.toContain("KHR_draco_mesh_compression");
     });
 
     test("previews and exports two Universal sources converging through Merge Scenes", async ({ page }) => {
@@ -372,25 +341,17 @@ test.describe("Node Assets Editor — Energy orb showcase", () => {
         expect((gltf.nodes ?? []).map((node) => node.name).sort()).toEqual(["AlphaNode", "BetaNode"]);
     });
 
-    test("deleting the emissive fan-out still rebuilds and exports the compressed orb", async ({ page }) => {
+    test("reconnects around a removed optimization step and still previews and exports", async ({ page }) => {
         const editor = new NodeAssetsEditorPage(page);
         await editor.goto();
         await editor.waitForNextSuccessfulPreviewBuild();
 
-        // The cyan pattern feeds both the composite base color and (fanned out) the emissive input. The
-        // emissive wire is the only Import Image -> Build PBR Material connection, so deleting it is uniquely
-        // addressable and leaves the rest of the orb pipeline intact.
-        await editor.deleteWire("Import Image", "Build PBR Material");
+        await editor.deleteWire("Weld Vertices", "Remove Unused Resources");
+        await editor.connectPorts(editor.portOfNode("Import glTF", "out"), editor.portOfNode("Remove Unused Resources", "in"));
         await editor.expectWiredPipeline([
-            ["Import Image", "Composite Image"],
-            ["Import Image", "Composite Image"],
-            ["Composite Image", "Build PBR Material"],
-            ["Import glTF", "Universal to glTF"],
-            ["Universal to glTF", "Build PBR Material"],
-            ["Build PBR Material", "Apply BasisU"],
-            ["Apply BasisU", "Apply Draco"],
-            ["Apply Draco", "glTF to Universal"],
-            ["glTF to Universal", "Export glTF"],
+            ["Import glTF", "Weld Vertices"],
+            ["Import glTF", "Remove Unused Resources"],
+            ["Remove Unused Resources", "Export glTF"],
         ]);
         await editor.waitForSuccessfulPreviewBuild();
         await expect(editor.previewCanvas).toBeVisible();
@@ -399,10 +360,7 @@ test.describe("Node Assets Editor — Energy orb showcase", () => {
         const downloadPromise = page.waitForEvent("download");
         await page.getByRole("button", { name: "Export .glb" }).click();
         const exported = parseGlbJson(await readDownloadedGlb(await downloadPromise));
-        // The orb still builds a compressed, textured material — only its emissive glow is gone.
-        expect((exported.materials ?? []).length).toBeGreaterThan(0);
-        expect(exported.extensionsUsed ?? []).toContain("KHR_texture_basisu");
-        expect(exported.extensionsUsed ?? []).toContain("KHR_draco_mesh_compression");
+        expect((exported.nodes ?? []).map((node) => node.name)).toContain("Catalog Triangle");
     });
 
     test("replaces an occupied input connection when a new wire is dropped on it", async ({ page }) => {
@@ -412,7 +370,7 @@ test.describe("Node Assets Editor — Energy orb showcase", () => {
 
         await editor.connectPorts(editor.portOfNode("Import glTF", "out"), editor.portOfNode("Export glTF", "in"));
 
-        await expect(page.locator('[data-testid="graph-wire"][data-from-node-title="glTF to Universal"][data-to-node-title="Export glTF"]')).toHaveCount(0);
+        await expect(page.locator('[data-testid="graph-wire"][data-from-node-title="Remove Unused Resources"][data-to-node-title="Export glTF"]')).toHaveCount(0);
         await expect(page.locator('[data-testid="graph-wire"][data-from-node-title="Import glTF"][data-to-node-title="Export glTF"]')).toHaveCount(1);
         await editor.waitForSuccessfulPreviewBuild();
     });
@@ -440,7 +398,7 @@ test.describe("Node Assets Editor — Energy orb showcase", () => {
         await editor.goto();
         await editor.waitForNextSuccessfulPreviewBuild();
 
-        await editor.deleteWire("glTF to Universal", "Export glTF");
+        await editor.deleteWire("Remove Unused Resources", "Export glTF");
         await expect(editor.previewErrorOverlay).toBeVisible({ timeout: 30_000 });
 
         const exportNode = editor.nodeByTitle("Export glTF");
@@ -461,9 +419,9 @@ test.describe("Node Assets Editor — Energy orb showcase", () => {
         const fileChooser = await fileChooserPromise;
         await fileChooser.setFiles({ name: "broken.json", mimeType: "application/json", buffer: Buffer.from("{") });
 
-        await expect(page.getByText(/Could not load the NodeAsset file:/)).toBeVisible();
-        await expect(editor.nodes).toHaveCount(10);
-        await editor.expectWiredPipeline(EnergyOrbPipeline);
+        await expect(page.getByLabel(/Could not load the NodeAsset file:/)).toBeVisible();
+        await expect(editor.nodes).toHaveCount(4);
+        await editor.expectWiredPipeline(DefaultOptimizationPipeline);
         await expect(editor.previewCanvas).toBeVisible();
     });
 
@@ -474,7 +432,7 @@ test.describe("Node Assets Editor — Energy orb showcase", () => {
         const search = page.getByPlaceholder("Search palette");
         for (const [query, label, description] of [
             ["decimate", "Simplify Meshes", "Reduce Universal mesh geometry to a target ratio and error limit."],
-            ["optimize", "Remove Unused Resources", "Remove resources that are no longer referenced by the scene."],
+            ["unused", "Remove Unused Resources", "Remove resources that are no longer referenced by the scene."],
             ["compress", "Apply BasisU", "Compress scene textures to KTX2 / Basis Universal."],
         ]) {
             await search.fill(query);
@@ -489,26 +447,26 @@ test.describe("Node Assets Editor — Energy orb showcase", () => {
 
         await editor.selectNode("Import glTF");
         await editor
-            .nodeByTitle("Build PBR Material")
-            .getByText("Build PBR Material", { exact: true })
+            .nodeByTitle("Remove Unused Resources")
+            .getByText("Remove Unused Resources", { exact: true })
             .click({
                 modifiers: [process.platform === "darwin" ? "Meta" : "Control"],
             });
         await page.keyboard.press("Delete");
 
         await expect(editor.nodeByTitle("Import glTF")).toHaveCount(0);
-        await expect(editor.nodeByTitle("Build PBR Material")).toHaveCount(0);
-        await expect(editor.nodes).toHaveCount(8);
+        await expect(editor.nodeByTitle("Remove Unused Resources")).toHaveCount(0);
+        await expect(editor.nodes).toHaveCount(2);
     });
 
     test("reorganizes overlapping nodes into a left-to-right data flow", async ({ page }) => {
         const editor = new NodeAssetsEditorPage(page);
         await editor.goto();
 
-        await editor.dropPaletteItem("String", { x: 0.5, y: 0.5 });
-        await editor.dropPaletteItem("Number", { x: 0.5, y: 0.5 });
-        const stringNode = editor.nodeByTitle("String");
-        const numberNode = editor.nodeByTitle("Number");
+        await editor.dropPaletteItem("Quantize Attributes", { x: 0.5, y: 0.5 });
+        await editor.dropPaletteItem("Simplify Meshes", { x: 0.5, y: 0.5 });
+        const stringNode = editor.nodeByTitle("Quantize Attributes");
+        const numberNode = editor.nodeByTitle("Simplify Meshes");
         const overlaps = async () => {
             const [stringBox, numberBox] = await Promise.all([stringNode.boundingBox(), numberNode.boundingBox()]);
             if (!stringBox || !numberBox) {
@@ -527,9 +485,7 @@ test.describe("Node Assets Editor — Energy orb showcase", () => {
 
         await expect.poll(overlaps).toBe(false);
         const pipelineX = await Promise.all(
-            ["Import glTF", "Universal to glTF", "Build PBR Material", "Apply BasisU", "Apply Draco", "glTF to Universal", "Export glTF"].map(
-                async (title) => (await editor.nodeByTitle(title).boundingBox())?.x ?? 0
-            )
+            ["Import glTF", "Weld Vertices", "Remove Unused Resources", "Export glTF"].map(async (title) => (await editor.nodeByTitle(title).boundingBox())?.x ?? 0)
         );
         expect(pipelineX).toEqual([...pipelineX].sort((left, right) => left - right));
     });
@@ -552,13 +508,13 @@ test.describe("Node Assets Editor — Universal glTF aggregates", () => {
         const aggregateFrame = page.locator('[data-testid="aggregate-frame"]').filter({ hasText: "Import glTF" });
         await expect(aggregateFrame).toBeVisible();
         await expect(editor.nodeByTitle("Read glTF")).toBeVisible();
-        await expect(editor.nodeByTitle("glTF to Universal")).toHaveCount(2);
+        await expect(editor.nodeByTitle("glTF to Universal")).toHaveCount(1);
         await expect(page.locator('[data-testid="graph-wire"][data-from-node-title="Read glTF"][data-to-node-title="glTF to Universal"]')).toHaveCount(1);
         await editor.waitForSuccessfulPreviewBuild();
 
         await aggregateFrame.getByRole("button", { name: "Collapse aggregate" }).click();
         await expect(editor.nodeByTitle("Read glTF")).toHaveCount(0);
-        await expect(editor.nodeByTitle("glTF to Universal")).toHaveCount(1);
+        await expect(editor.nodeByTitle("glTF to Universal")).toHaveCount(0);
         await expect(editor.nodeByTitle("Import glTF")).toBeVisible();
         await editor.waitForSuccessfulPreviewBuild();
     });
@@ -654,15 +610,15 @@ test.describe("Node Assets Editor — Universal glTF aggregates", () => {
         await page.getByRole("button", { name: "Upload glTF…" }).click();
         const fileChooser = await fileChooserPromise;
         await fileChooser.setFiles({
-            name: "uploaded-orb.glb",
+            name: "uploaded-triangle.glb",
             mimeType: "model/gltf-binary",
-            buffer: readFileSync("packages/tools/nodeAssetsEditor/src/nodeAssets/sampleAssets/orb.glb"),
+            buffer: Buffer.from(BuiltInLibraryFixtures.gltf),
         });
-        await expect(page.getByRole("textbox").nth(3)).toHaveValue("uploaded-orb.glb");
+        await expect(page.getByRole("textbox").nth(3)).toHaveValue("uploaded-triangle.glb");
 
         await editor.nodeByTitle("Import glTF").getByRole("button", { name: "Expand aggregate" }).click();
         await editor.selectNode("Read glTF");
-        await expect(page.getByRole("textbox").nth(3)).toHaveValue("uploaded-orb.glb");
+        await expect(page.getByRole("textbox").nth(3)).toHaveValue("uploaded-triangle.glb");
         await editor.waitForSuccessfulPreviewBuild();
     });
 
@@ -677,7 +633,7 @@ test.describe("Node Assets Editor — Universal glTF aggregates", () => {
         await page.getByRole("textbox").nth(2).blur();
 
         await expect(page.getByText("Source error", { exact: true })).toBeVisible();
-        await expect(page.getByRole("textbox").nth(3)).toHaveValue("scenes/nodeAssets/orb.glb");
+        await expect(page.getByRole("textbox").nth(3)).toHaveValue("catalog-triangle.glb");
         await expect(page.getByRole("textbox").nth(4)).toHaveValue(/404/);
     });
 
@@ -818,9 +774,14 @@ test.describe("Node Assets Editor — Universal attribute operators", () => {
         await editor.goto();
         await editor.waitForNextSuccessfulPreviewBuild();
 
-        await editor.dropPaletteItem("Recompute Normals", { x: 0.35, y: 0.2 });
-        await editor.dropPaletteItem("Generate Tangents", { x: 0.5, y: 0.2 });
-        await editor.dropPaletteItem("Strip Attributes", { x: 0.65, y: 0.2 });
+        await editor.selectNode("Weld Vertices");
+        await page.keyboard.press("Delete");
+        await editor.selectNode("Remove Unused Resources");
+        await page.keyboard.press("Delete");
+
+        await editor.dropPaletteItem("Recompute Normals", { x: 0.15, y: 0.75 });
+        await editor.dropPaletteItem("Generate Tangents", { x: 0.5, y: 0.75 });
+        await editor.dropPaletteItem("Strip Attributes", { x: 0.85, y: 0.75 });
         await expect(editor.nodeByTitle("Recompute Normals")).toBeVisible();
         await expect(editor.nodeByTitle("Generate Tangents")).toBeVisible();
         await expect(editor.nodeByTitle("Strip Attributes")).toBeVisible();
@@ -840,7 +801,6 @@ test.describe("Node Assets Editor — Universal attribute operators", () => {
         await editor.connectPorts(editor.portOfNode("Generate Tangents", "out"), editor.portOfNode("Strip Attributes", "in"));
         await editor.connectPorts(editor.portOfNode("Strip Attributes", "out"), editor.portOfNode("Export glTF", "in"));
         await editor.expectWiredPipeline([
-            ...EnergyOrbPipeline.slice(0, -1),
             ["Import glTF", "Recompute Normals"],
             ["Recompute Normals", "Generate Tangents"],
             ["Generate Tangents", "Strip Attributes"],
