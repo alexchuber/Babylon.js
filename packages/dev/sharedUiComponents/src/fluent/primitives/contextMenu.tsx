@@ -1,4 +1,4 @@
-import { type ReactElement, type ReactNode, forwardRef, useState } from "react";
+import { type ReactElement, type ReactNode, forwardRef, useEffect, useState } from "react";
 import {
     Menu,
     MenuTrigger,
@@ -185,12 +185,22 @@ export const ContextMenu = forwardRef<HTMLButtonElement, ContextMenuProps>((prop
     const classes = useStyles();
 
     const handleOpenChange = (_: unknown, data: { open: boolean }) => {
+        if (disabled && data.open) {
+            return;
+        }
         setOpen(data.open);
         onOpenChange?.(data.open);
     };
 
+    useEffect(() => {
+        if (disabled && open) {
+            setOpen(false);
+            onOpenChange?.(false);
+        }
+    }, [disabled, open, onOpenChange]);
+
     return (
-        <Menu openOnContext open={open} onOpenChange={handleOpenChange}>
+        <Menu openOnContext open={disabled ? false : open} onOpenChange={handleOpenChange}>
             <MenuTrigger disableButtonEnhancement>
                 {props.trigger ?? (
                     <Button

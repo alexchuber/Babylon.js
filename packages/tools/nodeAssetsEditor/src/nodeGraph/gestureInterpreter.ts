@@ -40,11 +40,11 @@ export type MarqueeRect = {
  */
 export type Gesture =
     | { readonly kind: "none" }
-    | { readonly kind: "pan"; readonly lastLocal: Vec2 }
-    | { readonly kind: "marquee"; readonly startWorld: Vec2; readonly startLocal: Vec2; readonly additive: boolean }
-    | { readonly kind: "moveNodes"; readonly lastWorld: Vec2; readonly moved: boolean }
-    | { readonly kind: "moveFrame"; readonly frameId: string; readonly lastWorld: Vec2; readonly moved: boolean }
-    | { readonly kind: "wire"; readonly fromPortId: string; readonly fromAnchor: Vec2 };
+    | { readonly kind: "pan"; readonly pointerId: number; readonly lastLocal: Vec2; readonly moved: boolean; readonly clearSelectionOnClick: boolean }
+    | { readonly kind: "marquee"; readonly pointerId: number; readonly startWorld: Vec2; readonly startLocal: Vec2; readonly additive: boolean }
+    | { readonly kind: "moveNodes"; readonly pointerId: number; readonly lastWorld: Vec2; readonly moved: boolean }
+    | { readonly kind: "moveFrame"; readonly pointerId: number; readonly frameId: string; readonly lastWorld: Vec2; readonly moved: boolean }
+    | { readonly kind: "wire"; readonly pointerId: number; readonly fromPortId: string; readonly fromAnchor: Vec2 };
 
 /**
  * A discrete side effect the canvas component performs in response to a gesture transition. The
@@ -78,30 +78,32 @@ export type GestureResult = {
 const None: Gesture = { kind: "none" };
 
 /**
- * Begins a gesture from a pointer-down on the empty canvas background: middle-button or space+left starts
- * a pan; a plain left press starts a marquee (clearing the selection first unless it is additive).
- * @param input The pressed button, modifier state, and pointer position in world and viewport-local space.
+ * Begins a gesture from a pointer-down on the empty canvas background: middle-button, space+left, or an
+ * unmodified left press starts a pan; an additive left press starts a marquee.
+ * @param input The pointer identity, pressed button, modifier state, and position in world and viewport-local space.
  * @returns The started gesture and its initial actions.
  */
 export function BeginBackgroundGesture(input: {
+    readonly pointerId: number;
     readonly button: number;
     readonly spaceHeld: boolean;
     readonly additive: boolean;
     readonly world: Vec2;
     readonly local: Vec2;
 }): GestureResult {
-    const { button, spaceHeld, additive, world, local } = input;
-    const isPan = button === 1 || (button === 0 && spaceHeld);
+    const { pointerId, button, spaceHeld, additive, world, local } = input;
+    const isPan = button === 1 || (button === 0 && !additive);
     if (isPan) {
-        return { gesture: { kind: "pan", lastLocal: local }, actions: [] };
+        return {
+            gesture: { kind: "pan", pointerId, lastLocal: local, moved: false, clearSelectionOnClick: button === 0 && !spaceHeld && !additive },
+            actions: [],
+        };
     }
     if (button === 0) {
-        const actions: GestureAction[] = [];
-        if (!additive) {
-            actions.push({ kind: "clearSelection" });
-        }
-        actions.push({ kind: "setMarquee", rect: { x: local.x, y: local.y, width: 0, height: 0 } });
-        return { gesture: { kind: "marquee", startWorld: world, startLocal: local, additive }, actions };
+        return {
+            gesture: { kind: "marquee", pointerId, startWorld: world, startLocal: local, additive },
+            actions: [{ kind: "setMarquee", rect: { x: local.x, y: local.y, width: 0, height: 0 } }],
+        };
     }
     return { gesture: None, actions: [] };
 }
@@ -113,8 +115,14 @@ export function BeginBackgroundGesture(input: {
  * pointer position in world space.
  * @returns The move-nodes gesture and its selection/interaction actions.
  */
-export function BeginNodeGesture(input: { readonly nodeId: string; readonly additive: boolean; readonly isSelected: boolean; readonly world: Vec2 }): GestureResult {
-    const { nodeId, additive, isSelected, world } = input;
+export function BeginNodeGesture(input: {
+    readonly pointerId: number;
+    readonly nodeId: string;
+    readonly additive: boolean;
+    readonly isSelected: boolean;
+    readonly world: Vec2;
+}): GestureResult {
+    const { pointerId, nodeId, additive, isSelected, world } = input;
     const actions: GestureAction[] = [];
     if (additive) {
         actions.push({ kind: "toggleNodeSelection", nodeId });
@@ -122,7 +130,7 @@ export function BeginNodeGesture(input: { readonly nodeId: string; readonly addi
         actions.push({ kind: "selectNodes", nodeIds: [nodeId] });
     }
     actions.push({ kind: "beginInteraction" });
-    return { gesture: { kind: "moveNodes", lastWorld: world, moved: false }, actions };
+    return { gesture: { kind: "moveNodes", pointerId, lastWorld: world, moved: false }, actions };
 }
 
 /**
@@ -130,9 +138,9 @@ export function BeginNodeGesture(input: { readonly nodeId: string; readonly addi
  * @param input The frame id and the pointer position in world space.
  * @returns The move-frame gesture and its interaction action.
  */
-export function BeginFrameGesture(input: { readonly frameId: string; readonly world: Vec2 }): GestureResult {
-    const { frameId, world } = input;
-    return { gesture: { kind: "moveFrame", frameId, lastWorld: world, moved: false }, actions: [{ kind: "beginInteraction" }] };
+export function BeginFrameGesture(input: { readonly pointerId: number; readonly frameId: string; readonly world: Vec2 }): GestureResult {
+    const { pointerId, frameId, world } = input;
+    return { gesture: { kind: "moveFrame", pointerId, frameId, lastWorld: world, moved: false }, actions: [{ kind: "beginInteraction" }] };
 }
 
 /**
@@ -140,9 +148,9 @@ export function BeginFrameGesture(input: { readonly frameId: string; readonly wo
  * @param input The origin port id, its world-space anchor, and the pointer position in world space.
  * @returns The wire gesture and the initial pending-wire preview.
  */
-export function BeginPortGesture(input: { readonly portId: string; readonly anchor: Vec2; readonly world: Vec2 }): GestureResult {
-    const { portId, anchor, world } = input;
-    return { gesture: { kind: "wire", fromPortId: portId, fromAnchor: anchor }, actions: [{ kind: "setPendingWire", wire: { from: anchor, to: world } }] };
+export function BeginPortGesture(input: { readonly pointerId: number; readonly portId: string; readonly anchor: Vec2; readonly world: Vec2 }): GestureResult {
+    const { pointerId, portId, anchor, world } = input;
+    return { gesture: { kind: "wire", pointerId, fromPortId: portId, fromAnchor: anchor }, actions: [{ kind: "setPendingWire", wire: { from: anchor, to: world } }] };
 }
 
 /**
@@ -150,16 +158,22 @@ export function BeginPortGesture(input: { readonly portId: string; readonly anch
  * Node and frame moves ignore zero-length deltas and latch a `moved` flag so a click is distinguished
  * from a drag when the interaction is later committed.
  * @param gesture The active gesture.
- * @param input The pointer position in world and viewport-local space.
+ * @param input The pointer identity and position in world and viewport-local space.
  * @returns The updated gesture and the actions for this move.
  */
-export function AdvanceGesture(gesture: Gesture, input: { readonly world: Vec2; readonly local: Vec2 }): GestureResult {
-    const { world, local } = input;
+export function AdvanceGesture(gesture: Gesture, input: { readonly pointerId: number; readonly world: Vec2; readonly local: Vec2 }): GestureResult {
+    const { pointerId, world, local } = input;
+    if (gesture.kind !== "none" && gesture.pointerId !== pointerId) {
+        return { gesture, actions: [] };
+    }
     switch (gesture.kind) {
         case "pan": {
             const dx = local.x - gesture.lastLocal.x;
             const dy = local.y - gesture.lastLocal.y;
-            return { gesture: { kind: "pan", lastLocal: local }, actions: [{ kind: "panBy", dx, dy }] };
+            if (dx === 0 && dy === 0) {
+                return { gesture, actions: [] };
+            }
+            return { gesture: { ...gesture, lastLocal: local, moved: true }, actions: [{ kind: "panBy", dx, dy }] };
         }
         case "marquee": {
             const rect: MarqueeRect = {
@@ -175,7 +189,7 @@ export function AdvanceGesture(gesture: Gesture, input: { readonly world: Vec2; 
             if (delta.x === 0 && delta.y === 0) {
                 return { gesture, actions: [] };
             }
-            return { gesture: { kind: "moveNodes", lastWorld: world, moved: true }, actions: [{ kind: "translateSelectedNodes", delta }] };
+            return { gesture: { ...gesture, lastWorld: world, moved: true }, actions: [{ kind: "translateSelectedNodes", delta }] };
         }
         case "moveFrame": {
             const delta = { x: world.x - gesture.lastWorld.x, y: world.y - gesture.lastWorld.y };
@@ -183,7 +197,7 @@ export function AdvanceGesture(gesture: Gesture, input: { readonly world: Vec2; 
                 return { gesture, actions: [] };
             }
             return {
-                gesture: { kind: "moveFrame", frameId: gesture.frameId, lastWorld: world, moved: true },
+                gesture: { ...gesture, lastWorld: world, moved: true },
                 actions: [{ kind: "translateFrame", frameId: gesture.frameId, delta }],
             };
         }
@@ -196,17 +210,26 @@ export function AdvanceGesture(gesture: Gesture, input: { readonly world: Vec2; 
 }
 
 /**
- * Completes the active gesture on pointer-up and resets to no gesture. A marquee selects the nodes in its
- * region; a node/frame move ends its interaction (passing whether it actually moved); a wire connects to
- * the resolved target port when there is one and it differs from the origin.
+ * Completes the active gesture on pointer-up and resets to no gesture. An unmoved plain-primary pan clears
+ * selection; a marquee selects the nodes in its region; a node/frame move ends its interaction (passing
+ * whether it actually moved); a wire connects to the resolved target port when there is one and it differs
+ * from the origin.
  * @param gesture The active gesture.
- * @param input The pointer position in world space and, for wire gestures, the target port the caller
- * resolved from the drop position (a direct hit or the nearest connectable port), if any.
+ * @param input The pointer identity and position in world space and, for wire gestures, the target port the
+ * caller resolved from the drop position (a direct hit or the nearest connectable port), if any.
  * @returns The reset gesture and the actions that commit the gesture.
  */
-export function CompleteGesture(gesture: Gesture, input: { readonly world: Vec2; readonly resolvedTargetPortId?: string }): GestureResult {
-    const { world, resolvedTargetPortId } = input;
+export function CompleteGesture(gesture: Gesture, input: { readonly pointerId: number; readonly world: Vec2; readonly resolvedTargetPortId?: string }): GestureResult {
+    const { pointerId, world, resolvedTargetPortId } = input;
+    if (gesture.kind !== "none" && gesture.pointerId !== pointerId) {
+        return { gesture, actions: [] };
+    }
     switch (gesture.kind) {
+        case "pan":
+            return {
+                gesture: None,
+                actions: gesture.clearSelectionOnClick && !gesture.moved ? [{ kind: "clearSelection" }] : [],
+            };
         case "marquee": {
             const region: Bounds = {
                 minX: Math.min(gesture.startWorld.x, world.x),
@@ -233,6 +256,30 @@ export function CompleteGesture(gesture: Gesture, input: { readonly world: Vec2;
             actions.push({ kind: "setPendingWire", wire: null });
             return { gesture: None, actions };
         }
+        default:
+            return { gesture: None, actions: [] };
+    }
+}
+
+/**
+ * Cancels the active gesture for its owning pointer, clearing transient marquee/wire state and closing any
+ * bracketed node/frame interaction without applying completion-only actions.
+ * @param gesture The active gesture.
+ * @param input The pointer that was canceled.
+ * @returns The reset gesture and cleanup actions.
+ */
+export function CancelGesture(gesture: Gesture, input: { readonly pointerId: number }): GestureResult {
+    if (gesture.kind === "none" || gesture.pointerId !== input.pointerId) {
+        return { gesture, actions: [] };
+    }
+    switch (gesture.kind) {
+        case "marquee":
+            return { gesture: None, actions: [{ kind: "setMarquee", rect: null }] };
+        case "wire":
+            return { gesture: None, actions: [{ kind: "setPendingWire", wire: null }] };
+        case "moveNodes":
+        case "moveFrame":
+            return { gesture: None, actions: [{ kind: "endInteraction", moved: gesture.moved }] };
         default:
             return { gesture: None, actions: [] };
     }
