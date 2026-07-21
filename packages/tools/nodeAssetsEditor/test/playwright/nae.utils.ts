@@ -107,6 +107,15 @@ export class NodeAssetsEditorPage {
     }
 
     /**
+     * Locate a palette item through the palette's stable test seam and exact visible label.
+     * @param label - The palette item's visible label.
+     * @returns The palette item row locator.
+     */
+    paletteItem(label: string): Locator {
+        return this.page.getByTestId("palette-item").filter({ has: this.page.getByText(label, { exact: true }) });
+    }
+
+    /**
      * Select a node by clicking its header title, which reveals its properties in the right pane.
      * @param title - The node's visible title.
      * @param occurrence - Optional disambiguator when several nodes share the title (see {@link nodeByTitle}).
@@ -154,7 +163,7 @@ export class NodeAssetsEditorPage {
      * @param at - Drop point as canvas-rect fractions (0..1); defaults to the center.
      */
     async dropPaletteItem(label: string, at: CanvasPoint = { x: 0.5, y: 0.5 }): Promise<void> {
-        const source = await this.page.getByTitle(label, { exact: true }).first().elementHandle();
+        const source = await this.paletteItem(label).first().elementHandle();
         const target = await this.canvas.elementHandle();
         if (!source || !target) {
             throw new Error(`Could not resolve palette item "${label}" or the canvas for the drop gesture.`);
