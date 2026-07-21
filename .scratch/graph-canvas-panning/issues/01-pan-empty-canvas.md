@@ -1,4 +1,4 @@
-Status: ready-for-agent
+Status: resolved
 
 ## Parent
 
@@ -22,15 +22,15 @@ Make the Node Assets Editor graph camera move when an author drags empty canvas 
 - [x] Playwright proves rendered primary-drag panning and representative node-drag + wheel-zoom behavior afterward.
 - [x] Scoped units, focused Playwright, the Node Assets Editor deployment build, and applicable lint/format checks pass; the standalone package type-check baseline limitation is documented below.
 - [x] `/code-review` has no unresolved high-confidence findings.
-- [ ] The corrected lifecycle follow-up lands and root completes independent final validation and integration.
+- [x] The corrected lifecycle follow-up landed and root completed independent final validation and integration.
 
-## Delivery status (pending integration)
+## Delivery status (resolved)
 
-The implementation is assembled on the PR #22 branch, but the issue remains `Status: ready-for-agent`. Root will set `Status: resolved` only after the corrected lifecycle follow-up lands and the final integration gates pass.
+Feature PR #19 landed in `preview/nae` at merge commit `c2bfc939`. Final integration evidence: combined exact-head audit clean; focused units 38/38; full units 5,375 passed / 1 expected failure / 30 skipped; targeted Playwright 5/5 and full NAE Playwright 44/44 on the first pass with `retries=0`; format, build, lint, tree-shaking, and side-effect checks clean.
 
 - PR #15 placed the initial implementation commit `2858fcff583192ddd14218f81dc7eab6cbbcb63c` on `feat/nae/graph-canvas-pan`; that feature-branch merge was not final product integration.
 - PR #29 placed the ownership implementation head `2ccafbede2b3379b99c861b69c1829b0d31c38a2` on `fix/nae/graph-canvas-pan-owner-gates` through merge commit `a577d18736b7ad77e48b768b074c141eafcf5d97`.
-- The current focused follow-up changes tests and tracker documentation only. Production-source changes are not part of this correction.
+- The focused follow-up changed tests and tracker documentation only. Production-source changes were not part of that correction.
 
 ## Comments
 
@@ -52,4 +52,4 @@ Root reopened the issue after review found that minimap navigation, wire selecti
 
 An independent exact-range audit of `a577d18736b7ad77e48b768b074c141eafcf5d97` found that the browser tests used an orphan foreign touch move, mixed a real mouse stream with synthetic cancellation for an assumed pointer ID, and treated lost capture as a terminal event. The focused follow-up now uses complete, distinct streams: a synthetic touch owner; real foreign mouse down/move/up actions; separate touch pointerup and pointercancel cases; and lost capture with the owner button still down followed by the owner's inert eventual pointerup.
 
-The corrected five-case Playwright command passed `5/5` with `--workers=1 --retries=0`; the gesture and ContextMenu units passed `36/36`; changed-test Prettier, ESLint, and the CRLF-aware diff check passed. The first local Playwright invocation discovered zero tests because `@tools/test-tools` had not yet been built; after building that prerequisite, the complete five-case rerun passed and is the only browser result counted here. Automatic dual-lens `/code-review` found no actionable Critical or Warning issues. Root's independent final validation/integration remains pending.
+The corrected five-case Playwright command passed `5/5` with `--workers=1 --retries=0`; the gesture and ContextMenu units passed `36/36`; changed-test Prettier, ESLint, and the CRLF-aware diff check passed. The first local Playwright invocation discovered zero tests because `@tools/test-tools` had not yet been built; after building that prerequisite, the complete five-case rerun passed and is the only browser result counted here. Automatic dual-lens `/code-review` found no actionable Critical or Warning issues. The lifecycle correction landed before the final exact-head validation and integration recorded above.
