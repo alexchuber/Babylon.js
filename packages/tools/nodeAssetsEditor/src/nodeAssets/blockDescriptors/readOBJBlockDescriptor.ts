@@ -1,7 +1,7 @@
 import { ReadOBJBlock } from "node-assets/Blocks/readOBJBlock";
 
 import { type IPropertySection } from "../../nodeGraph/propertyModel";
-import { PromptForFileAsync } from "../browserFiles";
+import { PromptForFilesAsync } from "../browserFiles";
 import { ConfigureBlockForEditor, type IPropertySectionContext, OBJHeaderColor, RegisterBlockDescriptor } from "../blockCatalog";
 
 const SourceErrors = new WeakMap<ReadOBJBlock, string>();
@@ -9,8 +9,8 @@ const PendingSourceRequests = new WeakMap<ReadOBJBlock, Promise<unknown>>();
 
 // eslint-disable-next-line @typescript-eslint/naming-convention
 async function PromptForOBJAsync(block: ReadOBJBlock, context: IPropertySectionContext): Promise<void> {
-    const file = await PromptForFileAsync(".obj");
-    if (!file) {
+    const files = await PromptForFilesAsync(".obj,.mtl,.jpg,.jpeg,.png,.webp,.avif,.ktx2");
+    if (files === null) {
         return;
     }
     const authoredBlock = context.prepareEdit(block);
@@ -18,9 +18,14 @@ async function PromptForOBJAsync(block: ReadOBJBlock, context: IPropertySectionC
         return;
     }
     const applyResult = { applied: false };
-    const request = authoredBlock.setUploadedSourceAsync(
-        async () => await file.arrayBuffer(),
-        file.name,
+    const request = authoredBlock.setUploadedSourceBundleAsync(
+        async () =>
+            await Promise.all(
+                files.map(async ({ file, path }) => ({
+                    path,
+                    bytes: new Uint8Array(await file.arrayBuffer()),
+                }))
+            ),
         () => context.prepareEdit(authoredBlock) === authoredBlock,
         applyResult
     );
@@ -137,7 +142,7 @@ export function CreateReadOBJPropertySection(block: ReadOBJBlock, context: IProp
 RegisterBlockDescriptor({
     paletteItemId: "read-obj",
     label: "Read OBJ",
-    description: "Read a URL or one uploaded .obj source.",
+    description: "Read a URL or one uploaded OBJ bundle.",
     category: "Inputs",
     headerColor: OBJHeaderColor,
     className: ReadOBJBlock.ClassName,

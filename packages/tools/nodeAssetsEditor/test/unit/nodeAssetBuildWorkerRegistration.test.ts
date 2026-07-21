@@ -1,4 +1,6 @@
-import { describe, expect, it, vi } from "vitest";
+import { WebIO } from "@gltf-transform/core";
+import { ALL_EXTENSIONS } from "@gltf-transform/extensions";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 // Importing the worker core evaluates its block-registration side effect in THIS test realm. Nothing
 // else here registers blocks: we deliberately read the registry through the node-assets submodules and
@@ -10,6 +12,7 @@ import { BuildSerializedNodeAssetAsync } from "../../src/nodeAssets/nodeAssetBui
 import { CreateBlockByClassName, GetRegisteredBlockClassNames } from "node-assets/blockFoundation/blockRegistry";
 import { NodeAsset } from "node-assets/nodeAsset";
 import { CreateBuiltInNodeAssetLibraryEntries, GetDefaultBuiltInNodeAssetLibraryEntry } from "../../src/nodeAssets/builtInLibraryEntries";
+import { TestFileReader } from "./testFileReader";
 
 vi.mock("draco3dgltf", async () => await vi.importActual("draco3dgltf"));
 
@@ -105,6 +108,9 @@ const ExpectedBlockClassNames = [
 const DefaultPipelineClassNames = ["ImportGLTFAggregateBlock", "WeldVerticesBlock", "RemoveUnusedResourcesBlock", "ExportGLTFAggregateBlock"] as const;
 
 describe("preview build worker block registration", () => {
+    beforeEach(() => vi.stubGlobal("FileReader", TestFileReader));
+    afterEach(() => vi.unstubAllGlobals());
+
     // Regression for the worker block-registration drift: the worker core used to side-effect import only
     // a hand-picked subset of block modules, so blocks that were registered on the main thread (via the
     // UI descriptors) stayed unregistered in the worker realm. Deserializing the seed graph then threw
@@ -141,7 +147,19 @@ describe("preview build worker block registration", () => {
         if (!entry) {
             return;
         }
-        const editorFile = JSON.parse(entry.serializedGraph) as { graph: unknown };
+        const editorFile = JSON.parse(entry.serializedGraph) as {
+            graph: {
+                blocks: Array<{ customType: string; subgraph?: { blocks: Array<Record<string, unknown>> } }>;
+            };
+        };
+        const importer = editorFile.graph.blocks.find((block) => block.customType === "ImportOBJAggregateBlock");
+        expect(importer?.subgraph?.blocks[0]).toMatchObject({
+            primary: { path: "catalog-objects.obj", bytes: expect.any(String) },
+            companions: [
+                { path: "Materials/catalog.mtl", bytes: expect.any(String) },
+                { path: "Textures/tiny.png", bytes: expect.any(String) },
+            ],
+        });
         const fetchMock = vi.fn(async () => {
             throw new Error("The worker OBJ graph must not request the network.");
         });
@@ -155,6 +173,15 @@ describe("preview build worker block registration", () => {
                 usdWasmUrl: "",
             });
             expect(result.byteLength).toBeGreaterThan(0);
+            const document = await new WebIO().registerExtensions(ALL_EXTENSIONS).readBinary(result);
+            expect(
+                document
+                    .getRoot()
+                    .listMaterials()
+                    .map((material) => material.getName())
+            ).toEqual(expect.arrayContaining(["Catalog Red", "Catalog Textured"]));
+            expect(document.getRoot().listTextures()).toHaveLength(1);
+            expect(document.getRoot().listTextures()[0].getImage()?.byteLength).toBeGreaterThan(0);
             expect(fetchMock).not.toHaveBeenCalled();
         } finally {
             vi.unstubAllGlobals();

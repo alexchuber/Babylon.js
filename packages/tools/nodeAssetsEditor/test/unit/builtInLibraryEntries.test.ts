@@ -1,4 +1,4 @@
-import { describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 vi.mock("draco3dgltf", async () => await vi.importActual("draco3dgltf"));
 
@@ -8,6 +8,7 @@ import { NodeAsset } from "node-assets/nodeAsset";
 import { CreateBuiltInNodeAssetLibraryEntries, GetDefaultBuiltInNodeAssetLibraryEntry } from "../../src/nodeAssets/builtInLibraryEntries";
 import { NodeAssetGraphController } from "../../src/nodeAssets/nodeAssetGraphController";
 import { type INodeAssetBuildClient } from "../../src/nodeAssets/nodeAssetBuildWorkerClient";
+import { TestFileReader } from "./testFileReader";
 
 const ExpectedPipelineNames = [
     "glTF Optimization",
@@ -57,6 +58,9 @@ type GltfJson = {
     extensionsUsed?: string[];
     scenes?: unknown[];
     meshes?: Array<{ primitives?: Array<{ attributes?: Record<string, number> }> }>;
+    materials?: Array<{ name?: string; pbrMetallicRoughness?: { baseColorTexture?: { index?: number } } }>;
+    textures?: unknown[];
+    images?: Array<{ mimeType?: string; bufferView?: number; uri?: string }>;
 };
 
 function AssertValidGlb(glb: Uint8Array): GltfJson {
@@ -94,6 +98,9 @@ function CollectBlockTypes(blocks: SerializedBlockShape[]): string[] {
 }
 
 describe("built-in NodeAsset pipeline catalog", () => {
+    beforeEach(() => vi.stubGlobal("FileReader", TestFileReader));
+    afterEach(() => vi.unstubAllGlobals());
+
     it("publishes exactly the eight maintained production pipelines", () => {
         const entries = CreateBuiltInNodeAssetLibraryEntries();
 
@@ -178,12 +185,20 @@ describe("built-in NodeAsset pipeline catalog", () => {
                 primary: { path: "catalog-objects.obj", bytes: expect.any(String) },
                 source: "catalog-objects.obj",
                 sourceKind: "upload",
-                companions: [],
+                companions: [
+                    { path: "Materials/catalog.mtl", bytes: expect.any(String) },
+                    { path: "Textures/tiny.png", bytes: expect.any(String) },
+                ],
             });
 
             const result = await NodeAsset.Parse(editorFile.graph).buildAsync();
             const gltf = AssertValidGlb(result);
             expect(gltf.meshes?.length).toBe(2);
+            expect(gltf.materials?.map((material) => material.name)).toEqual(expect.arrayContaining(["Catalog Red", "Catalog Textured"]));
+            expect(gltf.materials?.some((material) => material.pbrMetallicRoughness?.baseColorTexture?.index !== undefined)).toBe(true);
+            expect(gltf.textures).toHaveLength(1);
+            expect(gltf.images).toEqual([expect.objectContaining({ mimeType: "image/png", bufferView: expect.any(Number) })]);
+            expect(gltf.images?.[0].uri).toBeUndefined();
             expect(fetchMock).not.toHaveBeenCalled();
         } finally {
             vi.unstubAllGlobals();

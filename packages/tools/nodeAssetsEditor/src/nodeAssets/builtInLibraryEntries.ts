@@ -4,6 +4,7 @@ import { DracoCompressionBlock } from "node-assets/Blocks/dracoCompressionBlock"
 import { KTX2CompressionBlock } from "node-assets/Blocks/ktx2CompressionBlock";
 import { type NodeAssetBlock } from "node-assets/blockFoundation/nodeAssetBlock";
 import { type NodeAsset } from "node-assets/nodeAsset";
+import { type IOBJSourceFile } from "node-assets/representations/objSourceAsset";
 
 import { type INodeAssetLibraryEntry } from "./nodeAssetLibrary";
 import { BuiltInLibraryFixtures } from "./builtInLibraryFixtures";
@@ -91,7 +92,7 @@ class BuiltInPipelineBuilder {
         );
     }
 
-    public addOBJImport(name: string, x: number, y: number, data: Uint8Array, source: string): BlockReference {
+    public addOBJImport(name: string, x: number, y: number, data: Uint8Array, source: string, companions: ReadonlyArray<IOBJSourceFile>): BlockReference {
         const readId = this._allocateId();
         const transcoderId = this._allocateId();
         return this._addAggregate(
@@ -107,7 +108,7 @@ class BuiltInPipelineBuilder {
                     primary: { path: source, bytes: EncodeArrayBufferToBase64(data) },
                     source,
                     sourceKind: "upload",
-                    companions: [],
+                    companions: companions.map((companion) => ({ path: companion.path, bytes: EncodeArrayBufferToBase64(companion.bytes) })),
                 },
                 { customType: "OBJToUniversalBlock", id: transcoderId, name: "OBJ to Universal" },
             ],
@@ -239,7 +240,10 @@ function CreateUsdImport(builder: BuiltInPipelineBuilder, x = 40, y = 120): Bloc
 }
 
 function CreateOBJImport(builder: BuiltInPipelineBuilder, x = 40, y = 120): BlockReference {
-    return builder.addOBJImport("Import OBJ", x, y, BuiltInLibraryFixtures.obj, "catalog-objects.obj");
+    return builder.addOBJImport("Import OBJ", x, y, BuiltInLibraryFixtures.obj, "catalog-objects.obj", [
+        { path: "Materials/catalog.mtl", bytes: BuiltInLibraryFixtures.objMtl },
+        { path: "Textures/tiny.png", bytes: BuiltInLibraryFixtures.objTexture },
+    ]);
 }
 
 function CreateBabylonImport(builder: BuiltInPipelineBuilder, x = 40, y = 120): BlockReference {
