@@ -85,6 +85,8 @@ self-contained official candidate is verified, and leave paused RBXM work untouc
       suite pass.
 - [ ] Code review is complete and every finding is fixed before the issue is marked `resolved`.
 
-## Blocked by
+## Dependency
 
-- [01 — Hydrate the default catalog source from Babylon CDN](./01-hydrate-default-cdn-source.md)
+[01 — Hydrate the default catalog source from Babylon CDN](./01-hydrate-default-cdn-source.md) is
+resolved and landed on `preview/nae` at `580d6514575480a7b17a5acf68098c9048b6c5a7`. This issue is now
+actionable and remains planned; issue 01 is no longer an active blocker.
