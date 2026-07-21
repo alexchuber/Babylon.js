@@ -1,6 +1,6 @@
 # Hydrate the default catalog source from Babylon CDN
 
-Status: resolved
+Status: ready-for-agent
 
 ## What to build
 
@@ -12,10 +12,10 @@ binary/base64 payload. The URL is the exact host plus case-sensitive Assets path
 with `POSITION`, `NORMAL`, `TANGENT`, and `TEXCOORD_0`.
 
 Use the existing Read glTF URL API and the `NodeAssetGraphController` /
-`BuildOrchestrator` startup boundary to add the smallest reusable high-level hydration seam. Startup
-must hydrate only the active default graph before the first worker build. Successful bytes must be
-reused by exact URL, and a graph-revision ownership guard must prevent stale successes or failures
-from changing a newer graph.
+`BuildOrchestrator` startup boundary to add the smallest injectable high-level hydration seam.
+Startup must hydrate only the active default graph before the first worker build. Pass the injected
+fetcher directly through the existing `setUrlAsync` API, and use graph-revision plus Read-block
+ownership guards to prevent stale successes or failures from changing a newer graph.
 
 Active failures must flow through the existing preview/build error experience. Preserve user uploads,
 URL edits, last-successful-source behavior, save/load, aggregate source properties, and worker build
@@ -23,9 +23,10 @@ behavior. Do not prefetch other library entries, add dependencies, copy the offi
 live-network automated test.
 
 Unit tests use injected deterministic responses to prove the exact URL request, hydration before
-worker serialization, successful-byte reuse, and stale/active failure behavior. Playwright intercepts
-the exact rounded cube URL with locally generated GLB bytes before editor startup and covers default
-loading, successful preview/export, and failure status without contacting the CDN.
+worker serialization, active failure without worker dispatch, superseded-graph safety, and
+non-startup build-signature stability. Playwright intercepts the exact rounded cube URL with locally
+generated GLB bytes before editor startup and covers default loading, successful preview/export, and
+failure status without contacting the CDN.
 
 ## User stories covered
 
@@ -37,8 +38,8 @@ loading, successful preview/export, and failure status without contacting the CD
       `sourceKind: "url"`, and no copied source bytes/base64.
 - [ ] No production catalog serialization or test expectation identifies the default source as
       `Catalog Triangle` or `catalog-triangle.glb`.
-- [ ] The high-level source-fetch seam is injectable/mockable and reuses the existing Read glTF URL
-      API rather than duplicating Read-block download logic.
+- [ ] The high-level source-fetch seam is injectable/mockable and passes the injected fetcher through
+      the existing Read glTF URL API rather than duplicating Read-block download logic.
 - [ ] `BuildOrchestrator.start()` continues to show building status while
       `loadDefaultImportAsync()` hydrates the active default graph.
 - [ ] The first worker build serialization is not sent until the rounded cube response succeeds and
@@ -47,14 +48,15 @@ loading, successful preview/export, and failure status without contacting the CD
       `https://assets.babylonjs.com/meshes/roundedCube.glb` and no inactive library source.
 - [ ] Separate real-CDN validation confirms an exact-URL, no-redirect, CORS-enabled response of 13,624
       bytes for the default source.
-- [ ] A successful exact-URL response is reused without a second network fetch when the same source is
-      needed again in the editor session.
+- [ ] Startup and later-build hydration refresh the build-relevant signature without notifying
+      observers, so a later reconcile or save does not schedule an unnecessary build.
 - [ ] A hydration result applies only while the captured graph revision and Read block still belong to
       the active graph.
 - [ ] A stale success cannot overwrite a newer graph or source selection.
 - [ ] A stale failure cannot surface an error against a newer graph.
 - [ ] An active startup failure prevents the build and appears through the existing preview error UX
-      without fallback fixture bytes.
+      without fallback fixture bytes; the scheduler then waits for an authored graph change without
+      starting an immediate build.
 - [ ] The deterministic mocked rounded-cube response builds to a valid non-empty GLB whose structural
       assertions replace placeholder-name assertions.
 - [ ] Playwright registers the exact CDN route before navigation, proves the default loading and

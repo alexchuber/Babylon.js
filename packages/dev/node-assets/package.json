@@ -22,6 +22,7 @@
     },
     "sideEffects": true,
     "dependencies": {
+        "@dev/loaders": "^1.0.0",
         "@gltf-transform/core": "^4.4.1",
         "@gltf-transform/extensions": "^4.4.1",
         "@gltf-transform/functions": "^4.4.1",

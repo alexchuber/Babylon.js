@@ -97,6 +97,25 @@ describe("block property sections (unified descriptor path)", () => {
         }
     });
 
+    it("forwards the uploaded Read FBX source controls from the aggregate", () => {
+        const controller = new NodeAssetGraphController();
+        try {
+            const importNode = AddPaletteNode(controller, "import-fbx");
+            const section = FindSection(controller, importNode, "READ FBX");
+
+            expect(section.properties.map((property) => property.label)).toEqual(["Active source", "Upload FBX\u2026"]);
+            expect(FindProperty(controller, importNode, "Active source", "text").value).toBe("No source loaded");
+            expect(FindProperty(controller, importNode, "Upload FBX\u2026", "button")).toBeDefined();
+
+            const paletteLabels = controller.getPaletteCategories().flatMap((category) => category.items.map((item) => item.label));
+            expect(paletteLabels).toContain("Import FBX");
+            expect(paletteLabels).not.toContain("Read FBX");
+            expect(paletteLabels).not.toContain("FBX \u2192 Universal");
+        } finally {
+            controller.dispose();
+        }
+    });
+
     it("fires an export request from the EXPORT section button", () => {
         const controller = new NodeAssetGraphController();
         let exportRequests = 0;
