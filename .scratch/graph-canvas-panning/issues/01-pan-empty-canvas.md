@@ -1,4 +1,4 @@
-Status: ready-for-agent
+Status: in-progress
 
 ## Parent
 
@@ -37,4 +37,4 @@ Implemented in [PR #15](https://github.com/alexchuber/Babylon.js/pull/15) at `28
 
 ### Follow-up: active gesture ownership
 
-Reopened after root review found that minimap navigation, wire selection, and context-menu selection could bypass the active gesture's pointer ownership. The owner-aware gate and browser regression are pending validation under the local test lease.
+Reopened by root's PR #19 blocker after review found that minimap navigation, wire selection, and context-menu selection could bypass the active gesture's pointer ownership. RED is pending the local test lease against exact base `f5f366f643890ea35e62514d80f9f09af74f9a73`; the focused command will run the existing `"pans empty canvas without mutating graph layout and preserves node drag and wheel zoom"` Playwright scenario with the regression test present and the ownership gate absent. GREEN, code review, and final resolution remain pending.

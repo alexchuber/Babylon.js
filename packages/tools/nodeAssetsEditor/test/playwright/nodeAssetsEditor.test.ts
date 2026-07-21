@@ -712,7 +712,7 @@ test.describe("Node Assets Editor — maintained default pipeline", () => {
             throw new Error("Could not resolve the graph minimap for pointer ownership testing.");
         }
         const foreignPointer = {
-            pointerId: 999,
+            pointerId: 22,
             pointerType: "touch",
             isPrimary: false,
         };
@@ -728,21 +728,26 @@ test.describe("Node Assets Editor — maintained default pipeline", () => {
             button: 0,
             buttons: 1,
         });
-        const afterForeignNavigation = await readNodeState();
-        expect(afterForeignNavigation.screenX).toBe(beforeForeignMove.screenX);
-        expect(afterForeignNavigation.screenY).toBe(beforeForeignMove.screenY);
         await wireHitTarget.dispatchEvent("pointerdown", {
             ...foreignPointer,
             button: 0,
             buttons: 1,
         });
-        await expect(selectedNodeName).toHaveValue("Import glTF");
         await contextNode.dispatchEvent("contextmenu", {
             ...foreignPointer,
             button: 2,
             buttons: 0,
         });
-        await expect(selectedNodeName).toHaveValue("Import glTF");
+        const afterForeignActions = await readNodeState();
+        expect({
+            screenX: afterForeignActions.screenX,
+            screenY: afterForeignActions.screenY,
+            selectedNodeName: await selectedNodeName.inputValue(),
+        }).toEqual({
+            screenX: beforeForeignMove.screenX,
+            screenY: beforeForeignMove.screenY,
+            selectedNodeName: "Import glTF",
+        });
         await page.keyboard.press("Escape");
         await editor.canvas.dispatchEvent("pointermove", {
             ...foreignPointer,
