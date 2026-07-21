@@ -2,20 +2,26 @@
 
 Status: ready-for-agent
 
+Issue 01 is resolved and landed on `preview/nae`; issue 02 remains planned and ready for an agent. The
+PRD remains open until the remaining catalog assets are replaced and validated.
+
 ## Problem Statement
 
-The Node Assets Editor pipeline library is executable product UI, but its maintained built-in
-pipelines currently demonstrate supported source-to-GLB workflows with tiny generated placeholders
-rather than representative Babylon assets. Five generated source payloads are embedded into the
+The Node Assets Editor pipeline library is executable product UI. At initial planning, its maintained
+built-in pipelines demonstrated supported source-to-GLB workflows with tiny generated placeholders
+rather than representative Babylon assets. Five generated source payloads were embedded into the
 catalog serializations and shared across seven user-facing built-in pipelines:
 
-| Generated payload | Current serialized source | Built-in pipeline roles |
+| Generated payload | Initial serialized source | Built-in pipeline roles |
 | --- | --- | --- |
 | Indexed generated triangle GLB | `catalog-triangle.glb` | Default **glTF Optimization**; glTF arm of **Multi-Source Universal Merge**; **Advanced glTF Compression** |
 | Unwelded generated triangle GLB | `catalog-triangle.glb` | **Full Universal Optimization** |
 | Generated Babylon triangle | `catalog-triangle.babylon` | **Babylon to Optimized glTF**; Babylon arm of **Multi-Source Universal Merge** |
 | Inline USDA triangle | `catalog-triangle.usda` | **USD to Optimized glTF** |
 | Inline Node Geometry Box serialization | `catalog-box.json` | **Node Geometry to glTF** |
+
+Issue 01 has since replaced the default **glTF Optimization** source with the approved rounded cube.
+The remaining generated glTF and Babylon catalog roles are planned in issue 02.
 
 The generated glTF and Babylon payloads make the library look unfinished and leave advanced
 pipelines operating on content too small or too simple to demonstrate their purpose. Embedding the
@@ -313,20 +319,25 @@ Additional constraints:
 
 ## Acceptance Criteria
 
-- [ ] The exact default Read glTF serialization uses
+- [x] The exact default Read glTF serialization uses
       `https://assets.babylonjs.com/meshes/roundedCube.glb`, `sourceKind: "url"`, and no embedded source
       bytes/base64.
-- [ ] Startup requests only the rounded cube, waits for hydration before the first worker build, and
+- [x] Startup requests only the rounded cube, waits for hydration before the first worker build, and
       transfers 13,624 official bytes in real-CDN validation.
-- [ ] Opening or listing the pipeline library performs no source prefetch.
+- [x] Opening or listing the pipeline library performs no source prefetch.
 - [ ] Selecting a later entry hydrates only the URL-backed Read blocks in that active graph before
       worker build serialization.
-- [ ] Startup and later-build hydration refresh the internal build-relevant signature without
-      publishing an authored graph change.
-- [ ] A stale success and stale failure cannot mutate or report against a newer active graph.
-- [ ] An active default or later hydration failure surfaces through the existing preview/build error
-      UX, dispatches no incomplete worker build, and leaves startup subscribed for a later authored
-      retry without an immediate build.
+- [x] Default startup hydration refreshes the internal build-relevant signature without publishing an
+      authored graph change.
+- [ ] Later-build hydration refreshes the internal build-relevant signature without publishing an
+      authored graph change.
+- [x] A stale default-source success and stale failure cannot mutate or report against a newer active
+      graph.
+- [x] An active default hydration failure surfaces through the existing preview/build error UX,
+      dispatches no incomplete worker build, and leaves startup subscribed for a later authored retry
+      without an immediate build.
+- [ ] A later active-graph hydration failure surfaces through the existing preview/build error UX and
+      dispatches no incomplete worker build.
 - [ ] **Advanced glTF Compression** uses the exact fence pillar URL and exercises both texture and
       geometry compression on deterministic structurally representative test data.
 - [ ] **Full Universal Optimization** uses the exact `module_600.glb` URL, builds its complete graph,
@@ -337,23 +348,44 @@ Additional constraints:
 - [ ] The USDA triangle and Node Geometry Box remain inline, build successfully, and are identified as
       intentional importer conformance samples.
 - [ ] Production catalog code no longer uses generated glTF or Babylon triangle placeholders.
-- [ ] No official binary is copied into Babylon.js and no third-party URL, invented path, or dependency
-      is introduced.
-- [ ] User uploads, authored URL edits, last-successful-source behavior, save/load, aggregate source
-      properties, and worker build behavior remain intact.
-- [ ] All seven maintained pipeline identities and their ordering are preserved.
-- [ ] Unit tests mock responses and prove exact URLs, hydration before serialization, active failure
-      without worker dispatch, superseded-graph safety, signature stability, exact mappings, retained
-      conformance samples, and valid GLB output for all pipelines.
-- [ ] Playwright intercepts every exact asset URL with deterministic locally generated responses and
-      covers default loading/success/error plus preview/export for every catalog graph.
-- [ ] No committed automated test depends on the live network.
-- [ ] Separate real-CDN browser validation loads and visually inspects the default plus every mapped
-      library entry.
-- [ ] Focused build/typecheck/format, unit, and Node Assets Editor Playwright checks pass.
-- [ ] All code-review findings are fixed.
-- [ ] Rebase/integration preserves concurrent OBJ and FBX catalog entries without implementing or
-      overwriting their unresolved source decisions.
+- [x] The issue-01 default source copies no official binary into Babylon.js and introduces no
+      third-party URL, invented path, or dependency.
+- [ ] The issue-02 mappings copy no official binary into Babylon.js and introduce no third-party URL,
+      invented path, or dependency.
+- [x] The default-source work preserves user uploads, authored URL edits, last-successful-source
+      behavior, save/load, aggregate source properties, and worker build behavior.
+- [ ] The remaining catalog replacements preserve user uploads, authored URL edits,
+      last-successful-source behavior, save/load, aggregate source properties, and worker build
+      behavior.
+- [x] The issue-01 landing preserves all seven maintained pipeline identities and their ordering.
+- [ ] The completed issue-02 catalog preserves all seven maintained pipeline identities and their
+      ordering.
+- [x] Issue-01 unit tests mock the rounded-cube response and prove the exact default URL, hydration
+      before serialization, active failure without worker dispatch, superseded-graph safety, signature
+      stability, and valid default GLB output.
+- [ ] Issue-02 unit tests mock responses and prove every remaining exact mapping, retained conformance
+      samples, and valid GLB output for all pipelines.
+- [x] Issue-01 Playwright intercepts the exact rounded-cube URL with deterministic locally generated
+      responses and covers default loading, success, error, preview, and export.
+- [ ] Issue-02 Playwright intercepts every remaining exact asset URL with deterministic locally
+      generated responses and covers preview/export for every catalog graph.
+- [x] No committed issue-01 automated test depends on the live network.
+- [ ] No committed issue-02 automated test depends on the live network.
+- [x] Separate real-CDN validation confirms the exact default URL with HTTP 200, 13,624 bytes,
+      `model/gltf-binary`, CORS `*`, and no redirect.
+- [ ] Separate real-CDN browser validation loads and visually inspects every issue-02 mapped library
+      entry.
+- [x] Issue-01 validation passed the Source, NodeAssets, and Viewer prerequisites; format once; lint
+      once; 369 unit files with 5,449 passed, 1 expected failure, and 30 skipped; the Node Assets Editor
+      deployment build; and full Node Assets Editor Playwright 47/47 with `workers=1` and `retries=0`.
+- [ ] Issue-02 focused build/typecheck/format, unit, and Node Assets Editor Playwright checks pass.
+- [x] Sol/max dual-lens review completed for issue 01 and every finding was integrated before landing.
+- [ ] Issue-02 code review is complete and every finding is fixed.
+- [x] Issue-01 integration preserved concurrent OBJ and FBX catalog work and included focused
+      regressions for touch-generated palette focus, absolute desktop OBJ paths, and cleanup errors
+      masking original OBJ conversion failures.
+- [ ] Issue-02 rebase/integration preserves landed OBJ and FBX catalog entries without implementing or
+      overwriting their source decisions.
 
 ## Out of Scope
 
@@ -385,13 +417,19 @@ Direct cloud GET probes for all four selected URLs returned HTTP/2 200 at approx
 type (`model/gltf-binary` or `model/vnd.babylonjs.v3+json`), returned a `Content-Length` matching the
 mapping table, and included `Access-Control-Allow-Origin: *`.
 
-Likely integration conflicts:
+Integration state:
 
-| Concurrent effort | Current signal | Custodian rule |
+| Concurrent surface | Landed state | Issue-02 custodian rule |
 | --- | --- | --- |
-| OBJ | PR #12 / `publish-obj-issues` may later touch the catalog and its tests | Preserve landed entries during rebase; do not replace OBJ until final companion behavior/provenance lands |
-| FBX | A feature branch may later touch the same catalog surfaces | Preserve landed entries; replace only after a self-contained official asset is verified |
+| OBJ | Preserved in the issue-01 integration, including focused absolute-path and conversion-error regressions | Preserve the landed entries and tests; do not broaden issue 02 into OBJ source replacement |
+| FBX | Preserved in the issue-01 integration | Preserve the landed entries and tests; replacement still requires a separately verified self-contained official asset |
 | RBXM | Paused, no changes | Keep out of scope |
 
-Issue 01 is the prefactor/tracer bullet that proves the complete default path and reusable hydration
-behavior. Issue 02 depends on it and extends the established path across the remaining catalog.
+Issue 01 resolved the complete default path and landed on `preview/nae` at
+`580d6514575480a7b17a5acf68098c9048b6c5a7`. Its final feature head
+`8ad10d8b28549a6f3ae29a63a64aae1e48257c09`, corrective minimization head
+`14945be3d0bb3f342564d6fb7a848720c7e0258a`, and landing commit all resolve to the exact validated
+tree `8a5ea4d39b2c45ddee98e2c459cd055c5253cc0d`.
+
+Issue 02 is no longer dependency-blocked. It remains planned and extends the landed default path
+across the remaining catalog; the PRD therefore remains `ready-for-agent`.
