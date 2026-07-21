@@ -47,6 +47,10 @@ function GetFileName(path: string): string {
     return path.slice(path.lastIndexOf("/") + 1);
 }
 
+function GetOnlyCandidate(candidates: ReadonlySet<IOBJSourceFile> | undefined): IOBJSourceFile | undefined {
+    return candidates?.size === 1 ? candidates.values().next().value : undefined;
+}
+
 function GetLastMaterialLibraryReference(bytes: Uint8Array): string | undefined {
     const source = TextDecoderInstance.decode(bytes).replace(/#.*$/gm, "").trim();
     let reference: string | undefined;
@@ -141,7 +145,8 @@ export function AcquireOBJLocalFileBundle(
     const primaryDirectory = GetDirectory(primaryPath);
     const rootKey = `${prefix}${primaryDirectory}`;
     const aliases = new Map<string, IOBJSourceFile>();
-    const companionsByBaseName = new Map<string, IOBJSourceFile>();
+    const companionsByPath = new Map<string, IOBJSourceFile>();
+    const companionsByBaseName = new Map<string, Set<IOBJSourceFile>>();
 
     const addAlias = (key: string, file: IOBJSourceFile) => {
         const existing = aliases.get(key);
@@ -154,10 +159,23 @@ export function AcquireOBJLocalFileBundle(
     for (const companion of source.companions) {
         const normalizedPath = _NormalizeOBJSourcePath(companion.path);
         const relativePath = GetRelativePath(primaryDirectory, normalizedPath);
-        companionsByBaseName.set(GetFileName(normalizedPath), companion);
+        const baseName = GetFileName(normalizedPath);
+        companionsByPath.set(normalizedPath, companion);
+        let candidates = companionsByBaseName.get(baseName);
+        if (!candidates) {
+            candidates = new Set();
+            companionsByBaseName.set(baseName, candidates);
+        }
+        candidates.add(companion);
         addAlias(`${prefix}${normalizedPath}`, companion);
         addAlias(`${rootKey}${relativePath}`, companion);
-        addAlias(`${rootKey}${GetFileName(normalizedPath)}`, companion);
+    }
+
+    for (const [baseName, candidates] of companionsByBaseName) {
+        const companion = GetOnlyCandidate(candidates);
+        if (companion) {
+            addAlias(`${rootKey}${baseName}`, companion);
+        }
     }
 
     const addReferenceAlias = (reference: string): IOBJSourceFile | undefined => {
@@ -174,7 +192,7 @@ export function AcquireOBJLocalFileBundle(
             }
             throw error;
         }
-        const companion = companionsByBaseName.get(GetFileName(normalizedReference));
+        const companion = companionsByPath.get(normalizedReference) ?? GetOnlyCandidate(companionsByBaseName.get(GetFileName(normalizedReference)));
         if (!companion) {
             return undefined;
         }
