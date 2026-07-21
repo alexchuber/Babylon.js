@@ -1,4 +1,4 @@
-Status: ready-for-agent
+Status: resolved
 
 ## Problem Statement
 Authors working on a NodeAssets graph need to reposition the viewport frequently. The canvas already has a camera and pan gesture, but normal primary-button dragging on empty canvas does not invoke it. Requiring a middle button or a Space chord is hard to discover, unavailable on many touch devices, and inconsistent with Babylon's other graph editors.
@@ -48,12 +48,12 @@ Dragging the empty canvas surface with the primary pointer moves the camera by t
 
 ## Delivery Status
 
-The feature and ownership fixes are assembled on the PR #22 branch, but this PRD intentionally remains `Status: ready-for-agent` until the corrected lifecycle tests land and root completes independent validation and integration.
+Resolved. Feature PR #19 landed in `preview/nae` at merge commit `c2bfc939`. Final integration evidence: combined exact-head audit clean; focused units 38/38; full units 5,375 passed / 1 expected failure / 30 skipped; targeted Playwright 5/5 and full NAE Playwright 44/44 on the first pass with `retries=0`; format, build, lint, tree-shaking, and side-effect checks clean.
 
 - PR #29's implementation head `2ccafbede2b3379b99c861b69c1829b0d31c38a2` merged into `fix/nae/graph-canvas-pan-owner-gates` as `a577d18736b7ad77e48b768b074c141eafcf5d97`; this is branch-level assembly, not final product integration.
 - The PR #29 worker reported RED on exact base `f5a284ded5b1176fbfb75faf97cafd2ecc929dfd` (ownership Playwright: one retained pass and three expected failures; ContextMenu unit: one expected failure), followed by GREEN at `2ccafbede2b3379b99c861b69c1829b0d31c38a2` (38/38 focused units and 5/5 focused Playwright, plus deployment build and lint/format checks).
 - The worker also reported a clean issue-level dual-lens `/code-review`. PR #29 itself has no GitHub check runs or reviews, so those results remain worker-reported evidence rather than GitHub-hosted evidence.
-- An independent exact-range audit then rejected the prior browser proof because several synthetic pointer streams were not physically complete. The focused test/docs follow-up replaces those streams without changing production source and passed its automatic dual-lens review; root's independent final gates and integration remain pending.
+- An independent exact-range audit then rejected the prior browser proof because several synthetic pointer streams were not physically complete. The focused test/docs follow-up replaced those streams without changing production source and passed its automatic dual-lens review before final integration.
 
 ## Out of Scope
 - Inertial or momentum panning.
@@ -67,4 +67,4 @@ The feature and ownership fixes are assembled on the PR #22 branch, but this PRD
 
 ## Further Notes
 
-The branch contains camera pan actions, viewport-space delta math, middle-button/Space panning, window-level pointer continuation, focused unit seams, and active-owner gates. The remaining work is to land acceptance-grade lifecycle coverage and complete root validation; no section above claims the feature has landed.
+The landed feature contains camera pan actions, viewport-space delta math, middle-button/Space panning, window-level pointer continuation, focused unit seams, and active-owner gates. Acceptance-grade lifecycle coverage and root validation are complete.
