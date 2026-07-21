@@ -680,7 +680,7 @@ test.describe("Node Assets Editor — maintained default pipeline", () => {
         await expect(editor.nodes).toHaveCount(2);
     });
 
-    test("pans empty canvas without mutating graph layout and preserves node drag and wheel zoom", async ({ page }) => {
+    test("blocks foreign canvas controls while another pointer owns the active pan", async ({ page }) => {
         const editor = new NodeAssetsEditorPage(page);
         await editor.goto();
 
@@ -688,6 +688,119 @@ test.describe("Node Assets Editor — maintained default pipeline", () => {
         const contextNode = editor.nodeByTitle("Remove Unused Resources");
         const minimap = editor.canvas.locator('[role="presentation"]');
         const wireHitTarget = editor.wires.first().locator("path").first();
+        await editor.selectNode("Import glTF");
+        const selectedNodeName = page.getByRole("textbox").nth(0);
+        await expect(selectedNodeName).toHaveValue("Import glTF");
+
+        const readNodePosition = async () =>
+            await importNode.evaluate((node: HTMLElement) => {
+                const rect = node.getBoundingClientRect();
+                return { screenX: rect.x, screenY: rect.y };
+            });
+
+        const start = await editor.findEmptyCanvasPoint();
+        const minimapBox = await minimap.boundingBox();
+        if (!minimapBox) {
+            throw new Error("Could not resolve the graph minimap for pointer ownership testing.");
+        }
+        await editor.canvas.evaluate((canvas) => {
+            const capturedPointerIds = new Set<number>();
+            Object.defineProperties(canvas, {
+                hasPointerCapture: { configurable: true, value: (pointerId: number) => capturedPointerIds.has(pointerId) },
+                setPointerCapture: { configurable: true, value: (pointerId: number) => capturedPointerIds.add(pointerId) },
+                releasePointerCapture: { configurable: true, value: (pointerId: number) => capturedPointerIds.delete(pointerId) },
+            });
+        });
+        const ownerPointer = {
+            pointerId: 11,
+            pointerType: "touch",
+            isPrimary: true,
+        };
+        const foreignPointer = {
+            pointerId: 22,
+            pointerType: "touch",
+            isPrimary: false,
+        };
+        const minimapPoint = { clientX: minimapBox.x + 16, clientY: minimapBox.y + 16 };
+        await expect(editor.canvas).toHaveCSS("cursor", "grab");
+        await editor.canvas.dispatchEvent("pointerdown", {
+            ...ownerPointer,
+            button: 0,
+            buttons: 1,
+            clientX: start.x,
+            clientY: start.y,
+        });
+        await expect(editor.canvas).toHaveCSS("cursor", "grabbing");
+        const beforeForeignActions = await readNodePosition();
+        await minimap.dispatchEvent("pointerdown", {
+            ...foreignPointer,
+            ...minimapPoint,
+            button: 0,
+            buttons: 1,
+        });
+        await wireHitTarget.dispatchEvent("pointerdown", {
+            ...foreignPointer,
+            button: 0,
+            buttons: 1,
+        });
+        await contextNode.dispatchEvent("contextmenu", {
+            ...foreignPointer,
+            button: 2,
+            buttons: 0,
+        });
+        const afterForeignActions = await readNodePosition();
+        expect({
+            screenX: afterForeignActions.screenX,
+            screenY: afterForeignActions.screenY,
+            selectedNodeName: await selectedNodeName.inputValue(),
+        }).toEqual({
+            screenX: beforeForeignActions.screenX,
+            screenY: beforeForeignActions.screenY,
+            selectedNodeName: "Import glTF",
+        });
+        await page.keyboard.press("Escape");
+        await editor.canvas.dispatchEvent("pointercancel", {
+            ...ownerPointer,
+            buttons: 0,
+            clientX: start.x,
+            clientY: start.y,
+        });
+        await expect(editor.canvas).toHaveCSS("cursor", "grab");
+
+        const beforeIdleMinimapNavigation = await readNodePosition();
+        await minimap.dispatchEvent("pointerdown", {
+            ...foreignPointer,
+            ...minimapPoint,
+            button: 0,
+            buttons: 1,
+        });
+        await expect
+            .poll(async () => {
+                const current = await readNodePosition();
+                return Math.abs(current.screenX - beforeIdleMinimapNavigation.screenX) + Math.abs(current.screenY - beforeIdleMinimapNavigation.screenY);
+            })
+            .toBeGreaterThan(1);
+
+        await wireHitTarget.dispatchEvent("pointerdown", {
+            ...foreignPointer,
+            button: 0,
+            buttons: 1,
+        });
+        await expect(page.getByText("No selection", { exact: true })).toBeVisible();
+        await contextNode.dispatchEvent("contextmenu", {
+            ...foreignPointer,
+            button: 2,
+            buttons: 0,
+        });
+        await expect(page.getByRole("textbox").nth(0)).toHaveValue("Remove Unused Resources");
+        await page.keyboard.press("Escape");
+    });
+
+    test("pans empty canvas without mutating graph layout and preserves node drag and wheel zoom", async ({ page }) => {
+        const editor = new NodeAssetsEditorPage(page);
+        await editor.goto();
+
+        const importNode = editor.nodeByTitle("Import glTF");
         await editor.selectNode("Import glTF");
         const selectedNodeName = page.getByRole("textbox").nth(0);
         await expect(selectedNodeName).toHaveValue("Import glTF");
@@ -707,50 +820,15 @@ test.describe("Node Assets Editor — maintained default pipeline", () => {
         const beforePan = await readNodeState();
         const start = await editor.findEmptyCanvasPoint();
         const delta = { x: 48, y: 32 };
-        const minimapBox = await minimap.boundingBox();
-        if (!minimapBox) {
-            throw new Error("Could not resolve the graph minimap for pointer ownership testing.");
-        }
-        const foreignPointer = {
-            pointerId: 22,
-            pointerType: "touch",
-            isPrimary: false,
-        };
-        const minimapPoint = { clientX: minimapBox.x + 16, clientY: minimapBox.y + 16 };
         await expect(editor.canvas).toHaveCSS("cursor", "grab");
         await page.mouse.move(start.x, start.y);
         await page.mouse.down();
         await expect(editor.canvas).toHaveCSS("cursor", "grabbing");
         const beforeForeignMove = await readNodeState();
-        await minimap.dispatchEvent("pointerdown", {
-            ...foreignPointer,
-            ...minimapPoint,
-            button: 0,
-            buttons: 1,
-        });
-        await wireHitTarget.dispatchEvent("pointerdown", {
-            ...foreignPointer,
-            button: 0,
-            buttons: 1,
-        });
-        await contextNode.dispatchEvent("contextmenu", {
-            ...foreignPointer,
-            button: 2,
-            buttons: 0,
-        });
-        const afterForeignActions = await readNodeState();
-        expect({
-            screenX: afterForeignActions.screenX,
-            screenY: afterForeignActions.screenY,
-            selectedNodeName: await selectedNodeName.inputValue(),
-        }).toEqual({
-            screenX: beforeForeignMove.screenX,
-            screenY: beforeForeignMove.screenY,
-            selectedNodeName: "Import glTF",
-        });
-        await page.keyboard.press("Escape");
         await editor.canvas.dispatchEvent("pointermove", {
-            ...foreignPointer,
+            pointerId: 999,
+            pointerType: "touch",
+            isPrimary: false,
             buttons: 1,
             clientX: start.x + 96,
             clientY: start.y + 96,
@@ -804,34 +882,6 @@ test.describe("Node Assets Editor — maintained default pipeline", () => {
         const afterZoom = await readNodeState();
         expect(afterZoom.worldLeft).toBe(afterNodeDrag.worldLeft);
         expect(afterZoom.worldTop).toBe(afterNodeDrag.worldTop);
-
-        const beforeIdleMinimapNavigation = await readNodeState();
-        await minimap.dispatchEvent("pointerdown", {
-            ...foreignPointer,
-            ...minimapPoint,
-            button: 0,
-            buttons: 1,
-        });
-        await expect
-            .poll(async () => {
-                const current = await readNodeState();
-                return Math.abs(current.screenX - beforeIdleMinimapNavigation.screenX) + Math.abs(current.screenY - beforeIdleMinimapNavigation.screenY);
-            })
-            .toBeGreaterThan(1);
-
-        await wireHitTarget.dispatchEvent("pointerdown", {
-            ...foreignPointer,
-            button: 0,
-            buttons: 1,
-        });
-        await expect(page.getByText("No selection", { exact: true })).toBeVisible();
-        await contextNode.dispatchEvent("contextmenu", {
-            ...foreignPointer,
-            button: 2,
-            buttons: 0,
-        });
-        await expect(page.getByRole("textbox").nth(0)).toHaveValue("Remove Unused Resources");
-        await page.keyboard.press("Escape");
     });
 
     test("reorganizes overlapping nodes into a left-to-right data flow", async ({ page }) => {
