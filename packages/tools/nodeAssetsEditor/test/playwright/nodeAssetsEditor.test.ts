@@ -582,6 +582,7 @@ test.describe("Node Assets Editor — maintained default pipeline", () => {
         const exportNode = editor.nodeByTitle("Export glTF");
         const defaultItems = [
             "Import glTF",
+            "Import OBJ",
             "Import USD",
             "Import Babylon",
             "Import Node Geometry",
@@ -609,7 +610,7 @@ test.describe("Node Assets Editor — maintained default pipeline", () => {
 
         await expect(showPrimitives).not.toBeChecked();
         await expect(nodeGeometryCategory).toHaveCount(0);
-        await expect(categories).toHaveText(["Inputs (4)", "Universal (17)", "glTF (3)"]);
+        await expect(categories).toHaveText(["Inputs (5)", "Universal (17)", "glTF (3)"]);
         await expect(families).toHaveText(["Aggregate imports", "Cleanup", "Reduction", "Structure", "Attributes", "Textures", "Encoding/output"]);
         await expect(items).toHaveText(defaultItems);
         await search.fill("Write glTF");
@@ -621,23 +622,25 @@ test.describe("Node Assets Editor — maintained default pipeline", () => {
         await showPrimitives.check();
         await expect(items).toHaveText(["Write glTF"]);
         await search.clear();
-        await expect(categories).toHaveText(["Inputs (8)", "Universal (22)", "glTF (5)", "USD (1)", "Babylon (1)", "Node Geometry (1)"]);
+        await expect(categories).toHaveText(["Inputs (10)", "Universal (22)", "glTF (5)", "OBJ (1)", "USD (1)", "Babylon (1)", "Node Geometry (1)"]);
         await expect(families).toHaveText(["Aggregate imports", "Cleanup", "Reduction", "Structure", "Attributes", "Textures", "Encoding/output"]);
         await expect(items).toHaveText([
-            ...defaultItems.slice(0, 4),
+            ...defaultItems.slice(0, 5),
             "Read glTF",
+            "Read OBJ",
             "Read USD",
             "Read Babylon",
             "Read Node Geometry",
-            ...defaultItems.slice(4, 21),
+            ...defaultItems.slice(5, 22),
             "Universal → glTF",
             "Deduplicate Materials",
             "Deduplicate Textures",
             "Reuse Identical Meshes",
             "Deduplicate Data",
-            ...defaultItems.slice(21),
+            ...defaultItems.slice(22),
             "glTF → Universal",
             "Write glTF",
+            "OBJ to Universal",
             "USD → Universal",
             "Babylon → Universal",
             "Node Geometry → Universal",
@@ -651,7 +654,7 @@ test.describe("Node Assets Editor — maintained default pipeline", () => {
         await showPrimitives.uncheck();
         await expect(nodeGeometryCategory).toHaveCount(0);
         await expect(page.getByTitle("Read Babylon", { exact: true })).toHaveCount(0);
-        await expect(categories).toHaveText(["Inputs (4)", "Universal (17)", "glTF (3)"]);
+        await expect(categories).toHaveText(["Inputs (5)", "Universal (17)", "glTF (3)"]);
         await expect(items).toHaveText(defaultItems);
         await expect(editor.nodeByTitle("Read Babylon")).toBeVisible();
         await expect(editor.nodeByTitle("Write glTF")).toBeVisible();
@@ -659,7 +662,7 @@ test.describe("Node Assets Editor — maintained default pipeline", () => {
         await showPrimitives.check();
         await page.reload({ waitUntil: "load" });
         await expect(showPrimitives).toBeChecked();
-        await expect(categories).toHaveText(["Inputs (8)", "Universal (22)", "glTF (5)", "USD (1)", "Babylon (1)", "Node Geometry (1)"]);
+        await expect(categories).toHaveText(["Inputs (10)", "Universal (22)", "glTF (5)", "OBJ (1)", "USD (1)", "Babylon (1)", "Node Geometry (1)"]);
     });
 
     test("extends node selection with the platform multi-select modifier", async ({ page }) => {

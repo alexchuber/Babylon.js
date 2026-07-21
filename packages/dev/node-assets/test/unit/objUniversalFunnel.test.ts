@@ -49,7 +49,10 @@ async function GetAssetFactsAsync(glb: Uint8Array): Promise<{ readonly sceneCoun
     };
 }
 
-function CreatePrimitivePipeline(bytes = OBJFixture, fileName = "fixture.OBJ"): {
+function CreatePrimitivePipeline(
+    bytes = OBJFixture,
+    fileName = "fixture.OBJ"
+): {
     readonly asset: NodeAsset;
     readonly read: ReadOBJBlock;
     readonly transcoder: OBJToUniversalBlock;
@@ -96,11 +99,18 @@ describe("OBJ Universal funnel", () => {
         expect(IsOBJSourceAsset(read.output.value)).toBe(true);
     });
 
+    it("accepts an extensionless direct URL identified as OBJ by its query", () => {
+        const source = "https://example.com/assets/model?format=obj";
+        const asset = new OBJSourceAsset({ path: source, bytes: OBJFixture }, source, "url", []);
+
+        expect(asset.primary.path).toBe(source);
+        expect(asset.source).toBe(source);
+        expect(asset.sourceKind).toBe("url");
+    });
+
     it("rejects incoherent direct OBJ source payloads", () => {
         expect(() => new OBJSourceAsset({ path: "fixture.obj", bytes: OBJFixture }, "different.obj", "upload", [])).toThrow(/source identity must match the primary path/);
-        expect(() => new OBJSourceAsset({ path: "fixture.txt", bytes: OBJFixture }, "fixture.txt", "upload", [])).toThrow(
-            /uploaded OBJ primary path must end in \.obj/
-        );
+        expect(() => new OBJSourceAsset({ path: "fixture.txt", bytes: OBJFixture }, "fixture.txt", "upload", [])).toThrow(/uploaded OBJ primary path must end in \.obj/);
         expect(() => new OBJSourceAsset({ path: "fixture.OBJ", bytes: OBJFixture }, "fixture.OBJ", "upload", [])).not.toThrow();
     });
 
