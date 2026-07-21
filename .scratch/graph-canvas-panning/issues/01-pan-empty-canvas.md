@@ -1,12 +1,15 @@
 Status: resolved
 
 ## Parent
+
 `.scratch/graph-canvas-panning/PRD.md`
 
 ## What to build
+
 Make the Node Assets Editor graph camera move when an author drags empty canvas with an unmodified primary pointer. Preserve modified-drag marquee selection, empty-canvas click deselection, middle-button and Space-plus-primary pan aliases, and all child graph interactions. The gesture must remain predictable across zoom levels, pointer types, canvas boundaries, cancellation, and multiple simultaneous pointers, with grab/grabbing feedback. Keep the change inside the existing generic node-graph interaction and camera seams. Panning is view state only and must not mutate NodeAssets graph data, create undo entries, or trigger builds.
 
 ## Acceptance criteria
+
 - [x] Unmodified primary drag beginning on empty canvas pans rendered nodes, wires, frames, grid, and minimap viewport by the viewport-pixel pointer delta at every supported zoom.
 - [x] Primary touch and pen drags use the same behavior; the initiating pointer exclusively owns the gesture until completion/cancellation.
 - [x] Middle-button and Space-plus-primary pan aliases remain.
@@ -27,3 +30,7 @@ Done as a docs follow-up on `feat/nae/graph-canvas-pan`.
 - The ticket is now `Status: resolved`.
 - The implementation PR landed as `2858fcff583192ddd14218f81dc7eab6cbbcb63c` on `feat/nae/graph-canvas-pan`.
 - Worker-reported evidence: targeted unit tests `35/35`, Playwright `2/2`, ESLint/Prettier/build/precommit pass, and clean `/code-review`.
+
+## Comments
+
+Implemented in [PR #15](https://github.com/alexchuber/Babylon.js/pull/15) at `2858fcff583192ddd14218f81dc7eab6cbbcb63c`. Verification passed with gesture unit tests `35/35`, focused Playwright `2/2`, targeted ESLint and Prettier, the Node Assets Editor deployment build, and precommit checks. Both `/code-review` lenses finished with no unresolved high-confidence findings. The standalone package-wide `tsc` baseline remains blocked by unrelated existing core/dependency diagnostics, including missing `XRHandedness`; no changed-file diagnostics were reported.
