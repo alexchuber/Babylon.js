@@ -104,7 +104,7 @@ describe("OBJ Universal funnel", () => {
         expect(() => new OBJSourceAsset({ path: "fixture.txt", bytes: OBJFixture }, "fixture.txt", "upload", [])).toThrow(/uploaded OBJ primary path must end in \.obj/);
         expect(() => new OBJSourceAsset({ path: "fixture.OBJ", bytes: OBJFixture }, "fixture.OBJ", "upload", [])).not.toThrow();
 
-        const url = "https://cdn.example.com/assets/remote.obj?version=1";
+        const url = "https://example.com/assets/model?format=obj";
         const urlSource = new OBJSourceAsset({ path: url, bytes: OBJFixture }, url, "url", []);
         expect(urlSource.source).toBe(url);
         expect(urlSource.sourceKind).toBe("url");
