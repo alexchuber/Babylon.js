@@ -46,7 +46,7 @@ async function installSyntheticPointerCapture(editor: NodeAssetsEditorPage): Pro
     });
 }
 
-async function beginSyntheticTouchPan(editor: NodeAssetsEditorPage, pointerId: number): Promise<SyntheticTouchPan> {
+async function startSyntheticTouchPan(editor: NodeAssetsEditorPage, pointerId: number): Promise<SyntheticTouchPan> {
     const point = await editor.findEmptyCanvasPoint();
     await editor.canvas.dispatchEvent("pointerdown", {
         pointerId,
@@ -61,16 +61,41 @@ async function beginSyntheticTouchPan(editor: NodeAssetsEditorPage, pointerId: n
     return { pointerId, point };
 }
 
-async function endSyntheticTouchPan(editor: NodeAssetsEditorPage, pan: SyntheticTouchPan, eventName: "pointerup" | "pointercancel" | "lostpointercapture"): Promise<void> {
-    if (eventName === "lostpointercapture") {
-        await editor.canvas.evaluate((canvas, pointerId) => canvas.releasePointerCapture(pointerId), pan.pointerId);
-    }
+async function moveSyntheticTouchPan(editor: NodeAssetsEditorPage, pan: SyntheticTouchPan, delta: { readonly x: number; readonly y: number }): Promise<SyntheticTouchPan> {
+    const point = { x: pan.point.x + delta.x, y: pan.point.y + delta.y };
+    await editor.canvas.dispatchEvent("pointermove", {
+        pointerId: pan.pointerId,
+        pointerType: "touch",
+        isPrimary: true,
+        button: -1,
+        buttons: 1,
+        clientX: point.x,
+        clientY: point.y,
+    });
+    return { pointerId: pan.pointerId, point };
+}
+
+async function endSyntheticTouchPan(editor: NodeAssetsEditorPage, pan: SyntheticTouchPan, eventName: "pointerup" | "pointercancel"): Promise<void> {
     await editor.canvas.dispatchEvent(eventName, {
         pointerId: pan.pointerId,
         pointerType: "touch",
         isPrimary: true,
-        button: 0,
+        button: eventName === "pointerup" ? 0 : -1,
         buttons: 0,
+        clientX: pan.point.x,
+        clientY: pan.point.y,
+    });
+    await expect(editor.canvas).toHaveCSS("cursor", "grab");
+}
+
+async function loseSyntheticTouchPanCapture(editor: NodeAssetsEditorPage, pan: SyntheticTouchPan): Promise<void> {
+    await editor.canvas.evaluate((canvas, pointerId) => canvas.releasePointerCapture(pointerId), pan.pointerId);
+    await editor.canvas.dispatchEvent("lostpointercapture", {
+        pointerId: pan.pointerId,
+        pointerType: "touch",
+        isPrimary: true,
+        button: -1,
+        buttons: 1,
         clientX: pan.point.x,
         clientY: pan.point.y,
     });
@@ -747,7 +772,7 @@ test.describe("Node Assets Editor — maintained default pipeline", () => {
 
         const node = editor.nodeByTitle("Remove Unused Resources");
         const collapseNode = node.getByRole("button", { name: "Collapse node" });
-        const pan = await beginSyntheticTouchPan(editor, 11);
+        const pan = await startSyntheticTouchPan(editor, 11);
 
         await collapseNode.click();
         await expect(collapseNode).toBeVisible();
@@ -767,7 +792,7 @@ test.describe("Node Assets Editor — maintained default pipeline", () => {
 
         const aggregateNode = editor.nodeByTitle("Import glTF");
         const expandAggregate = aggregateNode.getByRole("button", { name: "Expand aggregate" });
-        const compactPan = await beginSyntheticTouchPan(editor, 21);
+        const compactPan = await startSyntheticTouchPan(editor, 21);
 
         await expandAggregate.click();
         await expect(expandAggregate).toBeVisible();
@@ -778,7 +803,7 @@ test.describe("Node Assets Editor — maintained default pipeline", () => {
         const collapseAggregate = aggregateFrame.getByRole("button", { name: "Collapse aggregate" });
         await expect(collapseAggregate).toBeVisible();
 
-        const expandedPan = await beginSyntheticTouchPan(editor, 22);
+        const expandedPan = await startSyntheticTouchPan(editor, 22);
         await collapseAggregate.click();
         await expect(aggregateFrame).toBeVisible();
 
@@ -805,7 +830,7 @@ test.describe("Node Assets Editor — maintained default pipeline", () => {
                 return { screenX: rect.x, screenY: rect.y };
             });
 
-        const pan = await beginSyntheticTouchPan(editor, 31);
+        const pan = await startSyntheticTouchPan(editor, 31);
         const beforeForeignActions = await readNodePosition();
         await minimap.click({ position: { x: 16, y: 16 } });
         await clickWirePath(page, wireHitTarget);
@@ -820,7 +845,12 @@ test.describe("Node Assets Editor — maintained default pipeline", () => {
             selectedNodeName: "Import glTF",
         });
 
-        await endSyntheticTouchPan(editor, pan, "lostpointercapture");
+        await loseSyntheticTouchPanCapture(editor, pan);
+        const afterLostCapture = await readNodePosition();
+        await expect(selectedNodeName).toHaveValue("Import glTF");
+        await endSyntheticTouchPan(editor, pan, "pointerup");
+        expect(await readNodePosition()).toEqual(afterLostCapture);
+        await expect(selectedNodeName).toHaveValue("Import glTF");
 
         await clickWirePath(page, wireHitTarget);
         await expect(page.getByText("No selection", { exact: true })).toBeVisible();
@@ -865,7 +895,7 @@ test.describe("Node Assets Editor — maintained default pipeline", () => {
                 return { x: rect.x, y: rect.y };
             }),
         };
-        const pan = await beginSyntheticTouchPan(editor, 41);
+        const pan = await startSyntheticTouchPan(editor, 41);
         await expect(selectedNodeName).toHaveValue("Import glTF");
 
         await expect.soft(visibleMenus).toHaveCount(0);
@@ -918,6 +948,7 @@ test.describe("Node Assets Editor — maintained default pipeline", () => {
     test("pans empty canvas without mutating graph layout and preserves node drag and wheel zoom", async ({ page }) => {
         const editor = new NodeAssetsEditorPage(page);
         await editor.goto();
+        await installSyntheticPointerCapture(editor);
 
         const importNode = editor.nodeByTitle("Import glTF");
         await editor.selectNode("Import glTF");
@@ -937,27 +968,21 @@ test.describe("Node Assets Editor — maintained default pipeline", () => {
             });
 
         const beforePan = await readNodeState();
-        const start = await editor.findEmptyCanvasPoint();
         const delta = { x: 48, y: 32 };
         await expect(editor.canvas).toHaveCSS("cursor", "grab");
-        await page.mouse.move(start.x, start.y);
+        const pan = await startSyntheticTouchPan(editor, 51);
+        const foreignStart = await editor.findEmptyCanvasPoint();
+        await page.mouse.move(foreignStart.x, foreignStart.y);
         await page.mouse.down();
-        await expect(editor.canvas).toHaveCSS("cursor", "grabbing");
         const beforeForeignMove = await readNodeState();
-        await editor.canvas.dispatchEvent("pointermove", {
-            pointerId: 999,
-            pointerType: "touch",
-            isPrimary: false,
-            buttons: 1,
-            clientX: start.x + 96,
-            clientY: start.y + 96,
-        });
+        await page.mouse.move(foreignStart.x + 96, foreignStart.y + 96, { steps: 4 });
+        await page.mouse.up();
         const afterForeignMove = await readNodeState();
         expect(afterForeignMove.screenX).toBe(beforeForeignMove.screenX);
         expect(afterForeignMove.screenY).toBe(beforeForeignMove.screenY);
-        await page.mouse.move(start.x + delta.x, start.y + delta.y, { steps: 4 });
-        await page.mouse.up();
-        await expect(editor.canvas).toHaveCSS("cursor", "grab");
+        await expect(editor.canvas).toHaveCSS("cursor", "grabbing");
+        const movedPan = await moveSyntheticTouchPan(editor, pan, delta);
+        await endSyntheticTouchPan(editor, movedPan, "pointerup");
 
         const afterPan = await readNodeState();
         expect(afterPan.worldLeft).toBe(beforePan.worldLeft);
@@ -966,20 +991,8 @@ test.describe("Node Assets Editor — maintained default pipeline", () => {
         expect(afterPan.screenY).toBeCloseTo(beforePan.screenY + delta.y, 4);
         await expect(selectedNodeName).toHaveValue("Import glTF");
 
-        const cancelPoint = await editor.findEmptyCanvasPoint();
-        await page.mouse.move(cancelPoint.x, cancelPoint.y);
-        await page.mouse.down();
-        await expect(editor.canvas).toHaveCSS("cursor", "grabbing");
-        await editor.canvas.dispatchEvent("pointercancel", {
-            pointerId: 1,
-            pointerType: "mouse",
-            isPrimary: true,
-            buttons: 0,
-            clientX: cancelPoint.x,
-            clientY: cancelPoint.y,
-        });
-        await expect(editor.canvas).toHaveCSS("cursor", "grab");
-        await page.mouse.up();
+        const canceledPan = await startSyntheticTouchPan(editor, 52);
+        await endSyntheticTouchPan(editor, canceledPan, "pointercancel");
         await expect(selectedNodeName).toHaveValue("Import glTF");
 
         const nodeTitle = importNode.getByText("Import glTF", { exact: true });
