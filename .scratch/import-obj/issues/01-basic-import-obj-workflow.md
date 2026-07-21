@@ -49,6 +49,7 @@ Wire the runtime exports and package-barrel self-registration, editor descriptor
 - [ ] JSON roundtrip preserves the aggregate, source selection, names, and build behavior.
 - [ ] The worker can load the saved graph and build the basic OBJ workflow offline.
 - [ ] A basic network-free Import OBJ built-in pipeline/library entry builds successfully.
+- [ ] Babylon's default `materialLoadingFailsSilently: true` is preserved; a parsable OBJ with an unavailable referenced MTL succeeds as geometry-only, using existing loader/node diagnostics only and no new warning channel.
 - [ ] Focused runtime, editor, worker, and persistence tests cover the above public behavior, and existing glTF, USD, Babylon, and Node Geometry imports remain unchanged.
 - [ ] No icon, codegen, loader/parser, or NAE MCP changes are introduced.
 

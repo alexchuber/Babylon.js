@@ -47,7 +47,8 @@ Use synthetic original OBJ/MTL fixtures and a 1x1 texture to prove material name
 - [ ] FilesInputStore/global file entries and object URLs are removed after both successful and failed builds, including concurrent same-name bundles.
 - [ ] Companion resources are ready before export, and an OBJ+MTL fixture with a 1x1 texture produces an inspectable GLB containing the expected material names/colors and an embedded texture.
 - [ ] Multiple material changes retain Babylon's `_mmN` geometry split behavior, supported maps/colors survive, and multiple `mtllib` declarations retain Babylon's current last-reference behavior.
-- [ ] A missing MTL remains a successful geometry-only import under the existing default behavior.
+- [ ] Babylon's default `materialLoadingFailsSilently: true` is preserved: a parsable OBJ whose referenced MTL is unavailable remains a successful geometry-only import, with no new warning channel.
+- [ ] A focused regression test covers the unavailable-MTL case and verifies that existing loader/node diagnostics remain the only diagnostic surface.
 - [ ] The worker can build a persisted local bundle offline after JSON roundtrip.
 - [ ] The built-in Import OBJ pipeline/library entry exercises an MTL and texture without network access.
 - [ ] Focused runtime, editor, worker, persistence, lifecycle, and browser-level tests cover the above behavior and issue 01 remains green.

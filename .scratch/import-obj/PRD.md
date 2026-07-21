@@ -82,10 +82,16 @@ Make Import OBJ default-visible in **Inputs / Aggregate imports**. Make Read OBJ
 - Wire runtime exports and registration, editor descriptors and port styling, default palette/library discovery, JSON persistence, and worker build execution. Saved graphs execute in a worker through package-barrel self-registration.
 - Add a network-free built-in Import OBJ library graph and synthetic original OBJ/MTL/texture fixtures. Do not add codegen, icons, an NAE MCP server, or loader/parser changes.
 
+## Acceptance Criteria
+
+- [ ] Import OBJ preserves Babylon's default `materialLoadingFailsSilently: true`; when a parsable OBJ references an unavailable MTL, the build succeeds as a geometry-only asset.
+- [ ] The unavailable-MTL regression uses existing loader/node diagnostics only and does not add a new warning channel; actual conversion and export failures remain contextual errors.
+
 ## Testing Decisions
 
 - Test external behavior at the highest existing seam: NodeAsset.buildAsync with JSON roundtrip and GLB inspection should prove typed source activation, aggregate execution, conversion, mesh/material/texture preservation, and output structure together.
 - Use synthetic original OBJ, MTL, and 1x1 texture fixtures so the core and worker tests do not depend on network access. Include multiple named objects/groups, material splits, names/colors, selected texture embedding, and a missing-MTL geometry-only case.
+- Add a focused regression with a parsable OBJ that references an unavailable MTL. Assert `materialLoadingFailsSilently: true` remains the default, the build succeeds with geometry only, no new warning channel is emitted, and existing loader/node diagnostics remain the only diagnostic surface.
 - Test the source lifecycle at the Read OBJ/editor seam: URL success, stale request suppression, clear, failed-source retention, invalid local selection retention, malformed persistence rejection, relative-path resolution, case-insensitive lookup, unambiguous basename fallback, and concurrent build-scoped file roots.
 - Test global FilesInputStore and object-URL cleanup after both success and failure, including concurrent same-name bundles.
 - Test editor controller and worker behavior for descriptor/registry/palette/property/library counts, default-visible versus Show primitives discovery, typed ports, forwarded source properties, execution, and JSON roundtrip.
