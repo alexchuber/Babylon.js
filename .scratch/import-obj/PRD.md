@@ -1,6 +1,6 @@
 # PRD — Add Import OBJ to Node Assets Editor
 
-Status: ready-for-agent
+Status: resolved
 
 ## Feature request template context
 
@@ -84,8 +84,12 @@ Make Import OBJ default-visible in **Inputs / Aggregate imports**. Make Read OBJ
 
 ## Acceptance Criteria
 
-- [ ] Import OBJ preserves Babylon's default `materialLoadingFailsSilently: true`; when a parsable OBJ references an unavailable MTL, the build succeeds as a geometry-only asset.
-- [ ] The unavailable-MTL regression uses existing loader/node diagnostics only and does not add a new warning channel; actual conversion and export failures remain contextual errors.
+- [x] Import OBJ preserves Babylon's default `materialLoadingFailsSilently: true`; when a parsable OBJ references an unavailable MTL, the build succeeds as a geometry-only asset.
+- [x] The unavailable-MTL regression uses existing loader/node diagnostics only and does not add a new warning channel; actual conversion and export failures remain contextual errors.
+- [x] Issue 01's basic workflow and issue 02's persistent companion workflow meet their complete acceptance criteria, including URL/path semantics and duplicate basenames.
+- [x] Final managed review is CLEAN with no unresolved high-confidence findings.
+- [x] Final integrated unit, browser, deployment-build, format, lint, and tree-shaking validation is clean.
+- [x] Final integration landed in `preview/nae` with the validated tree.
 
 ## Testing Decisions
 
@@ -110,4 +114,12 @@ Make Import OBJ default-visible in **Inputs / Aggregate imports**. Make Read OBJ
 
 ## Further Notes
 
-Import OBJ is approved as an internal NodeAssets proof-of-concept workflow. Acceptance requires it to be default-visible and usable; primitives must be typed and discoverable under Show primitives; URL root resolution must work; local OBJ+MTL+texture bundles must persist and build offline; multiple meshes, materials, names, and selected textures must survive into the exported GLB; missing MTL must succeed geometry-only; source errors, races, clear behavior, cleanup, registration, worker execution, and roundtrip must be correct; the built-in pipeline must run offline; focused tests must pass; and no MCP, icon, or codegen changes may be introduced.
+Import OBJ was delivered as an internal NodeAssets proof-of-concept workflow. It is default-visible and usable; its primitives are typed and discoverable under Show primitives; URL roots and local OBJ+MTL+texture bundles resolve and persist; exported GLBs preserve the covered meshes, materials, names, and textures; missing MTL succeeds geometry-only; source lifecycle, cleanup, registration, worker execution, JSON roundtrip, and the offline built-in pipeline are covered; and no MCP, icon, or codegen work was introduced.
+
+## Delivery Status
+
+Resolved. Feature merge `4a27e0a996f485f2b8125ba3e13c0d08b0a4ecf3` was completed by definitive issue-02 candidate `df722a61f26f396cef82d33901ccf5285f2db2e2` (tree `2f4d4c79a783e122d9e87da7d22e83d0edf37397`). Final integration PR #36 landed in `preview/nae` at `d9d6ea015a3f99f3a6c7034a3328d3b15d6ecda5`; its tree `62ea2116bc9fbab198971a3f1413b8952f812a84` exactly matches the validated integration tree.
+
+Final evidence: the managed Sol/Max full-range static audit reported CLEAN across all 17 issue-02 files; basic and companion URL/path semantics, including duplicate basenames, passed; integrated format, lint, and tree-shaking checks were clean; the single full-unit invocation passed 5,416 tests but one suite could not initialize because `@tools/test-tools` was unbuilt; after building that prerequisite, the affected suite passed 1/1; the Node Assets Editor deployment build was clean; and the full NAE Playwright project passed 45/45 from the repository root with `--workers=1 --retries=0`.
+
+Validation setup history is retained: the first full Playwright invocation ran from the wrong working directory and reached 44/45, so it is not counted as final evidence.
