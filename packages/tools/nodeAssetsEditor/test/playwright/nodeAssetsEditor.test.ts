@@ -637,20 +637,48 @@ test.describe("Node Assets Editor — maintained default pipeline", () => {
         await expect(editor.previewCanvas).toBeVisible();
     });
 
-    test("finds nodes by workflow intent and shows their descriptions", async ({ page }) => {
+    test("keeps palette descriptions searchable and exposes them on hover and focus", async ({ page }) => {
         const editor = new NodeAssetsEditorPage(page);
         await editor.goto();
 
         const search = page.getByPlaceholder("Search palette");
-        for (const [query, label, description] of [
-            ["decimate", "Simplify Meshes", "Reduce Universal mesh geometry to a target ratio and error limit."],
-            ["unused", "Remove Unused Resources", "Remove resources that are no longer referenced by the scene."],
-            ["compress", "Compress Textures (KTX2)", "Compress scene textures to KTX2 / Basis Universal."],
-        ]) {
-            await search.fill(query);
-            await expect(page.getByTitle(label, { exact: true })).toBeVisible();
-            await expect(page.getByText(description, { exact: true })).toBeVisible();
-        }
+        const label = "Simplify Meshes";
+        const description = "Reduce Universal mesh geometry to a target ratio and error limit.";
+        await search.fill("target ratio");
+
+        const paletteItem = editor.paletteItem(label);
+        const tooltip = page.getByRole("tooltip");
+        await expect(paletteItem).toBeVisible();
+        await search.clear();
+        await paletteItem.scrollIntoViewIfNeeded();
+        await expect(page.getByText(description, { exact: true })).toBeHidden();
+        await expect(paletteItem).toHaveAccessibleName(label);
+        await expect(paletteItem).toHaveAttribute("tabindex", "0");
+        await expect(paletteItem).not.toHaveAttribute("title");
+
+        const touchPointer = { pointerId: 41_001, pointerType: "touch", isPrimary: true };
+        await paletteItem.dispatchEvent("pointerover", { ...touchPointer, button: -1, buttons: 0 });
+        await paletteItem.dispatchEvent("pointerdown", { ...touchPointer, button: 0, buttons: 1 });
+        await page.waitForTimeout(1_000);
+        await expect(tooltip).toBeHidden();
+        await paletteItem.dispatchEvent("pointerup", { ...touchPointer, button: 0, buttons: 0 });
+        await paletteItem.dispatchEvent("pointerout", { ...touchPointer, button: -1, buttons: 0 });
+
+        await paletteItem.hover();
+        await expect(tooltip).toBeVisible({ timeout: 10_000 });
+        await expect(tooltip).toHaveText(description);
+        await expect(paletteItem).toHaveAccessibleDescription(description);
+
+        await page.mouse.move(0, 0);
+        await expect(tooltip).toBeHidden();
+        await paletteItem.focus();
+        await expect(paletteItem).toBeFocused();
+        await expect(tooltip).toBeVisible({ timeout: 10_000 });
+        await expect(tooltip).toHaveText(description);
+        await expect(paletteItem).toHaveAccessibleDescription(description);
+
+        await editor.dropPaletteItem(label, { x: 0.65, y: 0.75 });
+        await expect(editor.nodeByTitle(label)).toBeVisible();
     });
 
     test("persists Show primitives without changing canvas or expanded aggregate nodes", async ({ page }) => {
@@ -735,7 +763,7 @@ test.describe("Node Assets Editor — maintained default pipeline", () => {
         await search.clear();
         await showPrimitives.uncheck();
         await expect(nodeGeometryCategory).toHaveCount(0);
-        await expect(page.getByTitle("Read Babylon", { exact: true })).toHaveCount(0);
+        await expect(editor.paletteItem("Read Babylon")).toHaveCount(0);
         await expect(categories).toHaveText(["Inputs (4)", "Universal (17)", "glTF (3)"]);
         await expect(items).toHaveText(defaultItems);
         await expect(editor.nodeByTitle("Read Babylon")).toBeVisible();
@@ -1511,7 +1539,7 @@ test.describe("Node Assets Editor — Universal glTF aggregates", () => {
             buffer: createNodeGeometryEditorFile(),
         });
         await expect(editor.nodes).toHaveCount(2);
-        await expect(page.getByTitle("Evaluate Node Geometry", { exact: true })).toHaveCount(0);
+        await expect(editor.paletteItem("Evaluate Node Geometry")).toHaveCount(0);
 
         await editor.selectNode("Import Node Geometry");
         await propertyTextbox("Snippet ID").fill("#TEST#1");

@@ -14,7 +14,7 @@ export interface IPaletteItem {
     readonly label: string;
     /** Optional family heading shown within the containing category. */
     readonly family?: string;
-    /** Concise explanation shown below the label. */
+    /** Optional concise explanation exposed as palette help and used by search. */
     readonly description?: string;
     /** Workflow terms and aliases used by palette search. */
     readonly keywords?: readonly string[];
