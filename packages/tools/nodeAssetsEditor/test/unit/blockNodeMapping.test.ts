@@ -4,7 +4,7 @@ import { NodeAsset } from "node-assets/nodeAsset";
 import { NodeAssetBlock } from "node-assets/blockFoundation/nodeAssetBlock";
 import { NodeAssetConnectionPointType } from "node-assets/connection/nodeAssetConnectionPointType";
 
-import { NumberPortColor, ScenePortColor, UsdStagePortColor, BabylonScenePortColor, NodeGeometryPortColor, type IBlockDescriptor } from "../../src/nodeAssets/blockCatalog";
+import { NumberPortColor, OBJPortColor, ScenePortColor, UsdStagePortColor, BabylonScenePortColor, NodeGeometryPortColor, type IBlockDescriptor } from "../../src/nodeAssets/blockCatalog";
 import { BlockToNode, NodeIdForBlock, PointToPort, PortIdForPoint } from "../../src/nodeAssets/blockNodeMapping";
 
 class MappingTestBlock extends NodeAssetBlock {
@@ -24,6 +24,7 @@ class RepresentationMappingTestBlock extends NodeAssetBlock {
     public readonly babylon = this._registerOutput("babylon", NodeAssetConnectionPointType.BABYLON_SCENE);
     public readonly nodeGeometry = this._registerOutput("nodeGeometry", NodeAssetConnectionPointType.NODE_GEOMETRY);
     public readonly usdSource = this._registerOutput("usdSource", NodeAssetConnectionPointType.USD_SOURCE);
+    public readonly objSource = this._registerOutput("objSource", NodeAssetConnectionPointType.OBJ_SOURCE);
 
     public override async _buildBlockAsync(): Promise<void> {}
 }
@@ -74,6 +75,9 @@ describe("blockNodeMapping", () => {
         expect(PointToPort(block, block.babylon).color).toBe(BabylonScenePortColor);
         expect(PointToPort(block, block.nodeGeometry).color).toBe(NodeGeometryPortColor);
         expect(PointToPort(block, block.usdSource)).toMatchObject({ name: "USD", color: UsdStagePortColor });
+        expect(PointToPort(block, block.objSource)).toMatchObject({ name: "OBJ", color: OBJPortColor });
+        expect(OBJPortColor).not.toBe(UsdStagePortColor);
+        expect(OBJPortColor).not.toBe(BabylonScenePortColor);
     });
 
     it("builds a node with input ports before output ports", () => {

@@ -18,6 +18,8 @@ type SavedBlock = {
     readonly customType: string;
     readonly name: string;
     readonly source?: string | null;
+    readonly primary?: { readonly path: string; readonly bytes: string } | null;
+    readonly companions?: readonly { readonly path: string; readonly bytes: string }[];
     readonly subgraph?: {
         readonly blocks: readonly SavedBlock[];
         readonly connections: readonly unknown[];
@@ -695,6 +697,7 @@ test.describe("Node Assets Editor — maintained default pipeline", () => {
         const exportNode = editor.nodeByTitle("Export glTF");
         const defaultItems = [
             "Import glTF",
+            "Import OBJ",
             "Import USD",
             "Import Babylon",
             "Import Node Geometry",
@@ -722,7 +725,7 @@ test.describe("Node Assets Editor — maintained default pipeline", () => {
 
         await expect(showPrimitives).not.toBeChecked();
         await expect(nodeGeometryCategory).toHaveCount(0);
-        await expect(categories).toHaveText(["Inputs (4)", "Universal (17)", "glTF (3)"]);
+        await expect(categories).toHaveText(["Inputs (5)", "Universal (17)", "glTF (3)"]);
         await expect(families).toHaveText(["Aggregate imports", "Cleanup", "Reduction", "Structure", "Attributes", "Textures", "Encoding/output"]);
         await expect(items).toHaveText(defaultItems);
         await search.fill("Write glTF");
@@ -734,23 +737,25 @@ test.describe("Node Assets Editor — maintained default pipeline", () => {
         await showPrimitives.check();
         await expect(items).toHaveText(["Write glTF"]);
         await search.clear();
-        await expect(categories).toHaveText(["Inputs (8)", "Universal (22)", "glTF (5)", "USD (1)", "Babylon (1)", "Node Geometry (1)"]);
+        await expect(categories).toHaveText(["Inputs (10)", "Universal (22)", "glTF (5)", "OBJ (1)", "USD (1)", "Babylon (1)", "Node Geometry (1)"]);
         await expect(families).toHaveText(["Aggregate imports", "Cleanup", "Reduction", "Structure", "Attributes", "Textures", "Encoding/output"]);
         await expect(items).toHaveText([
-            ...defaultItems.slice(0, 4),
+            ...defaultItems.slice(0, 5),
             "Read glTF",
+            "Read OBJ",
             "Read USD",
             "Read Babylon",
             "Read Node Geometry",
-            ...defaultItems.slice(4, 21),
+            ...defaultItems.slice(5, 22),
             "Universal → glTF",
             "Deduplicate Materials",
             "Deduplicate Textures",
             "Reuse Identical Meshes",
             "Deduplicate Data",
-            ...defaultItems.slice(21),
+            ...defaultItems.slice(22),
             "glTF → Universal",
             "Write glTF",
+            "OBJ to Universal",
             "USD → Universal",
             "Babylon → Universal",
             "Node Geometry → Universal",
@@ -764,7 +769,7 @@ test.describe("Node Assets Editor — maintained default pipeline", () => {
         await showPrimitives.uncheck();
         await expect(nodeGeometryCategory).toHaveCount(0);
         await expect(editor.paletteItem("Read Babylon")).toHaveCount(0);
-        await expect(categories).toHaveText(["Inputs (4)", "Universal (17)", "glTF (3)"]);
+        await expect(categories).toHaveText(["Inputs (5)", "Universal (17)", "glTF (3)"]);
         await expect(items).toHaveText(defaultItems);
         await expect(editor.nodeByTitle("Read Babylon")).toBeVisible();
         await expect(editor.nodeByTitle("Write glTF")).toBeVisible();
@@ -772,7 +777,7 @@ test.describe("Node Assets Editor — maintained default pipeline", () => {
         await showPrimitives.check();
         await page.reload({ waitUntil: "load" });
         await expect(showPrimitives).toBeChecked();
-        await expect(categories).toHaveText(["Inputs (8)", "Universal (22)", "glTF (5)", "USD (1)", "Babylon (1)", "Node Geometry (1)"]);
+        await expect(categories).toHaveText(["Inputs (10)", "Universal (22)", "glTF (5)", "OBJ (1)", "USD (1)", "Babylon (1)", "Node Geometry (1)"]);
     });
 
     test("extends node selection with the platform multi-select modifier", async ({ page }) => {
@@ -1439,6 +1444,50 @@ test.describe("Node Assets Editor — Universal glTF aggregates", () => {
         await editor.selectNode("Read glTF");
         await expect(page.getByRole("textbox").nth(3)).toHaveValue("uploaded-triangle.glb");
         await editor.waitForSuccessfulPreviewBuild();
+    });
+
+    test("persists and rebuilds a browser-selected OBJ companion bundle", async ({ page }) => {
+        const editor = new NodeAssetsEditorPage(page);
+        await editor.goto();
+        await editor.waitForNextSuccessfulPreviewBuild();
+        await editor.openLibraryButton.click();
+        const dialog = page.getByRole("dialog", { name: "NodeAsset Library" });
+        await dialog.getByRole("button", { name: "OBJ to Optimized glTF", exact: true }).click();
+        await editor.waitForSuccessfulPreviewBuild();
+
+        await editor.selectNode("Import OBJ");
+        const fileChooserPromise = page.waitForEvent("filechooser");
+        await page.getByRole("button", { name: "Upload OBJ…" }).click();
+        const fileChooser = await fileChooserPromise;
+        expect(fileChooser.isMultiple()).toBe(true);
+        await fileChooser.setFiles([
+            { name: "browser-bundle.obj", mimeType: "text/plain", buffer: Buffer.from(BuiltInLibraryFixtures.obj) },
+            { name: "catalog.mtl", mimeType: "text/plain", buffer: Buffer.from(BuiltInLibraryFixtures.objMtl) },
+            { name: "tiny.png", mimeType: "image/png", buffer: Buffer.from(BuiltInLibraryFixtures.objTexture) },
+        ]);
+        await editor.waitForSuccessfulPreviewBuild();
+
+        const saved = await saveEditorGraph(page);
+        const importer = saved.graph.blocks.find((block) => block.customType === "ImportOBJAggregateBlock");
+        const read = importer?.subgraph?.blocks.find((block) => block.customType === "ReadOBJBlock");
+        expect(read?.primary?.path).toBe("browser-bundle.obj");
+        expect(read?.companions?.map((companion) => companion.path)).toEqual(["catalog.mtl", "tiny.png"]);
+
+        const loadChooserPromise = page.waitForEvent("filechooser");
+        await page.getByRole("button", { name: "Load", exact: true }).click();
+        const loadChooser = await loadChooserPromise;
+        await loadChooser.setFiles({
+            name: "browser-bundle.json",
+            mimeType: "application/json",
+            buffer: Buffer.from(JSON.stringify(saved)),
+        });
+        await editor.waitForSuccessfulPreviewBuild();
+
+        const reloaded = await saveEditorGraph(page);
+        const reloadedImporter = reloaded.graph.blocks.find((block) => block.customType === "ImportOBJAggregateBlock");
+        const reloadedRead = reloadedImporter?.subgraph?.blocks.find((block) => block.customType === "ReadOBJBlock");
+        expect(reloadedRead?.primary?.path).toBe("browser-bundle.obj");
+        expect(reloadedRead?.companions?.map((companion) => companion.path)).toEqual(["catalog.mtl", "tiny.png"]);
     });
 
     test("keeps the active source and surfaces an error when a URL load fails", async ({ page }) => {

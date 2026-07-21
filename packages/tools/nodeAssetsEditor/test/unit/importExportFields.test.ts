@@ -3,6 +3,7 @@ import { describe, expect, it, vi } from "vitest";
 import { ImportImageBlock } from "node-assets/Blocks/importImageBlock";
 import { ReadBabylonBlock } from "node-assets/Blocks/readBabylonBlock";
 import { ReadNodeGeometryBlock } from "node-assets/Blocks/readNodeGeometryBlock";
+import { ReadOBJBlock } from "node-assets/Blocks/readOBJBlock";
 import { ReadUSDBlock, type USDSourceFetcher } from "node-assets/Blocks/readUSDBlock";
 import { NodeAsset } from "node-assets/nodeAsset";
 
@@ -10,18 +11,20 @@ import { type IGraphNode } from "../../src/nodeGraph/graphModel";
 import { type PropertyDescriptor } from "../../src/nodeGraph/propertyModel";
 import { GetBlockDescriptorByPaletteItemId } from "../../src/nodeAssets/blockCatalog";
 import { NodeAssetGraphController } from "../../src/nodeAssets/nodeAssetGraphController";
-import { PromptForFileAsync } from "../../src/nodeAssets/browserFiles";
+import { PromptForFileAsync, PromptForFilesAsync } from "../../src/nodeAssets/browserFiles";
 
 // The import file pickers go through browserFiles; mock it so the "uploaded file" path is deterministic
 // and never touches the DOM.
 vi.mock("../../src/nodeAssets/browserFiles", () => ({
     PromptForFileAsync: vi.fn(),
+    PromptForFilesAsync: vi.fn(),
     DownloadBlob: vi.fn(),
 }));
 
 const ImportFileButtonLabel = "Upload glTF\u2026";
 const BabylonImportFileButtonLabel = "Upload Babylon\u2026";
 const UploadUSDButtonLabel = "Upload USD\u2026";
+const UploadOBJButtonLabel = "Upload OBJ\u2026";
 
 function FindNode(controller: NodeAssetGraphController, title: string): IGraphNode {
     const node = controller.state.nodes.find((candidate) => candidate.title === title);
@@ -956,6 +959,158 @@ describe("Import block source label", () => {
                 reloaded.dispose();
             }
         } finally {
+            controller.dispose();
+        }
+    });
+
+    it("forwards exactly the Read OBJ controls across compact, expanded, and reloaded editor surfaces", async () => {
+        const controller = new NodeAssetGraphController();
+        try {
+            const importNode = AddPaletteNode(controller, "import-obj");
+            const compactSections = controller.buildPropertySections(importNode);
+            expect(compactSections.map((section) => section.title)).toEqual(["GENERAL", "READ OBJ"]);
+            expect(compactSections.find((section) => section.title === "READ OBJ")?.properties.map((property) => property.label)).toEqual([
+                "URL",
+                "Active source",
+                UploadOBJButtonLabel,
+            ]);
+
+            const objBytes = new TextEncoder().encode("mtllib material.mtl\no Mesh\nv 0 0 0\nv 1 0 0\nv 0 1 0\nf 1 2 3\n");
+            const mtlBytes = new TextEncoder().encode("newmtl Material\nKd 1 0 0\nmap_Kd tiny.png\n");
+            const textureBytes = new Uint8Array([1, 2, 3, 4]);
+            vi.mocked(PromptForFilesAsync).mockResolvedValue([
+                { path: "Models/myMesh.OBJ", file: new File([objBytes], "myMesh.OBJ") },
+                { path: "Materials/material.mtl", file: new File([mtlBytes], "material.mtl") },
+                { path: "Textures/tiny.png", file: new File([textureBytes], "tiny.png") },
+            ]);
+            FindPropertyInSection(controller, importNode, "READ OBJ", UploadOBJButtonLabel, "button").onClick();
+            await vi.waitFor(() => {
+                expect(FindPropertyInSection(controller, importNode, "READ OBJ", "Active source", "text").value).toBe("Models/myMesh.OBJ");
+            });
+
+            const compactGraph = JSON.parse(controller.serialize()) as {
+                graph: {
+                    blocks: Array<{
+                        name: string;
+                        customType: string;
+                        subgraph?: { blocks: Array<Record<string, unknown>> };
+                    }>;
+                };
+            };
+            const serializedImport = compactGraph.graph.blocks.find((block) => block.name === "Import OBJ");
+            expect(serializedImport?.customType).toBe("ImportOBJAggregateBlock");
+            expect(serializedImport?.subgraph?.blocks[0]).toMatchObject({
+                primary: { path: "Models/myMesh.OBJ", bytes: expect.any(String) },
+                source: "Models/myMesh.OBJ",
+                companions: [
+                    { path: "Materials/material.mtl", bytes: expect.any(String) },
+                    { path: "Textures/tiny.png", bytes: expect.any(String) },
+                ],
+            });
+
+            controller.setAggregateExpanded(importNode.id, true);
+            const readNode = FindNode(controller, "Read OBJ");
+            expect(
+                controller
+                    .buildPropertySections(readNode)
+                    .find((section) => section.title === "SOURCE")
+                    ?.properties.map((property) => property.label)
+            ).toEqual(["URL", "Active source", UploadOBJButtonLabel]);
+            expect(FindPropertyInSection(controller, readNode, "SOURCE", "Active source", "text").value).toBe("Models/myMesh.OBJ");
+            expect(FindPropertyInSection(controller, readNode, "SOURCE", "URL", "text").value).toBe("");
+
+            const reloaded = new NodeAssetGraphController();
+            try {
+                reloaded.load(controller.serialize());
+                const reloadedImport = FindNode(reloaded, "Import OBJ");
+                expect(FindPropertyInSection(reloaded, reloadedImport, "READ OBJ", "Active source", "text").value).toBe("Models/myMesh.OBJ");
+            } finally {
+                reloaded.dispose();
+            }
+        } finally {
+            controller.dispose();
+        }
+    });
+
+    it("shows an OBJ source error without replacing the current valid bundle", async () => {
+        const controller = new NodeAssetGraphController();
+        try {
+            const importNode = AddPaletteNode(controller, "import-obj");
+            vi.mocked(PromptForFilesAsync).mockResolvedValueOnce([
+                { path: "valid.obj", file: new File([new Uint8Array([1, 2, 3])], "valid.obj") },
+                { path: "material.mtl", file: new File([new Uint8Array([4, 5, 6])], "material.mtl") },
+            ]);
+            FindPropertyInSection(controller, importNode, "READ OBJ", UploadOBJButtonLabel, "button").onClick();
+            await vi.waitFor(() => {
+                expect(FindPropertyInSection(controller, importNode, "READ OBJ", "Active source", "text").value).toBe("valid.obj");
+            });
+            const validSerialization = controller.serialize();
+
+            vi.mocked(PromptForFilesAsync).mockResolvedValueOnce([
+                { path: "first.obj", file: new File([new Uint8Array([7])], "first.obj") },
+                { path: "second.obj", file: new File([new Uint8Array([8])], "second.obj") },
+            ]);
+            FindPropertyInSection(controller, importNode, "READ OBJ", UploadOBJButtonLabel, "button").onClick();
+
+            await vi.waitFor(() => {
+                expect(FindPropertyInSection(controller, importNode, "READ OBJ", "Source error", "text").value).toMatch(/single \.obj file/i);
+            });
+            expect(FindPropertyInSection(controller, importNode, "READ OBJ", "Active source", "text").value).toBe("valid.obj");
+            expect(controller.serialize()).toBe(validSerialization);
+        } finally {
+            controller.dispose();
+        }
+    });
+
+    it("does not apply a delayed OBJ URL result after aggregate detachment and graph replacement", async () => {
+        const controller = new NodeAssetGraphController();
+        let resolveResponse: ((response: Response) => void) | undefined;
+        let resolveCompletionObserved: (() => void) | undefined;
+        const completionObserved = new Promise<void>((resolve) => {
+            resolveCompletionObserved = resolve;
+        });
+        const fetchMock = vi.fn(
+            async () =>
+                await new Promise<Response>((resolve) => {
+                    resolveResponse = resolve;
+                })
+        );
+        const setUrlSpy = vi.spyOn(ReadOBJBlock.prototype, "setUrlAsync");
+        vi.stubGlobal("fetch", fetchMock);
+        try {
+            const importNode = AddPaletteNode(controller, "import-obj");
+            controller.setAggregateExpanded(importNode.id, true);
+            const savedBuiltInGraph = controller.serialize();
+            const readNode = FindNode(controller, "Read OBJ");
+            FindPropertyInSection(controller, readNode, "SOURCE", "URL", "text").onChange("https://example.com/delayed.obj");
+            await vi.waitFor(() => {
+                expect(fetchMock).toHaveBeenCalledTimes(1);
+            });
+            const obsoleteBlock = setUrlSpy.mock.instances[0];
+            const detachedGraph = JSON.parse(controller.serialize()) as { graph: { blocks: Array<{ name: string; customType: string }> } };
+            expect(detachedGraph.graph.blocks.find((block) => block.name === "Import OBJ")?.customType).toBe("CustomAggregateBlock");
+
+            controller.load(savedBuiltInGraph);
+            resolveResponse?.({
+                ok: true,
+                status: 200,
+                statusText: "OK",
+                arrayBuffer: async () => {
+                    resolveCompletionObserved?.();
+                    return new TextEncoder().encode("o Delayed\nv 0 0 0\nv 1 0 0\nv 0 1 0\nf 1 2 3\n").buffer;
+                },
+            } as Response);
+            await completionObserved;
+            await Promise.resolve();
+            await Promise.resolve();
+
+            expect(obsoleteBlock?.primary).toBeNull();
+            expect(obsoleteBlock?.source).toBeNull();
+            const reloadedImport = FindNode(controller, "Import OBJ");
+            expect(FindPropertyInSection(controller, reloadedImport, "READ OBJ", "Active source", "text").value).toBe("No source loaded");
+        } finally {
+            setUrlSpy.mockRestore();
+            vi.unstubAllGlobals();
             controller.dispose();
         }
     });
