@@ -1,4 +1,4 @@
-Status: in-progress
+Status: ready-for-agent
 
 ## Problem Statement
 Authors working on a NodeAssets graph need to reposition the viewport frequently. The canvas already has a camera and pan gesture, but normal primary-button dragging on empty canvas does not invoke it. Requiring a middle button or a Space chord is hard to discover, unavailable on many touch devices, and inconsistent with Babylon's other graph editors.
