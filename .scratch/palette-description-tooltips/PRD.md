@@ -1,6 +1,6 @@
 # PRD — Palette description tooltips
 
-Status: ready-for-agent
+Status: resolved
 
 ## Problem Statement
 
@@ -33,19 +33,19 @@ Render each palette item with its node name as the only always-visible item text
 
 ## Acceptance Criteria
 
-- [ ] Each palette item shows its node name as the only always-visible item copy; descriptions are absent from row layout and are not rendered as visible subheadings.
-- [ ] The existing optional description metadata remains in palette items and remains part of `PaletteItemMatchesFilter`; category, family, Show primitives, and empty-search behavior are unchanged.
-- [ ] Every non-empty description is supplied to `shared-ui-components/fluent/primitives/tooltip`; no raw HTML `title` is used as a substitute or competing native tooltip.
-- [ ] The whole draggable palette row triggers the tooltip on mouse or pen hover and keyboard focus using the shared primitive's accessible description relationship.
-- [ ] The focusable trigger's visible node name remains its accessible name, and the tooltip text is exposed as its accessible description rather than replacing the name.
-- [ ] Missing, empty, or whitespace-only descriptions do not create an empty tooltip.
-- [ ] Tooltip delay, positioning, portal behavior, and text wrapping use the existing shared Fluent defaults; controlled visibility only suppresses touch-originated open requests.
-- [ ] Existing label wrapping/truncation behavior, row border/padding/minimum height, family spacing, and category density are preserved except for removal of the description line.
-- [ ] Tooltip plumbing does not change native drag payloads, canvas drops, clicking, pane scrolling, filtering, category toggling, or virtualization assumptions.
-- [ ] Holding touch contact beyond Fluent's show delay does not open a tooltip or add a touch long-press help gesture.
-- [ ] Automated browser coverage proves descriptions are absent before interaction, remain hidden during touch contact, appear as accessible tooltips on mouse hover and keyboard focus, remain searchable, and do not break an existing node drop.
-- [ ] Focused unit tests for palette search/projection, the targeted Node Assets Editor Playwright test, package build/type-check, and changed-file lint/format checks pass.
-- [ ] The rendered editor at the existing Node Assets Editor dev surface (default port 1348) is checked for compact rows, themed tooltip rendering, keyboard focus, and successful drag/drop.
+- [x] Each palette item shows its node name as the only always-visible item copy; descriptions are absent from row layout and are not rendered as visible subheadings.
+- [x] The existing optional description metadata remains in palette items and remains part of `PaletteItemMatchesFilter`; category, family, Show primitives, and empty-search behavior are unchanged.
+- [x] Every non-empty description is supplied to `shared-ui-components/fluent/primitives/tooltip`; no raw HTML `title` is used as a substitute or competing native tooltip.
+- [x] The whole draggable palette row triggers the tooltip on mouse or pen hover and keyboard focus using the shared primitive's accessible description relationship.
+- [x] The focusable trigger's visible node name remains its accessible name, and the tooltip text is exposed as its accessible description rather than replacing the name.
+- [x] Missing, empty, or whitespace-only descriptions do not create an empty tooltip.
+- [x] Tooltip delay, positioning, portal behavior, and text wrapping use the existing shared Fluent defaults; controlled visibility only suppresses touch-originated open requests.
+- [x] Existing label wrapping/truncation behavior, row border/padding/minimum height, family spacing, and category density are preserved except for removal of the description line.
+- [x] Tooltip plumbing does not change native drag payloads, canvas drops, clicking, pane scrolling, filtering, category toggling, or virtualization assumptions.
+- [x] Holding touch contact beyond Fluent's show delay does not open a tooltip or add a touch long-press help gesture.
+- [x] Automated browser coverage proves descriptions are absent before interaction, remain hidden during touch contact, appear as accessible tooltips on mouse hover and keyboard focus, remain searchable, and do not break an existing node drop.
+- [x] Focused unit tests for palette search/projection, the targeted Node Assets Editor Playwright test, package build/type-check, and changed-file lint/format checks pass.
+- [x] The rendered editor at the existing Node Assets Editor dev surface (default port 1348) is checked for compact rows, themed tooltip rendering, keyboard focus, and successful drag/drop.
 
 ## Implementation Decisions
 
@@ -76,4 +76,8 @@ Render each palette item with its node name as the only always-visible item text
 
 ## Further Notes
 
-The implementation baseline is the latest `preview/nae`. Concurrent graph-panning work is expected to stay in canvas files, while concurrent import-node work may update block descriptors, palette catalog tests, and the large Node Assets Editor Playwright file. Keep edits surgical, rebase before integration, and resolve nearby test changes without overwriting new import coverage.
+The implementation was based on the latest `preview/nae` and stayed surgical alongside concurrent graph-panning and import-node work.
+
+## Delivery Status
+
+Resolved. Feature PR #20 landed in `preview/nae` at merge commit `dea408ba`. Final integration evidence: palette units 13/13; targeted Chromium 1/1 with `retries=0`; full NAE Playwright 44/44 in one run with `retries=0`; NAE production build and changed-file Prettier, ESLint, and CRLF-aware diff checks clean; automatic instruction and agnostic reviews at Sol/Max clean. Browser coverage exercised the complete touch lifecycle and verified mouse hover, keyboard focus, and palette drop recovery afterward.
