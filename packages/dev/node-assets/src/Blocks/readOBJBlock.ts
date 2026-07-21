@@ -38,18 +38,25 @@ function IsOBJFileName(fileName: string): boolean {
     return fileName.trim().length > 0 && /\.obj$/i.test(fileName);
 }
 
-function DecodeSerializedBytes(value: unknown): Uint8Array {
+function DecodeSerializedBytes(value: unknown, label: string): Uint8Array {
     if (typeof value !== "string") {
-        throw new TypeError("primary.bytes must be a base64 string.");
+        throw new TypeError(`${label}.bytes must be a base64 string.`);
     }
     const bytes = new Uint8Array(DecodeBase64ToBinary(value));
     if (EncodeArrayBufferToBase64(bytes) !== value) {
-        throw new TypeError("primary.bytes must be canonical base64.");
+        throw new TypeError(`${label}.bytes must be canonical base64.`);
     }
     return bytes;
 }
 
-/** Resolves a URL or one uploaded `.obj` file into a shallow OBJ source payload. */
+function ParseSerializedSourceFile(value: unknown, label: string): IOBJSourceFile {
+    if (typeof value !== "object" || value === null || Array.isArray(value) || !("path" in value) || !("bytes" in value) || typeof value.path !== "string") {
+        throw new TypeError(`${label} must contain a path and canonical base64 bytes.`);
+    }
+    return { path: value.path, bytes: DecodeSerializedBytes(value.bytes, label) };
+}
+
+/** Resolves a URL or uploaded OBJ bundle into a shallow OBJ source payload. */
 // eslint-disable-next-line @typescript-eslint/naming-convention
 export class ReadOBJBlock extends NodeAssetBlock {
     /** The class name, used for identification and safe under minification. */
@@ -61,7 +68,7 @@ export class ReadOBJBlock extends NodeAssetBlock {
     private _primary: Nullable<IOBJSourceFile> = null;
     private _source: Nullable<string> = null;
     private _sourceKind: Nullable<OBJSourceKind> = null;
-    private readonly _companions: ReadonlyArray<IOBJSourceFile> = Object.freeze([]);
+    private _companions: ReadonlyArray<IOBJSourceFile> = Object.freeze([]);
     private _sourceAttempt = 0;
     private _lastSuccessfulSourceAttempt = 0;
 
@@ -80,7 +87,7 @@ export class ReadOBJBlock extends NodeAssetBlock {
         return this._primary ? CloneSourceFile(this._primary) : null;
     }
 
-    /** The active source URL or uploaded file name. */
+    /** The active source URL or uploaded file path. */
     public get source(): string | null {
         return this._source;
     }
@@ -90,7 +97,7 @@ export class ReadOBJBlock extends NodeAssetBlock {
         return this._sourceKind;
     }
 
-    /** Defensive copies of the active companion files. Empty for the basic workflow. */
+    /** Defensive copies of the active companion files. */
     public get companions(): ReadonlyArray<IOBJSourceFile> {
         return Object.freeze(this._companions.map(CloneSourceFile));
     }
@@ -104,10 +111,7 @@ export class ReadOBJBlock extends NodeAssetBlock {
         if (!(bytes instanceof Uint8Array) || !IsOBJFileName(fileName)) {
             throw new TypeError("Read OBJ requires a single .obj file.");
         }
-        this._lastSuccessfulSourceAttempt = ++this._sourceAttempt;
-        this._primary = CloneSourceFile({ path: fileName, bytes });
-        this._source = fileName;
-        this._sourceKind = "upload";
+        this.setUploadedSourceBundle([{ path: fileName, bytes }]);
     }
 
     /**
@@ -126,18 +130,41 @@ export class ReadOBJBlock extends NodeAssetBlock {
         if (!IsOBJFileName(fileName)) {
             throw new TypeError("Read OBJ requires a single .obj file.");
         }
+        await this.setUploadedSourceBundleAsync(async () => [{ path: fileName, bytes: new Uint8Array(await loadBytesAsync()) }], canApplyResult, applyResult);
+    }
+
+    /**
+     * Atomically makes one uploaded OBJ and its optional companions the active source.
+     * @param files The complete uploaded bundle.
+     */
+    public setUploadedSourceBundle(files: ReadonlyArray<IOBJSourceFile>): void {
+        const source = this._createUploadedSource(files);
+        this._lastSuccessfulSourceAttempt = ++this._sourceAttempt;
+        this._applySource(source);
+    }
+
+    /**
+     * Reads an uploaded bundle and applies it only if no newer source has succeeded.
+     * @param loadFilesAsync The complete uploaded bundle reader.
+     * @param canApplyResult Optional ownership guard checked immediately before the bundle becomes active.
+     * @param applyResult Optional operation result populated after ownership and source-order checks.
+     */
+    public async setUploadedSourceBundleAsync(
+        loadFilesAsync: () => Promise<ReadonlyArray<IOBJSourceFile>>,
+        canApplyResult: () => boolean = () => true,
+        applyResult?: IOBJSourceApplyResult
+    ): Promise<void> {
         if (applyResult) {
             applyResult.applied = false;
         }
         const sourceAttempt = ++this._sourceAttempt;
-        const bytes = new Uint8Array(await loadBytesAsync());
+        const files = await loadFilesAsync();
         if (!canApplyResult() || sourceAttempt < this._lastSuccessfulSourceAttempt) {
             return;
         }
+        const source = this._createUploadedSource(files);
         this._lastSuccessfulSourceAttempt = sourceAttempt;
-        this._primary = CloneSourceFile({ path: fileName, bytes });
-        this._source = fileName;
-        this._sourceKind = "upload";
+        this._applySource(source);
         if (applyResult) {
             applyResult.applied = true;
         }
@@ -149,6 +176,7 @@ export class ReadOBJBlock extends NodeAssetBlock {
         this._primary = null;
         this._source = null;
         this._sourceKind = null;
+        this._companions = Object.freeze([]);
     }
 
     /**
@@ -191,6 +219,7 @@ export class ReadOBJBlock extends NodeAssetBlock {
         this._primary = CloneSourceFile({ path: url, bytes });
         this._source = url;
         this._sourceKind = "url";
+        this._companions = Object.freeze([]);
         if (applyResult) {
             applyResult.applied = true;
         }
@@ -212,7 +241,7 @@ export class ReadOBJBlock extends NodeAssetBlock {
     }
 
     /**
-     * Serializes the primary bytes, source choice, and forward-compatible companion list.
+     * Serializes the primary bytes, source choice, and companion list.
      * @returns The serialized block.
      */
     public override serialize(): NodeAssetBlockSerialization {
@@ -221,7 +250,7 @@ export class ReadOBJBlock extends NodeAssetBlock {
             primary: this._primary ? { path: this._primary.path, bytes: EncodeArrayBufferToBase64(this._primary.bytes) } : null,
             source: this._source,
             sourceKind: this._sourceKind ?? "",
-            companions: [],
+            companions: this._companions.map((companion) => ({ path: companion.path, bytes: EncodeArrayBufferToBase64(companion.bytes) })),
         };
     }
 
@@ -236,14 +265,18 @@ export class ReadOBJBlock extends NodeAssetBlock {
             const source = serializationObject.source;
             const sourceKind = serializationObject.sourceKind;
             const companions = serializationObject.companions;
-            if (!Array.isArray(companions) || companions.length !== 0) {
-                throw new TypeError("companions must be an empty array in the basic OBJ workflow.");
+            if (!Array.isArray(companions)) {
+                throw new TypeError("companions must be an array.");
             }
 
             if (primary === null && source === null && sourceKind === "") {
+                if (companions.length !== 0) {
+                    throw new TypeError("an empty OBJ source cannot contain companions.");
+                }
                 this._primary = null;
                 this._source = null;
                 this._sourceKind = null;
+                this._companions = Object.freeze([]);
                 return;
             }
             if (
@@ -259,16 +292,37 @@ export class ReadOBJBlock extends NodeAssetBlock {
             ) {
                 throw new TypeError("primary, source, and sourceKind must be present together.");
             }
-            if (sourceKind === "upload" && !IsOBJFileName(primary.path)) {
-                throw new TypeError("an uploaded primary path must end in .obj.");
-            }
-
-            this._primary = CloneSourceFile({ path: primary.path, bytes: DecodeSerializedBytes(primary.bytes) });
-            this._source = source;
-            this._sourceKind = sourceKind;
+            const parsedPrimary = ParseSerializedSourceFile(primary, "primary");
+            const parsedCompanions = companions.map((companion, index) => ParseSerializedSourceFile(companion, `companions[${index}]`));
+            const parsedSource = new OBJSourceAsset(parsedPrimary, source, sourceKind, parsedCompanions);
+            this._applySource(parsedSource);
         } catch (error) {
             throw new TypeError(`The "${this.name}" block has invalid persisted OBJ source state: ${error instanceof Error ? error.message : String(error)}`, { cause: error });
         }
+    }
+
+    private _createUploadedSource(files: ReadonlyArray<IOBJSourceFile>): OBJSourceAsset {
+        if (!Array.isArray(files)) {
+            throw new TypeError("Read OBJ requires an uploaded bundle array.");
+        }
+        const primaryFiles = files.filter((file) => typeof file === "object" && file !== null && typeof file.path === "string" && IsOBJFileName(file.path));
+        if (primaryFiles.length !== 1) {
+            throw new TypeError("Read OBJ requires an uploaded bundle containing a single .obj file.");
+        }
+        const primary = primaryFiles[0];
+        const companions = files.filter((file) => file !== primary);
+        try {
+            return new OBJSourceAsset(primary, primary.path, "upload", companions);
+        } catch (error) {
+            throw new TypeError(`Read OBJ rejected the uploaded bundle: ${error instanceof Error ? error.message : String(error)}`, { cause: error });
+        }
+    }
+
+    private _applySource(source: OBJSourceAsset): void {
+        this._primary = source.primary;
+        this._source = source.source;
+        this._sourceKind = source.sourceKind;
+        this._companions = source.companions;
     }
 }
 

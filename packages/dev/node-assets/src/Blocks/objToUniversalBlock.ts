@@ -10,6 +10,7 @@ import { RegisterBlock } from "../blockFoundation/blockRegistry";
 import { NodeAssetBlock } from "../blockFoundation/nodeAssetBlock";
 import { type NodeAssetConnectionPoint } from "../connection/nodeAssetConnectionPoint";
 import { NodeAssetConnectionPointType } from "../connection/nodeAssetConnectionPointType";
+import { AcquireOBJLocalFileBundle, type IOBJLocalFileBundleLease } from "../io/objLocalFileBundle";
 import { type NodeAsset } from "../nodeAsset";
 import { GltfAsset } from "../representations/gltfAsset";
 import { IsOBJSourceAsset } from "../representations/objSourceAsset";
@@ -56,14 +57,16 @@ export class OBJToUniversalBlock extends NodeAssetBlock {
         const primary = source.primary;
         const engine = new NullEngine();
         let scene: Scene | undefined;
+        let localBundle: IOBJLocalFileBundleLease | undefined;
         try {
             scene = new Scene(engine);
-            const rootUrl = source.sourceKind === "url" ? GetOBJRootUrl(source.source) : "";
+            localBundle = source.sourceKind === "upload" ? AcquireOBJLocalFileBundle(source) : undefined;
+            const rootUrl = localBundle?.rootUrl ?? GetOBJRootUrl(source.source);
             const obj = new TextDecoder().decode(primary.bytes);
             const container = await LoadAssetContainerAsync(`data:${obj}`, scene, { pluginExtension: ".obj", rootUrl });
             container.addAllToScene();
 
-            const glbData = await GLTF2Export.GLBAsync(scene, "obj-universal", { exportWithoutWaitingForScene: true });
+            const glbData = await GLTF2Export.GLBAsync(scene, "obj-universal");
             const glb = glbData.files["obj-universal.glb"];
             const bytes = glb instanceof Blob ? new Uint8Array(await glb.arrayBuffer()) : new TextEncoder().encode(glb);
             const { WebIO } = await import("@gltf-transform/core");
@@ -82,7 +85,11 @@ export class OBJToUniversalBlock extends NodeAssetBlock {
             try {
                 scene?.dispose();
             } finally {
-                engine.dispose();
+                try {
+                    engine.dispose();
+                } finally {
+                    localBundle?.dispose();
+                }
             }
         }
     }

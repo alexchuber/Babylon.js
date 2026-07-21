@@ -4,7 +4,7 @@ import { type NodeAssetConnectionPoint } from "../connection/nodeAssetConnection
 import { type NodeAsset } from "../nodeAsset";
 import { type IOBJSourceFile, type OBJSourceKind } from "../representations/objSourceAsset";
 import { OBJToUniversalBlock } from "./objToUniversalBlock";
-import { type OBJSourceFetcher, ReadOBJBlock } from "./readOBJBlock";
+import { type IOBJSourceApplyResult, type OBJSourceFetcher, ReadOBJBlock } from "./readOBJBlock";
 
 /** Built-in `Read OBJ -> OBJ to Universal` aggregate. */
 // eslint-disable-next-line @typescript-eslint/naming-convention
@@ -42,7 +42,7 @@ export class ImportOBJAggregateBlock extends AggregateBlock {
         return this.readBlock.primary;
     }
 
-    /** Active source label forwarded from the Read OBJ primitive. */
+    /** Active source URL or uploaded path forwarded from the Read OBJ primitive. */
     public get source(): string | null {
         return this.readBlock.source;
     }
@@ -64,6 +64,28 @@ export class ImportOBJAggregateBlock extends AggregateBlock {
      */
     public setUploadedSource(bytes: Uint8Array, fileName: string): void {
         this.readBlock.setUploadedSource(bytes, fileName);
+    }
+
+    /**
+     * Makes one uploaded OBJ and its optional companions the active child source.
+     * @param files The complete uploaded bundle.
+     */
+    public setUploadedSourceBundle(files: ReadonlyArray<IOBJSourceFile>): void {
+        this.readBlock.setUploadedSourceBundle(files);
+    }
+
+    /**
+     * Reads and conditionally applies an uploaded OBJ bundle on the owned Read block.
+     * @param loadFilesAsync The complete uploaded bundle reader.
+     * @param canApplyResult Optional ownership guard.
+     * @param applyResult Optional operation result.
+     */
+    public async setUploadedSourceBundleAsync(
+        loadFilesAsync: () => Promise<ReadonlyArray<IOBJSourceFile>>,
+        canApplyResult?: () => boolean,
+        applyResult?: IOBJSourceApplyResult
+    ): Promise<void> {
+        await this.readBlock.setUploadedSourceBundleAsync(loadFilesAsync, canApplyResult, applyResult);
     }
 
     /** Clears the active child source. */

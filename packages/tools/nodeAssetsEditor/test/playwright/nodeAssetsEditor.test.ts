@@ -18,6 +18,8 @@ type SavedBlock = {
     readonly customType: string;
     readonly name: string;
     readonly source?: string | null;
+    readonly primary?: { readonly path: string; readonly bytes: string } | null;
+    readonly companions?: readonly { readonly path: string; readonly bytes: string }[];
     readonly subgraph?: {
         readonly blocks: readonly SavedBlock[];
         readonly connections: readonly unknown[];
@@ -1078,6 +1080,50 @@ test.describe("Node Assets Editor — Universal glTF aggregates", () => {
         await editor.selectNode("Read glTF");
         await expect(page.getByRole("textbox").nth(3)).toHaveValue("uploaded-triangle.glb");
         await editor.waitForSuccessfulPreviewBuild();
+    });
+
+    test("persists and rebuilds a browser-selected OBJ companion bundle", async ({ page }) => {
+        const editor = new NodeAssetsEditorPage(page);
+        await editor.goto();
+        await editor.waitForNextSuccessfulPreviewBuild();
+        await editor.openLibraryButton.click();
+        const dialog = page.getByRole("dialog", { name: "NodeAsset Library" });
+        await dialog.getByRole("button", { name: "OBJ to Optimized glTF", exact: true }).click();
+        await editor.waitForSuccessfulPreviewBuild();
+
+        await editor.selectNode("Import OBJ");
+        const fileChooserPromise = page.waitForEvent("filechooser");
+        await page.getByRole("button", { name: "Upload OBJ…" }).click();
+        const fileChooser = await fileChooserPromise;
+        expect(fileChooser.isMultiple()).toBe(true);
+        await fileChooser.setFiles([
+            { name: "browser-bundle.obj", mimeType: "text/plain", buffer: Buffer.from(BuiltInLibraryFixtures.obj) },
+            { name: "catalog.mtl", mimeType: "text/plain", buffer: Buffer.from(BuiltInLibraryFixtures.objMtl) },
+            { name: "tiny.png", mimeType: "image/png", buffer: Buffer.from(BuiltInLibraryFixtures.objTexture) },
+        ]);
+        await editor.waitForSuccessfulPreviewBuild();
+
+        const saved = await saveEditorGraph(page);
+        const importer = saved.graph.blocks.find((block) => block.customType === "ImportOBJAggregateBlock");
+        const read = importer?.subgraph?.blocks.find((block) => block.customType === "ReadOBJBlock");
+        expect(read?.primary?.path).toBe("browser-bundle.obj");
+        expect(read?.companions?.map((companion) => companion.path)).toEqual(["catalog.mtl", "tiny.png"]);
+
+        const loadChooserPromise = page.waitForEvent("filechooser");
+        await page.getByRole("button", { name: "Load", exact: true }).click();
+        const loadChooser = await loadChooserPromise;
+        await loadChooser.setFiles({
+            name: "browser-bundle.json",
+            mimeType: "application/json",
+            buffer: Buffer.from(JSON.stringify(saved)),
+        });
+        await editor.waitForSuccessfulPreviewBuild();
+
+        const reloaded = await saveEditorGraph(page);
+        const reloadedImporter = reloaded.graph.blocks.find((block) => block.customType === "ImportOBJAggregateBlock");
+        const reloadedRead = reloadedImporter?.subgraph?.blocks.find((block) => block.customType === "ReadOBJBlock");
+        expect(reloadedRead?.primary?.path).toBe("browser-bundle.obj");
+        expect(reloadedRead?.companions?.map((companion) => companion.path)).toEqual(["catalog.mtl", "tiny.png"]);
     });
 
     test("keeps the active source and surfaces an error when a URL load fails", async ({ page }) => {
