@@ -152,11 +152,13 @@ export const GraphNodeView: FunctionComponent<{ node: IGraphNode }> = (props) =>
 
     const onChevronClick = (event: ReactMouseEvent) => {
         event.stopPropagation();
-        if (isAggregate) {
-            canvas.editor.aggregatePresentation?.setExpanded(node.id, !node.aggregateExpanded);
-            return;
-        }
-        state.setNodeCollapsed(node.id, !node.collapsed);
+        canvas.runWhenIdle(() => {
+            if (isAggregate) {
+                canvas.editor.aggregatePresentation?.setExpanded(node.id, !node.aggregateExpanded);
+                return;
+            }
+            state.setNodeCollapsed(node.id, !node.collapsed);
+        });
     };
 
     // Note: intentionally does not stop propagation so the event reaches the canvas ContextMenu

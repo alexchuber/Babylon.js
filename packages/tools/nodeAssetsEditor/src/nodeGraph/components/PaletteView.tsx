@@ -1,7 +1,8 @@
-import { Fragment, type DragEvent, type FunctionComponent, useEffect, useMemo, useState } from "react";
+import { cloneElement, Fragment, type DragEvent, type FunctionComponent, type PointerEventHandler, type ReactElement, useEffect, useMemo, useRef, useState } from "react";
 
 import { Accordion, AccordionHeader, AccordionItem, AccordionPanel, Body1, Caption1, Checkbox, makeStyles, tokens } from "@fluentui/react-components";
 import { SearchBar } from "shared-ui-components/fluent/primitives/searchBar";
+import { Tooltip } from "shared-ui-components/fluent/primitives/tooltip";
 
 import { type EditorContextValue } from "../editorContext";
 import { type IPaletteCategory, type IPaletteItem, type IPalettePreferences, PaletteDragFormat } from "../paletteModel";
@@ -62,15 +63,50 @@ const useStyles = makeStyles({
             cursor: "grabbing",
         },
     },
-    description: {
-        color: tokens.colorNeutralForeground2,
-    },
     empty: {
         color: tokens.colorNeutralForeground3,
     },
 });
 
 const GetCategoryValue = (category: IPaletteCategory, index: number) => `${index}:${category.label}`;
+const TouchFocusSuppressionWindowMs = 1_000;
+
+type PaletteItemTooltipProps = {
+    children: ReactElement<{ onPointerDownCapture?: PointerEventHandler<HTMLDivElement> }>;
+    content?: string;
+};
+
+const PaletteItemTooltip: FunctionComponent<PaletteItemTooltipProps> = (props) => {
+    const { children, content } = props;
+    const [visible, setVisible] = useState(false);
+    const lastTouchPointerDownAt = useRef<number | null>(null);
+    const target = cloneElement(children, {
+        onPointerDownCapture: (event) => {
+            lastTouchPointerDownAt.current = event.pointerType === "touch" ? event.timeStamp : null;
+            children.props.onPointerDownCapture?.(event);
+        },
+    });
+
+    return (
+        <Tooltip
+            content={content}
+            visible={visible}
+            onVisibleChange={(event, data) => {
+                const isTouchPointer = event !== undefined && "pointerType" in event && event.pointerType === "touch";
+                const touchPointerDownAt = lastTouchPointerDownAt.current;
+                const isFocusEvent = event?.type.startsWith("focus") === true;
+                const isTouchFocus =
+                    isFocusEvent && touchPointerDownAt !== null && event.timeStamp >= touchPointerDownAt && event.timeStamp - touchPointerDownAt <= TouchFocusSuppressionWindowMs;
+                if (isFocusEvent) {
+                    lastTouchPointerDownAt.current = null;
+                }
+                setVisible(data.visible && !isTouchPointer && !isTouchFocus);
+            }}
+        >
+            {target}
+        </Tooltip>
+    );
+};
 
 /**
  * Renders the categorized node palette and prepares dragged palette items for canvas drops.
@@ -147,25 +183,33 @@ export const PaletteView: FunctionComponent<{ context: EditorContextValue; prefe
                                 </AccordionHeader>
                                 <AccordionPanel>
                                     <div className={classes.panel}>
-                                        {category.items.map((item, itemIndex) => (
-                                            <Fragment key={item.id}>
-                                                {item.family !== undefined && item.family !== category.items[itemIndex - 1]?.family && (
-                                                    <Caption1 className={classes.family} data-testid="palette-family">
-                                                        {item.family}
-                                                    </Caption1>
-                                                )}
-                                                <div
-                                                    className={classes.row}
-                                                    data-testid="palette-item"
-                                                    draggable={true}
-                                                    title={item.label}
-                                                    onDragStart={(event) => onDragStart(event, item)}
-                                                >
-                                                    <Body1 data-testid="palette-item-label">{item.label}</Body1>
-                                                    {item.description && <Caption1 className={classes.description}>{item.description}</Caption1>}
-                                                </div>
-                                            </Fragment>
-                                        ))}
+                                        {category.items.map((item, itemIndex) => {
+                                            const tooltipContent = item.description?.trim() || undefined;
+                                            const labelId = `palette-item-label-${item.id}`;
+                                            return (
+                                                <Fragment key={item.id}>
+                                                    {item.family !== undefined && item.family !== category.items[itemIndex - 1]?.family && (
+                                                        <Caption1 className={classes.family} data-testid="palette-family">
+                                                            {item.family}
+                                                        </Caption1>
+                                                    )}
+                                                    <PaletteItemTooltip content={tooltipContent}>
+                                                        <div
+                                                            aria-labelledby={labelId}
+                                                            className={classes.row}
+                                                            data-testid="palette-item"
+                                                            draggable={true}
+                                                            tabIndex={0}
+                                                            onDragStart={(event) => onDragStart(event, item)}
+                                                        >
+                                                            <Body1 id={labelId} data-testid="palette-item-label">
+                                                                {item.label}
+                                                            </Body1>
+                                                        </div>
+                                                    </PaletteItemTooltip>
+                                                </Fragment>
+                                            );
+                                        })}
                                     </div>
                                 </AccordionPanel>
                             </AccordionItem>

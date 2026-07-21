@@ -10,8 +10,12 @@ import { Tooltip as FluentTooltip, type TooltipProps as FluentTooltipProps } fro
 export type TooltipProps = {
     /** The tooltip content. If null/empty, the tooltip is not rendered. */
     content?: Nullable<string | ReactElement>;
+    /** Notification when the tooltip requests a visibility change. */
+    onVisibleChange?: FluentTooltipProps["onVisibleChange"];
     /** Optional positioning passed through to the underlying FluentTooltip. */
     positioning?: FluentTooltipProps["positioning"];
+    /** Optional controlled visibility passed through to the underlying FluentTooltip. */
+    visible?: FluentTooltipProps["visible"];
     /** The element that the tooltip is attached to. */
     children: ReactElement;
 };
@@ -19,14 +23,14 @@ export type TooltipProps = {
 // forwardRef wrapper to avoid "function components cannot be given refs" warning
 // FluentTooltip handles ref forwarding to children internally via applyTriggerPropsToChildren
 export const Tooltip = forwardRef<HTMLElement, TooltipProps>((props, _ref) => {
-    const { content, positioning, children } = props;
+    const { content, onVisibleChange, positioning, visible, children } = props;
 
     if (!content) {
         return children;
     }
 
     return (
-        <FluentTooltip relationship="description" content={content} positioning={positioning}>
+        <FluentTooltip relationship="description" content={content} onVisibleChange={onVisibleChange} positioning={positioning} visible={visible}>
             {children}
         </FluentTooltip>
     );

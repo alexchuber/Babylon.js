@@ -3,6 +3,39 @@
  * download. Kept out of the framework so the framework stays environment-agnostic.
  */
 
+/** A browser-selected file paired with its best available authored path. */
+// eslint-disable-next-line @typescript-eslint/naming-convention
+export interface ISelectedBrowserFile {
+    /** The selected browser file. */
+    readonly file: File;
+    /** The path preserved for source persistence and companion lookup. */
+    readonly path: string;
+}
+
+function GetSuppliedFilePath(file: File): string | undefined {
+    const suppliedPath = Reflect.get(file, "path");
+    return typeof suppliedPath === "string" && suppliedPath.trim().length > 0 ? suppliedPath : undefined;
+}
+
+function IsAbsoluteDesktopPath(path: string): boolean {
+    const slashPath = path.replaceAll("\\", "/");
+    return slashPath.startsWith("/") || /^[a-z]:/i.test(slashPath) || /^[a-z][a-z\d+.-]*:/i.test(slashPath);
+}
+
+/**
+ * Gets the best path supplied by a browser or desktop browser shell.
+ * @param file The selected file.
+ * @returns The preserved relative path or basename.
+ */
+// eslint-disable-next-line @typescript-eslint/naming-convention
+export function GetBrowserFilePath(file: File): string {
+    if (file.webkitRelativePath.trim().length > 0) {
+        return file.webkitRelativePath;
+    }
+    const suppliedPath = GetSuppliedFilePath(file);
+    return suppliedPath && !IsAbsoluteDesktopPath(suppliedPath) ? suppliedPath : file.name;
+}
+
 /**
  * Opens a transient file picker and resolves with the chosen file, or null if the user cancels.
  * @param accept - The `accept` attribute for the file input (e.g. ".glb,.gltf").
@@ -26,6 +59,38 @@ export async function PromptForFileAsync(accept: string): Promise<File | null> {
         };
 
         input.addEventListener("change", () => finish(input.files?.[0] ?? null));
+        input.addEventListener("cancel", () => finish(null));
+
+        document.body.appendChild(input);
+        input.click();
+    });
+}
+
+/**
+ * Opens a transient multi-file picker and preserves each selected file's supplied path.
+ * @param accept The `accept` attribute for the file input.
+ * @returns The selected files, an empty array for an empty change, or null if the user cancels.
+ */
+// eslint-disable-next-line @typescript-eslint/naming-convention
+export async function PromptForFilesAsync(accept: string): Promise<ReadonlyArray<ISelectedBrowserFile> | null> {
+    return await new Promise<ReadonlyArray<ISelectedBrowserFile> | null>((resolve) => {
+        const input = document.createElement("input");
+        input.type = "file";
+        input.accept = accept;
+        input.multiple = true;
+        input.style.display = "none";
+
+        let settled = false;
+        const finish = (files: ReadonlyArray<ISelectedBrowserFile> | null) => {
+            if (settled) {
+                return;
+            }
+            settled = true;
+            input.remove();
+            resolve(files);
+        };
+
+        input.addEventListener("change", () => finish(Array.from(input.files ?? []).map((file) => ({ file, path: GetBrowserFilePath(file) }))));
         input.addEventListener("cancel", () => finish(null));
 
         document.body.appendChild(input);

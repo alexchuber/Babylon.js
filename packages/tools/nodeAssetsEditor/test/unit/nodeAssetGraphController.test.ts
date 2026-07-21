@@ -259,6 +259,7 @@ describe("NodeAssetGraphController", () => {
     it("loads the exact production catalog through the normal graph load path", () => {
         const expectedCatalog = [
             ["glTF Optimization", ["Import glTF", "Weld Vertices", "Remove Unused Resources", "Export glTF"]],
+            ["OBJ to Optimized glTF", ["Import OBJ", "Remove Unused Resources", "Export glTF"]],
             ["USD to Optimized glTF", ["Import USD", "Remove Unused Resources", "Export glTF"]],
             ["Babylon to Optimized glTF", ["Import Babylon", "Weld Vertices", "Export glTF"]],
             ["Node Geometry to glTF", ["Import Node Geometry", "Export glTF"]],
