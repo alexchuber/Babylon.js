@@ -413,21 +413,33 @@ describe("FBX Universal funnel", () => {
     });
   });
 
-  it("rejects malformed FBX contextually while retaining the parser cause", async () => {
-    const error = await CreateExportingAsset(
-      new TextEncoder().encode("not an FBX document"),
-    )
+  it.each([
+    {
+      label: "recognized malformed ASCII",
+      create: () => new TextEncoder().encode("; FBX 7.4.0 project file\nObjects: {"),
+      cause: /expected token|unexpected|end of input/i,
+    },
+    {
+      label: "recognized malformed binary",
+      create: () => CreateBinaryFbx74TriangleFixture().subarray(0, 30),
+      cause: /node header|unexpected end|truncated/i,
+    },
+    {
+      label: "unrecognized bytes",
+      create: () => new TextEncoder().encode("not an FBX document"),
+      cause: /unrecognized FBX format/i,
+    },
+  ])("rejects $label with source context and retained parser cause", async ({ create, cause }) => {
+    const error = await CreateExportingAsset(create())
       .buildAsync()
       .catch((reason: unknown) => reason);
 
     expect(error).toBeInstanceOf(Error);
-    expect((error as Error).message).toMatch(
-      /failed to convert "triangle\.fbx" to Universal/,
-    );
-    expect((error as Error).cause).toBeInstanceOf(Error);
+    expect((error as Error).message).toMatch(/failed to convert "triangle\.fbx" to Universal/);
+    expect((error as Error).cause).toMatchObject({ message: expect.stringMatching(cause) });
   });
 
-  it("disposes the FBX container, scene, and engine on success and export failure", async () => {
+  it("disposes FBX resources on success plus loader, export, and readback failure", async () => {
     const containerDispose = vi.spyOn(AssetContainer.prototype, "dispose");
     const sceneDispose = vi.spyOn(Scene.prototype, "dispose");
     const engineDispose = vi.spyOn(NullEngine.prototype, "dispose");
@@ -453,6 +465,30 @@ describe("FBX Universal funnel", () => {
       expect(error).toBeInstanceOf(Error);
       expect((error as Error).cause).toBe(exportFailure);
       expect(containerDispose).toHaveBeenCalled();
+      expect(sceneDispose).toHaveBeenCalled();
+      expect(engineDispose).toHaveBeenCalled();
+
+      containerDispose.mockClear();
+      sceneDispose.mockClear();
+      engineDispose.mockClear();
+      const readbackFailure = new Error("forced FBX readback failure");
+      vi.spyOn(WebIO.prototype, "readBinary").mockRejectedValueOnce(readbackFailure);
+      const readbackError = await CreateExportingAsset(CreateAsciiFbx74TriangleFixture())
+        .buildAsync()
+        .catch((reason: unknown) => reason);
+      expect(readbackError).toMatchObject({ cause: readbackFailure });
+      expect(containerDispose).toHaveBeenCalled();
+      expect(sceneDispose).toHaveBeenCalled();
+      expect(engineDispose).toHaveBeenCalled();
+
+      containerDispose.mockClear();
+      sceneDispose.mockClear();
+      engineDispose.mockClear();
+      const loaderError = await CreateExportingAsset(new TextEncoder().encode("; FBX 7.4.0 project file\nObjects: {"))
+        .buildAsync()
+        .catch((reason: unknown) => reason);
+      expect(loaderError).toMatchObject({ cause: expect.any(Error) });
+      expect(containerDispose).not.toHaveBeenCalled();
       expect(sceneDispose).toHaveBeenCalled();
       expect(engineDispose).toHaveBeenCalled();
     } finally {
