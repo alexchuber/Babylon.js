@@ -271,6 +271,9 @@ describe("OBJ Universal funnel", () => {
             (block) => {
                 block.primary = { path: "fixture.txt", bytes: "" };
             },
+            (block) => {
+                block.source = "different.obj";
+            },
         ];
 
         for (const invalidate of invalidStates) {
