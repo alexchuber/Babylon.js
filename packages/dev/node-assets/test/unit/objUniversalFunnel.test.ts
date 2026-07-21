@@ -171,6 +171,30 @@ describe("OBJ Universal funnel", () => {
         }
     });
 
+    it("builds a host-root query OBJ URL and resolves its MTL without dropping the host", async () => {
+        const source = "https://example.com?format=obj";
+        const materialUrl = "https://example.com/model.mtl";
+        const loadFile = vi.spyOn(Tools, "LoadFile").mockImplementation((url, onSuccess, _onProgress, _offlineProvider, _useArrayBuffer, onError) => {
+            if (url === materialUrl) {
+                onSuccess(MTLFixture);
+            } else {
+                onError?.(undefined, new Error(`Unexpected MTL URL: ${url}`));
+            }
+            return { abort: () => undefined, onCompleteObservable: new Observable() };
+        });
+        try {
+            const { asset, fetcher } = await CreateUrlPipelineAsync(source, OBJWithMaterialFixture);
+            const result = await asset.buildAsync();
+
+            expect(fetcher).toHaveBeenCalledExactlyOnceWith(source);
+            expect(loadFile).toHaveBeenCalledExactlyOnceWith(materialUrl, expect.any(Function), undefined, undefined, false, expect.any(Function));
+            expect(result.byteLength).toBeGreaterThan(0);
+            expect(await GetAssetFactsAsync(result)).toMatchObject({ meshCount: 1, primitiveCount: 1 });
+        } finally {
+            loadFile.mockRestore();
+        }
+    });
+
     it("rejects incoherent direct OBJ source payloads", () => {
         expect(() => new OBJSourceAsset({ path: "fixture.obj", bytes: OBJFixture }, "different.obj", "upload", [])).toThrow(/source identity must match the primary path/);
         expect(() => new OBJSourceAsset({ path: "fixture.txt", bytes: OBJFixture }, "fixture.txt", "upload", [])).toThrow(/uploaded OBJ primary path must end in \.obj/);

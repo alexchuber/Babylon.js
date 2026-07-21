@@ -14,6 +14,17 @@ import { type NodeAsset } from "../nodeAsset";
 import { GltfAsset } from "../representations/gltfAsset";
 import { IsOBJSourceAsset } from "../representations/objSourceAsset";
 
+function GetOBJRootUrl(source: string): string {
+    try {
+        return new URL(".", source).href;
+    } catch (error) {
+        if (error instanceof TypeError) {
+            return Tools.GetFolderPath(source);
+        }
+        throw error;
+    }
+}
+
 /** Parses an OBJ source payload and explicitly crosses into Universal. */
 // eslint-disable-next-line @typescript-eslint/naming-convention
 export class OBJToUniversalBlock extends NodeAssetBlock {
@@ -47,7 +58,7 @@ export class OBJToUniversalBlock extends NodeAssetBlock {
         let scene: Scene | undefined;
         try {
             scene = new Scene(engine);
-            const rootUrl = source.sourceKind === "url" ? Tools.GetFolderPath(source.source) : "";
+            const rootUrl = source.sourceKind === "url" ? GetOBJRootUrl(source.source) : "";
             const obj = new TextDecoder().decode(primary.bytes);
             const container = await LoadAssetContainerAsync(`data:${obj}`, scene, { pluginExtension: ".obj", rootUrl });
             container.addAllToScene();
