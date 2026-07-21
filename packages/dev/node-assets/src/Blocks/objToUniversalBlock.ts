@@ -44,10 +44,12 @@ export class OBJToUniversalBlock extends NodeAssetBlock {
         const source = this.input.value;
         const primary = source.primary;
         const engine = new NullEngine();
-        const scene = new Scene(engine);
+        let scene: Scene | undefined;
         try {
+            scene = new Scene(engine);
             const rootUrl = source.sourceKind === "url" ? Tools.GetFolderPath(source.source) : "";
-            const container = await LoadAssetContainerAsync(primary.bytes, scene, { pluginExtension: ".obj", rootUrl });
+            const obj = new TextDecoder().decode(primary.bytes);
+            const container = await LoadAssetContainerAsync(`data:${obj}`, scene, { pluginExtension: ".obj", rootUrl });
             container.addAllToScene();
 
             const glbData = await GLTF2Export.GLBAsync(scene, "obj-universal", { exportWithoutWaitingForScene: true });
@@ -67,7 +69,7 @@ export class OBJToUniversalBlock extends NodeAssetBlock {
             });
         } finally {
             try {
-                scene.dispose();
+                scene?.dispose();
             } finally {
                 engine.dispose();
             }

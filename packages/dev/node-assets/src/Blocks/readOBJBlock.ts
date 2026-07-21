@@ -253,6 +253,7 @@ export class ReadOBJBlock extends NodeAssetBlock {
                 primary.path.trim().length === 0 ||
                 typeof source !== "string" ||
                 source.trim().length === 0 ||
+                source !== primary.path ||
                 (sourceKind !== "url" && sourceKind !== "upload")
             ) {
                 throw new TypeError("primary, source, and sourceKind must be present together.");
