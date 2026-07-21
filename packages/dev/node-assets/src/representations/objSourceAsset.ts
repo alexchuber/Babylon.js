@@ -47,6 +47,12 @@ export class OBJSourceAsset {
         if (sourceKind !== "url" && sourceKind !== "upload") {
             throw new TypeError('The OBJ source kind must be either "url" or "upload".');
         }
+        if (source !== primary.path) {
+            throw new TypeError("The OBJ source identity must match the primary path.");
+        }
+        if (sourceKind === "upload" && !/\.obj$/i.test(primary.path)) {
+            throw new TypeError("The uploaded OBJ primary path must end in .obj.");
+        }
         if (!Array.isArray(companions)) {
             throw new TypeError("The OBJ companions must be an array.");
         }

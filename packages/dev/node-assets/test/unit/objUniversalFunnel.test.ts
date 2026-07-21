@@ -96,6 +96,14 @@ describe("OBJ Universal funnel", () => {
         expect(IsOBJSourceAsset(read.output.value)).toBe(true);
     });
 
+    it("rejects incoherent direct OBJ source payloads", () => {
+        expect(() => new OBJSourceAsset({ path: "fixture.obj", bytes: OBJFixture }, "different.obj", "upload", [])).toThrow(/source identity must match the primary path/);
+        expect(() => new OBJSourceAsset({ path: "fixture.txt", bytes: OBJFixture }, "fixture.txt", "upload", [])).toThrow(
+            /uploaded OBJ primary path must end in \.obj/
+        );
+        expect(() => new OBJSourceAsset({ path: "fixture.OBJ", bytes: OBJFixture }, "fixture.OBJ", "upload", [])).not.toThrow();
+    });
+
     it("builds an uploaded OBJ into a readable GLB and preserves multiple object and group names", async () => {
         const sceneDispose = vi.spyOn(Scene.prototype, "dispose");
         const engineDispose = vi.spyOn(NullEngine.prototype, "dispose");
