@@ -108,6 +108,10 @@ export const TranscodersHeaderColor = "#6B4C8A";
 export const BabylonCategory = "Babylon";
 export const BabylonHeaderColor = "#4A90D9";
 
+/** Shared node header color for the FBX block family. */
+// eslint-disable-next-line @typescript-eslint/naming-convention
+export const FBXHeaderColor = "#B35900";
+
 /** Palette category and shared node header color for the USD operator block family. */
 // eslint-disable-next-line @typescript-eslint/naming-convention
 export const USDCategory = "USD";
