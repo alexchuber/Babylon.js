@@ -107,12 +107,42 @@ export class NodeAssetsEditorPage {
     }
 
     /**
+     * Locate a palette item through the palette's stable test seam and exact visible label.
+     * @param label - The palette item's visible label.
+     * @returns The palette item row locator.
+     */
+    paletteItem(label: string): Locator {
+        return this.page.getByTestId("palette-item").filter({ has: this.page.getByText(label, { exact: true }) });
+    }
+
+    /**
      * Select a node by clicking its header title, which reveals its properties in the right pane.
      * @param title - The node's visible title.
      * @param occurrence - Optional disambiguator when several nodes share the title (see {@link nodeByTitle}).
      */
     async selectNode(title: string, occurrence?: NodeOccurrence): Promise<void> {
         await this.nodeByTitle(title, occurrence).getByText(title, { exact: true }).click();
+    }
+
+    /**
+     * Finds a viewport point on the empty graph surface, excluding nodes, frames, wires, ports, and the minimap.
+     * @returns Client-space coordinates safely inside the canvas.
+     */
+    async findEmptyCanvasPoint(): Promise<{ readonly x: number; readonly y: number }> {
+        return await this.canvas.evaluate((canvas) => {
+            const rect = canvas.getBoundingClientRect();
+            const excludedSelector =
+                '[data-testid="graph-node"], [data-testid="graph-frame"], [data-testid="aggregate-frame"], [data-testid="graph-wire"], [data-port-id], [role="presentation"]';
+            for (let y = rect.top + 48; y < rect.bottom - 96; y += 24) {
+                for (let x = rect.left + 48; x < rect.right - 96; x += 24) {
+                    const hit = document.elementFromPoint(x, y);
+                    if (hit && canvas.contains(hit) && !hit.closest(excludedSelector)) {
+                        return { x, y };
+                    }
+                }
+            }
+            throw new Error("Could not find an empty point on the node graph canvas.");
+        });
     }
 
     /**
@@ -154,7 +184,7 @@ export class NodeAssetsEditorPage {
      * @param at - Drop point as canvas-rect fractions (0..1); defaults to the center.
      */
     async dropPaletteItem(label: string, at: CanvasPoint = { x: 0.5, y: 0.5 }): Promise<void> {
-        const source = await this.page.getByTitle(label, { exact: true }).first().elementHandle();
+        const source = await this.paletteItem(label).first().elementHandle();
         const target = await this.canvas.elementHandle();
         if (!source || !target) {
             throw new Error(`Could not resolve palette item "${label}" or the canvas for the drop gesture.`);
