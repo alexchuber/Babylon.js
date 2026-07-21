@@ -1,6 +1,6 @@
 # Add the basic Import OBJ workflow end to end
 
-Status: ready-for-agent
+Status: resolved
 Blocked by: None
 
 ## Parent
@@ -37,22 +37,29 @@ Wire the runtime exports and package-barrel self-registration, editor descriptor
 
 ## Acceptance criteria
 
-- [ ] A fresh graph can discover and add **Import OBJ** in **Inputs / Aggregate imports** by default.
-- [ ] With **Show primitives** enabled, **Read OBJ** and **OBJ to Universal** are discoverable; their source and Universal connection points are typed as OBJ and Universal rather than Babylon, glTF, or an untyped value.
-- [ ] The runtime path is a real typed `Read OBJ -> OBJ to Universal` aggregate with one Universal output, and the public exports and package-barrel self-registration make it available in a fresh runtime and worker context.
-- [ ] A simple URL OBJ builds through the existing Export glTF path into a non-empty inspectable GLB.
-- [ ] A single local `.obj` upload builds offline into the same kind of GLB; companion-file support is additive and remains compatible with the persisted source representation.
-- [ ] Multiple named OBJ objects/groups and their resulting multiple meshes survive the loader/export path with their names observable in the GLB.
-- [ ] URL activation stores the primary OBJ bytes and URL/source kind; a later URL request cannot overwrite a newer successful source; clear and failed activation preserve the established sibling semantics.
-- [ ] Invalid or malformed persisted OBJ source data is rejected contextually and cannot produce a misleading successful build.
-- [ ] Import OBJ exposes the forwarded Read OBJ source property section without duplicating or diverging from the primitive's value.
-- [ ] JSON roundtrip preserves the aggregate, source selection, names, and build behavior.
-- [ ] The worker can load the saved graph and build the basic OBJ workflow offline.
-- [ ] A basic network-free Import OBJ built-in pipeline/library entry builds successfully.
-- [ ] Babylon's default `materialLoadingFailsSilently: true` is preserved; a parsable OBJ with an unavailable referenced MTL succeeds as geometry-only, using existing loader/node diagnostics only and no new warning channel.
-- [ ] Focused runtime, editor, worker, and persistence tests cover the above public behavior, and existing glTF, USD, Babylon, and Node Geometry imports remain unchanged.
-- [ ] No icon, codegen, loader/parser, or NAE MCP changes are introduced.
+- [x] A fresh graph can discover and add **Import OBJ** in **Inputs / Aggregate imports** by default.
+- [x] With **Show primitives** enabled, **Read OBJ** and **OBJ to Universal** are discoverable; their source and Universal connection points are typed as OBJ and Universal rather than Babylon, glTF, or an untyped value.
+- [x] The runtime path is a real typed `Read OBJ -> OBJ to Universal` aggregate with one Universal output, and the public exports and package-barrel self-registration make it available in a fresh runtime and worker context.
+- [x] A simple URL OBJ builds through the existing Export glTF path into a non-empty inspectable GLB.
+- [x] A single local `.obj` upload builds offline into the same kind of GLB; companion-file support is additive and remains compatible with the persisted source representation.
+- [x] Multiple named OBJ objects/groups and their resulting multiple meshes survive the loader/export path with their names observable in the GLB.
+- [x] URL activation stores the primary OBJ bytes and URL/source kind; a later URL request cannot overwrite a newer successful source; clear and failed activation preserve the established sibling semantics.
+- [x] Invalid or malformed persisted OBJ source data is rejected contextually and cannot produce a misleading successful build.
+- [x] Import OBJ exposes the forwarded Read OBJ source property section without duplicating or diverging from the primitive's value.
+- [x] JSON roundtrip preserves the aggregate, source selection, names, and build behavior.
+- [x] The worker can load the saved graph and build the basic OBJ workflow offline.
+- [x] A basic network-free Import OBJ built-in pipeline/library entry builds successfully.
+- [x] Babylon's default `materialLoadingFailsSilently: true` is preserved; a parsable OBJ with an unavailable referenced MTL succeeds as geometry-only, using existing loader/node diagnostics only and no new warning channel.
+- [x] Focused runtime, editor, worker, and persistence tests cover the above public behavior, and existing glTF, USD, Babylon, and Node Geometry imports remain unchanged.
+- [x] No icon, codegen, loader/parser, or NAE MCP changes are introduced.
+- [x] Final review has no unresolved high-confidence findings.
+- [x] Final integrated validation covers the complete basic and companion workflow.
+- [x] Final integration landed in `preview/nae`.
 
 ## Blocked by
 
-None - can start immediately.
+None.
+
+## Delivery status (resolved)
+
+The basic workflow landed with the complete feature in integration PR #36 at `d9d6ea015a3f99f3a6c7034a3328d3b15d6ecda5`. Final validation covered typed discovery and execution, URL activation and root/path semantics, local and worker builds, JSON roundtrip, the offline built-in pipeline, missing-MTL geometry-only behavior, and contextual source failures. The landed tree `62ea2116bc9fbab198971a3f1413b8952f812a84` exactly matches the validated integration tree.
