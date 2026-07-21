@@ -8,12 +8,12 @@ The Node Assets Editor palette renders every available node description as a per
 
 ## Solution
 
-Render each palette item with its node name as the only always-visible item text. Preserve the existing optional description in the palette model and search projection, and expose each non-empty description through the repository's shared Fluent Tooltip primitive. The entire draggable row is the trigger: the tooltip appears with Fluent's existing default timing and placement on pointer hover and keyboard focus, and contributes an accessible description while the visible node name remains the accessible name. Items without meaningful descriptions remain ordinary draggable rows and never produce an empty tooltip.
+Render each palette item with its node name as the only always-visible item text. Preserve the existing optional description in the palette model and search projection, and expose each non-empty description through the repository's shared Fluent Tooltip primitive. The entire draggable row is the trigger: the tooltip appears with Fluent's existing default timing and placement on mouse or pen hover and keyboard focus, and contributes an accessible description while the visible node name remains the accessible name. A minimal controlled visibility path rejects touch-originated open requests so touch contact does not introduce long-press help. Items without meaningful descriptions remain ordinary draggable rows and never produce an empty tooltip.
 
 ## User Stories
 
 1. As a graph author, I want palette rows to show node names without permanent descriptions, so that I can scan more nodes at once.
-2. As a graph author, I want a node's explanation on hover, so that I can learn an unfamiliar node without spending palette space on every explanation.
+2. As a graph author, I want a node's explanation on mouse or pen hover, so that I can learn an unfamiliar node without spending palette space on every explanation.
 3. As a keyboard user, I want the same explanation when I focus a palette row, so that the help is not pointer-only.
 4. As a screen-reader user, I want the visible node name to remain the item's accessible name and the tooltip copy to be its accessible description, so that identity and help are announced distinctly.
 5. As a graph author, I want descriptions to remain searchable, so that workflow-intent terms such as “decimate” still find the intended node.
@@ -36,30 +36,31 @@ Render each palette item with its node name as the only always-visible item text
 - [ ] Each palette item shows its node name as the only always-visible item copy; descriptions are absent from row layout and are not rendered as visible subheadings.
 - [ ] The existing optional description metadata remains in palette items and remains part of `PaletteItemMatchesFilter`; category, family, Show primitives, and empty-search behavior are unchanged.
 - [ ] Every non-empty description is supplied to `shared-ui-components/fluent/primitives/tooltip`; no raw HTML `title` is used as a substitute or competing native tooltip.
-- [ ] The whole draggable palette row triggers the tooltip on pointer hover and keyboard focus using the shared primitive's accessible description relationship.
+- [ ] The whole draggable palette row triggers the tooltip on mouse or pen hover and keyboard focus using the shared primitive's accessible description relationship.
 - [ ] The focusable trigger's visible node name remains its accessible name, and the tooltip text is exposed as its accessible description rather than replacing the name.
 - [ ] Missing, empty, or whitespace-only descriptions do not create an empty tooltip.
-- [ ] Tooltip delay, positioning, portal behavior, and text wrapping use the existing shared Fluent defaults; this feature adds no custom timing, placement, width, or pointer-event layer.
+- [ ] Tooltip delay, positioning, portal behavior, and text wrapping use the existing shared Fluent defaults; controlled visibility only suppresses touch-originated open requests.
 - [ ] Existing label wrapping/truncation behavior, row border/padding/minimum height, family spacing, and category density are preserved except for removal of the description line.
-- [ ] Tooltip plumbing does not change native drag payloads, canvas drops, clicking, pane scrolling, filtering, category toggling, virtualization assumptions, or touch handling.
-- [ ] Automated browser coverage proves descriptions are absent before interaction, appear as accessible tooltips on both hover and focus, remain searchable, and do not break an existing node drop.
+- [ ] Tooltip plumbing does not change native drag payloads, canvas drops, clicking, pane scrolling, filtering, category toggling, or virtualization assumptions.
+- [ ] Holding touch contact beyond Fluent's show delay does not open a tooltip or add a touch long-press help gesture.
+- [ ] Automated browser coverage proves descriptions are absent before interaction, remain hidden during touch contact, appear as accessible tooltips on mouse hover and keyboard focus, remain searchable, and do not break an existing node drop.
 - [ ] Focused unit tests for palette search/projection, the targeted Node Assets Editor Playwright test, package build/type-check, and changed-file lint/format checks pass.
 - [ ] The rendered editor at the existing Node Assets Editor dev surface (default port 1348) is checked for compact rows, themed tooltip rendering, keyboard focus, and successful drag/drop.
 
 ## Implementation Decisions
 
 - Keep the feature inside the reusable node-graph palette view; do not change block descriptors or duplicate description state.
-- Reuse the shared Fluent Tooltip abstraction, which already suppresses absent content and applies `relationship="description"`; do not import raw Fluent Tooltip directly.
+- Reuse the shared Fluent Tooltip abstraction, which suppresses absent content, applies `relationship="description"`, and passes through Fluent's controlled visibility props; do not import raw Fluent Tooltip directly.
 - Keep each draggable row as the tooltip child so Fluent augments the trigger without inserting a layout wrapper. Make the existing row keyboard-focusable and retain its drag handler and data attributes.
 - Normalize tooltip content only enough to suppress whitespace-only descriptions. The source description and search metadata remain unchanged.
 - Remove the native title attribute from palette rows. Browser tests and drag helpers should locate rows through the stable palette item test seam and exact visible label.
-- Preserve Fluent theme tokens, current item padding/minimum height, and node-name typography. Do not add custom tooltip styles, timing, placement, truncation, or open-state management.
+- Preserve Fluent theme tokens, current item padding/minimum height, and node-name typography. Do not add custom tooltip styles, timing, placement, or truncation; control visibility only to reject touch-originated opens.
 - Update directly related model/catalog comments that still describe descriptions as visible beneath labels.
 - Do not add click-to-create or keyboard-to-create behavior as part of making rows focusable; this feature only changes help presentation.
 
 ## Testing Decisions
 
-- Use the real Node Assets Editor Playwright surface as the highest test seam. Adapt the existing workflow-intent/description test so one real palette item proves description-based search, no always-visible description, pointer-hover tooltip, keyboard-focus tooltip, accessible name/description semantics, and an unchanged drag/drop action.
+- Use the real Node Assets Editor Playwright surface as the highest test seam. Adapt the existing workflow-intent/description test so one real palette item proves description-based search, no always-visible description, no tooltip after touch contact exceeds the show delay, mouse-hover and keyboard-focus tooltips, accessible name/description semantics, and an unchanged drag/drop action.
 - Update the shared Playwright page helper so palette-item lookup no longer depends on the removed native title. Existing drop-heavy tests remain regression coverage for drag payloads and canvas creation.
 - Keep the existing pure palette-category tests as the seam proving descriptions and keywords still participate in filtering and projection.
 - Prefer role, accessible-description, visible-label, and palette test-id assertions over Fluent implementation selectors. Allow the established tooltip delay rather than overriding production timing for tests.

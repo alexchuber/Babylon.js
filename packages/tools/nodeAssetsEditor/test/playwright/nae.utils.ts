@@ -125,6 +125,27 @@ export class NodeAssetsEditorPage {
     }
 
     /**
+     * Finds a viewport point on the empty graph surface, excluding nodes, frames, wires, ports, and the minimap.
+     * @returns Client-space coordinates safely inside the canvas.
+     */
+    async findEmptyCanvasPoint(): Promise<{ readonly x: number; readonly y: number }> {
+        return await this.canvas.evaluate((canvas) => {
+            const rect = canvas.getBoundingClientRect();
+            const excludedSelector =
+                '[data-testid="graph-node"], [data-testid="graph-frame"], [data-testid="aggregate-frame"], [data-testid="graph-wire"], [data-port-id], [role="presentation"]';
+            for (let y = rect.top + 48; y < rect.bottom - 96; y += 24) {
+                for (let x = rect.left + 48; x < rect.right - 96; x += 24) {
+                    const hit = document.elementFromPoint(x, y);
+                    if (hit && canvas.contains(hit) && !hit.closest(excludedSelector)) {
+                        return { x, y };
+                    }
+                }
+            }
+            throw new Error("Could not find an empty point on the node graph canvas.");
+        });
+    }
+
+    /**
      * Locate a connection port of a node, optionally disambiguated by direction. Boundary nodes have a
      * single port (Import: one output, Export: one input), so the direction is optional; blocks with both
      * an input and an output (e.g. Compress Textures (KTX2)) need it to pick the right side.

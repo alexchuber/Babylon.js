@@ -2,6 +2,7 @@ import {
     type CSSProperties,
     type DragEvent as ReactDragEvent,
     type FunctionComponent,
+    type MouseEvent as ReactMouseEvent,
     type PointerEvent as ReactPointerEvent,
     useCallback,
     useEffect,
@@ -21,6 +22,7 @@ import { FindNearestConnectablePort, FindNodesInRegion } from "../canvasHitTest"
 import {
     type Gesture,
     type GestureAction,
+    type GestureResult,
     type MarqueeRect,
     type PendingWire,
     BeginBackgroundGesture,
@@ -28,6 +30,7 @@ import {
     BeginFrameGesture,
     BeginPortGesture,
     AdvanceGesture,
+    CancelGesture,
     CompleteGesture,
 } from "../gestureInterpreter";
 import { type ContextMenuTarget, type CanvasContextValue, CanvasContextProvider } from "./canvasContext";
@@ -44,6 +47,11 @@ const GridSpacing = 24;
 const PasteOffset = 24;
 // Screen-space radius (px) within which a released wire snaps to the nearest compatible port.
 const ConnectSnapRadius = 28;
+
+type ActiveGestureOwner = {
+    readonly kind: Exclude<Gesture["kind"], "none">;
+    readonly pointerId: number;
+};
 
 const useStyles = makeStyles({
     root: {
@@ -102,7 +110,10 @@ export const GraphCanvas: FunctionComponent<{ context: EditorContextValue }> = (
     const [size, setSize] = useState({ width: 0, height: 0 });
     const [pendingWire, setPendingWire] = useState<PendingWire | null>(null);
     const [marquee, setMarquee] = useState<MarqueeRect | null>(null);
+    const [activeGestureOwner, setActiveGestureOwner] = useState<ActiveGestureOwner | null>(null);
     const [contextTarget, setContextTarget] = useState<ContextMenuTarget>({ kind: "canvas" });
+    const isGestureActive = activeGestureOwner !== null;
+    const isPanning = activeGestureOwner?.kind === "pan";
 
     const setCamera = useCallback((next: Camera | ((current: Camera) => Camera)) => {
         const value = typeof next === "function" ? (next as (current: Camera) => Camera)(cameraRef.current) : next;
@@ -220,17 +231,83 @@ export const GraphCanvas: FunctionComponent<{ context: EditorContextValue }> = (
         [state, setCamera, attemptConnect]
     );
 
+    const applyGestureResult = useCallback(
+        (result: GestureResult) => {
+            const current = gestureRef.current;
+            const ownerChanged =
+                current.kind !== result.gesture.kind || (current.kind !== "none" && result.gesture.kind !== "none" && current.pointerId !== result.gesture.pointerId);
+            gestureRef.current = result.gesture;
+            if (ownerChanged) {
+                setActiveGestureOwner(result.gesture.kind === "none" ? null : { kind: result.gesture.kind, pointerId: result.gesture.pointerId });
+            }
+            executeActions(result.actions);
+        },
+        [executeActions]
+    );
+
+    const capturePointer = useCallback((pointerId: number) => {
+        const element = containerRef.current;
+        if (element && !element.hasPointerCapture(pointerId)) {
+            element.setPointerCapture(pointerId);
+        }
+    }, []);
+
+    const releasePointer = useCallback((pointerId: number) => {
+        const element = containerRef.current;
+        if (element?.hasPointerCapture(pointerId)) {
+            element.releasePointerCapture(pointerId);
+        }
+    }, []);
+
+    const startGesture = useCallback(
+        (event: ReactPointerEvent, result: GestureResult) => {
+            if (gestureRef.current.kind !== "none" || result.gesture.kind === "none") {
+                return;
+            }
+            capturePointer(event.pointerId);
+            applyGestureResult(result);
+        },
+        [capturePointer, applyGestureResult]
+    );
+
+    const cancelGesture = useCallback(
+        (pointerId: number, releaseCapture: boolean) => {
+            const current = gestureRef.current;
+            if (current.kind === "none" || current.pointerId !== pointerId) {
+                return;
+            }
+            applyGestureResult(CancelGesture(current, { pointerId }));
+            if (releaseCapture) {
+                releasePointer(pointerId);
+            }
+        },
+        [applyGestureResult, releasePointer]
+    );
+
+    const runWhenIdle = useCallback((action: () => void): boolean => {
+        if (gestureRef.current.kind !== "none") {
+            return false;
+        }
+        action();
+        return true;
+    }, []);
+
     // Persistent window listeners drive the active gesture so dragging continues outside the canvas.
     useEffect(() => {
         const onPointerMove = (event: PointerEvent) => {
+            const current = gestureRef.current;
+            if (current.kind === "none" || current.pointerId !== event.pointerId) {
+                return;
+            }
             const { world, local } = pointerCoords(event.clientX, event.clientY);
-            const { gesture, actions } = AdvanceGesture(gestureRef.current, { world, local });
-            gestureRef.current = gesture;
-            executeActions(actions);
+            applyGestureResult(AdvanceGesture(current, { pointerId: event.pointerId, world, local }));
         };
 
         const onPointerUp = (event: PointerEvent) => {
             const current = gestureRef.current;
+            if (current.kind === "none" || current.pointerId !== event.pointerId) {
+                return;
+            }
             const world = screenToWorld(event.clientX, event.clientY);
             let resolvedTargetPortId: string | undefined;
             if (current.kind === "wire") {
@@ -248,18 +325,21 @@ export const GraphCanvas: FunctionComponent<{ context: EditorContextValue }> = (
                         canConnect: (from, to) => state.canConnect(from, to),
                     });
             }
-            const { gesture, actions } = CompleteGesture(current, { world, resolvedTargetPortId });
-            gestureRef.current = gesture;
-            executeActions(actions);
+            applyGestureResult(CompleteGesture(current, { pointerId: event.pointerId, world, resolvedTargetPortId }));
+            releasePointer(event.pointerId);
         };
+
+        const onPointerCancel = (event: PointerEvent) => cancelGesture(event.pointerId, true);
 
         window.addEventListener("pointermove", onPointerMove);
         window.addEventListener("pointerup", onPointerUp);
+        window.addEventListener("pointercancel", onPointerCancel);
         return () => {
             window.removeEventListener("pointermove", onPointerMove);
             window.removeEventListener("pointerup", onPointerUp);
+            window.removeEventListener("pointercancel", onPointerCancel);
         };
-    }, [state, screenToWorld, pointerCoords, executeActions]);
+    }, [state, screenToWorld, pointerCoords, applyGestureResult, releasePointer, cancelGesture]);
 
     // Keyboard shortcuts (ignored while typing in a form control so the panes keep working).
     useEffect(() => {
@@ -351,42 +431,84 @@ export const GraphCanvas: FunctionComponent<{ context: EditorContextValue }> = (
         () => ({
             editor: context,
             beginNodeInteraction: (nodeId, event) => {
-                const { gesture, actions } = BeginNodeGesture({
-                    nodeId,
-                    additive: event.shiftKey || event.ctrlKey || event.metaKey,
-                    isSelected: state.isNodeSelected(nodeId),
-                    world: screenToWorld(event.clientX, event.clientY),
-                });
-                executeActions(actions);
-                gestureRef.current = gesture;
+                if (gestureRef.current.kind !== "none") {
+                    return;
+                }
+                startGesture(
+                    event,
+                    BeginNodeGesture({
+                        pointerId: event.pointerId,
+                        nodeId,
+                        additive: event.shiftKey || event.ctrlKey || event.metaKey,
+                        isSelected: state.isNodeSelected(nodeId),
+                        world: screenToWorld(event.clientX, event.clientY),
+                    })
+                );
             },
             beginFrameInteraction: (frameId, event) => {
-                const { gesture, actions } = BeginFrameGesture({ frameId, world: screenToWorld(event.clientX, event.clientY) });
-                executeActions(actions);
-                gestureRef.current = gesture;
+                if (gestureRef.current.kind !== "none") {
+                    return;
+                }
+                startGesture(event, BeginFrameGesture({ pointerId: event.pointerId, frameId, world: screenToWorld(event.clientX, event.clientY) }));
             },
             beginPortInteraction: (portId, event) => {
+                if (gestureRef.current.kind !== "none") {
+                    return;
+                }
                 const node = state.getPortNode(portId);
                 const anchor = node ? GetPortAnchor(node, portId) : undefined;
                 if (!anchor) {
                     return;
                 }
-                const { gesture, actions } = BeginPortGesture({ portId, anchor, world: screenToWorld(event.clientX, event.clientY) });
-                executeActions(actions);
-                gestureRef.current = gesture;
+                startGesture(event, BeginPortGesture({ pointerId: event.pointerId, portId, anchor, world: screenToWorld(event.clientX, event.clientY) }));
             },
-            selectWire: (wireId) => state.selectWire(wireId),
-            openContextMenu: (target) => {
-                if (target.kind === "node" && !state.isNodeSelected(target.nodeId)) {
-                    state.selectNodes([target.nodeId]);
+            selectWire: (wireId) => {
+                runWhenIdle(() => state.selectWire(wireId));
+            },
+            openContextMenu: (target, event) => {
+                const handled = runWhenIdle(() => {
+                    if (target.kind === "node" && !state.isNodeSelected(target.nodeId)) {
+                        state.selectNodes([target.nodeId]);
+                    }
+                    setContextTarget(target);
+                });
+                if (!handled) {
+                    event.preventDefault();
+                    event.stopPropagation();
                 }
-                setContextTarget(target);
             },
+            runWhenIdle,
         }),
-        [context, state, screenToWorld, executeActions]
+        [context, state, screenToWorld, startGesture, runWhenIdle]
     );
 
+    const onPointerDownCapture = (event: ReactPointerEvent<HTMLDivElement>) => {
+        const current = gestureRef.current;
+        if (current.kind !== "none" && current.pointerId !== event.pointerId) {
+            event.preventDefault();
+            event.stopPropagation();
+        }
+    };
+
+    const onClickCapture = (event: ReactMouseEvent<HTMLDivElement>) => {
+        if (gestureRef.current.kind !== "none") {
+            event.preventDefault();
+            event.stopPropagation();
+        }
+    };
+
+    const onContextMenuCapture = (event: ReactMouseEvent<HTMLDivElement>) => {
+        const handled = runWhenIdle(() => setContextTarget({ kind: "canvas" }));
+        if (!handled) {
+            event.preventDefault();
+            event.stopPropagation();
+        }
+    };
+
     const onBackgroundPointerDown = (event: ReactPointerEvent<HTMLDivElement>) => {
+        if (!event.nativeEvent.composedPath().includes(event.currentTarget)) {
+            return;
+        }
         // A child view (node/port/frame) already claimed this gesture.
         if (gestureRef.current.kind !== "none") {
             return;
@@ -394,18 +516,18 @@ export const GraphCanvas: FunctionComponent<{ context: EditorContextValue }> = (
         containerRef.current?.focus();
 
         const { world, local } = pointerCoords(event.clientX, event.clientY);
-        const { gesture, actions } = BeginBackgroundGesture({
+        const result = BeginBackgroundGesture({
+            pointerId: event.pointerId,
             button: event.button,
             spaceHeld: spaceHeldRef.current,
             additive: event.shiftKey || event.ctrlKey || event.metaKey,
             world,
             local,
         });
-        if (gesture.kind === "pan") {
+        if (result.gesture.kind === "pan") {
             event.preventDefault();
         }
-        executeActions(actions);
-        gestureRef.current = gesture;
+        startGesture(event, result);
     };
 
     const onDragOver = (event: ReactDragEvent<HTMLDivElement>) => {
@@ -430,27 +552,35 @@ export const GraphCanvas: FunctionComponent<{ context: EditorContextValue }> = (
     const contextItems = useMemo<ContextMenuItem[]>(() => {
         if (contextTarget.kind === "wire") {
             const wireId = contextTarget.wireId;
-            return [{ key: "delete-wire", label: "Delete wire", onClick: () => state.removeWire(wireId) }];
+            return [{ key: "delete-wire", label: "Delete wire", onClick: () => runWhenIdle(() => state.removeWire(wireId)) }];
         }
         if (contextTarget.kind === "node") {
             const primary = state.primarySelectedNode;
             return [
-                { key: "copy", label: "Copy", onClick: () => (clipboardRef.current = state.copyNodes([...state.selectedNodeIds])) },
+                {
+                    key: "copy",
+                    label: "Copy",
+                    onClick: () =>
+                        runWhenIdle(() => {
+                            clipboardRef.current = state.copyNodes([...state.selectedNodeIds]);
+                        }),
+                },
                 {
                     key: "cut",
                     label: "Cut",
-                    onClick: () => {
-                        clipboardRef.current = state.copyNodes([...state.selectedNodeIds]);
-                        state.removeNodes([...state.selectedNodeIds]);
-                    },
+                    onClick: () =>
+                        runWhenIdle(() => {
+                            clipboardRef.current = state.copyNodes([...state.selectedNodeIds]);
+                            state.removeNodes([...state.selectedNodeIds]);
+                        }),
                 },
-                { key: "delete", label: "Delete", onClick: () => state.removeNodes([...state.selectedNodeIds]) },
+                { key: "delete", label: "Delete", onClick: () => runWhenIdle(() => state.removeNodes([...state.selectedNodeIds])) },
                 { key: "divider-1", type: "divider" },
                 {
                     key: "collapse",
                     label: primary?.collapsed ? "Expand" : "Collapse",
                     disabled: !primary,
-                    onClick: () => primary && state.setNodeCollapsed(primary.id, !primary.collapsed),
+                    onClick: () => runWhenIdle(() => primary && state.setNodeCollapsed(primary.id, !primary.collapsed)),
                 },
             ];
         }
@@ -459,11 +589,11 @@ export const GraphCanvas: FunctionComponent<{ context: EditorContextValue }> = (
                 key: "paste",
                 label: "Paste",
                 disabled: !clipboardRef.current,
-                onClick: () => clipboardRef.current && state.pasteNodes(clipboardRef.current, { x: PasteOffset, y: PasteOffset }),
+                onClick: () => runWhenIdle(() => clipboardRef.current && state.pasteNodes(clipboardRef.current, { x: PasteOffset, y: PasteOffset })),
             },
-            { key: "fit", label: "Zoom to fit", onClick: () => fitRef.current() },
+            { key: "fit", label: "Zoom to fit", onClick: () => runWhenIdle(() => fitRef.current()) },
         ];
-    }, [contextTarget, state]);
+    }, [contextTarget, state, runWhenIdle]);
 
     const worldStyle: CSSProperties = { transform: `translate(${camera.x}px, ${camera.y}px) scale(${camera.zoom})` };
     // The grid is locked to world space: both the dot spacing and the dot radius scale with zoom, so the
@@ -476,6 +606,7 @@ export const GraphCanvas: FunctionComponent<{ context: EditorContextValue }> = (
         backgroundImage: `radial-gradient(circle, ${tokens.colorNeutralStroke2} ${dotRadius}px, transparent ${dotRadius * 1.5}px)`,
         backgroundSize: `${gridSpacing}px ${gridSpacing}px`,
         backgroundPosition: `${camera.x}px ${camera.y}px`,
+        cursor: isPanning ? "grabbing" : "grab",
     };
 
     return (
@@ -486,15 +617,21 @@ export const GraphCanvas: FunctionComponent<{ context: EditorContextValue }> = (
             tabIndex={0}
             role="application"
             aria-label="Node graph canvas"
+            data-panning={isPanning ? "true" : undefined}
+            onPointerDownCapture={onPointerDownCapture}
             onPointerDown={onBackgroundPointerDown}
+            onClickCapture={onClickCapture}
+            onContextMenuCapture={onContextMenuCapture}
+            onLostPointerCapture={(event) => cancelGesture(event.pointerId, false)}
             onDragOver={onDragOver}
             onDrop={onDrop}
         >
             <CanvasContextProvider value={canvasContextValue}>
                 <ContextMenu
+                    disabled={isGestureActive}
                     items={contextItems}
                     trigger={
-                        <div className={classes.trigger} onContextMenuCapture={() => setContextTarget({ kind: "canvas" })}>
+                        <div className={classes.trigger}>
                             <div className={classes.world} style={worldStyle}>
                                 {state.frames.map((frame) => (
                                     <GraphFrameView key={frame.id} frame={frame} />
@@ -508,7 +645,13 @@ export const GraphCanvas: FunctionComponent<{ context: EditorContextValue }> = (
                         </div>
                     }
                 />
-                <GraphMinimap camera={camera} viewport={size} onNavigate={(world) => setCamera((current) => CenterCameraOn(world, size, current.zoom))} />
+                <GraphMinimap
+                    camera={camera}
+                    viewport={size}
+                    onNavigate={(world) => {
+                        runWhenIdle(() => setCamera((current) => CenterCameraOn(world, size, current.zoom)));
+                    }}
+                />
             </CanvasContextProvider>
         </div>
     );

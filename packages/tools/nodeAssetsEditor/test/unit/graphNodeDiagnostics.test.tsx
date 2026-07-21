@@ -41,6 +41,10 @@ describe("GraphNodeView diagnostics", () => {
             beginPortInteraction: () => undefined,
             selectWire: () => undefined,
             openContextMenu: () => undefined,
+            runWhenIdle: (action) => {
+                action();
+                return true;
+            },
         };
 
         const markup = renderToStaticMarkup(
