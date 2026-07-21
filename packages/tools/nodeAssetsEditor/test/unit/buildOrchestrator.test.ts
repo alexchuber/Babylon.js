@@ -159,6 +159,30 @@ describe("BuildOrchestrator", () => {
         orchestrator.dispose();
     });
 
+    it("retries with a debounced build when the graph changes after the default import fails", async () => {
+        vi.spyOn(Logger, "Error").mockImplementation(() => undefined);
+        const { controller, preview, orchestrator } = Setup();
+        controller.loadDefaultImportAsync.mockRejectedValue(new Error("startup failed"));
+        controller.buildAsync.mockResolvedValue(new Uint8Array([1]));
+
+        orchestrator.start();
+        await Flush();
+        expect(controller.buildAsync).not.toHaveBeenCalled();
+        expect(preview.lastStatus).toEqual({ isBuilding: false, errorMessage: "startup failed" });
+
+        controller.onBuildRelevantChanged.trigger();
+        await vi.advanceTimersByTimeAsync(399);
+        expect(controller.buildAsync).not.toHaveBeenCalled();
+
+        await vi.advanceTimersByTimeAsync(1);
+        expect(controller.buildAsync).toHaveBeenCalledTimes(1);
+        expect(preview.lastStatus).toEqual({ isBuilding: true, errorMessage: null });
+
+        await vi.runAllTimersAsync();
+        expect(preview.lastStatus).toEqual({ isBuilding: false, errorMessage: null });
+        orchestrator.dispose();
+    });
+
     it("applies a successful build result to the preview", async () => {
         const { controller, preview, orchestrator } = Setup();
         const bytes = new Uint8Array([1, 2, 3]);

@@ -120,6 +120,7 @@ export class BuildOrchestrator {
                     const message = GetErrorMessage(error);
                     Logger.Error(`[NodeAssetsEditor] Default asset load failed: ${message}`);
                     this._preview.setStatus(false, message);
+                    this._startScheduler(false);
                 }
             }
         })();
@@ -156,11 +157,12 @@ export class BuildOrchestrator {
         this._scheduler?.dispose();
     }
 
-    private _startScheduler(): void {
+    private _startScheduler(buildImmediately = true): void {
         this._scheduler = new BuildScheduler({
             triggerSource: this._controller.onBuildRelevantChanged,
             debounceMs: AutoBuildDebounceMs,
             buildAsync: async () => await this._controller.buildAsync(),
+            buildImmediately,
             applyResultAsync: async (bytes) => await this._preview.loadAssetAsync(bytes),
             onBuildStarted: () => {
                 this._buildStatusGeneration++;

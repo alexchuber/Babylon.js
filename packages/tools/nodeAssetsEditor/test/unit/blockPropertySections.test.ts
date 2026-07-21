@@ -70,7 +70,7 @@ describe("block property sections (unified descriptor path)", () => {
             const section = FindSection(controller, importNode, "READ GLTF");
 
             expect(section.properties.map((property) => property.label)).toEqual(["URL", "Active source", "Upload glTF\u2026"]);
-            expect(FindProperty(controller, importNode, "Active source", "text").value).toBe("catalog-triangle.glb");
+            expect(FindProperty(controller, importNode, "Active source", "text").value).toBe("https://assets.babylonjs.com/meshes/roundedCube.glb");
             expect(FindProperty(controller, importNode, "Upload glTF\u2026", "button")).toBeDefined();
         } finally {
             controller.dispose();

@@ -2,6 +2,10 @@ import { type Page, type Locator, expect } from "@playwright/test";
 import { getGlobalConfig } from "@tools/test-tools";
 import { resolve } from "node:path";
 
+import { BuiltInLibraryFixtures } from "../../src/nodeAssets/builtInLibraryFixtures";
+
+export const RoundedCubeSourceUrl = "https://assets.babylonjs.com/meshes/roundedCube.glb";
+
 /** Narrows a title lookup to a single node when several share the title: an index, or "last" for the most recently added. */
 type NodeOccurrence = number | "last";
 
@@ -30,6 +34,25 @@ export async function useLocalGltfValidator(page: Page): Promise<void> {
         await route.fulfill({
             path: resolve(__dirname, "../../../babylonServer/public/gltf_validator.js"),
             contentType: "application/javascript",
+            headers: { "access-control-allow-origin": "*" },
+        });
+    });
+}
+
+export async function useLocalRoundedCubeSource(page: Page, options: { readonly status?: number; readonly waitFor?: Promise<void> } = {}): Promise<void> {
+    await page.route("https://assets.babylonjs.com/**", async (route) => {
+        if (route.request().url() !== RoundedCubeSourceUrl) {
+            await route.abort("blockedbyclient");
+            return;
+        }
+        await options.waitFor;
+        if (options.status && options.status >= 400) {
+            await route.fulfill({ status: options.status, body: "Source unavailable" });
+            return;
+        }
+        await route.fulfill({
+            body: Buffer.from(BuiltInLibraryFixtures.gltf),
+            contentType: "model/gltf-binary",
             headers: { "access-control-allow-origin": "*" },
         });
     });

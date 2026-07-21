@@ -1,6 +1,6 @@
 # Hydrate the default catalog source from Babylon CDN
 
-Status: ready-for-agent
+Status: resolved
 
 ## What to build
 

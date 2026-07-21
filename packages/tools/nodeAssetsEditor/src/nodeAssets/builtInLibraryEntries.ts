@@ -70,9 +70,9 @@ class BuiltInPipelineBuilder {
         readName: string,
         transcoderCustomType: string,
         transcoderName: string,
-        data: Uint8Array,
+        data: Uint8Array | null,
         source: string,
-        sourceKind: "upload"
+        sourceKind: "url" | "upload"
     ): BlockReference {
         const readId = this._allocateId();
         const transcoderId = this._allocateId();
@@ -82,7 +82,7 @@ class BuiltInPipelineBuilder {
             x,
             y,
             [
-                { customType: readCustomType, id: readId, name: readName, data: EncodeArrayBufferToBase64(data), source, sourceKind },
+                { customType: readCustomType, id: readId, name: readName, data: data ? EncodeArrayBufferToBase64(data) : null, source, sourceKind },
                 { customType: transcoderCustomType, id: transcoderId, name: transcoderName },
             ],
             [{ fromBlock: readId, fromPoint: "output", toBlock: transcoderId, toPoint: "input" }],
@@ -246,7 +246,19 @@ function CreateNodeGeometryImport(builder: BuiltInPipelineBuilder, x = 40, y = 1
 
 function CreateGltfOptimizationEntry(): INodeAssetLibraryEntry {
     const builder = new BuiltInPipelineBuilder("glTF Optimization");
-    const source = CreateGltfImport(builder);
+    const source = builder.addImport(
+        "ImportGLTFAggregateBlock",
+        "Import glTF",
+        40,
+        120,
+        "ReadGLTFBlock",
+        "Read glTF",
+        "GLTFToUniversalBlock",
+        "glTF to Universal",
+        null,
+        "https://assets.babylonjs.com/meshes/roundedCube.glb",
+        "url"
+    );
     const weld = builder.addBlock("WeldVerticesBlock", "Weld Vertices", 340, 120, { overwrite: true });
     const prune = builder.addBlock("RemoveUnusedResourcesBlock", "Remove Unused Resources", 640, 120, {
         keptPropertyTypes: [],
