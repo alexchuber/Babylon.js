@@ -680,6 +680,94 @@ test.describe("Node Assets Editor — maintained default pipeline", () => {
         await expect(editor.nodes).toHaveCount(2);
     });
 
+    test("pans empty canvas without mutating graph layout and preserves node drag and wheel zoom", async ({ page }) => {
+        const editor = new NodeAssetsEditorPage(page);
+        await editor.goto();
+
+        const importNode = editor.nodeByTitle("Import glTF");
+        await editor.selectNode("Import glTF");
+        const selectedNodeName = page.getByRole("textbox").nth(0);
+        await expect(selectedNodeName).toHaveValue("Import glTF");
+
+        const readNodeState = async () =>
+            await importNode.evaluate((node: HTMLElement) => {
+                const rect = node.getBoundingClientRect();
+                return {
+                    worldLeft: node.style.left,
+                    worldTop: node.style.top,
+                    screenX: rect.x,
+                    screenY: rect.y,
+                    screenWidth: rect.width,
+                };
+            });
+
+        const beforePan = await readNodeState();
+        const start = await editor.findEmptyCanvasPoint();
+        const delta = { x: 48, y: 32 };
+        await expect(editor.canvas).toHaveCSS("cursor", "grab");
+        await page.mouse.move(start.x, start.y);
+        await page.mouse.down();
+        await expect(editor.canvas).toHaveCSS("cursor", "grabbing");
+        const beforeForeignMove = await readNodeState();
+        await editor.canvas.dispatchEvent("pointermove", {
+            pointerId: 999,
+            pointerType: "touch",
+            isPrimary: false,
+            buttons: 1,
+            clientX: start.x + 96,
+            clientY: start.y + 96,
+        });
+        const afterForeignMove = await readNodeState();
+        expect(afterForeignMove.screenX).toBe(beforeForeignMove.screenX);
+        expect(afterForeignMove.screenY).toBe(beforeForeignMove.screenY);
+        await page.mouse.move(start.x + delta.x, start.y + delta.y, { steps: 4 });
+        await page.mouse.up();
+        await expect(editor.canvas).toHaveCSS("cursor", "grab");
+
+        const afterPan = await readNodeState();
+        expect(afterPan.worldLeft).toBe(beforePan.worldLeft);
+        expect(afterPan.worldTop).toBe(beforePan.worldTop);
+        expect(afterPan.screenX).toBeCloseTo(beforePan.screenX + delta.x, 4);
+        expect(afterPan.screenY).toBeCloseTo(beforePan.screenY + delta.y, 4);
+        await expect(selectedNodeName).toHaveValue("Import glTF");
+
+        const cancelPoint = await editor.findEmptyCanvasPoint();
+        await page.mouse.move(cancelPoint.x, cancelPoint.y);
+        await page.mouse.down();
+        await expect(editor.canvas).toHaveCSS("cursor", "grabbing");
+        await editor.canvas.dispatchEvent("pointercancel", {
+            pointerId: 1,
+            pointerType: "mouse",
+            isPrimary: true,
+            buttons: 0,
+            clientX: cancelPoint.x,
+            clientY: cancelPoint.y,
+        });
+        await expect(editor.canvas).toHaveCSS("cursor", "grab");
+        await page.mouse.up();
+        await expect(selectedNodeName).toHaveValue("Import glTF");
+
+        const nodeTitle = importNode.getByText("Import glTF", { exact: true });
+        const titleBox = await nodeTitle.boundingBox();
+        if (!titleBox) {
+            throw new Error("Could not resolve the selected node title for dragging.");
+        }
+        await page.mouse.move(titleBox.x + titleBox.width / 2, titleBox.y + titleBox.height / 2);
+        await page.mouse.down();
+        await page.mouse.move(titleBox.x + titleBox.width / 2 + 24, titleBox.y + titleBox.height / 2 + 16, { steps: 4 });
+        await page.mouse.up();
+        const afterNodeDrag = await readNodeState();
+        expect({ left: afterNodeDrag.worldLeft, top: afterNodeDrag.worldTop }).not.toEqual({ left: afterPan.worldLeft, top: afterPan.worldTop });
+
+        const zoomPoint = await editor.findEmptyCanvasPoint();
+        await page.mouse.move(zoomPoint.x, zoomPoint.y);
+        await page.mouse.wheel(0, -200);
+        await expect.poll(async () => (await readNodeState()).screenWidth).toBeGreaterThan(afterNodeDrag.screenWidth);
+        const afterZoom = await readNodeState();
+        expect(afterZoom.worldLeft).toBe(afterNodeDrag.worldLeft);
+        expect(afterZoom.worldTop).toBe(afterNodeDrag.worldTop);
+    });
+
     test("reorganizes overlapping nodes into a left-to-right data flow", async ({ page }) => {
         const editor = new NodeAssetsEditorPage(page);
         await editor.goto();

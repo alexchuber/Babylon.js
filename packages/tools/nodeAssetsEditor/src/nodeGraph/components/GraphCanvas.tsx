@@ -21,6 +21,7 @@ import { FindNearestConnectablePort, FindNodesInRegion } from "../canvasHitTest"
 import {
     type Gesture,
     type GestureAction,
+    type GestureResult,
     type MarqueeRect,
     type PendingWire,
     BeginBackgroundGesture,
@@ -28,6 +29,7 @@ import {
     BeginFrameGesture,
     BeginPortGesture,
     AdvanceGesture,
+    CancelGesture,
     CompleteGesture,
 } from "../gestureInterpreter";
 import { type ContextMenuTarget, type CanvasContextValue, CanvasContextProvider } from "./canvasContext";
@@ -102,6 +104,7 @@ export const GraphCanvas: FunctionComponent<{ context: EditorContextValue }> = (
     const [size, setSize] = useState({ width: 0, height: 0 });
     const [pendingWire, setPendingWire] = useState<PendingWire | null>(null);
     const [marquee, setMarquee] = useState<MarqueeRect | null>(null);
+    const [isPanning, setIsPanning] = useState(false);
     const [contextTarget, setContextTarget] = useState<ContextMenuTarget>({ kind: "canvas" });
 
     const setCamera = useCallback((next: Camera | ((current: Camera) => Camera)) => {
@@ -220,17 +223,74 @@ export const GraphCanvas: FunctionComponent<{ context: EditorContextValue }> = (
         [state, setCamera, attemptConnect]
     );
 
+    const applyGestureResult = useCallback(
+        (result: GestureResult) => {
+            const wasPanning = gestureRef.current.kind === "pan";
+            const willPan = result.gesture.kind === "pan";
+            gestureRef.current = result.gesture;
+            if (wasPanning !== willPan) {
+                setIsPanning(willPan);
+            }
+            executeActions(result.actions);
+        },
+        [executeActions]
+    );
+
+    const capturePointer = useCallback((pointerId: number) => {
+        const element = containerRef.current;
+        if (element && !element.hasPointerCapture(pointerId)) {
+            element.setPointerCapture(pointerId);
+        }
+    }, []);
+
+    const releasePointer = useCallback((pointerId: number) => {
+        const element = containerRef.current;
+        if (element?.hasPointerCapture(pointerId)) {
+            element.releasePointerCapture(pointerId);
+        }
+    }, []);
+
+    const startGesture = useCallback(
+        (event: ReactPointerEvent, result: GestureResult) => {
+            if (gestureRef.current.kind !== "none" || result.gesture.kind === "none") {
+                return;
+            }
+            capturePointer(event.pointerId);
+            applyGestureResult(result);
+        },
+        [capturePointer, applyGestureResult]
+    );
+
+    const cancelGesture = useCallback(
+        (pointerId: number, releaseCapture: boolean) => {
+            const current = gestureRef.current;
+            if (current.kind === "none" || current.pointerId !== pointerId) {
+                return;
+            }
+            applyGestureResult(CancelGesture(current, { pointerId }));
+            if (releaseCapture) {
+                releasePointer(pointerId);
+            }
+        },
+        [applyGestureResult, releasePointer]
+    );
+
     // Persistent window listeners drive the active gesture so dragging continues outside the canvas.
     useEffect(() => {
         const onPointerMove = (event: PointerEvent) => {
+            const current = gestureRef.current;
+            if (current.kind === "none" || current.pointerId !== event.pointerId) {
+                return;
+            }
             const { world, local } = pointerCoords(event.clientX, event.clientY);
-            const { gesture, actions } = AdvanceGesture(gestureRef.current, { world, local });
-            gestureRef.current = gesture;
-            executeActions(actions);
+            applyGestureResult(AdvanceGesture(current, { pointerId: event.pointerId, world, local }));
         };
 
         const onPointerUp = (event: PointerEvent) => {
             const current = gestureRef.current;
+            if (current.kind === "none" || current.pointerId !== event.pointerId) {
+                return;
+            }
             const world = screenToWorld(event.clientX, event.clientY);
             let resolvedTargetPortId: string | undefined;
             if (current.kind === "wire") {
@@ -248,18 +308,21 @@ export const GraphCanvas: FunctionComponent<{ context: EditorContextValue }> = (
                         canConnect: (from, to) => state.canConnect(from, to),
                     });
             }
-            const { gesture, actions } = CompleteGesture(current, { world, resolvedTargetPortId });
-            gestureRef.current = gesture;
-            executeActions(actions);
+            applyGestureResult(CompleteGesture(current, { pointerId: event.pointerId, world, resolvedTargetPortId }));
+            releasePointer(event.pointerId);
         };
+
+        const onPointerCancel = (event: PointerEvent) => cancelGesture(event.pointerId, true);
 
         window.addEventListener("pointermove", onPointerMove);
         window.addEventListener("pointerup", onPointerUp);
+        window.addEventListener("pointercancel", onPointerCancel);
         return () => {
             window.removeEventListener("pointermove", onPointerMove);
             window.removeEventListener("pointerup", onPointerUp);
+            window.removeEventListener("pointercancel", onPointerCancel);
         };
-    }, [state, screenToWorld, pointerCoords, executeActions]);
+    }, [state, screenToWorld, pointerCoords, applyGestureResult, releasePointer, cancelGesture]);
 
     // Keyboard shortcuts (ignored while typing in a form control so the panes keep working).
     useEffect(() => {
@@ -351,29 +414,36 @@ export const GraphCanvas: FunctionComponent<{ context: EditorContextValue }> = (
         () => ({
             editor: context,
             beginNodeInteraction: (nodeId, event) => {
-                const { gesture, actions } = BeginNodeGesture({
-                    nodeId,
-                    additive: event.shiftKey || event.ctrlKey || event.metaKey,
-                    isSelected: state.isNodeSelected(nodeId),
-                    world: screenToWorld(event.clientX, event.clientY),
-                });
-                executeActions(actions);
-                gestureRef.current = gesture;
+                if (gestureRef.current.kind !== "none") {
+                    return;
+                }
+                startGesture(
+                    event,
+                    BeginNodeGesture({
+                        pointerId: event.pointerId,
+                        nodeId,
+                        additive: event.shiftKey || event.ctrlKey || event.metaKey,
+                        isSelected: state.isNodeSelected(nodeId),
+                        world: screenToWorld(event.clientX, event.clientY),
+                    })
+                );
             },
             beginFrameInteraction: (frameId, event) => {
-                const { gesture, actions } = BeginFrameGesture({ frameId, world: screenToWorld(event.clientX, event.clientY) });
-                executeActions(actions);
-                gestureRef.current = gesture;
+                if (gestureRef.current.kind !== "none") {
+                    return;
+                }
+                startGesture(event, BeginFrameGesture({ pointerId: event.pointerId, frameId, world: screenToWorld(event.clientX, event.clientY) }));
             },
             beginPortInteraction: (portId, event) => {
+                if (gestureRef.current.kind !== "none") {
+                    return;
+                }
                 const node = state.getPortNode(portId);
                 const anchor = node ? GetPortAnchor(node, portId) : undefined;
                 if (!anchor) {
                     return;
                 }
-                const { gesture, actions } = BeginPortGesture({ portId, anchor, world: screenToWorld(event.clientX, event.clientY) });
-                executeActions(actions);
-                gestureRef.current = gesture;
+                startGesture(event, BeginPortGesture({ pointerId: event.pointerId, portId, anchor, world: screenToWorld(event.clientX, event.clientY) }));
             },
             selectWire: (wireId) => state.selectWire(wireId),
             openContextMenu: (target) => {
@@ -383,7 +453,7 @@ export const GraphCanvas: FunctionComponent<{ context: EditorContextValue }> = (
                 setContextTarget(target);
             },
         }),
-        [context, state, screenToWorld, executeActions]
+        [context, state, screenToWorld, startGesture]
     );
 
     const onBackgroundPointerDown = (event: ReactPointerEvent<HTMLDivElement>) => {
@@ -394,18 +464,18 @@ export const GraphCanvas: FunctionComponent<{ context: EditorContextValue }> = (
         containerRef.current?.focus();
 
         const { world, local } = pointerCoords(event.clientX, event.clientY);
-        const { gesture, actions } = BeginBackgroundGesture({
+        const result = BeginBackgroundGesture({
+            pointerId: event.pointerId,
             button: event.button,
             spaceHeld: spaceHeldRef.current,
             additive: event.shiftKey || event.ctrlKey || event.metaKey,
             world,
             local,
         });
-        if (gesture.kind === "pan") {
+        if (result.gesture.kind === "pan") {
             event.preventDefault();
         }
-        executeActions(actions);
-        gestureRef.current = gesture;
+        startGesture(event, result);
     };
 
     const onDragOver = (event: ReactDragEvent<HTMLDivElement>) => {
@@ -476,6 +546,7 @@ export const GraphCanvas: FunctionComponent<{ context: EditorContextValue }> = (
         backgroundImage: `radial-gradient(circle, ${tokens.colorNeutralStroke2} ${dotRadius}px, transparent ${dotRadius * 1.5}px)`,
         backgroundSize: `${gridSpacing}px ${gridSpacing}px`,
         backgroundPosition: `${camera.x}px ${camera.y}px`,
+        cursor: isPanning ? "grabbing" : "grab",
     };
 
     return (
@@ -486,7 +557,9 @@ export const GraphCanvas: FunctionComponent<{ context: EditorContextValue }> = (
             tabIndex={0}
             role="application"
             aria-label="Node graph canvas"
+            data-panning={isPanning ? "true" : undefined}
             onPointerDown={onBackgroundPointerDown}
+            onLostPointerCapture={(event) => cancelGesture(event.pointerId, false)}
             onDragOver={onDragOver}
             onDrop={onDrop}
         >
