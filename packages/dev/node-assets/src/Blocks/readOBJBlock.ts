@@ -156,6 +156,7 @@ export class ReadOBJBlock extends NodeAssetBlock {
      * @param url The OBJ URL.
      * @param fetcher The fetch-compatible loader.
      * @param canApplyResult Optional ownership guard checked immediately before resolved bytes become active.
+     * @param applyResult Optional operation result populated after ownership and source-order checks.
      */
     public async setUrlAsync(
         url: string,
