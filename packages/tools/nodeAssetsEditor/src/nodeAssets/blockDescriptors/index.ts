@@ -5,6 +5,7 @@
  */
 
 import "./importGLTFBlockDescriptor";
+import "./importOBJAggregateBlockDescriptor";
 import "./importUSDBlockDescriptor";
 import "./importBabylonAggregateBlockDescriptor";
 import "./importFBXAggregateBlockDescriptor";
@@ -34,11 +35,13 @@ import "./ktx2CompressionBlockDescriptor";
 import "./exportGLTFBlockDescriptor";
 
 import "./readGLTFBlockDescriptor";
+import "./readOBJBlockDescriptor";
 import "./readUSDBlockDescriptor";
 import "./readBabylonBlockDescriptor";
 import "./readFBXBlockDescriptor";
 import "./readNodeGeometryBlockDescriptor";
 import "./gltfToUniversalBlockDescriptor";
+import "./objToUniversalBlockDescriptor";
 import "./writeGLTFBlockDescriptor";
 import "./usdToUniversalBlockDescriptor";
 import "./babylonToUniversalBlockDescriptor";

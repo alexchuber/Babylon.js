@@ -9,6 +9,7 @@ import {
     FBXHeaderColor,
     NodeGeometryPortColor,
     NumberPortColor,
+    OBJPortColor,
     ScenePortColor,
     UsdStagePortColor,
     type IBlockDescriptor,
@@ -33,6 +34,7 @@ class RepresentationMappingTestBlock extends NodeAssetBlock {
     public readonly nodeGeometry = this._registerOutput("nodeGeometry", NodeAssetConnectionPointType.NODE_GEOMETRY);
     public readonly usdSource = this._registerOutput("usdSource", NodeAssetConnectionPointType.USD_SOURCE);
     public readonly fbxSource = this._registerOutput("fbxSource", NodeAssetConnectionPointType.FBX_SOURCE);
+    public readonly objSource = this._registerOutput("objSource", NodeAssetConnectionPointType.OBJ_SOURCE);
 
     public override async _buildBlockAsync(): Promise<void> {}
 }
@@ -85,6 +87,9 @@ describe("blockNodeMapping", () => {
         expect(PointToPort(block, block.nodeGeometry).color).toBe(NodeGeometryPortColor);
         expect(PointToPort(block, block.usdSource)).toMatchObject({ name: "USD", color: UsdStagePortColor });
         expect(PointToPort(block, block.fbxSource)).toMatchObject({ name: "FBX", color: FBXHeaderColor });
+        expect(PointToPort(block, block.objSource)).toMatchObject({ name: "OBJ", color: OBJPortColor });
+        expect(OBJPortColor).not.toBe(UsdStagePortColor);
+        expect(OBJPortColor).not.toBe(BabylonScenePortColor);
     });
 
     it("builds a node with input ports before output ports", () => {

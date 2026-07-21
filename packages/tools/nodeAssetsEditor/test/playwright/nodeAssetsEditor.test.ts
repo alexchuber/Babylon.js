@@ -1,4 +1,4 @@
-import { test, expect, type Page, type Download } from "@playwright/test";
+import { test, expect, type Page, type Download, type Locator } from "@playwright/test";
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 
@@ -18,6 +18,8 @@ type SavedBlock = {
     readonly customType: string;
     readonly name: string;
     readonly source?: string | null;
+    readonly primary?: { readonly path: string; readonly bytes: string } | null;
+    readonly companions?: readonly { readonly path: string; readonly bytes: string }[];
     readonly subgraph?: {
         readonly blocks: readonly SavedBlock[];
         readonly connections: readonly unknown[];
@@ -29,6 +31,91 @@ type SavedEditorGraph = {
         readonly blocks: readonly SavedBlock[];
     };
 };
+
+type SyntheticTouchPan = {
+    readonly pointerId: number;
+    readonly point: { readonly x: number; readonly y: number };
+};
+
+async function installSyntheticPointerCapture(editor: NodeAssetsEditorPage): Promise<void> {
+    await editor.canvas.evaluate((canvas) => {
+        const capturedPointerIds = new Set<number>();
+        Object.defineProperties(canvas, {
+            hasPointerCapture: { configurable: true, value: (pointerId: number) => capturedPointerIds.has(pointerId) },
+            setPointerCapture: { configurable: true, value: (pointerId: number) => capturedPointerIds.add(pointerId) },
+            releasePointerCapture: { configurable: true, value: (pointerId: number) => capturedPointerIds.delete(pointerId) },
+        });
+    });
+}
+
+async function startSyntheticTouchPan(editor: NodeAssetsEditorPage, pointerId: number): Promise<SyntheticTouchPan> {
+    const point = await editor.findEmptyCanvasPoint();
+    await editor.canvas.dispatchEvent("pointerdown", {
+        pointerId,
+        pointerType: "touch",
+        isPrimary: true,
+        button: 0,
+        buttons: 1,
+        clientX: point.x,
+        clientY: point.y,
+    });
+    await expect(editor.canvas).toHaveCSS("cursor", "grabbing");
+    return { pointerId, point };
+}
+
+async function moveSyntheticTouchPan(editor: NodeAssetsEditorPage, pan: SyntheticTouchPan, delta: { readonly x: number; readonly y: number }): Promise<SyntheticTouchPan> {
+    const point = { x: pan.point.x + delta.x, y: pan.point.y + delta.y };
+    await editor.canvas.dispatchEvent("pointermove", {
+        pointerId: pan.pointerId,
+        pointerType: "touch",
+        isPrimary: true,
+        button: -1,
+        buttons: 1,
+        clientX: point.x,
+        clientY: point.y,
+    });
+    return { pointerId: pan.pointerId, point };
+}
+
+async function endSyntheticTouchPan(editor: NodeAssetsEditorPage, pan: SyntheticTouchPan, eventName: "pointerup" | "pointercancel"): Promise<void> {
+    await editor.canvas.dispatchEvent(eventName, {
+        pointerId: pan.pointerId,
+        pointerType: "touch",
+        isPrimary: true,
+        button: eventName === "pointerup" ? 0 : -1,
+        buttons: 0,
+        clientX: pan.point.x,
+        clientY: pan.point.y,
+    });
+    await expect(editor.canvas).toHaveCSS("cursor", "grab");
+}
+
+async function loseSyntheticTouchPanCapture(editor: NodeAssetsEditorPage, pan: SyntheticTouchPan): Promise<void> {
+    await editor.canvas.evaluate((canvas, pointerId) => canvas.releasePointerCapture(pointerId), pan.pointerId);
+    await editor.canvas.dispatchEvent("lostpointercapture", {
+        pointerId: pan.pointerId,
+        pointerType: "touch",
+        isPrimary: true,
+        button: -1,
+        buttons: 1,
+        clientX: pan.point.x,
+        clientY: pan.point.y,
+    });
+    await expect(editor.canvas).toHaveCSS("cursor", "grab");
+}
+
+async function clickWirePath(page: Page, path: Locator, button: "left" | "right" = "left"): Promise<void> {
+    const point = await path.evaluate((element: SVGPathElement) => {
+        const matrix = element.getScreenCTM();
+        if (!matrix) {
+            throw new Error("Could not resolve the wire path screen transform.");
+        }
+        const pathPoint = element.getPointAtLength(element.getTotalLength() / 2);
+        const screenPoint = pathPoint.matrixTransform(matrix);
+        return { x: screenPoint.x, y: screenPoint.y };
+    });
+    await page.mouse.click(point.x, point.y, { button });
+}
 
 const DefaultOptimizationPipeline: readonly (readonly [string, string])[] = [
     ["Import glTF", "Weld Vertices"],
@@ -109,6 +196,49 @@ function CreateBabylonFunnelEditorFile(): string {
             frames: [],
         },
     });
+}
+
+function CreateAsciiFbxTriangle(): Buffer {
+    return Buffer.from(
+        [
+            "; FBX 7.4.0 project file",
+            "GlobalSettings: {",
+            "    Version: 1000",
+            "    Properties70: {",
+            '        P: "UpAxis", "int", "Integer", "",1',
+            '        P: "UpAxisSign", "int", "Integer", "",1',
+            '        P: "FrontAxis", "int", "Integer", "",2',
+            '        P: "FrontAxisSign", "int", "Integer", "",1',
+            '        P: "CoordAxis", "int", "Integer", "",0',
+            '        P: "CoordAxisSign", "int", "Integer", "",1',
+            '        P: "UnitScaleFactor", "double", "Number", "",1',
+            "    }",
+            "}",
+            "Objects: {",
+            '    Geometry: 1, "Geometry::Triangle", "Mesh" {',
+            "        Vertices: *9 {",
+            "            a: 0,0,0,1,0,0,0,1,0",
+            "        }",
+            "        PolygonVertexIndex: *3 {",
+            "            a: 0,1,-3",
+            "        }",
+            "        LayerElementNormal: 0 {",
+            '            MappingInformationType: "ByControlPoint"',
+            '            ReferenceInformationType: "Direct"',
+            "            Normals: *9 {",
+            "                a: 0,0,1,0,0,1,0,0,1",
+            "            }",
+            "        }",
+            "    }",
+            '    Model: 2, "Model::Triangle", "Mesh" {',
+            "    }",
+            "}",
+            "Connections: {",
+            '    C: "OO", 1, 2',
+            '    C: "OO", 2, 0',
+            "}",
+        ].join("\n")
+    );
 }
 
 function createAdvancedCodecEditorFile(): string {
@@ -552,20 +682,48 @@ test.describe("Node Assets Editor — maintained default pipeline", () => {
         await expect(editor.previewCanvas).toBeVisible();
     });
 
-    test("finds nodes by workflow intent and shows their descriptions", async ({ page }) => {
+    test("keeps palette descriptions searchable and exposes them on hover and focus", async ({ page }) => {
         const editor = new NodeAssetsEditorPage(page);
         await editor.goto();
 
         const search = page.getByPlaceholder("Search palette");
-        for (const [query, label, description] of [
-            ["decimate", "Simplify Meshes", "Reduce Universal mesh geometry to a target ratio and error limit."],
-            ["unused", "Remove Unused Resources", "Remove resources that are no longer referenced by the scene."],
-            ["compress", "Compress Textures (KTX2)", "Compress scene textures to KTX2 / Basis Universal."],
-        ]) {
-            await search.fill(query);
-            await expect(page.getByTitle(label, { exact: true })).toBeVisible();
-            await expect(page.getByText(description, { exact: true })).toBeVisible();
-        }
+        const label = "Simplify Meshes";
+        const description = "Reduce Universal mesh geometry to a target ratio and error limit.";
+        await search.fill("target ratio");
+
+        const paletteItem = editor.paletteItem(label);
+        const tooltip = page.getByRole("tooltip");
+        await expect(paletteItem).toBeVisible();
+        await search.clear();
+        await paletteItem.scrollIntoViewIfNeeded();
+        await expect(page.getByText(description, { exact: true })).toBeHidden();
+        await expect(paletteItem).toHaveAccessibleName(label);
+        await expect(paletteItem).toHaveAttribute("tabindex", "0");
+        await expect(paletteItem).not.toHaveAttribute("title");
+
+        const touchPointer = { pointerId: 41_001, pointerType: "touch", isPrimary: true };
+        await paletteItem.dispatchEvent("pointerover", { ...touchPointer, button: -1, buttons: 0 });
+        await paletteItem.dispatchEvent("pointerdown", { ...touchPointer, button: 0, buttons: 1 });
+        await page.waitForTimeout(1_000);
+        await expect(tooltip).toBeHidden();
+        await paletteItem.dispatchEvent("pointerup", { ...touchPointer, button: 0, buttons: 0 });
+        await paletteItem.dispatchEvent("pointerout", { ...touchPointer, button: -1, buttons: 0 });
+
+        await paletteItem.hover();
+        await expect(tooltip).toBeVisible({ timeout: 10_000 });
+        await expect(tooltip).toHaveText(description);
+        await expect(paletteItem).toHaveAccessibleDescription(description);
+
+        await page.mouse.move(0, 0);
+        await expect(tooltip).toBeHidden();
+        await paletteItem.focus();
+        await expect(paletteItem).toBeFocused();
+        await expect(tooltip).toBeVisible({ timeout: 10_000 });
+        await expect(tooltip).toHaveText(description);
+        await expect(paletteItem).toHaveAccessibleDescription(description);
+
+        await editor.dropPaletteItem(label, { x: 0.65, y: 0.75 });
+        await expect(editor.nodeByTitle(label)).toBeVisible();
     });
 
     test("persists Show primitives without changing canvas or expanded aggregate nodes", async ({ page }) => {
@@ -582,8 +740,10 @@ test.describe("Node Assets Editor — maintained default pipeline", () => {
         const exportNode = editor.nodeByTitle("Export glTF");
         const defaultItems = [
             "Import glTF",
+            "Import OBJ",
             "Import USD",
             "Import Babylon",
+            "Import FBX",
             "Import Node Geometry",
             "Weld Vertices",
             "Deduplicate Resources",
@@ -609,7 +769,7 @@ test.describe("Node Assets Editor — maintained default pipeline", () => {
 
         await expect(showPrimitives).not.toBeChecked();
         await expect(nodeGeometryCategory).toHaveCount(0);
-        await expect(categories).toHaveText(["Inputs (4)", "Universal (17)", "glTF (3)"]);
+        await expect(categories).toHaveText(["Inputs (6)", "Universal (17)", "glTF (3)"]);
         await expect(families).toHaveText(["Aggregate imports", "Cleanup", "Reduction", "Structure", "Attributes", "Textures", "Encoding/output"]);
         await expect(items).toHaveText(defaultItems);
         await search.fill("Write glTF");
@@ -621,25 +781,29 @@ test.describe("Node Assets Editor — maintained default pipeline", () => {
         await showPrimitives.check();
         await expect(items).toHaveText(["Write glTF"]);
         await search.clear();
-        await expect(categories).toHaveText(["Inputs (8)", "Universal (22)", "glTF (5)", "USD (1)", "Babylon (1)", "Node Geometry (1)"]);
+        await expect(categories).toHaveText(["Inputs (12)", "Universal (22)", "glTF (5)", "OBJ (1)", "USD (1)", "Babylon (1)", "FBX (1)", "Node Geometry (1)"]);
         await expect(families).toHaveText(["Aggregate imports", "Cleanup", "Reduction", "Structure", "Attributes", "Textures", "Encoding/output"]);
         await expect(items).toHaveText([
-            ...defaultItems.slice(0, 4),
+            ...defaultItems.slice(0, 6),
             "Read glTF",
+            "Read OBJ",
             "Read USD",
             "Read Babylon",
+            "Read FBX",
             "Read Node Geometry",
-            ...defaultItems.slice(4, 21),
+            ...defaultItems.slice(6, 23),
             "Universal → glTF",
             "Deduplicate Materials",
             "Deduplicate Textures",
             "Reuse Identical Meshes",
             "Deduplicate Data",
-            ...defaultItems.slice(21),
+            ...defaultItems.slice(23),
             "glTF → Universal",
             "Write glTF",
+            "OBJ to Universal",
             "USD → Universal",
             "Babylon → Universal",
+            "FBX → Universal",
             "Node Geometry → Universal",
         ]);
         await expect(nodeGeometryCategory).toBeVisible();
@@ -650,8 +814,9 @@ test.describe("Node Assets Editor — maintained default pipeline", () => {
         await search.clear();
         await showPrimitives.uncheck();
         await expect(nodeGeometryCategory).toHaveCount(0);
-        await expect(page.getByTitle("Read Babylon", { exact: true })).toHaveCount(0);
-        await expect(categories).toHaveText(["Inputs (4)", "Universal (17)", "glTF (3)"]);
+        await expect(editor.paletteItem("Read Babylon")).toHaveCount(0);
+        await expect(editor.paletteItem("Read FBX")).toHaveCount(0);
+        await expect(categories).toHaveText(["Inputs (6)", "Universal (17)", "glTF (3)"]);
         await expect(items).toHaveText(defaultItems);
         await expect(editor.nodeByTitle("Read Babylon")).toBeVisible();
         await expect(editor.nodeByTitle("Write glTF")).toBeVisible();
@@ -659,7 +824,7 @@ test.describe("Node Assets Editor — maintained default pipeline", () => {
         await showPrimitives.check();
         await page.reload({ waitUntil: "load" });
         await expect(showPrimitives).toBeChecked();
-        await expect(categories).toHaveText(["Inputs (8)", "Universal (22)", "glTF (5)", "USD (1)", "Babylon (1)", "Node Geometry (1)"]);
+        await expect(categories).toHaveText(["Inputs (12)", "Universal (22)", "glTF (5)", "OBJ (1)", "USD (1)", "Babylon (1)", "FBX (1)", "Node Geometry (1)"]);
     });
 
     test("extends node selection with the platform multi-select modifier", async ({ page }) => {
@@ -678,6 +843,257 @@ test.describe("Node Assets Editor — maintained default pipeline", () => {
         await expect(editor.nodeByTitle("Import glTF")).toHaveCount(0);
         await expect(editor.nodeByTitle("Remove Unused Resources")).toHaveCount(0);
         await expect(editor.nodes).toHaveCount(2);
+    });
+
+    test("keeps an ordinary node presentation inert while a touch pan owns the canvas, then restores it on pointerup", async ({ page }) => {
+        const editor = new NodeAssetsEditorPage(page);
+        await editor.goto();
+        await installSyntheticPointerCapture(editor);
+
+        const node = editor.nodeByTitle("Remove Unused Resources");
+        const collapseNode = node.getByRole("button", { name: "Collapse node" });
+        const pan = await startSyntheticTouchPan(editor, 11);
+
+        await collapseNode.click();
+        await expect(collapseNode).toBeVisible();
+
+        await endSyntheticTouchPan(editor, pan, "pointerup");
+        await collapseNode.click();
+        const expandNode = node.getByRole("button", { name: "Expand node" });
+        await expect(expandNode).toBeVisible();
+        await expandNode.click();
+        await expect(collapseNode).toBeVisible();
+    });
+
+    test("keeps aggregate presentation inert while a touch pan owns the canvas, then restores it on pointerup", async ({ page }) => {
+        const editor = new NodeAssetsEditorPage(page);
+        await editor.goto();
+        await installSyntheticPointerCapture(editor);
+
+        const aggregateNode = editor.nodeByTitle("Import glTF");
+        const expandAggregate = aggregateNode.getByRole("button", { name: "Expand aggregate" });
+        const compactPan = await startSyntheticTouchPan(editor, 21);
+
+        await expandAggregate.click();
+        await expect(expandAggregate).toBeVisible();
+
+        await endSyntheticTouchPan(editor, compactPan, "pointerup");
+        await expandAggregate.click();
+        const aggregateFrame = page.getByTestId("aggregate-frame").filter({ hasText: "Import glTF" });
+        const collapseAggregate = aggregateFrame.getByRole("button", { name: "Collapse aggregate" });
+        await expect(collapseAggregate).toBeVisible();
+
+        const expandedPan = await startSyntheticTouchPan(editor, 22);
+        await collapseAggregate.click();
+        await expect(aggregateFrame).toBeVisible();
+
+        await endSyntheticTouchPan(editor, expandedPan, "pointerup");
+        await collapseAggregate.click();
+        await expect(expandAggregate).toBeVisible();
+    });
+
+    test("keeps minimap and wire selection inert while a touch pan owns the canvas, then restores them on lost capture", async ({ page }) => {
+        const editor = new NodeAssetsEditorPage(page);
+        await editor.goto();
+        await installSyntheticPointerCapture(editor);
+
+        const importNode = editor.nodeByTitle("Import glTF");
+        const minimap = editor.canvas.locator('[role="presentation"]');
+        const wireHitTarget = editor.wires.first().locator("path").first();
+        await editor.selectNode("Import glTF");
+        const selectedNodeName = page.getByRole("textbox").nth(0);
+        await expect(selectedNodeName).toHaveValue("Import glTF");
+
+        const readNodePosition = async () =>
+            await importNode.evaluate((node: HTMLElement) => {
+                const rect = node.getBoundingClientRect();
+                return { screenX: rect.x, screenY: rect.y };
+            });
+
+        const pan = await startSyntheticTouchPan(editor, 31);
+        const beforeForeignActions = await readNodePosition();
+        await minimap.click({ position: { x: 16, y: 16 } });
+        await clickWirePath(page, wireHitTarget);
+        const afterForeignActions = await readNodePosition();
+        expect({
+            screenX: afterForeignActions.screenX,
+            screenY: afterForeignActions.screenY,
+            selectedNodeName: await selectedNodeName.inputValue(),
+        }).toEqual({
+            screenX: beforeForeignActions.screenX,
+            screenY: beforeForeignActions.screenY,
+            selectedNodeName: "Import glTF",
+        });
+
+        await loseSyntheticTouchPanCapture(editor, pan);
+        const afterLostCapture = await readNodePosition();
+        await expect(selectedNodeName).toHaveValue("Import glTF");
+        await endSyntheticTouchPan(editor, pan, "pointerup");
+        expect(await readNodePosition()).toEqual(afterLostCapture);
+        await expect(selectedNodeName).toHaveValue("Import glTF");
+
+        await clickWirePath(page, wireHitTarget);
+        await expect(page.getByText("No selection", { exact: true })).toBeVisible();
+        await editor.selectNode("Import glTF");
+        const beforeIdleMinimapNavigation = await readNodePosition();
+        await minimap.click({ position: { x: 16, y: 16 } });
+        await expect
+            .poll(async () => {
+                const current = await readNodePosition();
+                return Math.abs(current.screenX - beforeIdleMinimapNavigation.screenX) + Math.abs(current.screenY - beforeIdleMinimapNavigation.screenY);
+            })
+            .toBeGreaterThan(1);
+    });
+
+    test("closes and suppresses context menus while a touch pan owns the canvas, then restores them on pointercancel", async ({ page }) => {
+        const editor = new NodeAssetsEditorPage(page);
+        await editor.goto();
+        await installSyntheticPointerCapture(editor);
+
+        const importNode = editor.nodeByTitle("Import glTF");
+        const contextNode = editor.nodeByTitle("Remove Unused Resources");
+        const wireHitTarget = editor.wires.first().locator("path").first();
+        const visibleMenus = page.locator('[role="menu"]:visible');
+        const selectedNodeName = page.getByRole("textbox").nth(0);
+        await editor.selectNode("Import glTF");
+        await expect(selectedNodeName).toHaveValue("Import glTF");
+        await importNode.getByText("Import glTF", { exact: true }).click({ button: "right" });
+        await page.getByRole("menuitem", { name: "Copy" }).click();
+        await expect(selectedNodeName).toHaveValue("Import glTF");
+
+        const menuPoint = await editor.findEmptyCanvasPoint();
+        await page.mouse.click(menuPoint.x, menuPoint.y, { button: "right" });
+        const paste = page.getByRole("menuitem", { name: "Paste" });
+        await expect(paste).toBeVisible();
+        await expect(paste).toBeEnabled();
+        await expect(selectedNodeName).toHaveValue("Import glTF");
+
+        const beforeOwner = {
+            nodeCount: await editor.nodes.count(),
+            position: await importNode.evaluate((node: HTMLElement) => {
+                const rect = node.getBoundingClientRect();
+                return { x: rect.x, y: rect.y };
+            }),
+        };
+        const pan = await startSyntheticTouchPan(editor, 41);
+        await expect(selectedNodeName).toHaveValue("Import glTF");
+
+        await expect.soft(visibleMenus).toHaveCount(0);
+        await page.keyboard.press("Enter");
+        await expect.soft(editor.nodes).toHaveCount(beforeOwner.nodeCount);
+        const positionAfterStaleAction = await importNode.evaluate((node: HTMLElement) => {
+            const rect = node.getBoundingClientRect();
+            return { x: rect.x, y: rect.y };
+        });
+        expect.soft(positionAfterStaleAction).toEqual(beforeOwner.position);
+        await expect(selectedNodeName).toHaveValue("Import glTF");
+
+        for (const openMenu of [
+            async () => contextNode.getByText("Remove Unused Resources", { exact: true }).click({ button: "right" }),
+            async () => clickWirePath(page, wireHitTarget, "right"),
+            async () => {
+                const point = await editor.findEmptyCanvasPoint();
+                await page.mouse.click(point.x, point.y, { button: "right" });
+            },
+        ]) {
+            await openMenu();
+            await expect.soft(visibleMenus).toHaveCount(0);
+            if ((await visibleMenus.count()) > 0) {
+                await page.keyboard.press("Escape");
+            }
+            await expect(selectedNodeName).toHaveValue("Import glTF");
+        }
+
+        await endSyntheticTouchPan(editor, pan, "pointercancel");
+
+        await contextNode.getByText("Remove Unused Resources", { exact: true }).click({ button: "right" });
+        await expect(page.getByRole("menuitem", { name: "Copy" })).toBeVisible();
+        await page.keyboard.press("Escape");
+        await clickWirePath(page, wireHitTarget, "right");
+        await expect(page.getByRole("menuitem", { name: "Delete wire" })).toBeVisible();
+        await page.keyboard.press("Escape");
+        const idleCanvasPoint = await editor.findEmptyCanvasPoint();
+        await page.mouse.click(idleCanvasPoint.x, idleCanvasPoint.y, { button: "right" });
+        const beforeIdlePaste = await editor.nodes.count();
+        await expect(paste).toBeVisible();
+        await expect(paste).toBeEnabled();
+        await paste.click();
+        await expect(editor.nodes).toHaveCount(beforeIdlePaste + 1);
+        const fitMenuPoint = await editor.findEmptyCanvasPoint();
+        await page.mouse.click(fitMenuPoint.x, fitMenuPoint.y, { button: "right" });
+        await expect(page.getByRole("menuitem", { name: "Zoom to fit" })).toBeVisible();
+        await page.keyboard.press("Escape");
+    });
+
+    test("pans empty canvas without mutating graph layout and preserves node drag and wheel zoom", async ({ page }) => {
+        const editor = new NodeAssetsEditorPage(page);
+        await editor.goto();
+        await installSyntheticPointerCapture(editor);
+
+        const importNode = editor.nodeByTitle("Import glTF");
+        await editor.selectNode("Import glTF");
+        const selectedNodeName = page.getByRole("textbox").nth(0);
+        await expect(selectedNodeName).toHaveValue("Import glTF");
+
+        const readNodeState = async () =>
+            await importNode.evaluate((node: HTMLElement) => {
+                const rect = node.getBoundingClientRect();
+                return {
+                    worldLeft: node.style.left,
+                    worldTop: node.style.top,
+                    screenX: rect.x,
+                    screenY: rect.y,
+                    screenWidth: rect.width,
+                };
+            });
+
+        const beforePan = await readNodeState();
+        const delta = { x: 48, y: 32 };
+        await expect(editor.canvas).toHaveCSS("cursor", "grab");
+        const pan = await startSyntheticTouchPan(editor, 51);
+        const foreignStart = await editor.findEmptyCanvasPoint();
+        await page.mouse.move(foreignStart.x, foreignStart.y);
+        await page.mouse.down();
+        const beforeForeignMove = await readNodeState();
+        await page.mouse.move(foreignStart.x + 96, foreignStart.y + 96, { steps: 4 });
+        await page.mouse.up();
+        const afterForeignMove = await readNodeState();
+        expect(afterForeignMove.screenX).toBe(beforeForeignMove.screenX);
+        expect(afterForeignMove.screenY).toBe(beforeForeignMove.screenY);
+        await expect(editor.canvas).toHaveCSS("cursor", "grabbing");
+        const movedPan = await moveSyntheticTouchPan(editor, pan, delta);
+        await endSyntheticTouchPan(editor, movedPan, "pointerup");
+
+        const afterPan = await readNodeState();
+        expect(afterPan.worldLeft).toBe(beforePan.worldLeft);
+        expect(afterPan.worldTop).toBe(beforePan.worldTop);
+        expect(afterPan.screenX).toBeCloseTo(beforePan.screenX + delta.x, 4);
+        expect(afterPan.screenY).toBeCloseTo(beforePan.screenY + delta.y, 4);
+        await expect(selectedNodeName).toHaveValue("Import glTF");
+
+        const canceledPan = await startSyntheticTouchPan(editor, 52);
+        await endSyntheticTouchPan(editor, canceledPan, "pointercancel");
+        await expect(selectedNodeName).toHaveValue("Import glTF");
+
+        const nodeTitle = importNode.getByText("Import glTF", { exact: true });
+        const titleBox = await nodeTitle.boundingBox();
+        if (!titleBox) {
+            throw new Error("Could not resolve the selected node title for dragging.");
+        }
+        await page.mouse.move(titleBox.x + titleBox.width / 2, titleBox.y + titleBox.height / 2);
+        await page.mouse.down();
+        await page.mouse.move(titleBox.x + titleBox.width / 2 + 24, titleBox.y + titleBox.height / 2 + 16, { steps: 4 });
+        await page.mouse.up();
+        const afterNodeDrag = await readNodeState();
+        expect({ left: afterNodeDrag.worldLeft, top: afterNodeDrag.worldTop }).not.toEqual({ left: afterPan.worldLeft, top: afterPan.worldTop });
+
+        const zoomPoint = await editor.findEmptyCanvasPoint();
+        await page.mouse.move(zoomPoint.x, zoomPoint.y);
+        await page.mouse.wheel(0, -200);
+        await expect.poll(async () => (await readNodeState()).screenWidth).toBeGreaterThan(afterNodeDrag.screenWidth);
+        const afterZoom = await readNodeState();
+        expect(afterZoom.worldLeft).toBe(afterNodeDrag.worldLeft);
+        expect(afterZoom.worldTop).toBe(afterNodeDrag.worldTop);
     });
 
     test("reorganizes overlapping nodes into a left-to-right data flow", async ({ page }) => {
@@ -1077,6 +1493,50 @@ test.describe("Node Assets Editor — Universal glTF aggregates", () => {
         await editor.waitForSuccessfulPreviewBuild();
     });
 
+    test("persists and rebuilds a browser-selected OBJ companion bundle", async ({ page }) => {
+        const editor = new NodeAssetsEditorPage(page);
+        await editor.goto();
+        await editor.waitForNextSuccessfulPreviewBuild();
+        await editor.openLibraryButton.click();
+        const dialog = page.getByRole("dialog", { name: "NodeAsset Library" });
+        await dialog.getByRole("button", { name: "OBJ to Optimized glTF", exact: true }).click();
+        await editor.waitForSuccessfulPreviewBuild();
+
+        await editor.selectNode("Import OBJ");
+        const fileChooserPromise = page.waitForEvent("filechooser");
+        await page.getByRole("button", { name: "Upload OBJ…" }).click();
+        const fileChooser = await fileChooserPromise;
+        expect(fileChooser.isMultiple()).toBe(true);
+        await fileChooser.setFiles([
+            { name: "browser-bundle.obj", mimeType: "text/plain", buffer: Buffer.from(BuiltInLibraryFixtures.obj) },
+            { name: "catalog.mtl", mimeType: "text/plain", buffer: Buffer.from(BuiltInLibraryFixtures.objMtl) },
+            { name: "tiny.png", mimeType: "image/png", buffer: Buffer.from(BuiltInLibraryFixtures.objTexture) },
+        ]);
+        await editor.waitForSuccessfulPreviewBuild();
+
+        const saved = await saveEditorGraph(page);
+        const importer = saved.graph.blocks.find((block) => block.customType === "ImportOBJAggregateBlock");
+        const read = importer?.subgraph?.blocks.find((block) => block.customType === "ReadOBJBlock");
+        expect(read?.primary?.path).toBe("browser-bundle.obj");
+        expect(read?.companions?.map((companion) => companion.path)).toEqual(["catalog.mtl", "tiny.png"]);
+
+        const loadChooserPromise = page.waitForEvent("filechooser");
+        await page.getByRole("button", { name: "Load", exact: true }).click();
+        const loadChooser = await loadChooserPromise;
+        await loadChooser.setFiles({
+            name: "browser-bundle.json",
+            mimeType: "application/json",
+            buffer: Buffer.from(JSON.stringify(saved)),
+        });
+        await editor.waitForSuccessfulPreviewBuild();
+
+        const reloaded = await saveEditorGraph(page);
+        const reloadedImporter = reloaded.graph.blocks.find((block) => block.customType === "ImportOBJAggregateBlock");
+        const reloadedRead = reloadedImporter?.subgraph?.blocks.find((block) => block.customType === "ReadOBJBlock");
+        expect(reloadedRead?.primary?.path).toBe("browser-bundle.obj");
+        expect(reloadedRead?.companions?.map((companion) => companion.path)).toEqual(["catalog.mtl", "tiny.png"]);
+    });
+
     test("keeps the active source and surfaces an error when a URL load fails", async ({ page }) => {
         const editor = new NodeAssetsEditorPage(page);
         await page.route("https://example.invalid/missing.glb", async (route) => await route.fulfill({ status: 404, body: "Not Found" }));
@@ -1175,7 +1635,7 @@ test.describe("Node Assets Editor — Universal glTF aggregates", () => {
             buffer: createNodeGeometryEditorFile(),
         });
         await expect(editor.nodes).toHaveCount(2);
-        await expect(page.getByTitle("Evaluate Node Geometry", { exact: true })).toHaveCount(0);
+        await expect(editor.paletteItem("Evaluate Node Geometry")).toHaveCount(0);
 
         await editor.selectNode("Import Node Geometry");
         await propertyTextbox("Snippet ID").fill("#TEST#1");
@@ -1385,6 +1845,47 @@ test.describe("Node Assets Editor — Babylon Universal funnel", () => {
         await page.getByRole("button", { name: "Export .glb" }).click();
         const gltf = parseGlbJson(await readDownloadedGlb(await downloadPromise));
         expect(gltf.nodes?.map((node) => node.name)).toContain("babylon-triangle");
+    });
+});
+
+test.describe("Node Assets Editor — FBX Universal aggregate", () => {
+    test.describe.configure({ timeout: 180_000 });
+
+    test("uploads and expands Import FBX, previews its Universal output, and downloads a valid GLB", async ({ page }) => {
+        const editor = new NodeAssetsEditorPage(page);
+        await editor.goto();
+        await editor.waitForNextSuccessfulPreviewBuild();
+
+        await editor.dropPaletteItem("Import FBX", { x: 0.18, y: 0.72 });
+        await editor.selectNode("Import FBX");
+        const fileChooserPromise = page.waitForEvent("filechooser");
+        await page.getByRole("button", { name: "Upload FBX…" }).click();
+        const fileChooser = await fileChooserPromise;
+        await fileChooser.setFiles({
+            name: "triangle.fbx",
+            mimeType: "application/octet-stream",
+            buffer: CreateAsciiFbxTriangle(),
+        });
+        await expect(page.getByRole("textbox").nth(2)).toHaveValue("triangle.fbx");
+
+        await editor.connectPorts(editor.portOfNode("Import FBX", "out"), editor.portOfNode("Export glTF", "in"));
+        await editor.waitForSuccessfulPreviewBuild();
+        await expect(editor.previewCanvas).toBeVisible();
+
+        await editor.nodeByTitle("Import FBX").getByRole("button", { name: "Expand aggregate" }).click();
+        await expect(editor.nodeByTitle("Read FBX")).toBeVisible();
+        await expect(editor.nodeByTitle("FBX → Universal")).toBeVisible();
+        await expect(page.locator('[data-testid="graph-wire"][data-from-node-title="Read FBX"][data-to-node-title="FBX → Universal"]')).toHaveCount(1);
+
+        await editor.selectNode("Read FBX");
+        await expect(page.getByRole("textbox").nth(2)).toHaveValue("triangle.fbx");
+
+        await editor.selectNode("Export glTF");
+        const downloadPromise = page.waitForEvent("download");
+        await page.getByRole("button", { name: "Export .glb" }).click();
+        const exported = parseGlbJson(await readDownloadedGlb(await downloadPromise));
+        expect((exported.meshes ?? []).length).toBe(1);
+        expect((exported.nodes ?? []).map((node) => node.name)).toContain("Triangle");
     });
 });
 

@@ -1,4 +1,6 @@
-import { describe, expect, it } from "vitest";
+import { WebIO } from "@gltf-transform/core";
+import { ALL_EXTENSIONS } from "@gltf-transform/extensions";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 // Importing the worker core evaluates its block-registration side effect in THIS test realm. Nothing
 // else here registers blocks: we deliberately read the registry through the node-assets submodules and
@@ -6,10 +8,13 @@ import { describe, expect, it } from "vitest";
 // every block via another path and mask a worker that under-registers). Vitest isolates the module
 // registry per test file, so the registry below reflects exactly what the preview build worker can
 // deserialize.
-import "../../src/nodeAssets/nodeAssetBuildWorkerCore";
+import { BuildSerializedNodeAssetAsync } from "../../src/nodeAssets/nodeAssetBuildWorkerCore";
 import { CreateBlockByClassName, GetRegisteredBlockClassNames } from "node-assets/blockFoundation/blockRegistry";
 import { NodeAsset } from "node-assets/nodeAsset";
-import { GetDefaultBuiltInNodeAssetLibraryEntry } from "../../src/nodeAssets/builtInLibraryEntries";
+import { CreateBuiltInNodeAssetLibraryEntries, GetDefaultBuiltInNodeAssetLibraryEntry } from "../../src/nodeAssets/builtInLibraryEntries";
+import { TestFileReader } from "./testFileReader";
+
+vi.mock("draco3dgltf", async () => await vi.importActual("draco3dgltf"));
 
 // The built-in block ClassNames, hardcoded (not derived from the package barrel) so this test fails
 // if the worker realm ever registers a different set than the package publishes. Keep in sync with
@@ -98,11 +103,17 @@ const ExpectedBlockClassNames = [
     "ReadFBXBlock",
     "FBXToUniversalBlock",
     "ImportFBXAggregateBlock",
+    "ReadOBJBlock",
+    "OBJToUniversalBlock",
+    "ImportOBJAggregateBlock",
 ] as const;
 
 const DefaultPipelineClassNames = ["ImportGLTFAggregateBlock", "WeldVerticesBlock", "RemoveUnusedResourcesBlock", "ExportGLTFAggregateBlock"] as const;
 
 describe("preview build worker block registration", () => {
+    beforeEach(() => vi.stubGlobal("FileReader", TestFileReader));
+    afterEach(() => vi.unstubAllGlobals());
+
     // Regression for the worker block-registration drift: the worker core used to side-effect import only
     // a hand-picked subset of block modules, so blocks that were registered on the main thread (via the
     // UI descriptors) stayed unregistered in the worker realm. Deserializing the seed graph then threw
@@ -132,4 +143,51 @@ describe("preview build worker block registration", () => {
         expect(parsed.attachedBlocks).toHaveLength(1);
         expect(parsed.attachedBlocks[0].getClassName()).toBe(className);
     });
+
+    it("reconstructs and builds the saved built-in OBJ graph offline in the worker realm", async () => {
+        const entry = CreateBuiltInNodeAssetLibraryEntries().find((candidate) => candidate.name === "OBJ to Optimized glTF");
+        expect(entry).toBeDefined();
+        if (!entry) {
+            return;
+        }
+        const editorFile = JSON.parse(entry.serializedGraph) as {
+            graph: {
+                blocks: Array<{ customType: string; subgraph?: { blocks: Array<Record<string, unknown>> } }>;
+            };
+        };
+        const importer = editorFile.graph.blocks.find((block) => block.customType === "ImportOBJAggregateBlock");
+        expect(importer?.subgraph?.blocks[0]).toMatchObject({
+            primary: { path: "catalog-objects.obj", bytes: expect.any(String) },
+            companions: [
+                { path: "Materials/catalog.mtl", bytes: expect.any(String) },
+                { path: "Textures/tiny.png", bytes: expect.any(String) },
+            ],
+        });
+        const fetchMock = vi.fn(async () => {
+            throw new Error("The worker OBJ graph must not request the network.");
+        });
+        vi.stubGlobal("fetch", fetchMock);
+        try {
+            const result = await BuildSerializedNodeAssetAsync(editorFile.graph, {
+                basisEncoderJsUrl: "",
+                basisEncoderWasmUrl: "",
+                dracoDecoderWasmUrl: "",
+                dracoEncoderWasmUrl: "",
+                usdWasmUrl: "",
+            });
+            expect(result.byteLength).toBeGreaterThan(0);
+            const document = await new WebIO().registerExtensions(ALL_EXTENSIONS).readBinary(result);
+            expect(
+                document
+                    .getRoot()
+                    .listMaterials()
+                    .map((material) => material.getName())
+            ).toEqual(expect.arrayContaining(["Catalog Red", "Catalog Textured"]));
+            expect(document.getRoot().listTextures()).toHaveLength(1);
+            expect(document.getRoot().listTextures()[0].getImage()?.byteLength).toBeGreaterThan(0);
+            expect(fetchMock).not.toHaveBeenCalled();
+        } finally {
+            vi.unstubAllGlobals();
+        }
+    }, 30_000);
 });

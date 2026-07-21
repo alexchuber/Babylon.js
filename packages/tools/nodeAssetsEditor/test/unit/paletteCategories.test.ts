@@ -18,42 +18,88 @@ function Descriptor(
 }
 
 describe("BuildPaletteCategories", () => {
-    it("places the FBX aggregate between Babylon and Node Geometry without pinning palette totals", () => {
-        const inputs = BuildPaletteCategories(GetAllBlockDescriptors())
-            .find((category) => category.label === "Inputs")
-            ?.items.map((item) => item.label);
-        if (!inputs) {
-            throw new Error("The Inputs palette category was not registered.");
-        }
+    it("publishes the exact default product palette in canonical category, family, and item order", () => {
+        const projection = BuildPaletteCategories(GetAllBlockDescriptors()).map((category) => ({
+            category: category.label,
+            items: category.items.map((item) => ({
+                family: item.family ?? null,
+                label: item.label,
+            })),
+        }));
 
-        expect(inputs).toEqual(expect.arrayContaining(["Import glTF", "Import USD", "Import Babylon", "Import FBX", "Import Node Geometry"]));
-        expect(inputs.indexOf("Import Babylon")).toBeLessThan(inputs.indexOf("Import FBX"));
-        expect(inputs.indexOf("Import FBX")).toBeLessThan(inputs.indexOf("Import Node Geometry"));
-        for (const label of ["Import Babylon", "Import FBX", "Import Node Geometry"]) {
-            expect(
-                BuildPaletteCategories(GetAllBlockDescriptors())
-                    .find((category) => category.label === "Inputs")
-                    ?.items.find((item) => item.label === label)?.family
-            ).toBe("Aggregate imports");
-        }
+        expect(projection).toEqual([
+            {
+                category: "Inputs",
+                items: [
+                    { family: "Aggregate imports", label: "Import glTF" },
+                    { family: "Aggregate imports", label: "Import OBJ" },
+                    { family: "Aggregate imports", label: "Import USD" },
+                    { family: "Aggregate imports", label: "Import Babylon" },
+                    { family: "Aggregate imports", label: "Import FBX" },
+                    { family: "Aggregate imports", label: "Import Node Geometry" },
+                ],
+            },
+            {
+                category: "Universal",
+                items: [
+                    { family: "Cleanup", label: "Weld Vertices" },
+                    { family: "Cleanup", label: "Deduplicate Resources" },
+                    { family: "Cleanup", label: "Remove Unused Resources" },
+                    { family: "Cleanup", label: "Remove Degenerate Geometry" },
+                    { family: "Cleanup", label: "Fix Face Winding" },
+                    { family: "Reduction", label: "Quantize Attributes" },
+                    { family: "Reduction", label: "Simplify Meshes" },
+                    { family: "Structure", label: "Flatten Hierarchy" },
+                    { family: "Structure", label: "Join Meshes" },
+                    { family: "Structure", label: "Split Meshes by Material" },
+                    { family: "Structure", label: "Merge Scenes" },
+                    { family: "Structure", label: "Transform Scene" },
+                    { family: "Structure", label: "Center Scene" },
+                    { family: "Attributes", label: "Recompute Normals" },
+                    { family: "Attributes", label: "Generate Tangents" },
+                    { family: "Attributes", label: "Strip Attributes" },
+                    { family: "Textures", label: "Resize Textures" },
+                ],
+            },
+            {
+                category: "glTF",
+                items: [
+                    { family: "Encoding/output", label: "Compress Geometry (Draco)" },
+                    { family: "Encoding/output", label: "Compress Textures (KTX2)" },
+                    { family: "Encoding/output", label: "Export glTF" },
+                ],
+            },
+        ]);
     });
 
-    it("hides FBX primitives by default and preserves source-lane order when primitives are shown", () => {
+    it("adds exactly the canonical primitives after the default product palette", () => {
         const defaultCategories = BuildPaletteCategories(GetAllBlockDescriptors());
         const primitiveCategories = BuildPaletteCategories(GetAllBlockDescriptors(), { showPrimitives: true });
-        const defaultLabels = defaultCategories.flatMap((category) => category.items.map((item) => item.label));
-        const primitiveLabels = primitiveCategories.flatMap((category) => category.items.map((item) => item.label));
-        const categoryLabels = primitiveCategories.map((category) => category.label);
-        const inputLabels = primitiveCategories.find((category) => category.label === "Inputs")?.items.map((item) => item.label) ?? [];
+        const additions = primitiveCategories.map((category) => {
+            const defaultItemIds = new Set(defaultCategories.find((candidate) => candidate.label === category.label)?.items.map((item) => item.id) ?? []);
+            return {
+                category: category.label,
+                items: category.items.filter((item) => !defaultItemIds.has(item.id)).map((item) => item.label),
+            };
+        });
 
-        expect(defaultLabels).not.toContain("Read FBX");
-        expect(defaultLabels).not.toContain("FBX \u2192 Universal");
-        expect(primitiveLabels).toEqual(expect.arrayContaining(["Read FBX", "FBX \u2192 Universal"]));
-        expect(categoryLabels).toEqual(expect.arrayContaining(["Babylon", "FBX", "Node Geometry"]));
-        expect(categoryLabels.indexOf("Babylon")).toBeLessThan(categoryLabels.indexOf("FBX"));
-        expect(categoryLabels.indexOf("FBX")).toBeLessThan(categoryLabels.indexOf("Node Geometry"));
-        expect(inputLabels.indexOf("Read Babylon")).toBeLessThan(inputLabels.indexOf("Read FBX"));
-        expect(inputLabels.indexOf("Read FBX")).toBeLessThan(inputLabels.indexOf("Read Node Geometry"));
+        expect(primitiveCategories.map((category) => category.label)).toEqual(["Inputs", "Universal", "glTF", "OBJ", "USD", "Babylon", "FBX", "Node Geometry"]);
+        for (const defaultCategory of defaultCategories) {
+            expect(primitiveCategories.find((category) => category.label === defaultCategory.label)?.items.slice(0, defaultCategory.items.length)).toEqual(defaultCategory.items);
+        }
+        expect(additions).toEqual([
+            { category: "Inputs", items: ["Read glTF", "Read OBJ", "Read USD", "Read Babylon", "Read FBX", "Read Node Geometry"] },
+            {
+                category: "Universal",
+                items: ["Universal → glTF", "Deduplicate Materials", "Deduplicate Textures", "Reuse Identical Meshes", "Deduplicate Data"],
+            },
+            { category: "glTF", items: ["glTF → Universal", "Write glTF"] },
+            { category: "OBJ", items: ["OBJ to Universal"] },
+            { category: "USD", items: ["USD → Universal"] },
+            { category: "Babylon", items: ["Babylon → Universal"] },
+            { category: "FBX", items: ["FBX \u2192 Universal"] },
+            { category: "Node Geometry", items: ["Node Geometry → Universal"] },
+        ]);
     });
 
     it("uses the filtered product catalog for search", () => {

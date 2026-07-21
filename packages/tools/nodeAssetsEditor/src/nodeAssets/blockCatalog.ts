@@ -31,6 +31,10 @@ export const ScenePortColor = "#d97b3f";
 /** Data-driven dot color for Universal ports, distinct from the glTF delivery lane. */
 export const UniversalPortColor = "#2f8f83";
 
+/** Data-driven dot color for OBJ source ports, distinct from every existing representation lane. */
+// eslint-disable-next-line @typescript-eslint/naming-convention
+export const OBJPortColor = "#B86B3D";
+
 /** Data-driven dot colors for the scalar port kinds, so each renders distinctly from SCENE. */
 export const NumberPortColor = "#3f79d9";
 export const StringPortColor = "#3fa86b";
@@ -111,6 +115,10 @@ export const TranscodersHeaderColor = "#6B4C8A";
 export const BabylonCategory = "Babylon";
 export const BabylonHeaderColor = "#4A90D9";
 
+/** Shared node header color for the OBJ source and transcoder block family. */
+// eslint-disable-next-line @typescript-eslint/naming-convention
+export const OBJHeaderColor = "#B86B3D";
+
 /** Palette category and shared node header color for the USD operator block family. */
 // eslint-disable-next-line @typescript-eslint/naming-convention
 export const USDCategory = "USD";
@@ -126,7 +134,7 @@ export interface IBlockDescriptor {
     readonly paletteItemId: string;
     /** Human readable label, used both in the palette and as the new node's title. */
     readonly label: string;
-    /** Concise explanation shown in the palette. */
+    /** Optional concise explanation exposed as palette help and used by search. */
     readonly description?: string;
     /** Workflow terms and aliases used by palette search. */
     readonly keywords?: readonly string[];
