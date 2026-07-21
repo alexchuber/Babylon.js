@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 
 // Importing the worker core evaluates its block-registration side effect in THIS test realm. Nothing
 // else here registers blocks: we deliberately read the registry through the node-assets submodules and
@@ -6,10 +6,12 @@ import { describe, expect, it } from "vitest";
 // every block via another path and mask a worker that under-registers). Vitest isolates the module
 // registry per test file, so the registry below reflects exactly what the preview build worker can
 // deserialize.
-import "../../src/nodeAssets/nodeAssetBuildWorkerCore";
+import { BuildSerializedNodeAssetAsync } from "../../src/nodeAssets/nodeAssetBuildWorkerCore";
 import { CreateBlockByClassName, GetRegisteredBlockClassNames } from "node-assets/blockFoundation/blockRegistry";
 import { NodeAsset } from "node-assets/nodeAsset";
-import { GetDefaultBuiltInNodeAssetLibraryEntry } from "../../src/nodeAssets/builtInLibraryEntries";
+import { CreateBuiltInNodeAssetLibraryEntries, GetDefaultBuiltInNodeAssetLibraryEntry } from "../../src/nodeAssets/builtInLibraryEntries";
+
+vi.mock("draco3dgltf", async () => await vi.importActual("draco3dgltf"));
 
 // The built-in block ClassNames, hardcoded (not derived from the package barrel) so this test fails
 // if the worker realm ever registers a different set than the package publishes. Keep in sync with
@@ -95,6 +97,9 @@ const ExpectedBlockClassNames = [
     "ReadBabylonBlock",
     "BabylonToUniversalBlock",
     "ImportBabylonAggregateBlock",
+    "ReadOBJBlock",
+    "OBJToUniversalBlock",
+    "ImportOBJAggregateBlock",
 ] as const;
 
 const DefaultPipelineClassNames = ["ImportGLTFAggregateBlock", "WeldVerticesBlock", "RemoveUnusedResourcesBlock", "ExportGLTFAggregateBlock"] as const;
@@ -129,4 +134,30 @@ describe("preview build worker block registration", () => {
         expect(parsed.attachedBlocks).toHaveLength(1);
         expect(parsed.attachedBlocks[0].getClassName()).toBe(className);
     });
+
+    it("reconstructs and builds the saved built-in OBJ graph offline in the worker realm", async () => {
+        const entry = CreateBuiltInNodeAssetLibraryEntries().find((candidate) => candidate.name === "OBJ to Optimized glTF");
+        expect(entry).toBeDefined();
+        if (!entry) {
+            return;
+        }
+        const editorFile = JSON.parse(entry.serializedGraph) as { graph: unknown };
+        const fetchMock = vi.fn(async () => {
+            throw new Error("The worker OBJ graph must not request the network.");
+        });
+        vi.stubGlobal("fetch", fetchMock);
+        try {
+            const result = await BuildSerializedNodeAssetAsync(editorFile.graph, {
+                basisEncoderJsUrl: "",
+                basisEncoderWasmUrl: "",
+                dracoDecoderWasmUrl: "",
+                dracoEncoderWasmUrl: "",
+                usdWasmUrl: "",
+            });
+            expect(result.byteLength).toBeGreaterThan(0);
+            expect(fetchMock).not.toHaveBeenCalled();
+        } finally {
+            vi.unstubAllGlobals();
+        }
+    }, 30_000);
 });

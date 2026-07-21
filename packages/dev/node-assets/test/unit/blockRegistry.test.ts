@@ -41,6 +41,7 @@ import {
     ImportGLTFAggregateBlock,
     ImportNodeGeometryAggregateBlock,
     ImportNodeGeometryBlock,
+    ImportOBJAggregateBlock,
     ImportUSDBlock,
     ImportUSDAggregateBlock,
     ImportImageBlock,
@@ -80,9 +81,11 @@ import {
     WriteGLTFBlock,
     ReadGLTFBlock,
     ReadNodeGeometryBlock,
+    ReadOBJBlock,
     ReadBabylonBlock,
     ReuseIdenticalMeshesBlock,
     ReadUSDBlock,
+    OBJToUniversalBlock,
     USDToUniversalBlock,
     CustomAggregateBlock,
     // eslint-disable-next-line import/no-internal-modules
@@ -272,9 +275,12 @@ describe("block self-registration", () => {
                     ReadUSDBlock.ClassName,
                     USDToUniversalBlock.ClassName,
                     ImportUSDAggregateBlock.ClassName,
+                    ReadOBJBlock.ClassName,
+                    OBJToUniversalBlock.ClassName,
+                    ImportOBJAggregateBlock.ClassName,
                 ])
             );
-            expect(registeredClassNames).toHaveLength(80);
+            expect(registeredClassNames).toHaveLength(83);
         });
 
         it.each(registeredClassNames)("round-trips %s through serialize/Parse", (className) => {

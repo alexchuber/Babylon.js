@@ -32,6 +32,7 @@ describe("BuildPaletteCategories", () => {
                 category: "Inputs",
                 items: [
                     { family: "Aggregate imports", label: "Import glTF" },
+                    { family: "Aggregate imports", label: "Import OBJ" },
                     { family: "Aggregate imports", label: "Import USD" },
                     { family: "Aggregate imports", label: "Import Babylon" },
                     { family: "Aggregate imports", label: "Import Node Geometry" },
@@ -81,17 +82,18 @@ describe("BuildPaletteCategories", () => {
             };
         });
 
-        expect(primitiveCategories.map((category) => category.label)).toEqual(["Inputs", "Universal", "glTF", "USD", "Babylon", "Node Geometry"]);
+        expect(primitiveCategories.map((category) => category.label)).toEqual(["Inputs", "Universal", "glTF", "OBJ", "USD", "Babylon", "Node Geometry"]);
         for (const defaultCategory of defaultCategories) {
             expect(primitiveCategories.find((category) => category.label === defaultCategory.label)?.items.slice(0, defaultCategory.items.length)).toEqual(defaultCategory.items);
         }
         expect(additions).toEqual([
-            { category: "Inputs", items: ["Read glTF", "Read USD", "Read Babylon", "Read Node Geometry"] },
+            { category: "Inputs", items: ["Read glTF", "Read OBJ", "Read USD", "Read Babylon", "Read Node Geometry"] },
             {
                 category: "Universal",
                 items: ["Universal → glTF", "Deduplicate Materials", "Deduplicate Textures", "Reuse Identical Meshes", "Deduplicate Data"],
             },
             { category: "glTF", items: ["glTF → Universal", "Write glTF"] },
+            { category: "OBJ", items: ["OBJ to Universal"] },
             { category: "USD", items: ["USD → Universal"] },
             { category: "Babylon", items: ["Babylon → Universal"] },
             { category: "Node Geometry", items: ["Node Geometry → Universal"] },
