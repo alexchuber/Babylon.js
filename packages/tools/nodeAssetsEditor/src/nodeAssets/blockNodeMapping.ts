@@ -14,6 +14,7 @@ import { type NodeAssetConnectionPoint } from "node-assets/connection/nodeAssetC
 import { type IGraphNode, type IGraphPort, type Vec2 } from "../nodeGraph/graphModel";
 import {
     BabylonScenePortColor,
+    FBXHeaderColor,
     ImagePortColor,
     JsonPortColor,
     NodeGeometryPortColor,
@@ -67,6 +68,7 @@ const PortStyleByType: Partial<Record<NodeAssetConnectionPointType, { readonly n
     [NodeAssetConnectionPointType.NODE_GEOMETRY]: { name: "Node Geometry", color: NodeGeometryPortColor },
     [NodeAssetConnectionPointType.UNIVERSAL]: { name: "Universal", color: UniversalPortColor },
     [NodeAssetConnectionPointType.BABYLON_SOURCE]: { name: "Babylon", color: BabylonScenePortColor },
+    [NodeAssetConnectionPointType.FBX_SOURCE]: { name: "FBX", color: FBXHeaderColor },
 };
 
 /**

@@ -9,6 +9,7 @@ import { describe, expect, expectTypeOf, it } from "vitest";
 import { NodeAssetConnectionPointType } from "../../src/connection/nodeAssetConnectionPointType";
 import { type NodeAssetJsonValue, type NodeAssetValueMap } from "../../src/connection/nodeAssetValueMap";
 import { BabylonAsset, IsBabylonAsset } from "../../src/representations/babylonAsset";
+import { FBXSource, IsFBXSource } from "../../src/representations/fbxSource";
 import { GltfAsset, IsGltfAsset } from "../../src/representations/gltfAsset";
 import { IsNodeGeometryAsset, NodeGeometryAsset } from "../../src/representations/nodeGeometryAsset";
 import { IsUsdAsset, UsdAsset } from "../../src/representations/usdAsset";
@@ -104,6 +105,8 @@ describe("typed representations", () => {
         expect(NodeAssetConnectionPointType.NODE_GEOMETRY).toBe(7);
         expect(NodeAssetConnectionPointType.UNIVERSAL).toBe(8);
         expect(NodeAssetConnectionPointType.USD_SOURCE).toBe(10);
+        expect(NodeAssetConnectionPointType[11]).toBeUndefined();
+        expect(NodeAssetConnectionPointType.FBX_SOURCE).toBe(12);
         expect("REPRESENTATION" in NodeAssetConnectionPointType).toBe(false);
         expect(NodeAssetConnectionPointType[NodeAssetConnectionPointType.GLTF_DOCUMENT]).toBe("GLTF_DOCUMENT");
     });
@@ -112,11 +115,26 @@ describe("typed representations", () => {
         expectTypeOf<NodeAssetValueMap[NodeAssetConnectionPointType.GLTF_DOCUMENT]>().toEqualTypeOf<GltfAsset>();
         expectTypeOf<NodeAssetValueMap[NodeAssetConnectionPointType.USD_STAGE]>().toEqualTypeOf<UsdAsset>();
         expectTypeOf<NodeAssetValueMap[NodeAssetConnectionPointType.USD_SOURCE]>().toEqualTypeOf<UsdSourceAsset>();
+        expectTypeOf<NodeAssetValueMap[NodeAssetConnectionPointType.FBX_SOURCE]>().toEqualTypeOf<FBXSource>();
         expectTypeOf<NodeAssetValueMap[NodeAssetConnectionPointType.BABYLON_SCENE]>().toEqualTypeOf<BabylonAsset>();
         expectTypeOf<NodeAssetValueMap[NodeAssetConnectionPointType.NODE_GEOMETRY]>().toEqualTypeOf<NodeGeometryAsset>();
         expectTypeOf<NodeAssetValueMap[NodeAssetConnectionPointType.NUMBER]>().toEqualTypeOf<number>();
         expectTypeOf<NodeAssetValueMap[NodeAssetConnectionPointType.STRING]>().toEqualTypeOf<string>();
         expectTypeOf<NodeAssetValueMap[NodeAssetConnectionPointType.JSON]>().toEqualTypeOf<NodeAssetJsonValue>();
+    });
+
+    it("keeps FBX source bytes immutable and exposes their source context", () => {
+        const original = new Uint8Array([1, 2, 3]);
+        const source = new FBXSource(original, "triangle.fbx", "/models/");
+        original[0] = 9;
+        const exposed = source.data;
+        exposed[1] = 8;
+
+        expect(source.data).toEqual(new Uint8Array([1, 2, 3]));
+        expect(source.source).toBe("triangle.fbx");
+        expect(source.rootUrl).toBe("/models/");
+        expect(IsFBXSource(source)).toBe(true);
+        expect(IsFBXSource(original)).toBe(false);
     });
 
     it.each(MetadataConstructors)("validates explicit metadata for $name", ({ construct }) => {

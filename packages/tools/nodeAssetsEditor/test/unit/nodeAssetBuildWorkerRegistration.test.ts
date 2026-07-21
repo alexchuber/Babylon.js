@@ -95,6 +95,9 @@ const ExpectedBlockClassNames = [
     "ReadBabylonBlock",
     "BabylonToUniversalBlock",
     "ImportBabylonAggregateBlock",
+    "ReadFBXBlock",
+    "FBXToUniversalBlock",
+    "ImportFBXAggregateBlock",
 ] as const;
 
 const DefaultPipelineClassNames = ["ImportGLTFAggregateBlock", "WeldVerticesBlock", "RemoveUnusedResourcesBlock", "ExportGLTFAggregateBlock"] as const;

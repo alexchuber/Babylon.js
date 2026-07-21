@@ -21,6 +21,7 @@ vi.mock("../../src/nodeAssets/browserFiles", () => ({
 
 const ImportFileButtonLabel = "Upload glTF\u2026";
 const BabylonImportFileButtonLabel = "Upload Babylon\u2026";
+const FBXImportFileButtonLabel = "Upload FBX\u2026";
 const UploadUSDButtonLabel = "Upload USD\u2026";
 
 function FindNode(controller: NodeAssetGraphController, title: string): IGraphNode {
@@ -952,6 +953,40 @@ describe("Import block source label", () => {
                 reloaded.load(controller.serialize());
                 const reloadedImport = FindNode(reloaded, "Import Babylon");
                 expect(FindPropertyInSection(reloaded, reloadedImport, "READ BABYLON", "Active source", "text").value).toBe("myScene.babylon");
+            } finally {
+                reloaded.dispose();
+            }
+        } finally {
+            controller.dispose();
+        }
+    });
+
+    it("shares the uploaded FBX source across compact, expanded, and reloaded editor surfaces", async () => {
+        const controller = new NodeAssetGraphController();
+        try {
+            const importNode = AddPaletteNode(controller, "import-fbx");
+            expect(FindPropertyInSection(controller, importNode, "READ FBX", "Active source", "text").value).toBe("No source loaded");
+
+            vi.mocked(PromptForFileAsync).mockResolvedValue({
+                name: "triangle.fbx",
+                arrayBuffer: async () => new TextEncoder().encode("; FBX 7.4.0 project file").buffer,
+            } as unknown as File);
+
+            FindPropertyInSection(controller, importNode, "READ FBX", FBXImportFileButtonLabel, "button").onClick();
+            await vi.waitFor(() => {
+                expect(FindPropertyInSection(controller, importNode, "READ FBX", "Active source", "text").value).toBe("triangle.fbx");
+            });
+
+            controller.setAggregateExpanded(importNode.id, true);
+            const readNode = FindNode(controller, "Read FBX");
+            expect(FindPropertyInSection(controller, readNode, "SOURCE", "Active source", "text").value).toBe("triangle.fbx");
+            expect(FindPropertyInSection(controller, readNode, "SOURCE", FBXImportFileButtonLabel, "button")).toBeDefined();
+
+            const reloaded = new NodeAssetGraphController();
+            try {
+                reloaded.load(controller.serialize());
+                const reloadedImport = FindNode(reloaded, "Import FBX");
+                expect(FindPropertyInSection(reloaded, reloadedImport, "READ FBX", "Active source", "text").value).toBe("triangle.fbx");
             } finally {
                 reloaded.dispose();
             }

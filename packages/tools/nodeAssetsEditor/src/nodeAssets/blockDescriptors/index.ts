@@ -7,6 +7,7 @@
 import "./importGLTFBlockDescriptor";
 import "./importUSDBlockDescriptor";
 import "./importBabylonAggregateBlockDescriptor";
+import "./importFBXAggregateBlockDescriptor";
 import "./importNodeGeometryBlockDescriptor";
 
 import "./universalToGLTFBlockDescriptor";
@@ -35,11 +36,13 @@ import "./exportGLTFBlockDescriptor";
 import "./readGLTFBlockDescriptor";
 import "./readUSDBlockDescriptor";
 import "./readBabylonBlockDescriptor";
+import "./readFBXBlockDescriptor";
 import "./readNodeGeometryBlockDescriptor";
 import "./gltfToUniversalBlockDescriptor";
 import "./writeGLTFBlockDescriptor";
 import "./usdToUniversalBlockDescriptor";
 import "./babylonToUniversalBlockDescriptor";
+import "./fbxToUniversalBlockDescriptor";
 import "./nodeGeometryToUniversalBlockDescriptor";
 
 import "./legacyImportGLTFBlockDescriptor";

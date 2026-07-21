@@ -54,4 +54,7 @@ export enum NodeAssetConnectionPointType {
 
     /** Lightweight resolved USD source bytes consumed only by USD-to-Universal transcoding. */
     USD_SOURCE = 10,
+
+    /** Immutable uploaded FBX source bytes consumed only by FBX-to-Universal transcoding. */
+    FBX_SOURCE = 12,
 }
