@@ -142,7 +142,7 @@ describe("Import block source label", () => {
         const controller = new NodeAssetGraphController();
         try {
             const importNode = FindNode(controller, "Import glTF");
-            expect(FindPropertyInSection(controller, importNode, "READ GLTF", "Active source", "text").value).toBe("catalog-triangle.glb");
+            expect(FindPropertyInSection(controller, importNode, "READ GLTF", "Active source", "text").value).toBe("https://assets.babylonjs.com/meshes/roundedCube.glb");
 
             vi.mocked(PromptForFileAsync).mockResolvedValue({
                 name: "myModel.glb",
@@ -293,7 +293,9 @@ describe("Import block source label", () => {
             };
             const authoredImport = canceledUpload.graph.blocks.find((block) => block.name === "Import glTF");
             expect(authoredImport?.customType).toBe("ImportGLTFAggregateBlock");
-            expect(authoredImport?.subgraph?.blocks).toContainEqual(expect.objectContaining({ customType: "ReadGLTFBlock", source: "catalog-triangle.glb" }));
+            expect(authoredImport?.subgraph?.blocks).toContainEqual(
+                expect.objectContaining({ customType: "ReadGLTFBlock", source: "https://assets.babylonjs.com/meshes/roundedCube.glb" })
+            );
         } finally {
             controller.dispose();
         }
@@ -314,7 +316,7 @@ describe("Import block source label", () => {
             await vi.waitFor(() => {
                 expect(FindPropertyInSection(controller, importNode, "READ GLTF", "Source error", "text").value).toBe("Could not read unreadable.glb");
             });
-            expect(FindPropertyInSection(controller, importNode, "READ GLTF", "Active source", "text").value).toBe("catalog-triangle.glb");
+            expect(FindPropertyInSection(controller, importNode, "READ GLTF", "Active source", "text").value).toBe("https://assets.babylonjs.com/meshes/roundedCube.glb");
         } finally {
             controller.dispose();
         }

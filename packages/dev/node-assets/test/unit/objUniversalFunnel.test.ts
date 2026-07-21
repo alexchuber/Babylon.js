@@ -839,4 +839,39 @@ ${new TextDecoder().decode(OBJFixture)}`);
             engineDispose.mockRestore();
         }
     });
+
+    it("preserves the conversion failure when scene and engine cleanup also fail", async () => {
+        const asset = new NodeAsset("obj-cleanup-errors");
+        const read = new ReadOBJBlock("Read OBJ", asset);
+        read.setUploadedSourceBundle([
+            { path: "fixture.obj", bytes: OBJFixture },
+            { path: "material.mtl", bytes: MTLBundleFixture },
+        ]);
+        const transcoder = new OBJToUniversalBlock("OBJ to Universal", asset);
+        await read._buildBlockAsync();
+        transcoder.input.value = read.output.value;
+
+        const exportFailure = new Error("Injected OBJ export failure");
+        const sceneCleanupFailure = new Error("Injected OBJ scene cleanup failure");
+        const engineCleanupFailure = new Error("Injected OBJ engine cleanup failure");
+        vi.spyOn(GLTF2Export, "GLBAsync").mockRejectedValueOnce(exportFailure);
+        const sceneDispose = vi.spyOn(Scene.prototype, "dispose").mockImplementationOnce(() => {
+            throw sceneCleanupFailure;
+        });
+        const engineDispose = vi.spyOn(NullEngine.prototype, "dispose").mockImplementationOnce(() => {
+            throw engineCleanupFailure;
+        });
+        const initialStore = { ...FilesInputStore.FilesToLoad };
+        try {
+            const error = await transcoder._buildBlockAsync().catch((reason: unknown) => reason);
+
+            expect(error).toBeInstanceOf(AggregateError);
+            expect((error as AggregateError).message).toMatch(/failed to convert "fixture\.obj" to Universal/);
+            expect((error as AggregateError).cause).toMatchObject({ cause: exportFailure });
+            expect((error as AggregateError).errors).toEqual([expect.objectContaining({ cause: exportFailure }), sceneCleanupFailure, engineCleanupFailure]);
+            expect(FilesInputStore.FilesToLoad).toEqual(initialStore);
+        } finally {
+            vi.restoreAllMocks();
+        }
+    });
 });

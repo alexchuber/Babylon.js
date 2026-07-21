@@ -23,4 +23,9 @@ describe("browser file paths", () => {
     it("falls back to the browser-safe basename", () => {
         expect(GetBrowserFilePath(CreateFile("Model.OBJ"))).toBe("Model.OBJ");
     });
+
+    it("falls back to the basename for an isolated absolute desktop path", () => {
+        expect(GetBrowserFilePath(CreateFile("Model.OBJ", "", "/Users/alex/Assets/Model.OBJ"))).toBe("Model.OBJ");
+        expect(GetBrowserFilePath(CreateFile("Model.OBJ", "", String.raw`C:\Assets\Model.OBJ`))).toBe("Model.OBJ");
+    });
 });

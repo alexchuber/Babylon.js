@@ -53,6 +53,26 @@ describe("BuildScheduler", () => {
         expect(buildAsync).toHaveBeenCalledTimes(1);
     });
 
+    it("can subscribe without an immediate build and still responds to the next debounced trigger", async () => {
+        const triggerSource = new TestTriggerSource();
+        const buildAsync = vi.fn(async () => "recovered");
+        const scheduler = new BuildScheduler({
+            triggerSource,
+            debounceMs: 400,
+            buildAsync,
+            buildImmediately: false,
+        });
+
+        expect(buildAsync).not.toHaveBeenCalled();
+        triggerSource.trigger();
+        await vi.advanceTimersByTimeAsync(399);
+        expect(buildAsync).not.toHaveBeenCalled();
+
+        await vi.advanceTimersByTimeAsync(1);
+        expect(buildAsync).toHaveBeenCalledTimes(1);
+        scheduler.dispose();
+    });
+
     it("collapses rapid graph changes into one debounced build", async () => {
         const triggerSource = new TestTriggerSource();
         const buildAsync = vi.fn(async () => "built");

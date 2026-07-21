@@ -58,6 +58,7 @@ export class OBJToUniversalBlock extends NodeAssetBlock {
         const engine = new NullEngine();
         let scene: Scene | undefined;
         let localBundle: IOBJLocalFileBundleLease | undefined;
+        let conversionError: Error | undefined;
         try {
             scene = new Scene(engine);
             localBundle = source.sourceKind === "upload" ? AcquireOBJLocalFileBundle(source) : undefined;
@@ -78,19 +79,40 @@ export class OBJToUniversalBlock extends NodeAssetBlock {
                 manifest: { format: "universal", importedFrom: "obj", source: source.source },
             });
         } catch (error) {
-            throw new Error(`The "${this.name}" block failed to convert "${source.source}" to Universal: ${error instanceof Error ? error.message : String(error)}`, {
+            conversionError = new Error(`The "${this.name}" block failed to convert "${source.source}" to Universal: ${error instanceof Error ? error.message : String(error)}`, {
                 cause: error,
             });
-        } finally {
+        }
+
+        const cleanupErrors: unknown[] = [];
+        if (scene) {
             try {
-                scene?.dispose();
-            } finally {
-                try {
-                    engine.dispose();
-                } finally {
-                    localBundle?.dispose();
-                }
+                scene.dispose();
+            } catch (error) {
+                cleanupErrors.push(error);
             }
+        }
+        try {
+            engine.dispose();
+        } catch (error) {
+            cleanupErrors.push(error);
+        }
+        if (localBundle) {
+            try {
+                localBundle.dispose();
+            } catch (error) {
+                cleanupErrors.push(error);
+            }
+        }
+
+        if (conversionError) {
+            if (cleanupErrors.length > 0) {
+                throw new AggregateError([conversionError, ...cleanupErrors], `${conversionError.message} OBJ resource cleanup also failed.`, { cause: conversionError });
+            }
+            throw conversionError;
+        }
+        if (cleanupErrors.length > 0) {
+            throw new AggregateError(cleanupErrors, `The "${this.name}" block failed to dispose OBJ conversion resources.`, { cause: cleanupErrors[0] });
         }
     }
 }

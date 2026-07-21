@@ -16,6 +16,8 @@ export interface IBuildSchedulerOptions<Result> {
     readonly debounceMs: number;
     /** Async build work that produces the result to apply. */
     readonly buildAsync: () => Promise<Result>;
+    /** Whether construction starts a build immediately. Defaults to true. */
+    readonly buildImmediately?: boolean;
     /** Applies the latest build result. Stale results skip this callback entirely. */
     readonly applyResultAsync?: (result: Result) => Promise<void>;
     /** Called whenever a new build starts. */
@@ -44,7 +46,9 @@ export class BuildScheduler<Result> {
     public constructor(options: IBuildSchedulerOptions<Result>) {
         this._options = options;
         this._triggerSubscription = options.triggerSource.add(() => this.trigger());
-        void this._startBuildAsync();
+        if (options.buildImmediately !== false) {
+            void this._startBuildAsync();
+        }
     }
 
     /**

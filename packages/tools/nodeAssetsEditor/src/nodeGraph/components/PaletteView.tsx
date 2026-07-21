@@ -1,4 +1,4 @@
-import { Fragment, type DragEvent, type FunctionComponent, type ReactElement, useEffect, useMemo, useState } from "react";
+import { cloneElement, Fragment, type DragEvent, type FunctionComponent, type PointerEventHandler, type ReactElement, useEffect, useMemo, useRef, useState } from "react";
 
 import { Accordion, AccordionHeader, AccordionItem, AccordionPanel, Body1, Caption1, Checkbox, makeStyles, tokens } from "@fluentui/react-components";
 import { SearchBar } from "shared-ui-components/fluent/primitives/searchBar";
@@ -69,15 +69,23 @@ const useStyles = makeStyles({
 });
 
 const GetCategoryValue = (category: IPaletteCategory, index: number) => `${index}:${category.label}`;
+const TouchFocusSuppressionWindowMs = 1_000;
 
 type PaletteItemTooltipProps = {
-    children: ReactElement;
+    children: ReactElement<{ onPointerDownCapture?: PointerEventHandler<HTMLDivElement> }>;
     content?: string;
 };
 
 const PaletteItemTooltip: FunctionComponent<PaletteItemTooltipProps> = (props) => {
     const { children, content } = props;
     const [visible, setVisible] = useState(false);
+    const lastTouchPointerDownAt = useRef<number | null>(null);
+    const target = cloneElement(children, {
+        onPointerDownCapture: (event) => {
+            lastTouchPointerDownAt.current = event.pointerType === "touch" ? event.timeStamp : null;
+            children.props.onPointerDownCapture?.(event);
+        },
+    });
 
     return (
         <Tooltip
@@ -85,10 +93,17 @@ const PaletteItemTooltip: FunctionComponent<PaletteItemTooltipProps> = (props) =
             visible={visible}
             onVisibleChange={(event, data) => {
                 const isTouchPointer = event !== undefined && "pointerType" in event && event.pointerType === "touch";
-                setVisible(data.visible && !isTouchPointer);
+                const touchPointerDownAt = lastTouchPointerDownAt.current;
+                const isFocusEvent = event?.type.startsWith("focus") === true;
+                const isTouchFocus =
+                    isFocusEvent && touchPointerDownAt !== null && event.timeStamp >= touchPointerDownAt && event.timeStamp - touchPointerDownAt <= TouchFocusSuppressionWindowMs;
+                if (isFocusEvent) {
+                    lastTouchPointerDownAt.current = null;
+                }
+                setVisible(data.visible && !isTouchPointer && !isTouchFocus);
             }}
         >
-            {children}
+            {target}
         </Tooltip>
     );
 };

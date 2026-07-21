@@ -6,6 +6,7 @@ import { DracoCompressionBlock } from "node-assets/Blocks/dracoCompressionBlock"
 import { ExportGLTFAggregateBlock } from "node-assets/Blocks/exportGLTFAggregateBlock";
 import { ImportGLTFAggregateBlock } from "node-assets/Blocks/importGLTFAggregateBlock";
 import { KTX2CompressionBlock } from "node-assets/Blocks/ktx2CompressionBlock";
+import { type GLTFSourceFetcher } from "node-assets/Blocks/readGLTFBlock";
 import { StringLiteral } from "node-assets/Blocks/stringLiteral";
 
 import { NodeAssetBuildError } from "node-assets/nodeAssetBuildError";
@@ -16,6 +17,7 @@ import { type PropertyDescriptor } from "../../src/nodeGraph/propertyModel";
 import { GetBlockDescriptorByPaletteItemId } from "../../src/nodeAssets/blockCatalog";
 import { NodeIdForBlockId } from "../../src/nodeAssets/blockNodeMapping";
 import { CreateBuiltInNodeAssetLibraryEntries } from "../../src/nodeAssets/builtInLibraryEntries";
+import { BuiltInLibraryFixtures } from "../../src/nodeAssets/builtInLibraryFixtures";
 import { NodeAssetGraphController } from "../../src/nodeAssets/nodeAssetGraphController";
 import { type INodeAssetBuildClient, Ktx2EncoderResourceConflictError } from "../../src/nodeAssets/nodeAssetBuildWorkerClient";
 import { NodeAssetReconciler } from "../../src/nodeAssets/nodeAssetReconciler";
@@ -59,6 +61,24 @@ function CountBuildRelevantChanges(controller: NodeAssetGraphController): { read
     return {
         count: () => count,
         dispose: () => observer.remove(),
+    };
+}
+
+function CreateGltfResponse(data: Uint8Array) {
+    return {
+        ok: true,
+        status: 200,
+        statusText: "OK",
+        arrayBuffer: async () => data.slice().buffer,
+    };
+}
+
+function CreateUnusedBuildClient(): INodeAssetBuildClient {
+    return {
+        buildAsync: async () => {
+            throw new Error("This test must not invoke the build client.");
+        },
+        dispose: vi.fn(),
     };
 }
 
@@ -356,7 +376,7 @@ describe("NodeAssetGraphController", () => {
             dispose: vi.fn(),
         };
         const reconcileSpy = vi.spyOn(NodeAssetReconciler.prototype, "reconcile");
-        const controller = new NodeAssetGraphController(buildClient);
+        const controller = new NodeAssetGraphController(buildClient, async () => CreateGltfResponse(BuiltInLibraryFixtures.gltf));
         reconcileSpy.mockClear();
         try {
             controller.serialize();
@@ -369,6 +389,113 @@ describe("NodeAssetGraphController", () => {
         } finally {
             controller.dispose();
             reconcileSpy.mockRestore();
+        }
+    });
+
+    it("requests the exact default catalog URL", async () => {
+        const sourceFetcher = vi.fn<GLTFSourceFetcher>(async () => CreateGltfResponse(BuiltInLibraryFixtures.gltf));
+        const controller = new NodeAssetGraphController(CreateUnusedBuildClient(), sourceFetcher);
+        try {
+            await controller.loadDefaultImportAsync();
+
+            expect(sourceFetcher).toHaveBeenCalledOnce();
+            expect(sourceFetcher).toHaveBeenCalledWith("https://assets.babylonjs.com/meshes/roundedCube.glb");
+        } finally {
+            controller.dispose();
+        }
+    });
+
+    it("hydrates the active URL-only Read glTF block before worker serialization", async () => {
+        let resolveResponse: (() => void) | undefined;
+        const responseReady = new Promise<void>((resolve) => {
+            resolveResponse = resolve;
+        });
+        const sourceFetcher = vi.fn<GLTFSourceFetcher>(async () => {
+            await responseReady;
+            return CreateGltfResponse(BuiltInLibraryFixtures.gltf);
+        });
+        const buildClient: INodeAssetBuildClient = {
+            buildAsync: vi.fn(async () => new Uint8Array([1, 2, 3])),
+            dispose: vi.fn(),
+        };
+        const controller = new NodeAssetGraphController(buildClient, sourceFetcher);
+        try {
+            const build = controller.buildAsync();
+            await vi.waitFor(() => expect(sourceFetcher).toHaveBeenCalledWith("https://assets.babylonjs.com/meshes/roundedCube.glb"));
+            expect(buildClient.buildAsync).not.toHaveBeenCalled();
+
+            resolveResponse?.();
+            await expect(build).resolves.toEqual(new Uint8Array([1, 2, 3]));
+
+            const serializedGraph = vi.mocked(buildClient.buildAsync).mock.calls[0][0] as {
+                blocks: Array<{ customType: string; data?: string | null; source?: string | null; sourceKind?: string; subgraph?: { blocks: unknown[] } }>;
+            };
+            expect(JSON.stringify(serializedGraph)).toContain(Buffer.from(BuiltInLibraryFixtures.gltf).toString("base64"));
+        } finally {
+            controller.dispose();
+        }
+    });
+
+    it("does not publish non-startup hydration as an authored graph change", async () => {
+        const buildClient: INodeAssetBuildClient = {
+            buildAsync: vi.fn(async () => new Uint8Array([1])),
+            dispose: vi.fn(),
+        };
+        const controller = new NodeAssetGraphController(buildClient, async () => CreateGltfResponse(BuiltInLibraryFixtures.gltf));
+        const changes = CountBuildRelevantChanges(controller);
+        try {
+            await controller.buildAsync();
+            controller.serialize();
+
+            expect(changes.count()).toBe(0);
+            expect(buildClient.buildAsync).toHaveBeenCalledTimes(1);
+        } finally {
+            changes.dispose();
+            controller.dispose();
+        }
+    });
+
+    it("does not dispatch a worker build when active hydration fails", async () => {
+        const sourceFetcher = vi.fn<GLTFSourceFetcher>(async () => ({
+            ok: false,
+            status: 503,
+            statusText: "Unavailable",
+            arrayBuffer: async () => new ArrayBuffer(0),
+        }));
+        const buildClient: INodeAssetBuildClient = {
+            buildAsync: vi.fn(async () => new Uint8Array([1])),
+            dispose: vi.fn(),
+        };
+        const controller = new NodeAssetGraphController(buildClient, sourceFetcher);
+        try {
+            await expect(controller.buildAsync()).rejects.toThrow("503 Unavailable");
+            expect(buildClient.buildAsync).not.toHaveBeenCalled();
+        } finally {
+            controller.dispose();
+        }
+    });
+
+    it("does not serialize a graph superseded during hydration", async () => {
+        let resolveResponse: ((response: ReturnType<typeof CreateGltfResponse>) => void) | undefined;
+        const response = new Promise<ReturnType<typeof CreateGltfResponse>>((resolve) => {
+            resolveResponse = resolve;
+        });
+        const sourceFetcher = vi.fn<GLTFSourceFetcher>(async () => await response);
+        const buildClient: INodeAssetBuildClient = {
+            buildAsync: vi.fn(async () => new Uint8Array([1])),
+            dispose: vi.fn(),
+        };
+        const controller = new NodeAssetGraphController(buildClient, sourceFetcher);
+        try {
+            const build = controller.buildAsync();
+            await vi.waitFor(() => expect(sourceFetcher).toHaveBeenCalledTimes(1));
+            controller.load(CreateBuiltInNodeAssetLibraryEntries()[3].serializedGraph);
+            resolveResponse?.(CreateGltfResponse(BuiltInLibraryFixtures.gltf));
+
+            await expect(build).rejects.toThrow("graph changed");
+            expect(buildClient.buildAsync).not.toHaveBeenCalled();
+        } finally {
+            controller.dispose();
         }
     });
 

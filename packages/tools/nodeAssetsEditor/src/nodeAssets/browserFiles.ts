@@ -12,6 +12,16 @@ export interface ISelectedBrowserFile {
     readonly path: string;
 }
 
+function GetSuppliedFilePath(file: File): string | undefined {
+    const suppliedPath = Reflect.get(file, "path");
+    return typeof suppliedPath === "string" && suppliedPath.trim().length > 0 ? suppliedPath : undefined;
+}
+
+function IsAbsoluteDesktopPath(path: string): boolean {
+    const slashPath = path.replaceAll("\\", "/");
+    return slashPath.startsWith("/") || /^[a-z]:/i.test(slashPath) || /^[a-z][a-z\d+.-]*:/i.test(slashPath);
+}
+
 /**
  * Gets the best path supplied by a browser or desktop browser shell.
  * @param file The selected file.
@@ -22,8 +32,8 @@ export function GetBrowserFilePath(file: File): string {
     if (file.webkitRelativePath.trim().length > 0) {
         return file.webkitRelativePath;
     }
-    const suppliedPath = Reflect.get(file, "path");
-    return typeof suppliedPath === "string" && suppliedPath.trim().length > 0 ? suppliedPath : file.name;
+    const suppliedPath = GetSuppliedFilePath(file);
+    return suppliedPath && !IsAbsoluteDesktopPath(suppliedPath) ? suppliedPath : file.name;
 }
 
 /**

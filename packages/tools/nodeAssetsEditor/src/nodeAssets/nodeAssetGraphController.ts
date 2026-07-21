@@ -14,6 +14,7 @@
 import { Observable } from "core/Misc/observable";
 
 import { ExportGLTFBlock } from "node-assets/Blocks/exportGLTFBlock";
+import { ReadGLTFBlock, type GLTFSourceFetcher } from "node-assets/Blocks/readGLTFBlock";
 import { NodeAsset } from "node-assets/nodeAsset";
 import { NodeAssetBuildError } from "node-assets/nodeAssetBuildError";
 import { AggregateBlock } from "node-assets/blockFoundation/aggregateBlock";
@@ -292,6 +293,7 @@ export class NodeAssetGraphController {
     private _nodeAsset: NodeAsset;
     private readonly _reconciler: NodeAssetReconciler;
     private readonly _buildClient: INodeAssetBuildClient;
+    private readonly _gltfSourceFetcher: GLTFSourceFetcher;
     private _buildRelevantSignature: string;
     private readonly _onChangedObserver;
     private readonly _aggregateRootByChildNodeId = new Map<string, string>();
@@ -311,10 +313,12 @@ export class NodeAssetGraphController {
     /**
      * Creates a controller seeded from the maintained default entry in the production pipeline catalog.
      * @param buildClient - Worker-backed build client.
+     * @param gltfSourceFetcher - Fetch-compatible glTF source loader.
      */
-    public constructor(buildClient: INodeAssetBuildClient = new NodeAssetBuildWorkerClient()) {
+    public constructor(buildClient: INodeAssetBuildClient = new NodeAssetBuildWorkerClient(), gltfSourceFetcher: GLTFSourceFetcher = async (url) => await fetch(url)) {
         this._nodeAsset = new NodeAsset("nodeAsset");
         this._buildClient = buildClient;
+        this._gltfSourceFetcher = gltfSourceFetcher;
         this._reconciler = new NodeAssetReconciler(this._nodeAsset);
         this.state = new GraphEditorState(
             { nodes: [], wires: [], frames: [] },
@@ -342,11 +346,16 @@ export class NodeAssetGraphController {
     }
 
     /**
-     * Preserves the build-orchestrator startup contract. Catalog source fixtures are already embedded in
-     * the serialized default graph, so startup performs no network loading.
-     * @returns An already-resolved promise.
+     * Hydrates the active startup graph before its first build.
      */
-    public async loadDefaultImportAsync(): Promise<void> {}
+    public async loadDefaultImportAsync(): Promise<void> {
+        const nodeAsset = this._nodeAsset;
+        const graphRevision = this._graphRevision;
+        await this._hydrateGltfSourcesAsync(nodeAsset, graphRevision);
+        if (this._isActiveGraph(nodeAsset, graphRevision)) {
+            this._buildRelevantSignature = this._createBuildRelevantSignature();
+        }
+    }
 
     /**
      * Projects the registered block catalog into the current palette discovery view.
@@ -601,7 +610,14 @@ export class NodeAssetGraphController {
      */
     public async buildAsync(): Promise<Uint8Array> {
         this._reconcileAndNotifyBuildRelevantChange();
-        return await this._buildClient.buildAsync(this._nodeAsset.serialize());
+        const nodeAsset = this._nodeAsset;
+        const graphRevision = this._graphRevision;
+        await this._hydrateGltfSourcesAsync(nodeAsset, graphRevision);
+        if (!this._isActiveGraph(nodeAsset, graphRevision)) {
+            throw new Error("The NodeAsset graph changed before its build could be serialized.");
+        }
+        this._buildRelevantSignature = this._createBuildRelevantSignature();
+        return await this._buildClient.buildAsync(nodeAsset.serialize());
     }
 
     /** Clears the node diagnostic produced by the previous build. */
@@ -857,6 +873,36 @@ export class NodeAssetGraphController {
         this.onExportRequested.clear();
         this.onBuildRelevantChanged.clear();
         this._buildClient.dispose();
+    }
+
+    private async _hydrateGltfSourcesAsync(nodeAsset: NodeAsset, graphRevision: number, activeNodeAsset = nodeAsset): Promise<void> {
+        await Promise.all(
+            nodeAsset.attachedBlocks.map(async (block) => {
+                if (block instanceof ReadGLTFBlock && block.sourceKind === "url" && block.source && !block.data) {
+                    await block.setUrlAsync(
+                        block.source,
+                        this._gltfSourceFetcher,
+                        () => this._isActiveGraph(activeNodeAsset, graphRevision) && this._ownsBlock(activeNodeAsset, block)
+                    );
+                }
+                if (block instanceof AggregateBlock) {
+                    await this._hydrateGltfSourcesAsync(block.subgraph, graphRevision, activeNodeAsset);
+                }
+            })
+        );
+    }
+
+    private _isActiveGraph(nodeAsset: NodeAsset, graphRevision: number): boolean {
+        return !this._isDisposed && this._nodeAsset === nodeAsset && this._graphRevision === graphRevision;
+    }
+
+    private _ownsBlock(nodeAsset: NodeAsset, target: NodeAssetBlock): boolean {
+        for (const block of nodeAsset.attachedBlocks) {
+            if (block === target || (block instanceof AggregateBlock && this._ownsBlock(block.subgraph, target))) {
+                return true;
+            }
+        }
+        return false;
     }
 
     private _instantiateBlock(descriptor: IBlockDescriptor, position: Vec2): IGraphNode {
