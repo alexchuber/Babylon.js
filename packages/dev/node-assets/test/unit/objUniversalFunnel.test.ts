@@ -7,6 +7,7 @@ import { Scene } from "core/scene";
 import { GLTF2Export } from "serializers/glTF/2.0/glTFSerializer";
 import { describe, expect, it, vi } from "vitest";
 
+import { ExportGLTFBlock } from "../../src/Blocks/exportGLTFBlock";
 import { ExportGLTFAggregateBlock } from "../../src/Blocks/exportGLTFAggregateBlock";
 import { ImportOBJAggregateBlock } from "../../src/Blocks/importOBJAggregateBlock";
 import { OBJToUniversalBlock } from "../../src/Blocks/objToUniversalBlock";
@@ -33,19 +34,37 @@ v 2 1 0
 f 4//1 5//1 6//1
 `);
 
+const OBJWithMaterialFixture = new TextEncoder().encode(`mtllib model.mtl
+o MaterialObject
+v 0 0 0
+v 1 0 0
+v 0 1 0
+vn 0 0 1
+usemtl Material
+f 1//1 2//1 3//1
+`);
+
+const MTLFixture = `newmtl Material
+Kd 1.0 0.0 0.0
+`;
+
 function ArrayBufferFor(bytes: Uint8Array): ArrayBuffer {
     return bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength) as ArrayBuffer;
 }
 
-async function GetAssetFactsAsync(glb: Uint8Array): Promise<{ readonly sceneCount: number; readonly nodes: readonly string[]; readonly meshCount: number }> {
+async function GetAssetFactsAsync(
+    glb: Uint8Array
+): Promise<{ readonly sceneCount: number; readonly nodes: readonly string[]; readonly meshCount: number; readonly primitiveCount: number }> {
     const document = await new WebIO().registerExtensions(ALL_EXTENSIONS).readBinary(glb);
+    const meshes = document.getRoot().listMeshes();
     return {
         sceneCount: document.getRoot().listScenes().length,
         nodes: document
             .getRoot()
             .listNodes()
             .map((node) => node.getName()),
-        meshCount: document.getRoot().listMeshes().length,
+        meshCount: meshes.length,
+        primitiveCount: meshes.reduce((total, mesh) => total + mesh.listPrimitives().length, 0),
     };
 }
 
@@ -65,6 +84,25 @@ function CreatePrimitivePipeline(
     read.output.connectTo(transcoder.input);
     transcoder.output.connectTo(exporter.input);
     return { asset, read, transcoder };
+}
+
+async function CreateUrlPipelineAsync(url: string, bytes = OBJFixture) {
+    const asset = new NodeAsset("url-obj");
+    const read = new ReadOBJBlock("Read OBJ", asset);
+    const fetcher = vi.fn(async () => ({
+        ok: true,
+        status: 200,
+        statusText: "OK",
+        arrayBuffer: async () => ArrayBufferFor(bytes),
+    }));
+    await read.setUrlAsync(url, fetcher);
+    const objToUniversal = new OBJToUniversalBlock("OBJ to Universal", asset);
+    const universalToGltf = new UniversalToGLTFBlock("Universal to glTF", asset);
+    const exporter = new ExportGLTFBlock("Export glTF", asset);
+    read.output.connectTo(objToUniversal.input);
+    objToUniversal.output.connectTo(universalToGltf.input);
+    universalToGltf.output.connectTo(exporter.input);
+    return { asset, fetcher };
 }
 
 describe("OBJ Universal funnel", () => {
@@ -99,19 +137,53 @@ describe("OBJ Universal funnel", () => {
         expect(IsOBJSourceAsset(read.output.value)).toBe(true);
     });
 
-    it("accepts an extensionless direct URL identified as OBJ by its query", () => {
+    it("builds an extensionless query OBJ URL into an inspectable GLB", async () => {
         const source = "https://example.com/assets/model?format=obj";
-        const asset = new OBJSourceAsset({ path: source, bytes: OBJFixture }, source, "url", []);
+        const { asset, fetcher } = await CreateUrlPipelineAsync(source);
+        const result = await asset.buildAsync();
 
-        expect(asset.primary.path).toBe(source);
-        expect(asset.source).toBe(source);
-        expect(asset.sourceKind).toBe("url");
+        expect(fetcher).toHaveBeenCalledExactlyOnceWith(source);
+        expect(result.byteLength).toBeGreaterThan(0);
+        expect(await GetAssetFactsAsync(result)).toMatchObject({ meshCount: 2, primitiveCount: 2 });
+    });
+
+    it("builds a conventional OBJ URL and resolves its MTL relative to the source folder", async () => {
+        const source = "https://example.com/assets/model.obj";
+        const materialUrl = "https://example.com/assets/model.mtl";
+        const loadFile = vi.spyOn(Tools, "LoadFile").mockImplementation((url, onSuccess, _onProgress, _offlineProvider, _useArrayBuffer, onError) => {
+            if (url === materialUrl) {
+                onSuccess(MTLFixture);
+            } else {
+                onError?.(undefined, new Error(`Unexpected MTL URL: ${url}`));
+            }
+            return { abort: () => undefined, onCompleteObservable: new Observable() };
+        });
+        try {
+            const { asset, fetcher } = await CreateUrlPipelineAsync(source, OBJWithMaterialFixture);
+            const result = await asset.buildAsync();
+
+            expect(fetcher).toHaveBeenCalledExactlyOnceWith(source);
+            expect(loadFile).toHaveBeenCalledExactlyOnceWith(materialUrl, expect.any(Function), undefined, undefined, false, expect.any(Function));
+            expect(result.byteLength).toBeGreaterThan(0);
+            expect(await GetAssetFactsAsync(result)).toMatchObject({ meshCount: 1, primitiveCount: 1 });
+        } finally {
+            loadFile.mockRestore();
+        }
     });
 
     it("rejects incoherent direct OBJ source payloads", () => {
         expect(() => new OBJSourceAsset({ path: "fixture.obj", bytes: OBJFixture }, "different.obj", "upload", [])).toThrow(/source identity must match the primary path/);
         expect(() => new OBJSourceAsset({ path: "fixture.txt", bytes: OBJFixture }, "fixture.txt", "upload", [])).toThrow(/uploaded OBJ primary path must end in \.obj/);
         expect(() => new OBJSourceAsset({ path: "fixture.OBJ", bytes: OBJFixture }, "fixture.OBJ", "upload", [])).not.toThrow();
+    });
+
+    it("rejects non-empty companion arrays in the basic OBJ workflow", () => {
+        expect(
+            () =>
+                new OBJSourceAsset({ path: "fixture.obj", bytes: OBJFixture }, "fixture.obj", "upload", [
+                    { path: "fixture.mtl", bytes: new TextEncoder().encode("newmtl Material") },
+                ])
+        ).toThrowError(new TypeError("The OBJ companions must be an empty array in the basic OBJ workflow."));
     });
 
     it("builds an uploaded OBJ into a readable GLB and preserves multiple object and group names", async () => {
@@ -126,6 +198,7 @@ describe("OBJ Universal funnel", () => {
                 sceneCount: 1,
                 nodes: expect.arrayContaining(["FirstObject", "SecondGroup"]),
                 meshCount: 2,
+                primitiveCount: 2,
             });
             expect(sceneDispose).toHaveBeenCalled();
             expect(engineDispose).toHaveBeenCalled();

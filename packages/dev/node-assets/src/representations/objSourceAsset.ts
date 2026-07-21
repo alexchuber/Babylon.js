@@ -33,11 +33,11 @@ export class OBJSourceAsset {
     public readonly sourceKind: OBJSourceKind;
 
     /**
-     * Creates an immutable OBJ source payload with defensive copies of all file bytes.
+     * Creates an immutable basic-workflow OBJ source payload with a defensive copy of the primary bytes.
      * @param primary The required primary OBJ file.
      * @param source The active source URL or uploaded file name.
      * @param sourceKind Whether the source was resolved from a URL or upload.
-     * @param companions Optional path-addressable companion files.
+     * @param companions Reserved for forward-compatible companion files; must be empty in the basic workflow.
      */
     public constructor(primary: IOBJSourceFile, source: string, sourceKind: OBJSourceKind, companions: ReadonlyArray<IOBJSourceFile> = []) {
         ValidateSourceFile(primary, "primary");
@@ -56,7 +56,9 @@ export class OBJSourceAsset {
         if (!Array.isArray(companions)) {
             throw new TypeError("The OBJ companions must be an array.");
         }
-        companions.forEach((companion) => ValidateSourceFile(companion, "companion"));
+        if (companions.length !== 0) {
+            throw new TypeError("The OBJ companions must be an empty array in the basic OBJ workflow.");
+        }
 
         this._primary = CloneSourceFile(primary);
         this._companions = Object.freeze(companions.map(CloneSourceFile));
@@ -70,7 +72,7 @@ export class OBJSourceAsset {
         return CloneSourceFile(this._primary);
     }
 
-    /** Defensive copies of the optional path-addressable companion files. */
+    /** The reserved companion file list, which is always empty in the basic workflow. */
     public get companions(): ReadonlyArray<IOBJSourceFile> {
         return Object.freeze(this._companions.map(CloneSourceFile));
     }
