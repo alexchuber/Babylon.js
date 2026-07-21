@@ -4,14 +4,19 @@ import { resolve } from "node:path";
 
 import { CreateBuiltInNodeAssetLibraryEntries } from "../../src/nodeAssets/builtInLibraryEntries";
 import { BuiltInLibraryFixtures } from "../../src/nodeAssets/builtInLibraryFixtures";
-import { NodeAssetsEditorPage, useLocalGltfValidator } from "./nae.utils";
+import { NodeAssetsEditorPage, RoundedCubeSourceUrl, useLocalGltfValidator, useLocalRoundedCubeSource } from "./nae.utils";
 
 type GltfJson = {
     readonly accessors?: readonly { readonly count?: number; readonly type?: string }[];
     readonly extensionsUsed?: readonly string[];
     readonly extensionsRequired?: readonly string[];
     readonly nodes?: readonly { readonly name?: string }[];
-    readonly meshes?: readonly { readonly primitives?: readonly { readonly attributes?: { readonly POSITION?: number }; readonly indices?: number }[] }[];
+    readonly meshes?: readonly {
+        readonly primitives?: readonly {
+            readonly attributes?: { readonly POSITION?: number; readonly NORMAL?: number; readonly TANGENT?: number; readonly TEXCOORD_0?: number };
+            readonly indices?: number;
+        }[];
+    }[];
 };
 
 type SavedBlock = {
@@ -318,11 +323,15 @@ async function saveEditorGraph(page: Page): Promise<SavedEditorGraph> {
     return JSON.parse(readFileSync(downloadPath, "utf8")) as SavedEditorGraph;
 }
 
+test.beforeEach(async ({ page }) => {
+    await useLocalGltfValidator(page);
+    await useLocalRoundedCubeSource(page);
+});
+
 test.describe("Node Assets Editor — maintained default pipeline", () => {
     test.describe.configure({ timeout: 180_000 });
-    test.beforeEach(async ({ page }) => await useLocalGltfValidator(page));
 
-    test("opens to the maintained catalog graph and auto-previews without network requests or console errors", async ({ page }) => {
+    test("hydrates only the maintained default source and auto-previews without console errors", async ({ page }) => {
         const pageErrors = collectPageErrors(page);
         const editor = new NodeAssetsEditorPage(page);
         const sourceRequests: string[] = [];
@@ -346,10 +355,30 @@ test.describe("Node Assets Editor — maintained default pipeline", () => {
         await expect(editor.previewCanvas).toBeVisible();
 
         await editor.selectNode("Import glTF");
-        await expect(page.getByRole("textbox").nth(3)).toHaveValue("catalog-triangle.glb");
+        await expect(page.getByRole("textbox").nth(3)).toHaveValue(RoundedCubeSourceUrl);
 
-        expect(sourceRequests).toEqual([]);
+        expect(sourceRequests).toEqual([RoundedCubeSourceUrl]);
+        await editor.openLibraryButton.click();
+        await expect(page.getByRole("dialog", { name: "NodeAsset Library" })).toBeVisible();
+        expect(sourceRequests).toEqual([RoundedCubeSourceUrl]);
         expect(pageErrors).toEqual([]);
+    });
+
+    test("keeps loading visible and surfaces a deterministic default-source failure without building", async ({ page }) => {
+        let releaseResponse: () => void = () => undefined;
+        const responseReleased = new Promise<void>((resolve) => {
+            releaseResponse = resolve;
+        });
+        await page.unroute("https://assets.babylonjs.com/**");
+        await useLocalRoundedCubeSource(page, { status: 503, waitFor: responseReleased });
+        const editor = new NodeAssetsEditorPage(page);
+
+        await editor.goto();
+        await expect(editor.previewBuildingOverlay).toBeVisible();
+        releaseResponse();
+
+        await expect(editor.previewBuildingOverlay).toBeHidden();
+        await expect(editor.previewErrorOverlay).toContainText("503");
     });
 
     test("restores the rendered preview across repeated Validation tab visits", async ({ page }) => {
@@ -416,7 +445,7 @@ test.describe("Node Assets Editor — maintained default pipeline", () => {
         await editor.expectPreviewToHaveRenderedContent();
     });
 
-    test("exports the optimized catalog triangle the preview rendered", async ({ page }) => {
+    test("exports the structurally valid indexed glTF the preview rendered", async ({ page }) => {
         const editor = new NodeAssetsEditorPage(page);
         await editor.goto();
         await editor.waitForNextSuccessfulPreviewBuild();
@@ -429,7 +458,16 @@ test.describe("Node Assets Editor — maintained default pipeline", () => {
         await exportButton.click();
         const exported = await readDownloadedGlb(await downloadPromise);
         const gltf = parseGlbJson(exported);
-        expect((gltf.nodes ?? []).map((node) => node.name)).toContain("Catalog Triangle");
+        expect(gltf.meshes?.[0].primitives?.[0]).toEqual(
+            expect.objectContaining({
+                attributes: expect.objectContaining({
+                    POSITION: expect.any(Number),
+                    NORMAL: expect.any(Number),
+                    TEXCOORD_0: expect.any(Number),
+                }),
+                indices: expect.any(Number),
+            })
+        );
         expect(gltf.extensionsUsed ?? []).not.toContain("KHR_texture_basisu");
         expect(gltf.extensionsUsed ?? []).not.toContain("KHR_draco_mesh_compression");
     });
@@ -483,7 +521,7 @@ test.describe("Node Assets Editor — maintained default pipeline", () => {
         const downloadPromise = page.waitForEvent("download");
         await page.getByRole("button", { name: "Export .glb" }).click();
         const exported = parseGlbJson(await readDownloadedGlb(await downloadPromise));
-        expect((exported.nodes ?? []).map((node) => node.name)).toContain("Catalog Triangle");
+        expect(typeof exported.meshes?.[0].primitives?.[0]?.indices).toBe("number");
     });
 
     test("replaces an occupied input connection when a new wire is dropped on it", async ({ page }) => {
@@ -1088,7 +1126,7 @@ test.describe("Node Assets Editor — Universal glTF aggregates", () => {
         await page.getByRole("textbox").nth(2).blur();
 
         await expect(page.getByText("Source error", { exact: true })).toBeVisible();
-        await expect(page.getByRole("textbox").nth(3)).toHaveValue("catalog-triangle.glb");
+        await expect(page.getByRole("textbox").nth(3)).toHaveValue(RoundedCubeSourceUrl);
         await expect(page.getByRole("textbox").nth(4)).toHaveValue(/404/);
     });
 

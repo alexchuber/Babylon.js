@@ -7,6 +7,7 @@ import { NodeAsset } from "node-assets/nodeAsset";
 
 import { CreateBuiltInNodeAssetLibraryEntries, GetDefaultBuiltInNodeAssetLibraryEntry } from "../../src/nodeAssets/builtInLibraryEntries";
 import { NodeAssetGraphController } from "../../src/nodeAssets/nodeAssetGraphController";
+import { BuiltInLibraryFixtures } from "../../src/nodeAssets/builtInLibraryFixtures";
 import { type INodeAssetBuildClient } from "../../src/nodeAssets/nodeAssetBuildWorkerClient";
 
 const ExpectedPipelineNames = [
@@ -46,6 +47,9 @@ const ObsoletePipelineNames = ["USD with Custom Textures", "Material Decompositi
 
 type SerializedBlockShape = {
     customType: string;
+    data?: string | null;
+    source?: string | null;
+    sourceKind?: string;
     subgraph?: {
         blocks?: SerializedBlockShape[];
     };
@@ -55,7 +59,7 @@ type GltfJson = {
     asset?: { version?: string };
     extensionsUsed?: string[];
     scenes?: unknown[];
-    meshes?: Array<{ primitives?: Array<{ attributes?: Record<string, number> }> }>;
+    meshes?: Array<{ primitives?: Array<{ attributes?: Record<string, number>; indices?: number }> }>;
 };
 
 function AssertValidGlb(glb: Uint8Array): GltfJson {
@@ -70,6 +74,10 @@ function AssertValidGlb(glb: Uint8Array): GltfJson {
     expect(json.asset?.version).toBe("2.0");
     expect(json.scenes?.length).toBeGreaterThan(0);
     return json;
+}
+
+function CollectBlocks(blocks: SerializedBlockShape[]): SerializedBlockShape[] {
+    return blocks.flatMap((block) => [block, ...(block.subgraph?.blocks ? CollectBlocks(block.subgraph.blocks) : [])]);
 }
 
 function CreateUnusedBuildClient(): INodeAssetBuildClient {
@@ -113,6 +121,27 @@ describe("built-in NodeAsset pipeline catalog", () => {
         }
     });
 
+    it("serializes only the default glTF source as the exact rounded cube URL without embedded bytes", () => {
+        const entries = CreateBuiltInNodeAssetLibraryEntries();
+        const readGltfBlocks = (entryIndex: number) => {
+            const editorFile = JSON.parse(entries[entryIndex].serializedGraph) as { graph: { blocks: SerializedBlockShape[] } };
+            return CollectBlocks(editorFile.graph.blocks).filter((block) => block.customType === "ReadGLTFBlock");
+        };
+
+        expect(readGltfBlocks(0)).toEqual([
+            expect.objectContaining({
+                data: null,
+                source: "https://assets.babylonjs.com/meshes/roundedCube.glb",
+                sourceKind: "url",
+            }),
+        ]);
+        expect(entries.slice(1).flatMap((_, index) => readGltfBlocks(index + 1))).not.toContainEqual(
+            expect.objectContaining({
+                source: "https://assets.babylonjs.com/meshes/roundedCube.glb",
+            })
+        );
+    });
+
     it("round-trips and loads every preview-ready graph without retired block types", () => {
         const controller = new NodeAssetGraphController(CreateUnusedBuildClient());
         try {
@@ -140,8 +169,19 @@ describe("built-in NodeAsset pipeline catalog", () => {
     it("builds every production pipeline to a valid non-empty GLB without network sources", async () => {
         for (const entry of CreateBuiltInNodeAssetLibraryEntries()) {
             const editorFile = JSON.parse(entry.serializedGraph) as { graph: unknown };
-            const result = await NodeAsset.Parse(editorFile.graph).buildAsync();
+            const result = entry.name === "glTF Optimization" ? await BuildDefaultPipelineAsync(entry.serializedGraph) : await NodeAsset.Parse(editorFile.graph).buildAsync();
             const gltf = AssertValidGlb(result);
+            if (entry.name === "glTF Optimization") {
+                const primitive = gltf.meshes?.[0].primitives?.[0];
+                expect(primitive?.indices).toBeTypeOf("number");
+                expect(primitive?.attributes).toEqual(
+                    expect.objectContaining({
+                        POSITION: expect.any(Number),
+                        NORMAL: expect.any(Number),
+                        TEXCOORD_0: expect.any(Number),
+                    })
+                );
+            }
             if (entry.name === "Full Universal Optimization") {
                 expect(gltf.meshes?.[0].primitives?.[0].attributes?.TANGENT).toBeTypeOf("number");
             }
@@ -151,3 +191,25 @@ describe("built-in NodeAsset pipeline catalog", () => {
         }
     }, 180_000);
 });
+
+async function BuildDefaultPipelineAsync(serializedGraph: string): Promise<Uint8Array> {
+    const buildClient: INodeAssetBuildClient = {
+        buildAsync: async (graph) => await NodeAsset.Parse(graph).buildAsync(),
+        dispose: () => undefined,
+    };
+    const controller = new NodeAssetGraphController(buildClient, async (url) => {
+        expect(url).toBe("https://assets.babylonjs.com/meshes/roundedCube.glb");
+        return {
+            ok: true,
+            status: 200,
+            statusText: "OK",
+            arrayBuffer: async () => BuiltInLibraryFixtures.gltf.slice().buffer,
+        };
+    });
+    try {
+        controller.load(serializedGraph);
+        return await controller.buildAsync();
+    } finally {
+        controller.dispose();
+    }
+}

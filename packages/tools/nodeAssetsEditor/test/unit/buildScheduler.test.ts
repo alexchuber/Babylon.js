@@ -53,6 +53,26 @@ describe("BuildScheduler", () => {
         expect(buildAsync).toHaveBeenCalledTimes(1);
     });
 
+    it("can subscribe without an immediate build and still responds to the next debounced trigger", async () => {
+        const triggerSource = new TestTriggerSource();
+        const buildAsync = vi.fn(async () => "recovered");
+        const scheduler = new BuildScheduler({
+            triggerSource,
+            debounceMs: 400,
+            buildAsync,
+            buildImmediately: false,
+        });
+
+        expect(buildAsync).not.toHaveBeenCalled();
+        triggerSource.trigger();
+        await vi.advanceTimersByTimeAsync(399);
+        expect(buildAsync).not.toHaveBeenCalled();
+
+        await vi.advanceTimersByTimeAsync(1);
+        expect(buildAsync).toHaveBeenCalledTimes(1);
+        scheduler.dispose();
+    });
+
     it("collapses rapid graph changes into one debounced build", async () => {
         const triggerSource = new TestTriggerSource();
         const buildAsync = vi.fn(async () => "built");
@@ -119,6 +139,34 @@ describe("BuildScheduler", () => {
 
         expect(appliedResults).toEqual(["latest"]);
         expect(builtResults).toEqual(["latest"]);
+        scheduler.dispose();
+    });
+
+    it("invalidates an in-flight build immediately when a newer graph change is debouncing", async () => {
+        const triggerSource = new TestTriggerSource();
+        const firstBuild = CreateDeferred<string>();
+        const buildAsync = vi.fn<() => Promise<string>>().mockReturnValueOnce(firstBuild.promise).mockResolvedValueOnce("latest");
+        const appliedResults: string[] = [];
+        const scheduler = new BuildScheduler({
+            triggerSource,
+            debounceMs: 400,
+            buildAsync,
+            applyResultAsync: async (result) => {
+                appliedResults.push(result);
+            },
+        });
+
+        triggerSource.trigger();
+        firstBuild.resolve("superseded");
+        await Promise.resolve();
+        await Promise.resolve();
+
+        expect(appliedResults).toEqual([]);
+        expect(buildAsync).toHaveBeenCalledTimes(1);
+
+        await vi.advanceTimersByTimeAsync(400);
+        expect(buildAsync).toHaveBeenCalledTimes(2);
+        expect(appliedResults).toEqual(["latest"]);
         scheduler.dispose();
     });
 });

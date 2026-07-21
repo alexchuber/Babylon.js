@@ -58,7 +58,7 @@ function CreateTriangleGlb(indexed: boolean): Uint8Array {
     return glb;
 }
 
-/** Deterministic local source payloads embedded into every built-in pipeline serialization. */
+/** Deterministic local source payloads used by inline catalog entries and tests. */
 export const BuiltInLibraryFixtures = {
     gltf: CreateTriangleGlb(true),
     unweldedGltf: CreateTriangleGlb(false),

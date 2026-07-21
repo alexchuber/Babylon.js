@@ -2,7 +2,7 @@ import { expect, test, type Download } from "@playwright/test";
 import { readFileSync } from "node:fs";
 
 import { CreateBuiltInNodeAssetLibraryEntries } from "../../../src/nodeAssets/builtInLibraryEntries";
-import { NodeAssetsEditorPage, useLocalGltfValidator } from "../nae.utils";
+import { NodeAssetsEditorPage, useLocalGltfValidator, useLocalRoundedCubeSource } from "../nae.utils";
 
 async function AssertValidDownloadedGlb(download: Download): Promise<void> {
     const path = await download.path();
@@ -15,7 +15,10 @@ async function AssertValidDownloadedGlb(download: Download): Promise<void> {
 
 test.describe("Node Assets Editor built-in pipeline catalog", () => {
     test.describe.configure({ timeout: 420_000 });
-    test.beforeEach(async ({ page }) => await useLocalGltfValidator(page));
+    test.beforeEach(async ({ page }) => {
+        await useLocalGltfValidator(page);
+        await useLocalRoundedCubeSource(page);
+    });
 
     test("lists, previews, and exports every production catalog graph", async ({ page }) => {
         const entries = CreateBuiltInNodeAssetLibraryEntries();
