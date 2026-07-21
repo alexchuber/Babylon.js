@@ -685,6 +685,9 @@ test.describe("Node Assets Editor — maintained default pipeline", () => {
         await editor.goto();
 
         const importNode = editor.nodeByTitle("Import glTF");
+        const contextNode = editor.nodeByTitle("Remove Unused Resources");
+        const minimap = editor.canvas.locator('[role="presentation"]');
+        const wireHitTarget = editor.wires.first().locator("path").first();
         await editor.selectNode("Import glTF");
         const selectedNodeName = page.getByRole("textbox").nth(0);
         await expect(selectedNodeName).toHaveValue("Import glTF");
@@ -704,15 +707,45 @@ test.describe("Node Assets Editor — maintained default pipeline", () => {
         const beforePan = await readNodeState();
         const start = await editor.findEmptyCanvasPoint();
         const delta = { x: 48, y: 32 };
+        const minimapBox = await minimap.boundingBox();
+        if (!minimapBox) {
+            throw new Error("Could not resolve the graph minimap for pointer ownership testing.");
+        }
+        const foreignPointer = {
+            pointerId: 999,
+            pointerType: "touch",
+            isPrimary: false,
+        };
+        const minimapPoint = { clientX: minimapBox.x + 16, clientY: minimapBox.y + 16 };
         await expect(editor.canvas).toHaveCSS("cursor", "grab");
         await page.mouse.move(start.x, start.y);
         await page.mouse.down();
         await expect(editor.canvas).toHaveCSS("cursor", "grabbing");
         const beforeForeignMove = await readNodeState();
+        await minimap.dispatchEvent("pointerdown", {
+            ...foreignPointer,
+            ...minimapPoint,
+            button: 0,
+            buttons: 1,
+        });
+        const afterForeignNavigation = await readNodeState();
+        expect(afterForeignNavigation.screenX).toBe(beforeForeignMove.screenX);
+        expect(afterForeignNavigation.screenY).toBe(beforeForeignMove.screenY);
+        await wireHitTarget.dispatchEvent("pointerdown", {
+            ...foreignPointer,
+            button: 0,
+            buttons: 1,
+        });
+        await expect(selectedNodeName).toHaveValue("Import glTF");
+        await contextNode.dispatchEvent("contextmenu", {
+            ...foreignPointer,
+            button: 2,
+            buttons: 0,
+        });
+        await expect(selectedNodeName).toHaveValue("Import glTF");
+        await page.keyboard.press("Escape");
         await editor.canvas.dispatchEvent("pointermove", {
-            pointerId: 999,
-            pointerType: "touch",
-            isPrimary: false,
+            ...foreignPointer,
             buttons: 1,
             clientX: start.x + 96,
             clientY: start.y + 96,
@@ -766,6 +799,34 @@ test.describe("Node Assets Editor — maintained default pipeline", () => {
         const afterZoom = await readNodeState();
         expect(afterZoom.worldLeft).toBe(afterNodeDrag.worldLeft);
         expect(afterZoom.worldTop).toBe(afterNodeDrag.worldTop);
+
+        const beforeIdleMinimapNavigation = await readNodeState();
+        await minimap.dispatchEvent("pointerdown", {
+            ...foreignPointer,
+            ...minimapPoint,
+            button: 0,
+            buttons: 1,
+        });
+        await expect
+            .poll(async () => {
+                const current = await readNodeState();
+                return Math.abs(current.screenX - beforeIdleMinimapNavigation.screenX) + Math.abs(current.screenY - beforeIdleMinimapNavigation.screenY);
+            })
+            .toBeGreaterThan(1);
+
+        await wireHitTarget.dispatchEvent("pointerdown", {
+            ...foreignPointer,
+            button: 0,
+            buttons: 1,
+        });
+        await expect(page.getByText("No selection", { exact: true })).toBeVisible();
+        await contextNode.dispatchEvent("contextmenu", {
+            ...foreignPointer,
+            button: 2,
+            buttons: 0,
+        });
+        await expect(page.getByRole("textbox").nth(0)).toHaveValue("Remove Unused Resources");
+        await page.keyboard.press("Escape");
     });
 
     test("reorganizes overlapping nodes into a left-to-right data flow", async ({ page }) => {

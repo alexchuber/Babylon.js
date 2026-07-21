@@ -275,6 +275,8 @@ export const GraphCanvas: FunctionComponent<{ context: EditorContextValue }> = (
         [applyGestureResult, releasePointer]
     );
 
+    const canHandleIndependentPointerAction = useCallback(() => gestureRef.current.kind === "none", []);
+
     // Persistent window listeners drive the active gesture so dragging continues outside the canvas.
     useEffect(() => {
         const onPointerMove = (event: PointerEvent) => {
@@ -445,15 +447,23 @@ export const GraphCanvas: FunctionComponent<{ context: EditorContextValue }> = (
                 }
                 startGesture(event, BeginPortGesture({ pointerId: event.pointerId, portId, anchor, world: screenToWorld(event.clientX, event.clientY) }));
             },
-            selectWire: (wireId) => state.selectWire(wireId),
+            selectWire: (wireId) => {
+                if (!canHandleIndependentPointerAction()) {
+                    return;
+                }
+                state.selectWire(wireId);
+            },
             openContextMenu: (target) => {
+                if (!canHandleIndependentPointerAction()) {
+                    return;
+                }
                 if (target.kind === "node" && !state.isNodeSelected(target.nodeId)) {
                     state.selectNodes([target.nodeId]);
                 }
                 setContextTarget(target);
             },
         }),
-        [context, state, screenToWorld, startGesture]
+        [context, state, screenToWorld, startGesture, canHandleIndependentPointerAction]
     );
 
     const onBackgroundPointerDown = (event: ReactPointerEvent<HTMLDivElement>) => {
@@ -581,7 +591,16 @@ export const GraphCanvas: FunctionComponent<{ context: EditorContextValue }> = (
                         </div>
                     }
                 />
-                <GraphMinimap camera={camera} viewport={size} onNavigate={(world) => setCamera((current) => CenterCameraOn(world, size, current.zoom))} />
+                <GraphMinimap
+                    camera={camera}
+                    viewport={size}
+                    onNavigate={(world) => {
+                        if (!canHandleIndependentPointerAction()) {
+                            return;
+                        }
+                        setCamera((current) => CenterCameraOn(world, size, current.zoom));
+                    }}
+                />
             </CanvasContextProvider>
         </div>
     );
