@@ -39,11 +39,21 @@ Dragging the empty canvas surface with the primary pointer moves the camera by t
 - Wheel zoom, zoom-to-fit, initial fit, minimap navigation, keyboard shortcuts, and form-control exclusions remain unchanged.
 
 ## Testing Decisions
+
 - Use the existing pure gesture-interpreter unit seam for deterministic tests of background routing, pan movement latching, no-movement selection clearing, completion, and cancellation.
 - Use the existing Node Assets Editor Playwright seam for the highest-level regression: primary drag on verified empty canvas moves rendered graph content by the drag delta without changing node world positions or selection, then node dragging and wheel zoom still work.
 - Exercise modified-drag marquee behavior at the interpreter seam and, where stable, at the browser seam.
 - Cover pointer ownership/cancellation at the narrowest stable seam and avoid timing-based assertions.
 - Follow existing package Vitest and Playwright conventions and run the smallest scoped checks that cover the change.
+
+## Delivery Status
+
+The feature and ownership fixes are assembled on the PR #22 branch, but this PRD intentionally remains `Status: ready-for-agent` until the corrected lifecycle tests land and root completes independent validation and integration.
+
+- PR #29's implementation head `2ccafbede2b3379b99c861b69c1829b0d31c38a2` merged into `fix/nae/graph-canvas-pan-owner-gates` as `a577d18736b7ad77e48b768b074c141eafcf5d97`; this is branch-level assembly, not final product integration.
+- The PR #29 worker reported RED on exact base `f5a284ded5b1176fbfb75faf97cafd2ecc929dfd` (ownership Playwright: one retained pass and three expected failures; ContextMenu unit: one expected failure), followed by GREEN at `2ccafbede2b3379b99c861b69c1829b0d31c38a2` (38/38 focused units and 5/5 focused Playwright, plus deployment build and lint/format checks).
+- The worker also reported a clean issue-level dual-lens `/code-review`. PR #29 itself has no GitHub check runs or reviews, so those results remain worker-reported evidence rather than GitHub-hosted evidence.
+- An independent exact-range audit then rejected the prior browser proof because several synthetic pointer streams were not physically complete. The focused test/docs follow-up replaces those streams without changing production source and passed its automatic dual-lens review; root's independent final gates and integration remain pending.
 
 ## Out of Scope
 - Inertial or momentum panning.
@@ -56,4 +66,5 @@ Dragging the empty canvas surface with the primary pointer moves the camera by t
 - Unrelated node, frame, port, wire, palette, or context-menu changes.
 
 ## Further Notes
-The branch already contains camera pan actions, viewport-space delta math, middle-button/Space panning, window-level pointer continuation, and focused unit seams. The narrow change is input routing and gesture lifecycle, with browser coverage proving it does not steal graph-editing gestures.
+
+The branch contains camera pan actions, viewport-space delta math, middle-button/Space panning, window-level pointer continuation, focused unit seams, and active-owner gates. The remaining work is to land acceptance-grade lifecycle coverage and complete root validation; no section above claims the feature has landed.
