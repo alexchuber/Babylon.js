@@ -79,6 +79,7 @@ describe("blockNodeMapping", () => {
         const asset = new NodeAsset("representations");
         const block = new RepresentationMappingTestBlock("block", asset);
 
+        expect(FBXHeaderColor).toBe("#B35900");
         expect(PointToPort(block, block.usd).color).toBe(UsdStagePortColor);
         expect(PointToPort(block, block.babylon).color).toBe(BabylonScenePortColor);
         expect(PointToPort(block, block.nodeGeometry).color).toBe(NodeGeometryPortColor);

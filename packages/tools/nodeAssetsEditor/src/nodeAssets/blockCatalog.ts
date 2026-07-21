@@ -94,7 +94,7 @@ export const UsdStagePortColor = "#C4A265";
 export const BabylonScenePortColor = "#4A90D9";
 
 /** Palette header and source-port color for the FBX source lane. */
-export const FBXHeaderColor = "#D97706";
+export const FBXHeaderColor = "#B35900";
 
 /** Data-driven dot color for NODE_GEOMETRY-typed ports. */
 export const NodeGeometryPortColor = "#7B68EE";
