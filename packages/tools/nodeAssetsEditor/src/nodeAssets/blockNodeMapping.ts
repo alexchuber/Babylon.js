@@ -18,6 +18,7 @@ import {
     JsonPortColor,
     NodeGeometryPortColor,
     NumberPortColor,
+    OBJPortColor,
     ScenePortColor,
     StringPortColor,
     UsdStagePortColor,
@@ -67,6 +68,7 @@ const PortStyleByType: Partial<Record<NodeAssetConnectionPointType, { readonly n
     [NodeAssetConnectionPointType.NODE_GEOMETRY]: { name: "Node Geometry", color: NodeGeometryPortColor },
     [NodeAssetConnectionPointType.UNIVERSAL]: { name: "Universal", color: UniversalPortColor },
     [NodeAssetConnectionPointType.BABYLON_SOURCE]: { name: "Babylon", color: BabylonScenePortColor },
+    [NodeAssetConnectionPointType.OBJ_SOURCE]: { name: "OBJ", color: OBJPortColor },
 };
 
 /**

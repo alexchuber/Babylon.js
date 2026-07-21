@@ -54,4 +54,7 @@ export enum NodeAssetConnectionPointType {
 
     /** Lightweight resolved USD source bytes consumed only by USD-to-Universal transcoding. */
     USD_SOURCE = 10,
+
+    /** A shallow OBJ source payload consumed only by OBJ-to-Universal transcoding. */
+    OBJ_SOURCE = 11,
 }

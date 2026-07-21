@@ -114,6 +114,19 @@ def Xform "World"
             cameras: [],
         })
     ),
+    obj: TextEncoderInstance.encode(`# Synthetic repository-authored OBJ source
+o CatalogObject
+v 0 0 0
+v 1 0 0
+v 0 1 0
+vn 0 0 1
+f 1//1 2//1 3//1
+g CatalogGroup
+v 2 0 0
+v 3 0 0
+v 2 1 0
+f 4//1 5//1 6//1
+`),
     nodeGeometry: TextEncoderInstance.encode(
         JSON.stringify({
             customType: "BABYLON.NodeGeometry",

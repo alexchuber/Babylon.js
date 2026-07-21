@@ -43,6 +43,7 @@ export { type IUsdAssetMetadata, IsUsdAsset, UsdAsset } from "./representations/
 export { IsUsdSourceAsset, UsdSourceAsset, type USDSourceKind } from "./representations/usdSourceAsset";
 export { BabylonAsset, type IBabylonAssetMetadata, IsBabylonAsset } from "./representations/babylonAsset";
 export { BabylonSource, IsBabylonSource } from "./representations/babylonSource";
+export { type IOBJSourceFile, IsOBJSourceAsset, OBJSourceAsset, type OBJSourceKind } from "./representations/objSourceAsset";
 export { type INodeGeometryAssetMetadata, IsNodeGeometryAsset, NodeGeometryAsset } from "./representations/nodeGeometryAsset";
 export { type INodeGeometrySourceMetadata, IsNodeGeometrySource, NodeGeometrySource, type NodeGeometrySourceKind } from "./representations/nodeGeometrySource";
 export {
@@ -62,6 +63,9 @@ export { ExportGLTFAggregateBlock } from "./Blocks/exportGLTFAggregateBlock";
 export { type BabylonSourceFetcher, type BabylonSourceKind, type IBabylonSourceResponse, ReadBabylonBlock } from "./Blocks/readBabylonBlock";
 export { BabylonToUniversalBlock } from "./Blocks/babylonToUniversalBlock";
 export { ImportBabylonAggregateBlock } from "./Blocks/importBabylonAggregateBlock";
+export { type IOBJSourceApplyResult, type IOBJSourceResponse, type OBJSourceFetcher, ReadOBJBlock } from "./Blocks/readOBJBlock";
+export { OBJToUniversalBlock } from "./Blocks/objToUniversalBlock";
+export { ImportOBJAggregateBlock } from "./Blocks/importOBJAggregateBlock";
 export { type IUSDSourceResponse, ReadUSDBlock, type USDSourceFetcher } from "./Blocks/readUSDBlock";
 export { USDToUniversalBlock } from "./Blocks/usdToUniversalBlock";
 export { ImportUSDAggregateBlock } from "./Blocks/importUSDAggregateBlock";

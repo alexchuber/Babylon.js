@@ -91,6 +91,32 @@ class BuiltInPipelineBuilder {
         );
     }
 
+    public addOBJImport(name: string, x: number, y: number, data: Uint8Array, source: string): BlockReference {
+        const readId = this._allocateId();
+        const transcoderId = this._allocateId();
+        return this._addAggregate(
+            "ImportOBJAggregateBlock",
+            name,
+            x,
+            y,
+            [
+                {
+                    customType: "ReadOBJBlock",
+                    id: readId,
+                    name: "Read OBJ",
+                    primary: { path: source, bytes: EncodeArrayBufferToBase64(data) },
+                    source,
+                    sourceKind: "upload",
+                    companions: [],
+                },
+                { customType: "OBJToUniversalBlock", id: transcoderId, name: "OBJ to Universal" },
+            ],
+            [{ fromBlock: readId, fromPoint: "output", toBlock: transcoderId, toPoint: "input" }],
+            [],
+            [{ publicName: "output", blockId: transcoderId, pointName: "output" }]
+        );
+    }
+
     public addExport(x: number, y: number): BlockReference {
         const transcoderId = this._allocateId();
         const writeId = this._allocateId();
@@ -212,6 +238,10 @@ function CreateUsdImport(builder: BuiltInPipelineBuilder, x = 40, y = 120): Bloc
     );
 }
 
+function CreateOBJImport(builder: BuiltInPipelineBuilder, x = 40, y = 120): BlockReference {
+    return builder.addOBJImport("Import OBJ", x, y, BuiltInLibraryFixtures.obj, "catalog-objects.obj");
+}
+
 function CreateBabylonImport(builder: BuiltInPipelineBuilder, x = 40, y = 120): BlockReference {
     return builder.addImport(
         "ImportBabylonAggregateBlock",
@@ -265,6 +295,22 @@ function CreateGltfOptimizationEntry(): INodeAssetLibraryEntry {
 function CreateUsdOptimizationEntry(): INodeAssetLibraryEntry {
     const builder = new BuiltInPipelineBuilder("USD to Optimized glTF");
     const source = CreateUsdImport(builder);
+    const prune = builder.addBlock("RemoveUnusedResourcesBlock", "Remove Unused Resources", 360, 120, {
+        keptPropertyTypes: [],
+        keepLeafNodes: false,
+        keepAttributes: false,
+        keepSolidTextures: false,
+        keepExtras: false,
+    });
+    const output = builder.addExport(680, 120);
+    builder.connect(source, prune);
+    builder.connect(prune, output);
+    return builder.createEntry();
+}
+
+function CreateOBJOptimizationEntry(): INodeAssetLibraryEntry {
+    const builder = new BuiltInPipelineBuilder("OBJ to Optimized glTF");
+    const source = CreateOBJImport(builder);
     const prune = builder.addBlock("RemoveUnusedResourcesBlock", "Remove Unused Resources", 360, 120, {
         keptPropertyTypes: [],
         keepLeafNodes: false,
@@ -356,6 +402,7 @@ function CreateFullOptimizationEntry(): INodeAssetLibraryEntry {
 
 const BuiltInNodeAssetLibraryEntries = Object.freeze([
     CreateGltfOptimizationEntry(),
+    CreateOBJOptimizationEntry(),
     CreateUsdOptimizationEntry(),
     CreateBabylonOptimizationEntry(),
     CreateNodeGeometryEntry(),
