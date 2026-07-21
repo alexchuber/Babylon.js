@@ -983,8 +983,8 @@ describe("Import block source label", () => {
                 expect(FindPropertyInSection(controller, importNode, "READ OBJ", "Active source", "text").value).toBe("myMesh.OBJ");
             });
 
-            const compactGraph = JSON.parse(controller.serialize()) as { graph: { blocks: Array<{ customType: string }> } };
-            expect(compactGraph.graph.blocks[0].customType).toBe("ImportOBJAggregateBlock");
+            const compactGraph = JSON.parse(controller.serialize()) as { graph: { blocks: Array<{ name: string; customType: string }> } };
+            expect(compactGraph.graph.blocks.find((block) => block.name === "Import OBJ")?.customType).toBe("ImportOBJAggregateBlock");
 
             controller.setAggregateExpanded(importNode.id, true);
             const readNode = FindNode(controller, "Read OBJ");
