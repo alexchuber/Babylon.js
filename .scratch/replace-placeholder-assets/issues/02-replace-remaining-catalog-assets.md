@@ -15,8 +15,7 @@ built-in pipeline role:
 | Babylon optimization and Multi-Source Babylon arm | `https://assets.babylonjs.com/meshes/babylonJS_logo_v3.babylon` | 7,658 |
 
 Each replaced Read block must serialize the exact URL with `sourceKind: "url"` and no copied
-binary/base64 payload. Multi-Source Universal Merge must hydrate both active arms before build and
-reuse rounded-cube bytes when issue 01 already cached them.
+binary/base64 payload. Multi-Source Universal Merge must hydrate both active arms before build.
 
 Remove production catalog use of the generated glTF and Babylon triangle placeholders. Retain the
 inline USDA triangle and Node Geometry Box graph as explicit importer conformance samples because the
@@ -55,8 +54,8 @@ self-contained official candidate is verified, and leave paused RBXM work untouc
 - [ ] **Babylon to Optimized glTF** and the Multi-Source Babylon arm use only the exact Babylon logo
       URL and require no external texture request.
 - [ ] The Multi-Source glTF arm uses only the exact rounded cube URL, both active arms hydrate before
-      build, and rounded-cube bytes are reused when already cached.
-- [ ] Cold real-CDN source transfer is 115,728 bytes for Advanced, 10,996 bytes for Full, and 21,282
+      build.
+- [ ] Real-CDN source transfer is 115,728 bytes for Advanced, 10,996 bytes for Full, and 21,282
       combined bytes for Multi-Source.
 - [ ] Production catalog code no longer uses generated glTF or Babylon triangle payloads.
 - [ ] The USDA triangle remains inline and is clearly identified in maintained code/tests as an

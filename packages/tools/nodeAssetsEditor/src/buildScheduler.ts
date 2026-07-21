@@ -29,8 +29,8 @@ export interface IBuildSchedulerOptions<Result> {
 }
 
 /**
- * Debounces graph-change triggers, runs once immediately for editor open, and invalidates stale
- * in-flight results as soon as a newer graph change is observed.
+ * Debounces graph-change triggers, runs once immediately for editor open, and discards stale in-flight
+ * results after a newer build starts.
  */
 export class BuildScheduler<Result> {
     private readonly _options: IBuildSchedulerOptions<Result>;
@@ -58,7 +58,6 @@ export class BuildScheduler<Result> {
         if (this._isDisposed) {
             return;
         }
-        this._generation++;
         if (this._debounceHandle) {
             clearTimeout(this._debounceHandle);
         }

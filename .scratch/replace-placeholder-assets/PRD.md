@@ -7,7 +7,7 @@ Status: ready-for-agent
 The Node Assets Editor pipeline library is executable product UI, but its maintained built-in
 pipelines currently demonstrate supported source-to-GLB workflows with tiny generated placeholders
 rather than representative Babylon assets. Five generated source payloads are embedded into the
-catalog serializations and reused by seven user-facing built-in pipelines:
+catalog serializations and shared across seven user-facing built-in pipelines:
 
 | Generated payload | Current serialized source | Built-in pipeline roles |
 | --- | --- | --- |
@@ -25,9 +25,9 @@ the user experience.
 Replacing those payloads with URL strings alone is not sufficient. A built-in graph must resolve its
 remote Read-block sources before its build is serialized to the worker. Startup must wait for the
 active default graph, but the editor must not prefetch every library entry. Later library selection
-must hydrate only the newly active graph. Successful downloads should be reused, stale downloads must
-not overwrite a newer graph, and active failures must surface through the existing preview/build
-error experience.
+must hydrate only the newly active graph. Resolved bytes must apply only while the active graph still
+owns the Read block, and active failures must surface through the existing preview/build error
+experience without dispatching an incomplete worker build.
 
 The official BabylonJS/Assets repository does not contain USD-family files or serialized Node
 Geometry graphs. Substituting unrelated formats for those two inputs would misrepresent the
@@ -46,11 +46,12 @@ hydration seam at the `NodeAssetGraphController` / `BuildOrchestrator` boundary:
 1. On startup, hydrate only the active default graph before its first build.
 2. Before any later active graph is serialized for a worker build, hydrate only its URL-configured
    Read blocks.
-3. Cache successful bytes by exact URL for the editor session so repeated use does not trigger
-   redundant downloads.
-4. Apply resolved bytes only while the requesting graph revision still owns the Read block.
+3. Apply resolved bytes only while the requesting graph revision still owns the Read block.
+4. Refresh the controller's build-relevant signature after hydration without publishing an authored
+   graph change.
 5. Throw active hydration failures through the existing startup or build path so the existing
-   preview status, build error, and node diagnostic UX remains authoritative.
+   preview status, build error, and node diagnostic UX remains authoritative. After a startup
+   failure, subscribe for later authored changes without starting an immediate build.
 
 Do not prefetch library entries, copy official binaries into Babylon.js, introduce URL support for
 formats that do not have a valid official asset, or change any pipeline identity or ordering.
@@ -115,8 +116,8 @@ No other current product placeholders were found in the maintained Node Assets E
    unrelated assets do not consume bandwidth.
 7. As a multi-source pipeline user, I want both active source arms to hydrate before the graph builds,
    so that the merged result is complete.
-8. As a returning pipeline user, I want an already downloaded URL to reuse successful bytes, so that
-   switching between entries does not repeatedly fetch the same asset.
+8. As a returning pipeline user, I want a selected URL-only graph to hydrate from its exact authored
+   source, so that downloaded bytes never outlive the graph and Read block that own them.
 9. As a pipeline user, I want each built-in Read block to show its exact official CDN URL, so that the
    source is inspectable and reproducible.
 10. As a bandwidth-conscious user, I want replaced built-in serializations to omit copied binary and
@@ -138,7 +139,7 @@ No other current product placeholders were found in the maintained Node Assets E
 18. As a glTF optimization user, I want **glTF Optimization** to use `roundedCube.glb`, so that its
     weld-and-prune path runs on representative indexed geometry with normals, tangents, and UVs.
 19. As a multi-source user, I want the glTF arm to use the same rounded cube as the default graph, so
-    that one successful download can be reused.
+    that both roles demonstrate the same representative indexed source.
 20. As an advanced compression user, I want the fence pillar source to include UVs and an embedded
     image, so that KTX2 and Draco demonstrate meaningful work.
 21. As a full optimization user, I want `module_600.glb` to exercise multiple meshes, nodes, and
@@ -171,8 +172,8 @@ No other current product placeholders were found in the maintained Node Assets E
     fails immediately.
 35. As a test maintainer, I want unit tests to prove hydration completes before worker serialization,
     so that a URL-only catalog entry cannot build with missing bytes.
-36. As a test maintainer, I want unit tests to prove successful source reuse, so that redundant fetches
-    cannot regress unnoticed.
+36. As a test maintainer, I want unit tests to prove hydration does not become an authored graph
+    change, so that a later reconcile or save does not schedule an unnecessary build.
 37. As a test maintainer, I want unit tests to prove stale and active failure behavior, so that graph
     ownership and error semantics are deterministic.
 38. As a test maintainer, I want exact catalog mapping assertions, so that every semantic role remains
@@ -219,18 +220,19 @@ No other current product placeholders were found in the maintained Node Assets E
    the existing worker build serialization.
 4. **Use existing Read-block URL APIs.** Do not add a second downloader inside the runtime blocks.
    Provide the controller with the smallest high-level source hydration/fetch seam needed to inject
-   deterministic responses, share successful bytes, and coordinate graph ownership.
-5. **Use one cache scoped to the editor session.** Key successful bytes by the exact URL string.
-   Reusing a URL returns equivalent bytes without another network request. Do not cache failures as
-   successful results and do not persist the byte cache to browser storage.
+   deterministic responses and coordinate graph ownership.
+5. **Hydrated bytes stay with the Read block.** Pass the injected fetcher directly through the existing
+   URL API. Do not retain downloaded bytes or request-coordination state in the controller.
 6. **Startup uses the existing orchestrator gate.** `BuildOrchestrator` continues to wait for
    `loadDefaultImportAsync()` before starting its first build. The method hydrates only the active
-   default graph.
+   default graph. If hydration fails, the existing error remains visible while the scheduler waits for
+   a later authored graph change instead of building immediately.
 7. **Every active build is hydration-safe.** Before serializing the active graph to the worker,
    controller build orchestration ensures its URL-backed Read blocks are hydrated. This covers later
-   library selection and loaded URL-only graphs without prefetching inactive entries.
+   library selection and loaded URL-only graphs without prefetching inactive entries. Hydration then
+   refreshes the internal build-relevant signature without notifying observers.
 8. **Hydration is graph-revision owned.** Capture the current graph revision and Read-block identity.
-   Apply bytes only if both still belong to the active graph. Reuse the Read API ownership guard so a
+   Apply bytes only if both still belong to the active graph. Use the Read API ownership guard so a
    stale success or failure cannot mutate a newer graph.
 9. **Active failures stay failures.** Do not silently fall back to placeholder bytes or a success-shaped
    empty graph. Default failures use the existing startup preview error; later failures use the
@@ -239,8 +241,7 @@ No other current product placeholders were found in the maintained Node Assets E
     requests. Selecting an entry makes it active; its next build hydrates only the URL sources in that
     graph.
 11. **Multiple active sources hydrate as one graph.** Multi-Source Universal Merge resolves its rounded
-    cube and Babylon logo arms before worker build serialization. The rounded cube uses cached bytes
-    when already downloaded.
+    cube and Babylon logo arms before worker build serialization.
 12. **Uploads and authored URLs remain first-class.** Preserve last-successful-source behavior,
     user-upload handling, URL edits, save/load, aggregate/Read shared properties, and worker builds.
 13. **The USD and Node Geometry samples remain inline.** Relabel comments, test descriptions, and other
@@ -265,15 +266,15 @@ No other current product placeholders were found in the maintained Node Assets E
 | Default startup: **glTF Optimization** | 13,624 bytes | One rounded cube request; no other catalog prefetch |
 | Select **Advanced glTF Compression** | 115,728 bytes on demand | One fence pillar request |
 | Select **Full Universal Optimization** | 10,996 bytes on demand | One `module_600.glb` request |
-| Select **Multi-Source Universal Merge** from a cold cache | 21,282 bytes combined | Rounded cube plus Babylon logo; reuse either successful cached response |
+| Select **Multi-Source Universal Merge** | 21,282 bytes combined | One rounded cube request plus one Babylon logo request |
 
 Additional constraints:
 
 - All four selected assets are self-contained and require no companion file requests.
 - Redirects are not part of the contract; the exact requested URL must be the final URL.
 - Browser requests must accept the verified CORS response.
-- A failed request must not be hidden by cached fixture bytes.
-- Successful cache reuse must not change source identity, `sourceKind`, or graph ownership.
+- A failed request must not fall back to embedded fixture bytes.
+- Hydration must not change source identity, `sourceKind`, or graph ownership.
 - Replaced sources should reduce bundled fixture bytes; no base64 copy remains in the maintained
   catalog serialization.
 
@@ -281,7 +282,7 @@ Additional constraints:
 
 1. **Test externally meaningful behavior.** Assert requested URL, active source identity, hydration
    timing, graph ownership, preview/build status, exported GLB validity, and mapped asset structure.
-   Do not lock tests to private helper call order or cache implementation details.
+   Do not lock tests to private helper call order.
 2. **Prefer the existing highest seam.** Exercise source hydration through
    `NodeAssetGraphController` and `BuildOrchestrator`, where startup, active graph ownership, and worker
    serialization meet. Introduce at most one injectable/mockable high-level source-fetch seam.
@@ -292,8 +293,8 @@ Additional constraints:
 5. **Unit coverage proves hydration ordering.** The build client must receive a serialization with
    resolved bytes only after mocked hydration succeeds. No build serialization is sent while the
    required active source is unresolved.
-6. **Unit coverage proves reuse and ownership.** Cover successful cache reuse, no redundant fetch,
-   stale success, stale failure, active failure, and disposal/new-graph ownership behavior.
+6. **Unit coverage proves ownership and failure behavior.** Cover active failure without worker
+   serialization, superseded-graph safety, and build-signature stability after hydration.
 7. **Catalog unit coverage remains comprehensive.** Preserve exact seven-name/order assertions,
    round-trip every graph, assert URL-only built-in mappings, retain the conformance samples, and build
    every graph to a valid GLB using mocked source responses.
@@ -320,16 +321,18 @@ Additional constraints:
 - [ ] Opening or listing the pipeline library performs no source prefetch.
 - [ ] Selecting a later entry hydrates only the URL-backed Read blocks in that active graph before
       worker build serialization.
-- [ ] Successful bytes are reused by exact URL without redundant fetches.
+- [ ] Startup and later-build hydration refresh the internal build-relevant signature without
+      publishing an authored graph change.
 - [ ] A stale success and stale failure cannot mutate or report against a newer active graph.
 - [ ] An active default or later hydration failure surfaces through the existing preview/build error
-      UX and does not fall back to generated content.
+      UX, dispatches no incomplete worker build, and leaves startup subscribed for a later authored
+      retry without an immediate build.
 - [ ] **Advanced glTF Compression** uses the exact fence pillar URL and exercises both texture and
       geometry compression on deterministic structurally representative test data.
 - [ ] **Full Universal Optimization** uses the exact `module_600.glb` URL, builds its complete graph,
       emits tangents, and does not require Weld Vertices to change already indexed geometry.
 - [ ] **Babylon to Optimized glTF** and the Multi-Source Babylon arm use the exact Babylon logo URL.
-- [ ] The Multi-Source glTF arm uses the exact rounded cube URL and a cold real-CDN load totals 21,282
+- [ ] The Multi-Source glTF arm uses the exact rounded cube URL and a real-CDN load totals 21,282
       source bytes.
 - [ ] The USDA triangle and Node Geometry Box remain inline, build successfully, and are identified as
       intentional importer conformance samples.
@@ -339,9 +342,9 @@ Additional constraints:
 - [ ] User uploads, authored URL edits, last-successful-source behavior, save/load, aggregate source
       properties, and worker build behavior remain intact.
 - [ ] All seven maintained pipeline identities and their ordering are preserved.
-- [ ] Unit tests mock responses and prove exact URLs, hydration before serialization, reuse, active and
-      stale failure behavior, exact mappings, retained conformance samples, and valid GLB output for
-      all pipelines.
+- [ ] Unit tests mock responses and prove exact URLs, hydration before serialization, active failure
+      without worker dispatch, superseded-graph safety, signature stability, exact mappings, retained
+      conformance samples, and valid GLB output for all pipelines.
 - [ ] Playwright intercepts every exact asset URL with deterministic locally generated responses and
       covers default loading/success/error plus preview/export for every catalog graph.
 - [ ] No committed automated test depends on the live network.

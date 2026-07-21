@@ -14,7 +14,7 @@
 import { Observable } from "core/Misc/observable";
 
 import { ExportGLTFBlock } from "node-assets/Blocks/exportGLTFBlock";
-import { ReadGLTFBlock, type GLTFSourceFetcher, type IGLTFSourceResponse } from "node-assets/Blocks/readGLTFBlock";
+import { ReadGLTFBlock, type GLTFSourceFetcher } from "node-assets/Blocks/readGLTFBlock";
 import { NodeAsset } from "node-assets/nodeAsset";
 import { NodeAssetBuildError } from "node-assets/nodeAssetBuildError";
 import { AggregateBlock } from "node-assets/blockFoundation/aggregateBlock";
@@ -82,21 +82,6 @@ interface INodeAssetEditorFile {
         readonly blocks: readonly IEditorBlockMetadata[];
         readonly frames: readonly IEditorFrameMetadata[];
     };
-}
-
-type GltfSourceResult = { readonly ok: true; readonly data: Uint8Array } | { readonly ok: false; readonly status: number; readonly statusText: string };
-
-function CreateGraphInvalidationSignal(): { readonly promise: Promise<void>; readonly resolve: () => void } {
-    let resolveSignal = () => {};
-    const promise = new Promise<void>((resolve) => {
-        resolveSignal = resolve;
-    });
-    return { promise, resolve: resolveSignal };
-}
-
-async function AwaitOutcomeAsync<Outcome extends string>(promise: Promise<void>, outcome: Outcome): Promise<Outcome> {
-    await promise;
-    return outcome;
 }
 
 function IsRecord(value: unknown): value is Record<string, unknown> {
@@ -309,16 +294,11 @@ export class NodeAssetGraphController {
     private readonly _reconciler: NodeAssetReconciler;
     private readonly _buildClient: INodeAssetBuildClient;
     private readonly _gltfSourceFetcher: GLTFSourceFetcher;
-    private readonly _gltfSourceDataByUrl = new Map<string, Uint8Array>();
-    private readonly _gltfSourceRequestByUrl = new Map<string, Promise<GltfSourceResult>>();
-    private _gltfSourceRequestGeneration = 0;
     private _buildRelevantSignature: string;
     private readonly _onChangedObserver;
     private readonly _aggregateRootByChildNodeId = new Map<string, string>();
     private _projectingAggregate = false;
     private _graphRevision = 0;
-    private _graphInvalidated: Promise<void>;
-    private _resolveGraphInvalidated: () => void;
     private _isDisposed = false;
     /**
      * Authored (not merely visual) intent that an aggregate block is expanded, keyed by block id.
@@ -336,9 +316,6 @@ export class NodeAssetGraphController {
      * @param gltfSourceFetcher - Fetch-compatible glTF source loader.
      */
     public constructor(buildClient: INodeAssetBuildClient = new NodeAssetBuildWorkerClient(), gltfSourceFetcher: GLTFSourceFetcher = async (url) => await fetch(url)) {
-        const graphInvalidationSignal = CreateGraphInvalidationSignal();
-        this._graphInvalidated = graphInvalidationSignal.promise;
-        this._resolveGraphInvalidated = graphInvalidationSignal.resolve;
         this._nodeAsset = new NodeAsset("nodeAsset");
         this._buildClient = buildClient;
         this._gltfSourceFetcher = gltfSourceFetcher;
@@ -369,18 +346,14 @@ export class NodeAssetGraphController {
     }
 
     /**
-     * Hydrates the active startup graph, following a replacement graph when the original load becomes stale.
+     * Hydrates the active startup graph before its first build.
      */
     public async loadDefaultImportAsync(): Promise<void> {
         const nodeAsset = this._nodeAsset;
         const graphRevision = this._graphRevision;
-        const graphInvalidated = this._graphInvalidated;
-        const hydration = this._hydrateGltfSourcesAsync(nodeAsset, graphRevision);
-        await Promise.race([AwaitOutcomeAsync(hydration, "hydrated"), AwaitOutcomeAsync(graphInvalidated, "invalidated")]);
+        await this._hydrateGltfSourcesAsync(nodeAsset, graphRevision);
         if (this._isActiveGraph(nodeAsset, graphRevision)) {
             this._buildRelevantSignature = this._createBuildRelevantSignature();
-        } else if (!this._isDisposed) {
-            await this.loadDefaultImportAsync();
         }
     }
 
@@ -643,6 +616,7 @@ export class NodeAssetGraphController {
         if (!this._isActiveGraph(nodeAsset, graphRevision)) {
             throw new Error("The NodeAsset graph changed before its build could be serialized.");
         }
+        this._buildRelevantSignature = this._createBuildRelevantSignature();
         return await this._buildClient.buildAsync(nodeAsset.serialize());
     }
 
@@ -870,7 +844,7 @@ export class NodeAssetGraphController {
 
         // Commit only after the complete candidate file has parsed and mapped successfully.
         this._nodeAsset = asset;
-        this._invalidateGraph();
+        this._graphRevision++;
         this._reconciler.reset(asset);
         this._aggregateRootByChildNodeId.clear();
         this._authoredAggregateExpansion.clear();
@@ -894,90 +868,28 @@ export class NodeAssetGraphController {
             return;
         }
         this._isDisposed = true;
-        this._invalidateGraph();
+        this._graphRevision++;
         this._onChangedObserver.remove();
         this.onExportRequested.clear();
         this.onBuildRelevantChanged.clear();
         this._buildClient.dispose();
     }
 
-    private async _hydrateGltfSourcesAsync(nodeAsset: NodeAsset, graphRevision: number): Promise<void> {
-        const readBlocks: ReadGLTFBlock[] = [];
-        this._collectUrlOnlyGltfReadBlocks(nodeAsset, readBlocks);
+    private async _hydrateGltfSourcesAsync(nodeAsset: NodeAsset, graphRevision: number, activeNodeAsset = nodeAsset): Promise<void> {
         await Promise.all(
-            readBlocks.map(async (readBlock) => {
-                const url = readBlock.source;
-                if (!url) {
-                    return;
+            nodeAsset.attachedBlocks.map(async (block) => {
+                if (block instanceof ReadGLTFBlock && block.sourceKind === "url" && block.source && !block.data) {
+                    await block.setUrlAsync(
+                        block.source,
+                        this._gltfSourceFetcher,
+                        () => this._isActiveGraph(activeNodeAsset, graphRevision) && this._ownsBlock(activeNodeAsset, block)
+                    );
                 }
-                await readBlock.setUrlAsync(
-                    url,
-                    async (sourceUrl) => await this._getCachedGltfSourceResponseAsync(sourceUrl),
-                    () => this._isActiveGraph(nodeAsset, graphRevision) && this._ownsBlock(nodeAsset, readBlock)
-                );
+                if (block instanceof AggregateBlock) {
+                    await this._hydrateGltfSourcesAsync(block.subgraph, graphRevision, activeNodeAsset);
+                }
             })
         );
-    }
-
-    private _collectUrlOnlyGltfReadBlocks(nodeAsset: NodeAsset, readBlocks: ReadGLTFBlock[]): void {
-        for (const block of nodeAsset.attachedBlocks) {
-            if (block instanceof ReadGLTFBlock && block.sourceKind === "url" && block.source && !block.data) {
-                readBlocks.push(block);
-            }
-            if (block instanceof AggregateBlock) {
-                this._collectUrlOnlyGltfReadBlocks(block.subgraph, readBlocks);
-            }
-        }
-    }
-
-    private async _getCachedGltfSourceResponseAsync(url: string): Promise<IGLTFSourceResponse> {
-        const cached = this._gltfSourceDataByUrl.get(url);
-        const result = cached ? { ok: true as const, data: cached } : await this._getGltfSourceRequestAsync(url);
-        if (!result.ok) {
-            return {
-                ok: false,
-                status: result.status,
-                statusText: result.statusText,
-                // eslint-disable-next-line @typescript-eslint/naming-convention -- fetch-compatible response contract
-                arrayBuffer: async () => new ArrayBuffer(0),
-            };
-        }
-        return {
-            ok: true,
-            status: 200,
-            statusText: "OK",
-            // eslint-disable-next-line @typescript-eslint/naming-convention -- fetch-compatible response contract
-            arrayBuffer: async () => result.data.slice().buffer,
-        };
-    }
-
-    private async _getGltfSourceRequestAsync(url: string): Promise<GltfSourceResult> {
-        const existing = this._gltfSourceRequestByUrl.get(url);
-        if (existing) {
-            return await existing;
-        }
-        const requestGeneration = this._gltfSourceRequestGeneration;
-        const request = this._loadGltfSourceAsync(url, requestGeneration);
-        this._gltfSourceRequestByUrl.set(url, request);
-        try {
-            return await request;
-        } finally {
-            if (this._gltfSourceRequestByUrl.get(url) === request) {
-                this._gltfSourceRequestByUrl.delete(url);
-            }
-        }
-    }
-
-    private async _loadGltfSourceAsync(url: string, requestGeneration: number): Promise<GltfSourceResult> {
-        const response = await this._gltfSourceFetcher(url);
-        if (!response.ok) {
-            return { ok: false, status: response.status, statusText: response.statusText };
-        }
-        const data = new Uint8Array(await response.arrayBuffer());
-        if (this._gltfSourceRequestGeneration === requestGeneration) {
-            this._gltfSourceDataByUrl.set(url, data);
-        }
-        return { ok: true, data };
     }
 
     private _isActiveGraph(nodeAsset: NodeAsset, graphRevision: number): boolean {
@@ -991,16 +903,6 @@ export class NodeAssetGraphController {
             }
         }
         return false;
-    }
-
-    private _invalidateGraph(): void {
-        this._graphRevision++;
-        this._gltfSourceRequestGeneration++;
-        this._gltfSourceRequestByUrl.clear();
-        this._resolveGraphInvalidated();
-        const graphInvalidationSignal = CreateGraphInvalidationSignal();
-        this._graphInvalidated = graphInvalidationSignal.promise;
-        this._resolveGraphInvalidated = graphInvalidationSignal.resolve;
     }
 
     private _instantiateBlock(descriptor: IBlockDescriptor, position: Vec2): IGraphNode {

@@ -6,7 +6,7 @@ import { DracoCompressionBlock } from "node-assets/Blocks/dracoCompressionBlock"
 import { ExportGLTFAggregateBlock } from "node-assets/Blocks/exportGLTFAggregateBlock";
 import { ImportGLTFAggregateBlock } from "node-assets/Blocks/importGLTFAggregateBlock";
 import { KTX2CompressionBlock } from "node-assets/Blocks/ktx2CompressionBlock";
-import { ReadGLTFBlock, type GLTFSourceFetcher } from "node-assets/Blocks/readGLTFBlock";
+import { type GLTFSourceFetcher } from "node-assets/Blocks/readGLTFBlock";
 import { StringLiteral } from "node-assets/Blocks/stringLiteral";
 
 import { NodeAssetBuildError } from "node-assets/nodeAssetBuildError";
@@ -392,6 +392,19 @@ describe("NodeAssetGraphController", () => {
         }
     });
 
+    it("requests the exact default catalog URL", async () => {
+        const sourceFetcher = vi.fn<GLTFSourceFetcher>(async () => CreateGltfResponse(BuiltInLibraryFixtures.gltf));
+        const controller = new NodeAssetGraphController(CreateUnusedBuildClient(), sourceFetcher);
+        try {
+            await controller.loadDefaultImportAsync();
+
+            expect(sourceFetcher).toHaveBeenCalledOnce();
+            expect(sourceFetcher).toHaveBeenCalledWith("https://assets.babylonjs.com/meshes/roundedCube.glb");
+        } finally {
+            controller.dispose();
+        }
+    });
+
     it("hydrates the active URL-only Read glTF block before worker serialization", async () => {
         let resolveResponse: (() => void) | undefined;
         const responseReady = new Promise<void>((resolve) => {
@@ -423,7 +436,7 @@ describe("NodeAssetGraphController", () => {
         }
     });
 
-    it("does not publish a spurious graph change when the first worker build follows startup hydration", async () => {
+    it("does not publish non-startup hydration as an authored graph change", async () => {
         const buildClient: INodeAssetBuildClient = {
             buildAsync: vi.fn(async () => new Uint8Array([1])),
             dispose: vi.fn(),
@@ -431,8 +444,8 @@ describe("NodeAssetGraphController", () => {
         const controller = new NodeAssetGraphController(buildClient, async () => CreateGltfResponse(BuiltInLibraryFixtures.gltf));
         const changes = CountBuildRelevantChanges(controller);
         try {
-            await controller.loadDefaultImportAsync();
             await controller.buildAsync();
+            controller.serialize();
 
             expect(changes.count()).toBe(0);
             expect(buildClient.buildAsync).toHaveBeenCalledTimes(1);
@@ -442,74 +455,13 @@ describe("NodeAssetGraphController", () => {
         }
     });
 
-    it("reuses successful URL bytes after reloading the same URL-only graph", async () => {
-        const sourceFetcher = vi.fn<GLTFSourceFetcher>(async () => CreateGltfResponse(BuiltInLibraryFixtures.gltf));
-        const buildClient: INodeAssetBuildClient = {
-            buildAsync: vi.fn(async () => new Uint8Array([1])),
-            dispose: vi.fn(),
-        };
-        const controller = new NodeAssetGraphController(buildClient, sourceFetcher);
-        const defaultGraph = CreateBuiltInNodeAssetLibraryEntries()[0].serializedGraph;
-        try {
-            await controller.buildAsync();
-            controller.load(defaultGraph);
-            await controller.buildAsync();
-
-            expect(sourceFetcher).toHaveBeenCalledTimes(1);
-            expect(buildClient.buildAsync).toHaveBeenCalledTimes(2);
-        } finally {
-            controller.dispose();
-        }
-    });
-
-    it("shares one in-flight request across active Read glTF blocks using the exact same URL", async () => {
-        const defaultGraph = JSON.parse(CreateBuiltInNodeAssetLibraryEntries()[0].serializedGraph) as {
-            graph: { blocks: Array<{ id: number; subgraph: { blocks: Array<{ id: number }> } }> };
-        };
-        const duplicateImport = structuredClone(defaultGraph.graph.blocks[0]);
-        duplicateImport.id = 100;
-        defaultGraph.graph.blocks.push(duplicateImport);
-
-        let resolveData: (() => void) | undefined;
-        const dataReady = new Promise<void>((resolve) => {
-            resolveData = resolve;
-        });
-        const arrayBuffer = vi.fn(async () => {
-            await dataReady;
-            return BuiltInLibraryFixtures.gltf.slice().buffer;
-        });
+    it("does not dispatch a worker build when active hydration fails", async () => {
         const sourceFetcher = vi.fn<GLTFSourceFetcher>(async () => ({
-            ok: true,
-            status: 200,
-            statusText: "OK",
-            arrayBuffer,
+            ok: false,
+            status: 503,
+            statusText: "Unavailable",
+            arrayBuffer: async () => new ArrayBuffer(0),
         }));
-        const controller = new NodeAssetGraphController(CreateUnusedBuildClient(), sourceFetcher);
-        try {
-            controller.load(JSON.stringify(defaultGraph));
-            const hydration = controller.loadDefaultImportAsync();
-            await vi.waitFor(() => expect(arrayBuffer).toHaveBeenCalledTimes(1));
-            expect(sourceFetcher).toHaveBeenCalledTimes(1);
-
-            resolveData?.();
-            await hydration;
-            const serialized = controller.serialize();
-            expect(serialized.match(/"sourceKind": "url"/g)).toHaveLength(2);
-        } finally {
-            controller.dispose();
-        }
-    });
-
-    it("retries a failed URL hydration and dispatches no worker build for the failed attempt", async () => {
-        const sourceFetcher = vi
-            .fn<GLTFSourceFetcher>()
-            .mockResolvedValueOnce({
-                ok: false,
-                status: 503,
-                statusText: "Unavailable",
-                arrayBuffer: async () => new ArrayBuffer(0),
-            })
-            .mockResolvedValueOnce(CreateGltfResponse(BuiltInLibraryFixtures.gltf));
         const buildClient: INodeAssetBuildClient = {
             buildAsync: vi.fn(async () => new Uint8Array([1])),
             dispose: vi.fn(),
@@ -518,228 +470,6 @@ describe("NodeAssetGraphController", () => {
         try {
             await expect(controller.buildAsync()).rejects.toThrow("503 Unavailable");
             expect(buildClient.buildAsync).not.toHaveBeenCalled();
-
-            await expect(controller.buildAsync()).resolves.toEqual(new Uint8Array([1]));
-            expect(sourceFetcher).toHaveBeenCalledTimes(2);
-            expect(buildClient.buildAsync).toHaveBeenCalledTimes(1);
-        } finally {
-            controller.dispose();
-        }
-    });
-
-    it("follows a replacement startup graph without applying a stale URL success", async () => {
-        let resolveResponse: ((response: ReturnType<typeof CreateGltfResponse>) => void) | undefined;
-        const response = new Promise<ReturnType<typeof CreateGltfResponse>>((resolve) => {
-            resolveResponse = resolve;
-        });
-        const sourceFetcher = vi.fn<GLTFSourceFetcher>(async () => await response);
-        const controller = new NodeAssetGraphController(CreateUnusedBuildClient(), sourceFetcher);
-        const replacement = CreateBuiltInNodeAssetLibraryEntries()[3].serializedGraph;
-        try {
-            const startup = controller.loadDefaultImportAsync();
-            await vi.waitFor(() => expect(sourceFetcher).toHaveBeenCalledTimes(1));
-            controller.load(replacement);
-
-            resolveResponse?.(CreateGltfResponse(BuiltInLibraryFixtures.gltf));
-            await expect(startup).resolves.toBeUndefined();
-            expect(JSON.parse(controller.serialize())).toEqual(JSON.parse(replacement));
-        } finally {
-            controller.dispose();
-        }
-    });
-
-    it("does not wait for a stale unresolved fetch before hydrating a replacement graph", async () => {
-        let resolveResponse: ((response: ReturnType<typeof CreateGltfResponse>) => void) | undefined;
-        const response = new Promise<ReturnType<typeof CreateGltfResponse>>((resolve) => {
-            resolveResponse = resolve;
-        });
-        const sourceFetcher = vi.fn<GLTFSourceFetcher>(async () => await response);
-        const originalSetUrlAsync = ReadGLTFBlock.prototype.setUrlAsync;
-        let obsoleteBlock: ReadGLTFBlock | undefined;
-        let markStaleHydrationSettled: () => void = () => undefined;
-        const staleHydrationSettled = new Promise<void>((resolve) => {
-            markStaleHydrationSettled = resolve;
-        });
-        const setUrlSpy = vi.spyOn(ReadGLTFBlock.prototype, "setUrlAsync").mockImplementation(async function (this: ReadGLTFBlock, ...args) {
-            obsoleteBlock = this;
-            await originalSetUrlAsync.apply(this, args);
-            markStaleHydrationSettled();
-        });
-        const controller = new NodeAssetGraphController(CreateUnusedBuildClient(), sourceFetcher);
-        const replacement = CreateBuiltInNodeAssetLibraryEntries()[5].serializedGraph;
-        try {
-            let startupResolved = false;
-            const startup = controller.loadDefaultImportAsync().then(() => {
-                startupResolved = true;
-            });
-            await vi.waitFor(() => expect(sourceFetcher).toHaveBeenCalledTimes(1));
-
-            controller.load(replacement);
-            await vi.waitFor(() => expect(startupResolved).toBe(true), { timeout: 100 });
-            expect(sourceFetcher).toHaveBeenCalledTimes(1);
-            expect(JSON.parse(controller.serialize())).toEqual(JSON.parse(replacement));
-
-            resolveResponse?.(CreateGltfResponse(BuiltInLibraryFixtures.gltf));
-            await staleHydrationSettled;
-            expect(obsoleteBlock?.data).toBeNull();
-            await startup;
-        } finally {
-            setUrlSpy.mockRestore();
-            controller.dispose();
-        }
-    });
-
-    it("keeps a fresh reload request active when the obsolete request succeeds", async () => {
-        let resolveFirstResponse: ((response: ReturnType<typeof CreateGltfResponse>) => void) | undefined;
-        const firstResponse = new Promise<ReturnType<typeof CreateGltfResponse>>((resolve) => {
-            resolveFirstResponse = resolve;
-        });
-        let resolveSecondResponse: ((response: ReturnType<typeof CreateGltfResponse>) => void) | undefined;
-        const secondResponse = new Promise<ReturnType<typeof CreateGltfResponse>>((resolve) => {
-            resolveSecondResponse = resolve;
-        });
-        const sourceFetcher = vi
-            .fn<GLTFSourceFetcher>()
-            .mockImplementationOnce(async () => await firstResponse)
-            .mockImplementationOnce(async () => await secondResponse);
-        const buildClient: INodeAssetBuildClient = {
-            buildAsync: vi.fn(async () => new Uint8Array([1])),
-            dispose: vi.fn(),
-        };
-        const controller = new NodeAssetGraphController(buildClient, sourceFetcher);
-        const entries = CreateBuiltInNodeAssetLibraryEntries();
-        const defaultGraph = entries[0].serializedGraph;
-        const embeddedGraph = entries[5].serializedGraph;
-        const obsoleteBase64 = Buffer.from(BuiltInLibraryFixtures.unweldedGltf).toString("base64");
-        const activeBase64 = Buffer.from(BuiltInLibraryFixtures.gltf).toString("base64");
-        let pendingBuild: Promise<Uint8Array> | undefined;
-        let pendingHydration: Promise<void> | undefined;
-        let pendingHydrationResolved = false;
-        try {
-            const startup = controller.loadDefaultImportAsync();
-            await vi.waitFor(() => expect(sourceFetcher).toHaveBeenCalledTimes(1));
-            controller.load(embeddedGraph);
-            await expect(startup).resolves.toBeUndefined();
-
-            controller.load(defaultGraph);
-            pendingBuild = controller.buildAsync();
-            await vi.waitFor(() => expect(sourceFetcher).toHaveBeenCalledTimes(2), { timeout: 100 });
-
-            resolveFirstResponse?.(CreateGltfResponse(BuiltInLibraryFixtures.unweldedGltf));
-            await new Promise((resolve) => setTimeout(resolve, 0));
-            pendingHydration = (async () => {
-                await controller.loadDefaultImportAsync();
-                pendingHydrationResolved = true;
-            })();
-            await new Promise((resolve) => setTimeout(resolve, 0));
-            expect(sourceFetcher).toHaveBeenCalledTimes(2);
-            expect(pendingHydrationResolved).toBe(false);
-
-            resolveSecondResponse?.(CreateGltfResponse(BuiltInLibraryFixtures.gltf));
-            await expect(pendingBuild).resolves.toEqual(new Uint8Array([1]));
-            await expect(pendingHydration).resolves.toBeUndefined();
-            expect(pendingHydrationResolved).toBe(true);
-            expect(controller.serialize()).toContain(activeBase64);
-            expect(controller.serialize()).not.toContain(obsoleteBase64);
-
-            controller.load(defaultGraph);
-            await expect(controller.buildAsync()).resolves.toEqual(new Uint8Array([1]));
-            expect(sourceFetcher).toHaveBeenCalledTimes(2);
-            const reloadedBuild = JSON.stringify(vi.mocked(buildClient.buildAsync).mock.calls[1][0]);
-            expect(reloadedBuild).toContain(activeBase64);
-            expect(reloadedBuild).not.toContain(obsoleteBase64);
-        } finally {
-            resolveFirstResponse?.(CreateGltfResponse(BuiltInLibraryFixtures.unweldedGltf));
-            resolveSecondResponse?.(CreateGltfResponse(BuiltInLibraryFixtures.gltf));
-            controller.dispose();
-            await Promise.allSettled([pendingBuild, pendingHydration].filter((promise): promise is Promise<Uint8Array> | Promise<void> => promise !== undefined));
-        }
-    });
-
-    it("keeps a fresh reload request active when the obsolete request fails", async () => {
-        type SourceResponse = Awaited<ReturnType<GLTFSourceFetcher>>;
-
-        let resolveFirstResponse: ((response: SourceResponse) => void) | undefined;
-        const firstResponse = new Promise<SourceResponse>((resolve) => {
-            resolveFirstResponse = resolve;
-        });
-        let resolveSecondResponse: ((response: SourceResponse) => void) | undefined;
-        const secondResponse = new Promise<SourceResponse>((resolve) => {
-            resolveSecondResponse = resolve;
-        });
-        const sourceFetcher = vi
-            .fn<GLTFSourceFetcher>(async () => CreateGltfResponse(BuiltInLibraryFixtures.unweldedGltf))
-            .mockImplementationOnce(async () => await firstResponse)
-            .mockImplementationOnce(async () => await secondResponse);
-        const buildClient: INodeAssetBuildClient = {
-            buildAsync: vi.fn(async () => new Uint8Array([1])),
-            dispose: vi.fn(),
-        };
-        const controller = new NodeAssetGraphController(buildClient, sourceFetcher);
-        const entries = CreateBuiltInNodeAssetLibraryEntries();
-        const defaultGraph = entries[0].serializedGraph;
-        const embeddedGraph = entries[5].serializedGraph;
-        const activeBase64 = Buffer.from(BuiltInLibraryFixtures.gltf).toString("base64");
-        let pendingBuild: Promise<Uint8Array> | undefined;
-        let pendingHydration: Promise<void> | undefined;
-        try {
-            const startup = controller.loadDefaultImportAsync();
-            await vi.waitFor(() => expect(sourceFetcher).toHaveBeenCalledTimes(1));
-            controller.load(embeddedGraph);
-            await expect(startup).resolves.toBeUndefined();
-
-            controller.load(defaultGraph);
-            pendingBuild = controller.buildAsync();
-            await vi.waitFor(() => expect(sourceFetcher).toHaveBeenCalledTimes(2));
-
-            resolveFirstResponse?.({
-                ok: false,
-                status: 503,
-                statusText: "Obsolete",
-                arrayBuffer: async () => new ArrayBuffer(0),
-            });
-            await new Promise((resolve) => setTimeout(resolve, 0));
-            pendingHydration = controller.loadDefaultImportAsync();
-            await new Promise((resolve) => setTimeout(resolve, 0));
-            expect(sourceFetcher).toHaveBeenCalledTimes(2);
-
-            resolveSecondResponse?.(CreateGltfResponse(BuiltInLibraryFixtures.gltf));
-            await expect(pendingBuild).resolves.toEqual(new Uint8Array([1]));
-            await expect(pendingHydration).resolves.toBeUndefined();
-            expect(controller.serialize()).toContain(activeBase64);
-
-            controller.load(defaultGraph);
-            await expect(controller.buildAsync()).resolves.toEqual(new Uint8Array([1]));
-            expect(sourceFetcher).toHaveBeenCalledTimes(2);
-        } finally {
-            resolveFirstResponse?.(CreateGltfResponse(BuiltInLibraryFixtures.unweldedGltf));
-            resolveSecondResponse?.(CreateGltfResponse(BuiltInLibraryFixtures.gltf));
-            controller.dispose();
-            await Promise.allSettled([pendingBuild, pendingHydration].filter((promise): promise is Promise<Uint8Array> | Promise<void> => promise !== undefined));
-        }
-    });
-
-    it("follows a replacement startup graph without surfacing a stale URL failure", async () => {
-        let resolveResponse: ((response: Awaited<ReturnType<GLTFSourceFetcher>>) => void) | undefined;
-        const response = new Promise<Awaited<ReturnType<GLTFSourceFetcher>>>((resolve) => {
-            resolveResponse = resolve;
-        });
-        const sourceFetcher = vi.fn<GLTFSourceFetcher>(async () => await response);
-        const controller = new NodeAssetGraphController(CreateUnusedBuildClient(), sourceFetcher);
-        const replacement = CreateBuiltInNodeAssetLibraryEntries()[3].serializedGraph;
-        try {
-            const startup = controller.loadDefaultImportAsync();
-            await vi.waitFor(() => expect(sourceFetcher).toHaveBeenCalledTimes(1));
-            controller.load(replacement);
-
-            resolveResponse?.({
-                ok: false,
-                status: 503,
-                statusText: "Unavailable",
-                arrayBuffer: async () => new ArrayBuffer(0),
-            });
-            await expect(startup).resolves.toBeUndefined();
-            expect(JSON.parse(controller.serialize())).toEqual(JSON.parse(replacement));
         } finally {
             controller.dispose();
         }

@@ -141,32 +141,4 @@ describe("BuildScheduler", () => {
         expect(builtResults).toEqual(["latest"]);
         scheduler.dispose();
     });
-
-    it("invalidates an in-flight build immediately when a newer graph change is debouncing", async () => {
-        const triggerSource = new TestTriggerSource();
-        const firstBuild = CreateDeferred<string>();
-        const buildAsync = vi.fn<() => Promise<string>>().mockReturnValueOnce(firstBuild.promise).mockResolvedValueOnce("latest");
-        const appliedResults: string[] = [];
-        const scheduler = new BuildScheduler({
-            triggerSource,
-            debounceMs: 400,
-            buildAsync,
-            applyResultAsync: async (result) => {
-                appliedResults.push(result);
-            },
-        });
-
-        triggerSource.trigger();
-        firstBuild.resolve("superseded");
-        await Promise.resolve();
-        await Promise.resolve();
-
-        expect(appliedResults).toEqual([]);
-        expect(buildAsync).toHaveBeenCalledTimes(1);
-
-        await vi.advanceTimersByTimeAsync(400);
-        expect(buildAsync).toHaveBeenCalledTimes(2);
-        expect(appliedResults).toEqual(["latest"]);
-        scheduler.dispose();
-    });
 });
