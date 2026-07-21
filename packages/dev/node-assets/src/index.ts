@@ -63,7 +63,7 @@ export { ExportGLTFAggregateBlock } from "./Blocks/exportGLTFAggregateBlock";
 export { type BabylonSourceFetcher, type BabylonSourceKind, type IBabylonSourceResponse, ReadBabylonBlock } from "./Blocks/readBabylonBlock";
 export { BabylonToUniversalBlock } from "./Blocks/babylonToUniversalBlock";
 export { ImportBabylonAggregateBlock } from "./Blocks/importBabylonAggregateBlock";
-export { type FBXSourceKind, ReadFBXBlock } from "./Blocks/readFBXBlock";
+export { type FBXSourceFetcher, type FBXSourceKind, type IFBXSourceApplyResult, type IFBXSourceResponse, ReadFBXBlock } from "./Blocks/readFBXBlock";
 export { FBXToUniversalBlock } from "./Blocks/fbxToUniversalBlock";
 export { ImportFBXAggregateBlock } from "./Blocks/importFBXAggregateBlock";
 export { type IUSDSourceResponse, ReadUSDBlock, type USDSourceFetcher } from "./Blocks/readUSDBlock";

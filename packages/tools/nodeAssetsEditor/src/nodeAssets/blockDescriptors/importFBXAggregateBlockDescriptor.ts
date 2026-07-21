@@ -5,7 +5,7 @@ import { AggregateImportsFamily, ConfigureBlockForEditor, FBXHeaderColor, Regist
 RegisterBlockDescriptor({
     paletteItemId: "import-fbx",
     label: "Import FBX",
-    description: "Read an uploaded .fbx source and cross into Universal.",
+    description: "Read a URL or uploaded .fbx source and cross into Universal.",
     keywords: ["open", "load", "source", "fbx", "Universal"],
     category: "Inputs",
     family: AggregateImportsFamily,

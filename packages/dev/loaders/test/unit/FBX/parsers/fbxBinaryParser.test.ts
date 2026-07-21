@@ -18,6 +18,27 @@ describe("parseBinaryFBX", () => {
         expect(doc.nodes).toEqual([{ name: "Test", properties: [], children: [] }]);
     });
 
+    it.each([
+        { version: 7000, nodeHeaderSize: 13 },
+        { version: 7100, nodeHeaderSize: 13 },
+        { version: 7200, nodeHeaderSize: 13 },
+        { version: 7300, nodeHeaderSize: 13 },
+        { version: 7400, nodeHeaderSize: 13 },
+        { version: 7500, nodeHeaderSize: 25 },
+        { version: 7600, nodeHeaderSize: 25 },
+        { version: 7700, nodeHeaderSize: 25 },
+    ])("parses FBX $version with $nodeHeaderSize-byte node headers", ({ version, nodeHeaderSize }) => {
+        const nodeOffset = HEADER_SIZE;
+        const nodeEnd = nodeOffset + nodeHeaderSize + 4;
+        const buffer = createBinaryFBX(nodeEnd + nodeHeaderSize, version);
+        writeNodeHeader(buffer, nodeOffset, nodeEnd, 0, 0, "Test", version);
+
+        const doc = parseBinaryFBX(buffer.buffer);
+
+        expect(doc.version).toBe(version);
+        expect(doc.nodes).toEqual([{ name: "Test", properties: [], children: [] }]);
+    });
+
     it("rejects truncated binary headers", () => {
         const buffer = createBinaryFBX(21);
 
@@ -52,23 +73,43 @@ describe("parseBinaryFBX", () => {
     });
 });
 
-function createBinaryFBX(byteLength: number): Uint8Array<ArrayBuffer> {
+function createBinaryFBX(byteLength: number, version = 7400): Uint8Array<ArrayBuffer> {
     const bytes = new Uint8Array(new ArrayBuffer(byteLength));
     for (let i = 0; i < MAGIC.length; i++) {
         bytes[i] = MAGIC.charCodeAt(i);
     }
-    writeUint32(bytes, 23, 7400);
+    writeUint32(bytes, 23, version);
     return bytes;
 }
 
-function writeNodeHeader(bytes: Uint8Array, offset: number, endOffset: number, propertyCount: number, propertyListLength: number, name: string): void {
-    writeUint32(bytes, offset, endOffset);
-    writeUint32(bytes, offset + 4, propertyCount);
-    writeUint32(bytes, offset + 8, propertyListLength);
-    bytes[offset + 12] = name.length;
-    for (let i = 0; i < name.length; i++) {
-        bytes[offset + NODE_HEADER_SIZE + i] = name.charCodeAt(i);
+function writeNodeHeader(
+    bytes: Uint8Array,
+    offset: number,
+    endOffset: number,
+    propertyCount: number,
+    propertyListLength: number,
+    name: string,
+    version = 7400
+): void {
+    const nodeHeaderSize = version >= 7500 ? 25 : NODE_HEADER_SIZE;
+    if (version >= 7500) {
+        writeUint64(bytes, offset, endOffset);
+        writeUint64(bytes, offset + 8, propertyCount);
+        writeUint64(bytes, offset + 16, propertyListLength);
+    } else {
+        writeUint32(bytes, offset, endOffset);
+        writeUint32(bytes, offset + 4, propertyCount);
+        writeUint32(bytes, offset + 8, propertyListLength);
     }
+    bytes[offset + nodeHeaderSize - 1] = name.length;
+    for (let i = 0; i < name.length; i++) {
+        bytes[offset + nodeHeaderSize + i] = name.charCodeAt(i);
+    }
+}
+
+function writeUint64(bytes: Uint8Array, offset: number, value: number): void {
+    writeUint32(bytes, offset, value >>> 0);
+    writeUint32(bytes, offset + 4, Math.floor(value / 0x100000000));
 }
 
 function writeUint32(bytes: Uint8Array, offset: number, value: number): void {

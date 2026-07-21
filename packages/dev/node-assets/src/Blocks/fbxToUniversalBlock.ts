@@ -8,6 +8,7 @@ import { RegisterBlock } from "../blockFoundation/blockRegistry";
 import { NodeAssetBlock } from "../blockFoundation/nodeAssetBlock";
 import { type NodeAssetConnectionPoint } from "../connection/nodeAssetConnectionPoint";
 import { NodeAssetConnectionPointType } from "../connection/nodeAssetConnectionPointType";
+import { type BuildScope } from "../evaluation/buildScope";
 import { type NodeAsset } from "../nodeAsset";
 import { IsFBXSource } from "../representations/fbxSource";
 import { GltfAsset } from "../representations/gltfAsset";
@@ -34,37 +35,54 @@ export class FBXToUniversalBlock extends NodeAssetBlock {
         this.output = this._registerOutput("output", NodeAssetConnectionPointType.UNIVERSAL);
     }
 
-    /** Loads FBX content with the pure loader, exports it to GLB, and wraps the Universal document. */
-    public override async _buildBlockAsync(): Promise<void> {
+    /**
+     * Loads FBX content with the pure loader, exports it to GLB, and wraps the Universal document.
+     * @param scope The optional build scope used for cancellation and cleanup diagnostics.
+     */
+    public override async _buildBlockAsync(scope?: BuildScope): Promise<void> {
         if (!IsFBXSource(this.input.value)) {
             throw new Error(`The "${this.name}" block did not receive an FBX source payload.`);
         }
 
+        scope?.throwIfAborted();
         const source = this.input.value;
-        const engine = new NullEngine();
-        const scene = new Scene(engine);
+        let engine: NullEngine | undefined;
+        let scene: Scene | undefined;
         let container: AssetContainer | undefined;
-        let conversionError: Error | undefined;
+        let primaryError: unknown;
+        let failed = false;
         try {
+            engine = new NullEngine();
+            scene = new Scene(engine);
+            scope?.throwIfAborted();
+
             const loader = new FBXFileLoader();
             container = await loader.loadAssetContainerAsync(scene, source.data, source.rootUrl, undefined, source.source);
+            scope?.throwIfAborted();
             container.addAllToScene();
+            scope?.throwIfAborted();
 
             const glbData = await GLTF2Export.GLBAsync(scene, "fbx-universal", { exportWithoutWaitingForScene: true });
+            scope?.throwIfAborted();
             const glb = glbData.files["fbx-universal.glb"];
             const bytes = glb instanceof Blob ? new Uint8Array(await glb.arrayBuffer()) : new TextEncoder().encode(glb);
-            const { WebIO } = await import("@gltf-transform/core");
-            const { ALL_EXTENSIONS } = await import("@gltf-transform/extensions");
+            scope?.throwIfAborted();
+            const [{ WebIO }, { ALL_EXTENSIONS }] = await Promise.all([import("@gltf-transform/core"), import("@gltf-transform/extensions")]);
+            scope?.throwIfAborted();
             const document = await new WebIO().registerExtensions(ALL_EXTENSIONS).readBinary(bytes);
+            scope?.throwIfAborted();
             this.output.value = new GltfAsset(document, {
                 identity: source.source,
                 revision: 0,
                 manifest: { format: "universal", importedFrom: "fbx", source: source.source },
             });
         } catch (error) {
-            conversionError = new Error(`The "${this.name}" block failed to convert "${source.source}" to Universal: ${error instanceof Error ? error.message : String(error)}`, {
-                cause: error,
-            });
+            failed = true;
+            primaryError = scope?.isCancellationError(error)
+                ? error
+                : new Error(`The "${this.name}" block failed to convert "${source.source}" to Universal: ${error instanceof Error ? error.message : String(error)}`, {
+                      cause: error,
+                  });
         }
 
         const cleanupErrors: unknown[] = [];
@@ -75,18 +93,37 @@ export class FBXToUniversalBlock extends NodeAssetBlock {
                 cleanupErrors.push(error);
             }
         }
-        try {
-            scene.dispose();
-        } catch (error) {
-            cleanupErrors.push(error);
+        if (scene) {
+            try {
+                scene.dispose();
+            } catch (error) {
+                cleanupErrors.push(error);
+            }
         }
-        try {
-            engine.dispose();
-        } catch (error) {
-            cleanupErrors.push(error);
+        if (engine) {
+            try {
+                engine.dispose();
+            } catch (error) {
+                cleanupErrors.push(error);
+            }
         }
 
-        if (conversionError) {
+        if (scope) {
+            for (const cleanupError of cleanupErrors) {
+                scope.addDiagnostic({
+                    code: "NODE_ASSET_FBX_CLEANUP_FAILED",
+                    severity: "warning",
+                    message: cleanupError instanceof Error ? cleanupError.message : String(cleanupError),
+                    producer: { kind: "transcoder", blockId: this.uniqueId, blockName: this.name },
+                });
+            }
+        }
+
+        if (failed) {
+            if (scope?.isCancellationError(primaryError)) {
+                throw primaryError;
+            }
+            const conversionError = primaryError as Error;
             if (cleanupErrors.length > 0) {
                 throw new AggregateError([conversionError, ...cleanupErrors], `${conversionError.message} FBX resource cleanup also failed.`, { cause: conversionError });
             }

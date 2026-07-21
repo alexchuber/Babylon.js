@@ -50,6 +50,8 @@ import { FBXFileLoaderMetadata } from "./fbxFileLoader.metadata";
 
 const FBX_ASCII_MAGIC = "; FBX";
 const FBX_BINARY_MAGIC = "Kaydara FBX Binary";
+const MIN_SUPPORTED_FBX_VERSION = 7000;
+const MAX_SUPPORTED_FBX_VERSION_EXCLUSIVE = 7800;
 const BIND_REST_SCALE_RATIO_THRESHOLD = 10;
 
 /**
@@ -73,6 +75,13 @@ interface IFBXSceneLoaderAsyncResult extends ISceneLoaderAsyncResult {
     materials: Material[];
     textures: BaseTexture[];
     cameras: Camera[];
+}
+
+function ValidateFBXVersion(document: FBXDocument): FBXDocument {
+    if (document.version < MIN_SUPPORTED_FBX_VERSION || document.version >= MAX_SUPPORTED_FBX_VERSION_EXCLUSIVE) {
+        throw new Error(`FBXFileLoader: unsupported FBX version ${document.version}; supported versions are 7.0 through 7.7.`);
+    }
+    return document;
 }
 
 /**
@@ -223,7 +232,7 @@ export class FBXFileLoader implements ISceneLoaderPluginAsync, ISceneLoaderPlugi
             return this._parseFromArrayBuffer(buffer);
         }
         if (typeof data === "string") {
-            return parseAsciiFBX(data);
+            return ValidateFBXVersion(parseAsciiFBX(data));
         }
         throw new Error("FBXFileLoader: unsupported data type");
     }
@@ -234,13 +243,13 @@ export class FBXFileLoader implements ISceneLoaderPluginAsync, ISceneLoaderPlugi
         const header = String.fromCharCode(...headerBytes);
 
         if (header.startsWith(FBX_BINARY_MAGIC)) {
-            return parseBinaryFBX(buffer);
+            return ValidateFBXVersion(parseBinaryFBX(buffer));
         }
 
         // Try ASCII
         const text = new TextDecoder("utf-8").decode(buffer);
         if (text.trimStart().startsWith(FBX_ASCII_MAGIC)) {
-            return parseAsciiFBX(text);
+            return ValidateFBXVersion(parseAsciiFBX(text));
         }
 
         throw new Error("FBXFileLoader: unrecognized FBX format");

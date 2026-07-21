@@ -13,14 +13,26 @@ import { ReadFBXBlock } from "../../src/Blocks/readFBXBlock";
 import { NodeAssetBlock } from "../../src/blockFoundation/nodeAssetBlock";
 import { type NodeAssetConnectionPoint } from "../../src/connection/nodeAssetConnectionPoint";
 import { NodeAssetConnectionPointType } from "../../src/connection/nodeAssetConnectionPointType";
+import { BuildCancelledError, GetNodeAssetBuildReport } from "../../src/evaluation/buildScope";
 import { NodeAsset } from "../../src/nodeAsset";
 import {
   GetGltfAsset,
   type GltfAsset,
 } from "../../src/representations/gltfAsset";
-import { CreateAsciiFbx74TriangleFixture } from "./testFbxSource";
+import { CreateAsciiFbx74TriangleFixture, CreateBinaryFbx74TriangleFixture, CreateBinaryFbx75TriangleFixture } from "./testFbxSource";
 
 vi.mock("draco3dgltf", async () => await vi.importActual("draco3dgltf"));
+
+function CreateDeferred<T>(): {
+  readonly promise: Promise<T>;
+  readonly resolve: (value: T) => void;
+} {
+  let resolve!: (value: T) => void;
+  const promise = new Promise<T>((promiseResolve) => {
+    resolve = promiseResolve;
+  });
+  return { promise, resolve };
+}
 
 class CaptureUniversalManifestBlock extends NodeAssetBlock {
   public static override ClassName = "CaptureUniversalManifestBlock";
@@ -82,6 +94,180 @@ describe("FBX Universal funnel", () => {
     toUniversal.output.connectTo(exporter.input);
     return asset;
   }
+
+  it("loads a URL through an injectable fetcher and retains its Babylon folder root", async () => {
+    const source = CreateAsciiFbx74TriangleFixture();
+    const asset = new NodeAsset("url-fbx-source");
+    const read = new ReadFBXBlock("Read FBX", asset);
+    read.setUploadedSource(new Uint8Array([1, 2, 3]), "previous.fbx");
+    const url = "https://cdn.example.com/models/triangle.fbx?token=abc/def";
+    const fetcher = vi.fn(async (requestedUrl: string) => ({
+      ok: true,
+      status: 200,
+      statusText: "OK",
+      arrayBuffer: async () => source.slice().buffer,
+    }));
+
+    const request = read.setUrlAsync(url, fetcher);
+    expect(read.source).toBe("previous.fbx");
+    expect(read.sourceKind).toBe("upload");
+    await request;
+    await read._buildBlockAsync();
+
+    expect(fetcher).toHaveBeenCalledWith(url);
+    expect(read.source).toBe(url);
+    expect(read.sourceKind).toBe("url");
+    expect(read.output.value).toMatchObject({
+      source: url,
+      rootUrl: "https://cdn.example.com/models/",
+    });
+  });
+
+  it("preserves the last successful source when the current URL fails and makes older URL success inert", async () => {
+    const asset = new NodeAsset("racing-fbx-sources");
+    const read = new ReadFBXBlock("Read FBX", asset);
+    const previousBytes = new Uint8Array([4, 5, 6]);
+    read.setUploadedSource(previousBytes, "previous.fbx");
+
+    await expect(
+      read.setUrlAsync("https://cdn.example.com/current.fbx", async () => ({
+        ok: false,
+        status: 503,
+        statusText: "Unavailable",
+        arrayBuffer: async () => new ArrayBuffer(0),
+      })),
+    ).rejects.toThrow(/503 Unavailable/);
+    expect(read.data).toEqual(previousBytes);
+    expect(read.source).toBe("previous.fbx");
+    expect(read.sourceKind).toBe("upload");
+
+    const olderResponse = CreateDeferred<{
+      readonly ok: boolean;
+      readonly status: number;
+      readonly statusText: string;
+      arrayBuffer(): Promise<ArrayBuffer>;
+    }>();
+    const olderRequest = read.setUrlAsync(
+      "https://cdn.example.com/older.fbx",
+      async () => await olderResponse.promise,
+    );
+    const newerRequest = read.setUrlAsync(
+      "https://cdn.example.com/newer.fbx",
+      async () => ({
+        ok: false,
+        status: 404,
+        statusText: "Not Found",
+        arrayBuffer: async () => new ArrayBuffer(0),
+      }),
+    );
+
+    await expect(newerRequest).rejects.toThrow(/404 Not Found/);
+    olderResponse.resolve({
+      ok: true,
+      status: 200,
+      statusText: "OK",
+      arrayBuffer: async () => new Uint8Array([9, 9, 9]).buffer,
+    });
+    await olderRequest;
+
+    expect(read.data).toEqual(previousBytes);
+    expect(read.source).toBe("previous.fbx");
+    expect(read.sourceKind).toBe("upload");
+  });
+
+  it("honors source ownership guards and reports only winning URL or upload results", async () => {
+    const asset = new NodeAsset("owned-fbx-sources");
+    const read = new ReadFBXBlock("Read FBX", asset);
+    const winner = { applied: false };
+    await read.setUrlAsync(
+      "https://cdn.example.com/winner.fbx",
+      async () => ({
+        ok: true,
+        status: 200,
+        statusText: "OK",
+        arrayBuffer: async () => new Uint8Array([1, 2, 3]).buffer,
+      }),
+      () => true,
+      winner,
+    );
+    expect(winner.applied).toBe(true);
+
+    const detached = { applied: true };
+    await expect(
+      read.setUrlAsync(
+        "https://cdn.example.com/detached.fbx",
+        async () => {
+          throw new Error("detached request failed");
+        },
+        () => false,
+        detached,
+      ),
+    ).resolves.toBeUndefined();
+    expect(detached.applied).toBe(false);
+    expect(read.source).toBe("https://cdn.example.com/winner.fbx");
+
+    const pendingUpload = CreateDeferred<ArrayBuffer>();
+    const upload = { applied: true };
+    const uploadRequest = read.setUploadedSourceAsync(
+      async () => await pendingUpload.promise,
+      "older-upload.fbx",
+      () => true,
+      upload,
+    );
+    read.setUploadedSource(new Uint8Array([7, 8, 9]), "newer-upload.fbx");
+    pendingUpload.resolve(new Uint8Array([4, 5, 6]).buffer);
+    await uploadRequest;
+
+    expect(upload.applied).toBe(false);
+    expect(read.data).toEqual(new Uint8Array([7, 8, 9]));
+    expect(read.source).toBe("newer-upload.fbx");
+    expect(read.sourceKind).toBe("upload");
+  });
+
+  it("serializes an aggregate URL winner and rebuilds its exact bytes without refetching", async () => {
+    const source = CreateAsciiFbx74TriangleFixture();
+    const url = "https://cdn.example.com/models/triangle.fbx?token=serialized";
+    const asset = new NodeAsset("serialized-url-fbx");
+    const importer = new ImportFBXAggregateBlock("Import FBX", asset);
+    await importer.setUrlAsync(url, async () => ({
+      ok: true,
+      status: 200,
+      statusText: "OK",
+      arrayBuffer: async () => source.slice().buffer,
+    }));
+
+    const parsed = NodeAsset.Parse(
+      JSON.parse(JSON.stringify(asset.serialize())),
+    );
+    const parsedImporter = parsed.attachedBlocks[0] as ImportFBXAggregateBlock;
+    expect(parsedImporter.data).toEqual(source);
+    expect(parsedImporter.source).toBe(url);
+    expect(parsedImporter.sourceKind).toBe("url");
+
+    const exporter = new ExportGLTFAggregateBlock("Export glTF", parsed);
+    parsedImporter.output.connectTo(exporter.input);
+    const fetchSpy = vi.fn(() => {
+      throw new Error("Serialized FBX URL builds must not refetch.");
+    });
+    vi.stubGlobal("fetch", fetchSpy);
+    try {
+      const glb = await parsed.buildAsync();
+      expect(await ReadStableMeshFactsAsync(glb)).toEqual({
+        meshCount: 1,
+        nodeNames: ["Triangle"],
+        positionCount: 3,
+        indexCount: 3,
+      });
+      expect(fetchSpy).not.toHaveBeenCalled();
+    } finally {
+      vi.unstubAllGlobals();
+    }
+
+    parsedImporter.clearSource();
+    expect(parsedImporter.data).toBeNull();
+    expect(parsedImporter.source).toBeNull();
+    expect(parsedImporter.sourceKind).toBeNull();
+  });
 
   it("builds an uploaded ASCII FBX through saved aggregate and primitive funnels without fetching", async () => {
     const source = CreateAsciiFbx74TriangleFixture();
@@ -179,9 +365,41 @@ describe("FBX Universal funnel", () => {
     }
   });
 
+  it.each([
+    { label: "FBX 7.4 with 32-bit node headers", create: CreateBinaryFbx74TriangleFixture },
+    { label: "FBX 7.5 with 64-bit node headers", create: CreateBinaryFbx75TriangleFixture },
+  ])("builds representative binary $label through the full graph funnel", async ({ create }) => {
+    const glb = await CreateExportingAsset(create()).buildAsync();
+
+    expect(await ReadStableMeshFactsAsync(glb)).toEqual({
+      meshCount: 1,
+      nodeNames: ["Triangle"],
+      positionCount: 3,
+      indexCount: 3,
+    });
+  });
+
+  it.each([
+    { version: 6800, create: CreateBinaryFbx74TriangleFixture },
+    { version: 7800, create: CreateBinaryFbx75TriangleFixture },
+  ])("rejects unsupported binary FBX version $version with source context and cause", async ({ version, create }) => {
+    const bytes = create().slice();
+    new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength).setUint32(23, version, true);
+
+    const error = await CreateExportingAsset(bytes)
+      .buildAsync()
+      .catch((reason: unknown) => reason);
+
+    expect(error).toBeInstanceOf(Error);
+    expect((error as Error).message).toMatch(/failed to convert "triangle\.fbx" to Universal/);
+    expect((error as Error).cause).toMatchObject({
+      message: expect.stringMatching(new RegExp("unsupported FBX version " + version + ".*7\\.0.*7\\.7", "i")),
+    });
+  });
+
   it("accounts uploaded bytes and rejects a missing source before parsing", async () => {
     await expect(CreateExportingAsset().buildAsync()).rejects.toThrow(
-      /Upload a \.fbx file before building/,
+      /Set an FBX URL or upload a \.fbx file before building/,
     );
 
     const source = CreateAsciiFbx74TriangleFixture();
@@ -242,7 +460,57 @@ describe("FBX Universal funnel", () => {
     }
   });
 
-  it("rejects non-upload source kinds during strict graph parsing", () => {
+  it("propagates canonical cancellation after export settles, cleans resources, skips readback, and rebuilds", async () => {
+    const asset = CreateExportingAsset(CreateAsciiFbx74TriangleFixture());
+    const originalExport = GLTF2Export.GLBAsync;
+    let markExportStarted!: () => void;
+    let releaseExport!: () => void;
+    const exportStarted = new Promise<void>((resolve) => {
+      markExportStarted = resolve;
+    });
+    const exportRelease = new Promise<void>((resolve) => {
+      releaseExport = resolve;
+    });
+    vi.spyOn(GLTF2Export, "GLBAsync").mockImplementationOnce(async (...args) => {
+      markExportStarted();
+      await exportRelease;
+      return await originalExport(...args);
+    });
+    const readBinary = vi.spyOn(WebIO.prototype, "readBinary");
+    const containerCleanupFailure = new Error("forced cancellation cleanup failure");
+    const containerDispose = vi.spyOn(AssetContainer.prototype, "dispose").mockImplementationOnce(() => {
+      throw containerCleanupFailure;
+    });
+    const sceneDispose = vi.spyOn(Scene.prototype, "dispose");
+    const engineDispose = vi.spyOn(NullEngine.prototype, "dispose");
+    const controller = new AbortController();
+
+    let cancellation: unknown;
+    try {
+      const build = asset.buildAsync({ signal: controller.signal });
+      await exportStarted;
+      controller.abort("cancelled during FBX export");
+      releaseExport();
+      cancellation = await build.catch((reason: unknown) => reason);
+
+      expect(cancellation).toBeInstanceOf(BuildCancelledError);
+      expect((cancellation as BuildCancelledError).reason).toBe("cancelled during FBX export");
+      expect(readBinary).not.toHaveBeenCalled();
+      expect(containerDispose).toHaveBeenCalled();
+      expect(sceneDispose).toHaveBeenCalled();
+      expect(engineDispose).toHaveBeenCalled();
+      expect(GetNodeAssetBuildReport(cancellation)?.diagnostics).toContainEqual(
+        expect.objectContaining({ code: "NODE_ASSET_FBX_CLEANUP_FAILED", message: containerCleanupFailure.message }),
+      );
+    } finally {
+      releaseExport();
+      vi.restoreAllMocks();
+    }
+
+    await expect(asset.buildAsync()).resolves.toBeInstanceOf(Uint8Array);
+  });
+
+  it("rejects unknown source kinds during strict graph parsing", () => {
     const asset = new NodeAsset("strict-fbx-state");
     const importer = new ImportFBXAggregateBlock("Import FBX", asset);
     importer.setUploadedSource(
@@ -252,7 +520,7 @@ describe("FBX Universal funnel", () => {
     const serialization = JSON.parse(JSON.stringify(asset.serialize())) as {
       blocks: Array<{ subgraph: { blocks: Array<{ sourceKind?: string }> } }>;
     };
-    serialization.blocks[0].subgraph.blocks[0].sourceKind = "url";
+    serialization.blocks[0].subgraph.blocks[0].sourceKind = "snippet";
 
     expect(() => NodeAsset.Parse(serialization)).toThrow(
       'Invalid serialized block property "sourceKind"',

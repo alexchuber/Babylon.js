@@ -5,7 +5,7 @@ import { FBXHeaderColor, ConfigureBlockForEditor, type IPropertySectionContext, 
 import { PromptForFileAsync } from "../browserFiles";
 
 const SourceErrors = new WeakMap<ReadFBXBlock, string>();
-const PendingSourceRequests = new WeakMap<ReadFBXBlock, Promise<unknown>>();
+const PendingSourceRequests = new WeakMap<ReadFBXBlock, Promise<void>>();
 
 async function PromptForFBXAsync(block: ReadFBXBlock, context: IPropertySectionContext): Promise<void> {
     const file = await PromptForFileAsync(".fbx");
@@ -16,15 +16,19 @@ async function PromptForFBXAsync(block: ReadFBXBlock, context: IPropertySectionC
     if (!authoredBlock) {
         return;
     }
-    const request = file.arrayBuffer();
+    const applyResult = { applied: false };
+    const request = authoredBlock.setUploadedSourceAsync(
+        async () => await file.arrayBuffer(),
+        file.name,
+        () => context.prepareEdit(authoredBlock) === authoredBlock,
+        applyResult
+    );
     PendingSourceRequests.set(authoredBlock, request);
     try {
-        const data = new Uint8Array(await request);
-        if (context.prepareEdit(authoredBlock) !== authoredBlock || PendingSourceRequests.get(authoredBlock) !== request) {
-            return;
+        await request;
+        if (context.prepareEdit(authoredBlock) === authoredBlock && applyResult.applied) {
+            SourceErrors.delete(authoredBlock);
         }
-        authoredBlock.setUploadedSource(data, file.name);
-        SourceErrors.delete(authoredBlock);
     } catch (error) {
         if (context.prepareEdit(authoredBlock) === authoredBlock && PendingSourceRequests.get(authoredBlock) === request) {
             SourceErrors.set(authoredBlock, error instanceof Error ? error.message : String(error));
@@ -33,9 +37,36 @@ async function PromptForFBXAsync(block: ReadFBXBlock, context: IPropertySectionC
         if (PendingSourceRequests.get(authoredBlock) === request) {
             PendingSourceRequests.delete(authoredBlock);
         }
+        if (context.prepareEdit(authoredBlock) === authoredBlock) {
+            context.refresh();
+        }
     }
-    if (context.prepareEdit(authoredBlock) === authoredBlock) {
-        context.refresh();
+}
+
+async function SetFBXUrlAsync(block: ReadFBXBlock, url: string, context: IPropertySectionContext): Promise<void> {
+    const authoredBlock = context.prepareEdit(block);
+    if (!authoredBlock) {
+        return;
+    }
+    const applyResult = { applied: false };
+    const request = authoredBlock.setUrlAsync(url, undefined, () => context.prepareEdit(authoredBlock) === authoredBlock, applyResult);
+    PendingSourceRequests.set(authoredBlock, request);
+    try {
+        await request;
+        if (context.prepareEdit(authoredBlock) === authoredBlock && applyResult.applied) {
+            SourceErrors.delete(authoredBlock);
+        }
+    } catch (error) {
+        if (context.prepareEdit(authoredBlock) === authoredBlock && PendingSourceRequests.get(authoredBlock) === request) {
+            SourceErrors.set(authoredBlock, error instanceof Error ? error.message : String(error));
+        }
+    } finally {
+        if (PendingSourceRequests.get(authoredBlock) === request) {
+            PendingSourceRequests.delete(authoredBlock);
+        }
+        if (context.prepareEdit(authoredBlock) === authoredBlock) {
+            context.refresh();
+        }
     }
 }
 
@@ -51,6 +82,26 @@ export function CreateReadFBXPropertySection(block: ReadFBXBlock, context: IProp
     return {
         title,
         properties: [
+            {
+                kind: "text",
+                label: "URL",
+                value: block.sourceKind === "url" ? (block.source ?? "") : "",
+                validateOnlyOnBlur: true,
+                onChange: (value) => {
+                    if (!value) {
+                        const authoredBlock = context.prepareEdit(block);
+                        if (!authoredBlock) {
+                            return;
+                        }
+                        authoredBlock.clearSource();
+                        PendingSourceRequests.delete(authoredBlock);
+                        SourceErrors.delete(authoredBlock);
+                        context.refresh();
+                        return;
+                    }
+                    void SetFBXUrlAsync(block, value, context);
+                },
+            },
             {
                 kind: "text",
                 label: "Active source",
@@ -83,8 +134,8 @@ export function CreateReadFBXPropertySection(block: ReadFBXBlock, context: IProp
 RegisterBlockDescriptor({
     paletteItemId: "read-fbx",
     label: "Read FBX",
-    description: "Read an uploaded .fbx source.",
-    keywords: ["open", "load", "upload", "fbx"],
+    description: "Read a URL or uploaded .fbx source.",
+    keywords: ["open", "load", "url", "upload", "fbx"],
     category: "Inputs",
     headerColor: FBXHeaderColor,
     className: ReadFBXBlock.ClassName,

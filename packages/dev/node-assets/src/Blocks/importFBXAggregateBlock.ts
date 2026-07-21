@@ -3,7 +3,7 @@ import { RegisterBlock } from "../blockFoundation/blockRegistry";
 import { type NodeAssetConnectionPoint } from "../connection/nodeAssetConnectionPoint";
 import { type NodeAsset } from "../nodeAsset";
 import { FBXToUniversalBlock } from "./fbxToUniversalBlock";
-import { ReadFBXBlock, type FBXSourceKind } from "./readFBXBlock";
+import { ReadFBXBlock, type FBXSourceFetcher, type FBXSourceKind, type IFBXSourceApplyResult } from "./readFBXBlock";
 
 /** Built-in `Read FBX -> FBX to Universal` aggregate. */
 export class ImportFBXAggregateBlock extends AggregateBlock {
@@ -35,7 +35,7 @@ export class ImportFBXAggregateBlock extends AggregateBlock {
         return block;
     }
 
-    /** Uploaded source bytes forwarded to the Read FBX primitive. */
+    /** Resolved source bytes forwarded to the Read FBX primitive. */
     public get data(): Uint8Array | null {
         return this.readBlock.data;
     }
@@ -65,6 +65,33 @@ export class ImportFBXAggregateBlock extends AggregateBlock {
      */
     public setUploadedSource(data: Uint8Array, fileName: string): void {
         this.readBlock.setUploadedSource(data, fileName);
+    }
+
+    /**
+     * Reads and activates an uploaded source on the owned Read FBX primitive.
+     * @param loadDataAsync The uploaded file reader.
+     * @param fileName The uploaded file name.
+     * @param canApplyResult Optional ownership guard checked before resolved bytes become active.
+     * @param applyResult Optional operation result populated after ownership and source-order checks.
+     */
+    public async setUploadedSourceAsync(
+        loadDataAsync: () => Promise<ArrayBuffer>,
+        fileName: string,
+        canApplyResult?: () => boolean,
+        applyResult?: IFBXSourceApplyResult
+    ): Promise<void> {
+        await this.readBlock.setUploadedSourceAsync(loadDataAsync, fileName, canApplyResult, applyResult);
+    }
+
+    /**
+     * Loads and activates a URL on the owned Read FBX primitive.
+     * @param url The `.fbx` URL.
+     * @param fetcher The fetch-compatible loader.
+     * @param canApplyResult Optional ownership guard checked before resolved bytes become active.
+     * @param applyResult Optional operation result populated after ownership and source-order checks.
+     */
+    public async setUrlAsync(url: string, fetcher?: FBXSourceFetcher, canApplyResult?: () => boolean, applyResult?: IFBXSourceApplyResult): Promise<void> {
+        await this.readBlock.setUrlAsync(url, fetcher, canApplyResult, applyResult);
     }
 
     /** Clears the active child source. */

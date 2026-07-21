@@ -1,5 +1,6 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 
+import { ReadFBXBlock } from "node-assets/Blocks/readFBXBlock";
 import { WeldBlock } from "node-assets/Blocks/weldBlock";
 import { NodeAsset } from "node-assets/nodeAsset";
 
@@ -7,6 +8,7 @@ import { type IGraphNode } from "../../src/nodeGraph/graphModel";
 import { type IPropertySection, type PropertyDescriptor } from "../../src/nodeGraph/propertyModel";
 import { NodeAssetGraphController } from "../../src/nodeAssets/nodeAssetGraphController";
 import { GetAllBlockDescriptors, GetBlockDescriptorByPaletteItemId } from "../../src/nodeAssets/blockCatalog";
+import { CreateReadFBXPropertySection } from "../../src/nodeAssets/blockDescriptors/readFBXBlockDescriptor";
 
 function FindNode(controller: NodeAssetGraphController, title: string): IGraphNode {
     const node = controller.state.nodes.find((candidate) => candidate.title === title);
@@ -97,13 +99,13 @@ describe("block property sections (unified descriptor path)", () => {
         }
     });
 
-    it("forwards the uploaded Read FBX source controls from the aggregate", () => {
+    it("forwards the URL and upload Read FBX source controls from the aggregate", () => {
         const controller = new NodeAssetGraphController();
         try {
             const importNode = AddPaletteNode(controller, "import-fbx");
             const section = FindSection(controller, importNode, "READ FBX");
 
-            expect(section.properties.map((property) => property.label)).toEqual(["Active source", "Upload FBX\u2026"]);
+            expect(section.properties.map((property) => property.label)).toEqual(["URL", "Active source", "Upload FBX\u2026"]);
             expect(FindProperty(controller, importNode, "Active source", "text").value).toBe("No source loaded");
             expect(FindProperty(controller, importNode, "Upload FBX\u2026", "button")).toBeDefined();
 
@@ -113,6 +115,74 @@ describe("block property sections (unified descriptor path)", () => {
             expect(paletteLabels).not.toContain("FBX \u2192 Universal");
         } finally {
             controller.dispose();
+        }
+    });
+
+    it("keeps the current FBX source error when an older URL completes and clears it on a later winner", async () => {
+        const asset = new NodeAsset("editor-fbx-source-errors");
+        const read = new ReadFBXBlock("Read FBX", asset);
+        read.setUploadedSource(new Uint8Array([1, 2, 3]), "previous.fbx");
+        const refresh = vi.fn();
+        const context = { prepareEdit: (block: ReadFBXBlock) => block, refresh, requestExport: vi.fn() };
+        let resolveOlder!: (response: {
+            readonly ok: boolean;
+            readonly status: number;
+            readonly statusText: string;
+            arrayBuffer(): Promise<ArrayBuffer>;
+        }) => void;
+        const olderResponse = new Promise<Parameters<typeof resolveOlder>[0]>((resolve) => {
+            resolveOlder = resolve;
+        });
+        const fetchSpy = vi
+            .fn()
+            .mockImplementationOnce(async () => await olderResponse)
+            .mockResolvedValueOnce({ ok: false, status: 503, statusText: "Unavailable", arrayBuffer: async () => new ArrayBuffer(0) })
+            .mockResolvedValueOnce({ ok: true, status: 200, statusText: "OK", arrayBuffer: async () => new Uint8Array([7, 8, 9]).buffer });
+        vi.stubGlobal("fetch", fetchSpy);
+
+        const getProperty = (label: string): PropertyDescriptor => {
+            const property = CreateReadFBXPropertySection(read, context).properties.find((candidate) => candidate.label === label);
+            if (!property) {
+                throw new Error(`Could not find FBX property "${label}".`);
+            }
+            return property;
+        };
+        try {
+            const urlProperty = getProperty("URL");
+            if (urlProperty.kind !== "text") {
+                throw new Error("Expected the FBX URL property to be text.");
+            }
+            urlProperty.onChange("https://cdn.example.com/older.fbx");
+            urlProperty.onChange("https://cdn.example.com/current-error.fbx");
+
+            await vi.waitFor(() => {
+                const sourceError = getProperty("Source error");
+                expect(sourceError.kind === "text" && sourceError.value).toMatch(/503 Unavailable/);
+            });
+            expect(read.source).toBe("previous.fbx");
+
+            resolveOlder({
+                ok: true,
+                status: 200,
+                statusText: "OK",
+                arrayBuffer: async () => new Uint8Array([4, 5, 6]).buffer,
+            });
+            await vi.waitFor(() => expect(fetchSpy).toHaveBeenCalledTimes(2));
+            await Promise.resolve();
+            const staleError = getProperty("Source error");
+            expect(staleError.kind === "text" && staleError.value).toMatch(/503 Unavailable/);
+            expect(read.source).toBe("previous.fbx");
+
+            const winningUrl = getProperty("URL");
+            if (winningUrl.kind !== "text") {
+                throw new Error("Expected the FBX URL property to be text.");
+            }
+            winningUrl.onChange("https://cdn.example.com/winner.fbx");
+            await vi.waitFor(() => expect(read.source).toBe("https://cdn.example.com/winner.fbx"));
+            expect(CreateReadFBXPropertySection(read, context).properties.map((property) => property.label)).not.toContain("Source error");
+            expect(getProperty("Active source")).toMatchObject({ value: "https://cdn.example.com/winner.fbx" });
+        } finally {
+            vi.unstubAllGlobals();
         }
     });
 
