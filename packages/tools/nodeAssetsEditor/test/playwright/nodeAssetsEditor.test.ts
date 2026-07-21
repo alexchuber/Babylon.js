@@ -656,6 +656,14 @@ test.describe("Node Assets Editor — maintained default pipeline", () => {
         await expect(paletteItem).toHaveAttribute("tabindex", "0");
         await expect(paletteItem).not.toHaveAttribute("title");
 
+        const touchPointer = { pointerId: 41_001, pointerType: "touch", isPrimary: true };
+        await paletteItem.dispatchEvent("pointerover", { ...touchPointer, button: -1, buttons: 0 });
+        await paletteItem.dispatchEvent("pointerdown", { ...touchPointer, button: 0, buttons: 1 });
+        await page.waitForTimeout(1_000);
+        await expect(tooltip).toBeHidden();
+        await paletteItem.dispatchEvent("pointerup", { ...touchPointer, button: 0, buttons: 0 });
+        await paletteItem.dispatchEvent("pointerout", { ...touchPointer, button: -1, buttons: 0 });
+
         await paletteItem.hover();
         await expect(tooltip).toBeVisible({ timeout: 10_000 });
         await expect(tooltip).toHaveText(description);

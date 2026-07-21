@@ -1,4 +1,4 @@
-import { Fragment, type DragEvent, type FunctionComponent, useEffect, useMemo, useState } from "react";
+import { Fragment, type DragEvent, type FunctionComponent, type ReactElement, useEffect, useMemo, useState } from "react";
 
 import { Accordion, AccordionHeader, AccordionItem, AccordionPanel, Body1, Caption1, Checkbox, makeStyles, tokens } from "@fluentui/react-components";
 import { SearchBar } from "shared-ui-components/fluent/primitives/searchBar";
@@ -69,6 +69,29 @@ const useStyles = makeStyles({
 });
 
 const GetCategoryValue = (category: IPaletteCategory, index: number) => `${index}:${category.label}`;
+
+type PaletteItemTooltipProps = {
+    children: ReactElement;
+    content?: string;
+};
+
+const PaletteItemTooltip: FunctionComponent<PaletteItemTooltipProps> = (props) => {
+    const { children, content } = props;
+    const [visible, setVisible] = useState(false);
+
+    return (
+        <Tooltip
+            content={content}
+            visible={visible}
+            onVisibleChange={(event, data) => {
+                const isTouchPointer = event !== undefined && "pointerType" in event && event.pointerType === "touch";
+                setVisible(data.visible && !isTouchPointer);
+            }}
+        >
+            {children}
+        </Tooltip>
+    );
+};
 
 /**
  * Renders the categorized node palette and prepares dragged palette items for canvas drops.
@@ -155,7 +178,7 @@ export const PaletteView: FunctionComponent<{ context: EditorContextValue; prefe
                                                             {item.family}
                                                         </Caption1>
                                                     )}
-                                                    <Tooltip content={tooltipContent}>
+                                                    <PaletteItemTooltip content={tooltipContent}>
                                                         <div
                                                             aria-labelledby={labelId}
                                                             className={classes.row}
@@ -168,7 +191,7 @@ export const PaletteView: FunctionComponent<{ context: EditorContextValue; prefe
                                                                 {item.label}
                                                             </Body1>
                                                         </div>
-                                                    </Tooltip>
+                                                    </PaletteItemTooltip>
                                                 </Fragment>
                                             );
                                         })}
