@@ -30,3 +30,7 @@ Done as a docs follow-up on `feat/nae/graph-canvas-pan`.
 - The ticket is now `Status: resolved`.
 - The implementation PR landed as `2858fcff583192ddd14218f81dc7eab6cbbcb63c` on `feat/nae/graph-canvas-pan`.
 - Worker-reported evidence: targeted unit tests `35/35`, Playwright `2/2`, ESLint/Prettier/build/precommit pass, and clean `/code-review`.
+
+## Comments
+
+Implemented in [PR #15](https://github.com/alexchuber/Babylon.js/pull/15) at `2858fcff583192ddd14218f81dc7eab6cbbcb63c`. Verification passed with gesture unit tests `35/35`, focused Playwright `2/2`, targeted ESLint and Prettier, the Node Assets Editor deployment build, and precommit checks. Both `/code-review` lenses finished with no unresolved high-confidence findings. The standalone package-wide `tsc` baseline remains blocked by unrelated existing core/dependency diagnostics, including missing `XRHandedness`; no changed-file diagnostics were reported.
