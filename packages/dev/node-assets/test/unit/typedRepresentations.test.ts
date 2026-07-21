@@ -11,6 +11,7 @@ import { type NodeAssetJsonValue, type NodeAssetValueMap } from "../../src/conne
 import { BabylonAsset, IsBabylonAsset } from "../../src/representations/babylonAsset";
 import { GltfAsset, IsGltfAsset } from "../../src/representations/gltfAsset";
 import { IsNodeGeometryAsset, NodeGeometryAsset } from "../../src/representations/nodeGeometryAsset";
+import { OBJSourceAsset } from "../../src/representations/objSourceAsset";
 import { IsUsdAsset, UsdAsset } from "../../src/representations/usdAsset";
 import { UsdSourceAsset } from "../../src/representations/usdSourceAsset";
 
@@ -104,6 +105,7 @@ describe("typed representations", () => {
         expect(NodeAssetConnectionPointType.NODE_GEOMETRY).toBe(7);
         expect(NodeAssetConnectionPointType.UNIVERSAL).toBe(8);
         expect(NodeAssetConnectionPointType.USD_SOURCE).toBe(10);
+        expect(NodeAssetConnectionPointType.OBJ_SOURCE).toBe(11);
         expect("REPRESENTATION" in NodeAssetConnectionPointType).toBe(false);
         expect(NodeAssetConnectionPointType[NodeAssetConnectionPointType.GLTF_DOCUMENT]).toBe("GLTF_DOCUMENT");
     });
@@ -112,6 +114,7 @@ describe("typed representations", () => {
         expectTypeOf<NodeAssetValueMap[NodeAssetConnectionPointType.GLTF_DOCUMENT]>().toEqualTypeOf<GltfAsset>();
         expectTypeOf<NodeAssetValueMap[NodeAssetConnectionPointType.USD_STAGE]>().toEqualTypeOf<UsdAsset>();
         expectTypeOf<NodeAssetValueMap[NodeAssetConnectionPointType.USD_SOURCE]>().toEqualTypeOf<UsdSourceAsset>();
+        expectTypeOf<NodeAssetValueMap[NodeAssetConnectionPointType.OBJ_SOURCE]>().toEqualTypeOf<OBJSourceAsset>();
         expectTypeOf<NodeAssetValueMap[NodeAssetConnectionPointType.BABYLON_SCENE]>().toEqualTypeOf<BabylonAsset>();
         expectTypeOf<NodeAssetValueMap[NodeAssetConnectionPointType.NODE_GEOMETRY]>().toEqualTypeOf<NodeGeometryAsset>();
         expectTypeOf<NodeAssetValueMap[NodeAssetConnectionPointType.NUMBER]>().toEqualTypeOf<number>();
