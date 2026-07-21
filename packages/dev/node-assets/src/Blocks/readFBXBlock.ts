@@ -13,6 +13,34 @@ import { GetSerializedNullableString, GetSerializedStringUnion, type NodeAssetBl
 /** The active source kind for a Read FBX block. */
 export type FBXSourceKind = "upload";
 
+function InvalidFBXSourceState(): TypeError {
+    return new TypeError("Invalid serialized FBX source state.");
+}
+
+function ValidateFBXSourceState(data: Nullable<Uint8Array>, source: Nullable<string>, sourceKind: Nullable<FBXSourceKind>): void {
+    if (data === null && source === null && sourceKind === null) {
+        return;
+    }
+    if (data !== null && source !== null && source.length > 0 && sourceKind === "upload") {
+        return;
+    }
+    throw InvalidFBXSourceState();
+}
+
+function DecodeSerializedFBXData(value: Nullable<string>): Nullable<Uint8Array> {
+    if (value === null) {
+        return null;
+    }
+    if (!/^(?:[A-Za-z0-9+/]{4})*(?:[A-Za-z0-9+/]{2}==|[A-Za-z0-9+/]{3}=)?$/.test(value)) {
+        throw InvalidFBXSourceState();
+    }
+    const data = new Uint8Array(DecodeBase64ToBinary(value));
+    if (EncodeArrayBufferToBase64(data) !== value) {
+        throw InvalidFBXSourceState();
+    }
+    return data;
+}
+
 /** Resolves uploaded `.fbx` bytes into an immutable FBX source payload. */
 export class ReadFBXBlock extends NodeAssetBlock {
     /** The class name, used for identification and safe under minification. */
@@ -77,9 +105,10 @@ export class ReadFBXBlock extends NodeAssetBlock {
      * @returns The serialized block.
      */
     public override serialize(): NodeAssetBlockSerialization {
+        ValidateFBXSourceState(this.data, this.source, this.sourceKind);
         return {
             ...super.serialize(),
-            data: this.data ? EncodeArrayBufferToBase64(this.data) : null,
+            data: this.data === null ? null : EncodeArrayBufferToBase64(this.data),
             source: this.source,
             sourceKind: this.sourceKind ?? "",
         };
@@ -91,10 +120,13 @@ export class ReadFBXBlock extends NodeAssetBlock {
      */
     public override _deserialize(serializationObject: NodeAssetBlockSerialization): void {
         super._deserialize(serializationObject);
-        const data = GetSerializedNullableString(serializationObject, "data");
-        this.data = data ? new Uint8Array(DecodeBase64ToBinary(data)) : null;
-        this.source = GetSerializedNullableString(serializationObject, "source");
-        this.sourceKind = GetSerializedStringUnion(serializationObject, "sourceKind", ["upload", ""] as const, "") || null;
+        const data = DecodeSerializedFBXData(GetSerializedNullableString(serializationObject, "data"));
+        const source = GetSerializedNullableString(serializationObject, "source");
+        const sourceKind = GetSerializedStringUnion(serializationObject, "sourceKind", ["upload", ""] as const, "") || null;
+        ValidateFBXSourceState(data, source, sourceKind);
+        this.data = data;
+        this.source = source;
+        this.sourceKind = sourceKind;
     }
 }
 

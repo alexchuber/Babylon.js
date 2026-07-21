@@ -199,4 +199,72 @@ describe("FBX Universal funnel", () => {
 
         expect(() => NodeAsset.Parse(serialization)).toThrow('Invalid serialized block property "sourceKind"');
     });
+
+    it("round-trips empty uploaded bytes without producing a partial active source", () => {
+        const asset = new NodeAsset("empty-fbx-source");
+        const read = new ReadFBXBlock("Read FBX", asset);
+        read.setUploadedSource(new Uint8Array(), "empty.fbx");
+
+        const parsed = NodeAsset.Parse(JSON.parse(JSON.stringify(asset.serialize())));
+        const parsedRead = parsed.attachedBlocks[0] as ReadFBXBlock;
+
+        expect(parsedRead.data).toEqual(new Uint8Array());
+        expect(parsedRead.source).toBe("empty.fbx");
+        expect(parsedRead.sourceKind).toBe("upload");
+    });
+
+    it.each([
+        { data: null, source: "triangle.fbx", sourceKind: "upload" },
+        { data: "", source: null, sourceKind: "upload" },
+        { data: "", source: "triangle.fbx", sourceKind: "" },
+        { data: null, source: "", sourceKind: "" },
+        { data: "not canonical base64", source: "triangle.fbx", sourceKind: "upload" },
+    ])("rejects partial or non-canonical serialized source state: %j", (sourceState) => {
+        const asset = new NodeAsset("invalid-fbx-state");
+        const read = new ReadFBXBlock("Read FBX", asset);
+        const serialization = JSON.parse(JSON.stringify(asset.serialize())) as {
+            blocks: Array<{ data: string | null; source: string | null; sourceKind: string }>;
+        };
+        Object.assign(serialization.blocks[0], sourceState);
+
+        expect(() => NodeAsset.Parse(serialization)).toThrow(/Invalid serialized FBX source state/);
+    });
+
+    it("preserves the conversion failure when every cleanup step also fails", async () => {
+        const exportFailure = new Error("forced conversion failure");
+        const containerCleanupFailure = new Error("forced container cleanup failure");
+        const sceneCleanupFailure = new Error("forced scene cleanup failure");
+        const engineCleanupFailure = new Error("forced engine cleanup failure");
+        const containerDispose = vi.spyOn(AssetContainer.prototype, "dispose").mockImplementationOnce(() => {
+            throw containerCleanupFailure;
+        });
+        const sceneDispose = vi.spyOn(Scene.prototype, "dispose").mockImplementationOnce(() => {
+            throw sceneCleanupFailure;
+        });
+        const engineDispose = vi.spyOn(NullEngine.prototype, "dispose").mockImplementationOnce(() => {
+            throw engineCleanupFailure;
+        });
+        vi.spyOn(GLTF2Export, "GLBAsync").mockRejectedValueOnce(exportFailure);
+
+        try {
+            const error = await CreateExportingAsset(CreateAsciiFbx74TriangleFixture())
+                .buildAsync()
+                .catch((reason: unknown) => reason);
+
+            expect(error).toBeInstanceOf(AggregateError);
+            expect((error as AggregateError).message).toMatch(/failed to convert "triangle\.fbx" to Universal/);
+            expect((error as AggregateError).cause).toMatchObject({ cause: exportFailure });
+            expect((error as AggregateError).errors).toEqual([
+                expect.objectContaining({ cause: exportFailure }),
+                containerCleanupFailure,
+                sceneCleanupFailure,
+                engineCleanupFailure,
+            ]);
+            expect(containerDispose).toHaveBeenCalled();
+            expect(sceneDispose).toHaveBeenCalled();
+            expect(engineDispose).toHaveBeenCalled();
+        } finally {
+            vi.restoreAllMocks();
+        }
+    });
 });

@@ -44,6 +44,7 @@ export class FBXToUniversalBlock extends NodeAssetBlock {
         const engine = new NullEngine();
         const scene = new Scene(engine);
         let container: AssetContainer | undefined;
+        let conversionError: Error | undefined;
         try {
             const loader = new FBXFileLoader();
             container = await loader.loadAssetContainerAsync(scene, source.data, source.rootUrl, undefined, source.source);
@@ -61,19 +62,38 @@ export class FBXToUniversalBlock extends NodeAssetBlock {
                 manifest: { format: "universal", importedFrom: "fbx", source: source.source },
             });
         } catch (error) {
-            throw new Error(`The "${this.name}" block failed to convert "${source.source}" to Universal: ${error instanceof Error ? error.message : String(error)}`, {
+            conversionError = new Error(`The "${this.name}" block failed to convert "${source.source}" to Universal: ${error instanceof Error ? error.message : String(error)}`, {
                 cause: error,
             });
-        } finally {
+        }
+
+        const cleanupErrors: unknown[] = [];
+        if (container) {
             try {
-                container?.dispose();
-            } finally {
-                try {
-                    scene.dispose();
-                } finally {
-                    engine.dispose();
-                }
+                container.dispose();
+            } catch (error) {
+                cleanupErrors.push(error);
             }
+        }
+        try {
+            scene.dispose();
+        } catch (error) {
+            cleanupErrors.push(error);
+        }
+        try {
+            engine.dispose();
+        } catch (error) {
+            cleanupErrors.push(error);
+        }
+
+        if (conversionError) {
+            if (cleanupErrors.length > 0) {
+                throw new AggregateError([conversionError, ...cleanupErrors], `${conversionError.message} FBX resource cleanup also failed.`, { cause: conversionError });
+            }
+            throw conversionError;
+        }
+        if (cleanupErrors.length > 0) {
+            throw new AggregateError(cleanupErrors, `The "${this.name}" block failed to dispose FBX conversion resources.`, { cause: cleanupErrors[0] });
         }
     }
 }
