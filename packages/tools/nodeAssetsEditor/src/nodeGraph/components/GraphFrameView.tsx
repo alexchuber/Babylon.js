@@ -57,6 +57,7 @@ export const GraphFrameView: FunctionComponent<{ frame: IGraphFrame }> = (props)
     const { frame } = props;
     const classes = useStyles();
     const canvas = useCanvasContext();
+    const aggregateNodeId = frame.aggregateNodeId;
 
     const onPointerDown = (event: ReactPointerEvent) => {
         if (event.button !== 0) {
@@ -79,14 +80,14 @@ export const GraphFrameView: FunctionComponent<{ frame: IGraphFrame }> = (props)
             <div className={classes.fill} style={{ backgroundColor: frame.color }} />
             <div className={classes.header} style={{ backgroundColor: frame.color }}>
                 <Caption1 className={classes.headerLabel}>{frame.label}</Caption1>
-                {frame.kind === "aggregate" && frame.aggregateNodeId && (
+                {frame.kind === "aggregate" && aggregateNodeId && (
                     <Button
                         appearance="transparent"
                         icon={ChevronUpRegular}
                         title="Collapse aggregate"
                         ariaLabel="Collapse aggregate"
                         onPointerDown={onCollapsePointerDown}
-                        onClick={() => canvas.editor.aggregatePresentation?.setExpanded(frame.aggregateNodeId!, false)}
+                        onClick={() => canvas.runWhenIdle(() => canvas.editor.aggregatePresentation?.setExpanded(aggregateNodeId, false))}
                     />
                 )}
             </div>

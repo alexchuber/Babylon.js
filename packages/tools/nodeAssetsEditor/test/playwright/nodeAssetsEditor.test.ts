@@ -1,4 +1,4 @@
-import { test, expect, type Page, type Download } from "@playwright/test";
+import { test, expect, type Page, type Download, type Locator } from "@playwright/test";
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 
@@ -29,6 +29,66 @@ type SavedEditorGraph = {
         readonly blocks: readonly SavedBlock[];
     };
 };
+
+type SyntheticTouchPan = {
+    readonly pointerId: number;
+    readonly point: { readonly x: number; readonly y: number };
+};
+
+async function installSyntheticPointerCapture(editor: NodeAssetsEditorPage): Promise<void> {
+    await editor.canvas.evaluate((canvas) => {
+        const capturedPointerIds = new Set<number>();
+        Object.defineProperties(canvas, {
+            hasPointerCapture: { configurable: true, value: (pointerId: number) => capturedPointerIds.has(pointerId) },
+            setPointerCapture: { configurable: true, value: (pointerId: number) => capturedPointerIds.add(pointerId) },
+            releasePointerCapture: { configurable: true, value: (pointerId: number) => capturedPointerIds.delete(pointerId) },
+        });
+    });
+}
+
+async function beginSyntheticTouchPan(editor: NodeAssetsEditorPage, pointerId: number): Promise<SyntheticTouchPan> {
+    const point = await editor.findEmptyCanvasPoint();
+    await editor.canvas.dispatchEvent("pointerdown", {
+        pointerId,
+        pointerType: "touch",
+        isPrimary: true,
+        button: 0,
+        buttons: 1,
+        clientX: point.x,
+        clientY: point.y,
+    });
+    await expect(editor.canvas).toHaveCSS("cursor", "grabbing");
+    return { pointerId, point };
+}
+
+async function endSyntheticTouchPan(editor: NodeAssetsEditorPage, pan: SyntheticTouchPan, eventName: "pointerup" | "pointercancel" | "lostpointercapture"): Promise<void> {
+    if (eventName === "lostpointercapture") {
+        await editor.canvas.evaluate((canvas, pointerId) => canvas.releasePointerCapture(pointerId), pan.pointerId);
+    }
+    await editor.canvas.dispatchEvent(eventName, {
+        pointerId: pan.pointerId,
+        pointerType: "touch",
+        isPrimary: true,
+        button: 0,
+        buttons: 0,
+        clientX: pan.point.x,
+        clientY: pan.point.y,
+    });
+    await expect(editor.canvas).toHaveCSS("cursor", "grab");
+}
+
+async function clickWirePath(page: Page, path: Locator, button: "left" | "right" = "left"): Promise<void> {
+    const point = await path.evaluate((element: SVGPathElement) => {
+        const matrix = element.getScreenCTM();
+        if (!matrix) {
+            throw new Error("Could not resolve the wire path screen transform.");
+        }
+        const pathPoint = element.getPointAtLength(element.getTotalLength() / 2);
+        const screenPoint = pathPoint.matrixTransform(matrix);
+        return { x: screenPoint.x, y: screenPoint.y };
+    });
+    await page.mouse.click(point.x, point.y, { button });
+}
 
 const DefaultOptimizationPipeline: readonly (readonly [string, string])[] = [
     ["Import glTF", "Weld Vertices"],
@@ -680,12 +740,59 @@ test.describe("Node Assets Editor — maintained default pipeline", () => {
         await expect(editor.nodes).toHaveCount(2);
     });
 
-    test("blocks foreign canvas controls while another pointer owns the active pan", async ({ page }) => {
+    test("keeps an ordinary node presentation inert while a touch pan owns the canvas, then restores it on pointerup", async ({ page }) => {
         const editor = new NodeAssetsEditorPage(page);
         await editor.goto();
+        await installSyntheticPointerCapture(editor);
+
+        const node = editor.nodeByTitle("Remove Unused Resources");
+        const collapseNode = node.getByRole("button", { name: "Collapse node" });
+        const pan = await beginSyntheticTouchPan(editor, 11);
+
+        await collapseNode.click();
+        await expect(collapseNode).toBeVisible();
+
+        await endSyntheticTouchPan(editor, pan, "pointerup");
+        await collapseNode.click();
+        const expandNode = node.getByRole("button", { name: "Expand node" });
+        await expect(expandNode).toBeVisible();
+        await expandNode.click();
+        await expect(collapseNode).toBeVisible();
+    });
+
+    test("keeps aggregate presentation inert while a touch pan owns the canvas, then restores it on pointerup", async ({ page }) => {
+        const editor = new NodeAssetsEditorPage(page);
+        await editor.goto();
+        await installSyntheticPointerCapture(editor);
+
+        const aggregateNode = editor.nodeByTitle("Import glTF");
+        const expandAggregate = aggregateNode.getByRole("button", { name: "Expand aggregate" });
+        const compactPan = await beginSyntheticTouchPan(editor, 21);
+
+        await expandAggregate.click();
+        await expect(expandAggregate).toBeVisible();
+
+        await endSyntheticTouchPan(editor, compactPan, "pointerup");
+        await expandAggregate.click();
+        const aggregateFrame = page.getByTestId("aggregate-frame").filter({ hasText: "Import glTF" });
+        const collapseAggregate = aggregateFrame.getByRole("button", { name: "Collapse aggregate" });
+        await expect(collapseAggregate).toBeVisible();
+
+        const expandedPan = await beginSyntheticTouchPan(editor, 22);
+        await collapseAggregate.click();
+        await expect(aggregateFrame).toBeVisible();
+
+        await endSyntheticTouchPan(editor, expandedPan, "pointerup");
+        await collapseAggregate.click();
+        await expect(expandAggregate).toBeVisible();
+    });
+
+    test("keeps minimap and wire selection inert while a touch pan owns the canvas, then restores them on lost capture", async ({ page }) => {
+        const editor = new NodeAssetsEditorPage(page);
+        await editor.goto();
+        await installSyntheticPointerCapture(editor);
 
         const importNode = editor.nodeByTitle("Import glTF");
-        const contextNode = editor.nodeByTitle("Remove Unused Resources");
         const minimap = editor.canvas.locator('[role="presentation"]');
         const wireHitTarget = editor.wires.first().locator("path").first();
         await editor.selectNode("Import glTF");
@@ -698,56 +805,10 @@ test.describe("Node Assets Editor — maintained default pipeline", () => {
                 return { screenX: rect.x, screenY: rect.y };
             });
 
-        const start = await editor.findEmptyCanvasPoint();
-        const minimapBox = await minimap.boundingBox();
-        if (!minimapBox) {
-            throw new Error("Could not resolve the graph minimap for pointer ownership testing.");
-        }
-        await editor.canvas.evaluate((canvas) => {
-            const capturedPointerIds = new Set<number>();
-            Object.defineProperties(canvas, {
-                hasPointerCapture: { configurable: true, value: (pointerId: number) => capturedPointerIds.has(pointerId) },
-                setPointerCapture: { configurable: true, value: (pointerId: number) => capturedPointerIds.add(pointerId) },
-                releasePointerCapture: { configurable: true, value: (pointerId: number) => capturedPointerIds.delete(pointerId) },
-            });
-        });
-        const ownerPointer = {
-            pointerId: 11,
-            pointerType: "touch",
-            isPrimary: true,
-        };
-        const foreignPointer = {
-            pointerId: 22,
-            pointerType: "touch",
-            isPrimary: false,
-        };
-        const minimapPoint = { clientX: minimapBox.x + 16, clientY: minimapBox.y + 16 };
-        await expect(editor.canvas).toHaveCSS("cursor", "grab");
-        await editor.canvas.dispatchEvent("pointerdown", {
-            ...ownerPointer,
-            button: 0,
-            buttons: 1,
-            clientX: start.x,
-            clientY: start.y,
-        });
-        await expect(editor.canvas).toHaveCSS("cursor", "grabbing");
+        const pan = await beginSyntheticTouchPan(editor, 31);
         const beforeForeignActions = await readNodePosition();
-        await minimap.dispatchEvent("pointerdown", {
-            ...foreignPointer,
-            ...minimapPoint,
-            button: 0,
-            buttons: 1,
-        });
-        await wireHitTarget.dispatchEvent("pointerdown", {
-            ...foreignPointer,
-            button: 0,
-            buttons: 1,
-        });
-        await contextNode.dispatchEvent("contextmenu", {
-            ...foreignPointer,
-            button: 2,
-            buttons: 0,
-        });
+        await minimap.click({ position: { x: 16, y: 16 } });
+        await clickWirePath(page, wireHitTarget);
         const afterForeignActions = await readNodePosition();
         expect({
             screenX: afterForeignActions.screenX,
@@ -758,41 +819,99 @@ test.describe("Node Assets Editor — maintained default pipeline", () => {
             screenY: beforeForeignActions.screenY,
             selectedNodeName: "Import glTF",
         });
-        await page.keyboard.press("Escape");
-        await editor.canvas.dispatchEvent("pointercancel", {
-            ...ownerPointer,
-            buttons: 0,
-            clientX: start.x,
-            clientY: start.y,
-        });
-        await expect(editor.canvas).toHaveCSS("cursor", "grab");
 
+        await endSyntheticTouchPan(editor, pan, "lostpointercapture");
+
+        await clickWirePath(page, wireHitTarget);
+        await expect(page.getByText("No selection", { exact: true })).toBeVisible();
+        await editor.selectNode("Import glTF");
         const beforeIdleMinimapNavigation = await readNodePosition();
-        await minimap.dispatchEvent("pointerdown", {
-            ...foreignPointer,
-            ...minimapPoint,
-            button: 0,
-            buttons: 1,
-        });
+        await minimap.click({ position: { x: 16, y: 16 } });
         await expect
             .poll(async () => {
                 const current = await readNodePosition();
                 return Math.abs(current.screenX - beforeIdleMinimapNavigation.screenX) + Math.abs(current.screenY - beforeIdleMinimapNavigation.screenY);
             })
             .toBeGreaterThan(1);
+    });
 
-        await wireHitTarget.dispatchEvent("pointerdown", {
-            ...foreignPointer,
-            button: 0,
-            buttons: 1,
+    test("closes and suppresses context menus while a touch pan owns the canvas, then restores them on pointercancel", async ({ page }) => {
+        const editor = new NodeAssetsEditorPage(page);
+        await editor.goto();
+        await installSyntheticPointerCapture(editor);
+
+        const importNode = editor.nodeByTitle("Import glTF");
+        const contextNode = editor.nodeByTitle("Remove Unused Resources");
+        const wireHitTarget = editor.wires.first().locator("path").first();
+        const visibleMenus = page.locator('[role="menu"]:visible');
+        const selectedNodeName = page.getByRole("textbox").nth(0);
+        await editor.selectNode("Import glTF");
+        await expect(selectedNodeName).toHaveValue("Import glTF");
+        await importNode.getByText("Import glTF", { exact: true }).click({ button: "right" });
+        await page.getByRole("menuitem", { name: "Copy" }).click();
+        await expect(selectedNodeName).toHaveValue("Import glTF");
+
+        const menuPoint = await editor.findEmptyCanvasPoint();
+        await page.mouse.click(menuPoint.x, menuPoint.y, { button: "right" });
+        const paste = page.getByRole("menuitem", { name: "Paste" });
+        await expect(paste).toBeVisible();
+        await expect(paste).toBeEnabled();
+        await expect(selectedNodeName).toHaveValue("Import glTF");
+
+        const beforeOwner = {
+            nodeCount: await editor.nodes.count(),
+            position: await importNode.evaluate((node: HTMLElement) => {
+                const rect = node.getBoundingClientRect();
+                return { x: rect.x, y: rect.y };
+            }),
+        };
+        const pan = await beginSyntheticTouchPan(editor, 41);
+        await expect(selectedNodeName).toHaveValue("Import glTF");
+
+        await expect.soft(visibleMenus).toHaveCount(0);
+        await page.keyboard.press("Enter");
+        await expect.soft(editor.nodes).toHaveCount(beforeOwner.nodeCount);
+        const positionAfterStaleAction = await importNode.evaluate((node: HTMLElement) => {
+            const rect = node.getBoundingClientRect();
+            return { x: rect.x, y: rect.y };
         });
-        await expect(page.getByText("No selection", { exact: true })).toBeVisible();
-        await contextNode.dispatchEvent("contextmenu", {
-            ...foreignPointer,
-            button: 2,
-            buttons: 0,
-        });
-        await expect(page.getByRole("textbox").nth(0)).toHaveValue("Remove Unused Resources");
+        expect.soft(positionAfterStaleAction).toEqual(beforeOwner.position);
+        await expect(selectedNodeName).toHaveValue("Import glTF");
+
+        for (const openMenu of [
+            async () => contextNode.getByText("Remove Unused Resources", { exact: true }).click({ button: "right" }),
+            async () => clickWirePath(page, wireHitTarget, "right"),
+            async () => {
+                const point = await editor.findEmptyCanvasPoint();
+                await page.mouse.click(point.x, point.y, { button: "right" });
+            },
+        ]) {
+            await openMenu();
+            await expect.soft(visibleMenus).toHaveCount(0);
+            if ((await visibleMenus.count()) > 0) {
+                await page.keyboard.press("Escape");
+            }
+            await expect(selectedNodeName).toHaveValue("Import glTF");
+        }
+
+        await endSyntheticTouchPan(editor, pan, "pointercancel");
+
+        await contextNode.getByText("Remove Unused Resources", { exact: true }).click({ button: "right" });
+        await expect(page.getByRole("menuitem", { name: "Copy" })).toBeVisible();
+        await page.keyboard.press("Escape");
+        await clickWirePath(page, wireHitTarget, "right");
+        await expect(page.getByRole("menuitem", { name: "Delete wire" })).toBeVisible();
+        await page.keyboard.press("Escape");
+        const idleCanvasPoint = await editor.findEmptyCanvasPoint();
+        await page.mouse.click(idleCanvasPoint.x, idleCanvasPoint.y, { button: "right" });
+        const beforeIdlePaste = await editor.nodes.count();
+        await expect(paste).toBeVisible();
+        await expect(paste).toBeEnabled();
+        await paste.click();
+        await expect(editor.nodes).toHaveCount(beforeIdlePaste + 1);
+        const fitMenuPoint = await editor.findEmptyCanvasPoint();
+        await page.mouse.click(fitMenuPoint.x, fitMenuPoint.y, { button: "right" });
+        await expect(page.getByRole("menuitem", { name: "Zoom to fit" })).toBeVisible();
         await page.keyboard.press("Escape");
     });
 
