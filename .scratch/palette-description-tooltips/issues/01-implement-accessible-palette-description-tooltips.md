@@ -1,6 +1,6 @@
 # Implement accessible palette description tooltips
 
-Status: ready-for-agent
+Status: resolved
 
 ## Parent
 
@@ -24,15 +24,20 @@ Make the Node Assets Editor palette name-first and compact by removing always-vi
 - [x] Tests are developed first and prove hidden descriptions, touch suppression, mouse hover, focus, accessible semantics, search, and an unchanged palette-item drop through stable locators.
 - [x] Focused unit, Playwright, build/type-check, lint, and format validation passes, followed by a rendered check of the Node Assets Editor dev surface.
 - [x] `/code-review` reports no unresolved findings.
+- [x] The corrected touch-lifecycle implementation landed and root completed final validation and integration.
 
 ## Blocked by
 
-None - can start immediately.
+None.
+
+## Delivery status (resolved)
+
+Feature PR #20 landed in `preview/nae` at merge commit `dea408ba`. Final integration evidence: palette units 13/13; targeted Chromium 1/1 with `retries=0`; full NAE Playwright 44/44 in one run with `retries=0`; NAE production build and changed-file Prettier, ESLint, and CRLF-aware diff checks clean; automatic instruction and agnostic reviews at Sol/Max clean. The browser proof covers the complete touch lifecycle plus mouse-hover, keyboard-focus, and palette-drop recovery.
 
 ## Comments
 
 - 2026-07-21: Implemented compact label-only rows with trimmed shared Fluent description tooltips, visible-label accessible names, keyboard focus, and unchanged drag payloads/search metadata.
 - 2026-07-21: Root review reopened the issue because Fluent also reacts to touch pointer entry, allowing a held contact to open the tooltip after the show delay.
 - Earlier validation, rendered-check, and child-review claims do not cover the reopened final head and are not accepted as landing evidence.
-- The complete touch lifecycle regression and controlled Fluent visibility path passed the palette unit seam (13/13), targeted tooltip Playwright test (1/1), full NAE Playwright project (44/44), NAE production build, changed-file Prettier/ESLint, and diff checks under the exclusive local lease.
-- Automatic agnostic and instructions review lenses at Sol/Max reported no significant issues; landing remains pending, so the issue stays unresolved.
+- 2026-07-21: The corrected controlled-visibility path passed the complete final validation recorded above, including recovery of mouse hover, keyboard focus, and palette drop after touch.
+- 2026-07-21: Automatic instruction and agnostic review lenses at Sol/Max were clean; PR #20 then landed at `dea408ba`, resolving the issue.
