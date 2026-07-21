@@ -242,6 +242,45 @@ map_Kd Textures/tiny.png
     return { asset, read };
 }
 
+function CreateRepeatedBasenameBundlePipeline(textureReferences: readonly [string, string]): NodeAsset {
+    const obj = new TextEncoder().encode(`mtllib materials/catalog.mtl
+o SharedTextures
+v 0 0 0
+v 1 0 0
+v 1 1 0
+v 0 1 0
+vt 0 0
+vt 1 0
+vt 1 1
+vt 0 1
+vn 0 0 1
+usemtl FirstShared
+f 1/1/1 2/2/1 3/3/1
+usemtl SecondShared
+f 1/1/1 3/3/1 4/4/1
+`);
+    const mtl = new TextEncoder().encode(`newmtl FirstShared
+Kd 1.0 0.0 0.0
+map_Kd ${textureReferences[0]}
+newmtl SecondShared
+Kd 0.0 0.0 1.0
+map_Kd ${textureReferences[1]}
+`);
+    const asset = new NodeAsset("repeated-basename-bundle");
+    const read = new ReadOBJBlock("Read OBJ", asset);
+    read.setUploadedSourceBundle([
+        { path: "model.obj", bytes: obj },
+        { path: "materials/catalog.mtl", bytes: mtl },
+        { path: "materials/a/shared.png", bytes: TinyPng },
+        { path: "materials/b/shared.png", bytes: TinyPngWithTrailingByte },
+    ]);
+    const transcoder = new OBJToUniversalBlock("OBJ to Universal", asset);
+    const exporter = new ExportGLTFAggregateBlock("Export glTF", asset);
+    read.output.connectTo(transcoder.input);
+    transcoder.output.connectTo(exporter.input);
+    return asset;
+}
+
 async function CreateUrlPipelineAsync(url: string, bytes = OBJFixture) {
     const asset = new NodeAsset("url-obj");
     const read = new ReadOBJBlock("Read OBJ", asset);
@@ -480,7 +519,7 @@ describe("OBJ Universal funnel", () => {
         });
     });
 
-    it("rejects invalid or ambiguous bundles without replacing the active source", async () => {
+    it("rejects invalid bundles without replacing the active source", async () => {
         const { read } = CreateBundlePipeline();
         const expectedPrimary = read.primary;
         const expectedCompanions = read.companions;
@@ -498,11 +537,6 @@ describe("OBJ Universal funnel", () => {
                 { path: "fixture.obj", bytes: OBJFixture },
                 { path: "Materials/material.mtl", bytes: MTLBundleFixture },
                 { path: "materials/MATERIAL.MTL", bytes: MTLBundleFixture },
-            ],
-            [
-                { path: "fixture.obj", bytes: OBJFixture },
-                { path: "First/material.mtl", bytes: MTLBundleFixture },
-                { path: "Second/material.mtl", bytes: MTLBundleFixture },
             ],
             [
                 { path: "../fixture.obj", bytes: OBJFixture },
@@ -561,6 +595,25 @@ describe("OBJ Universal funnel", () => {
             ])
         );
         expect(facts.textures).toEqual([{ mimeType: "image/png", byteLength: TinyPng.byteLength }]);
+    });
+
+    it("builds exact directory-qualified references when companion basenames repeat", async () => {
+        const asset = CreateRepeatedBasenameBundlePipeline(["materials/a/shared.png", "materials/b/shared.png"]);
+        const facts = await GetAssetFactsAsync(await asset.buildAsync());
+
+        expect(facts.materials).toEqual(
+            expect.arrayContaining([
+                { name: "FirstShared", baseColorFactor: [0.5, 0, 0, 1], hasBaseColorTexture: true },
+                { name: "SecondShared", baseColorFactor: [0, 0, 0.5, 1], hasBaseColorTexture: true },
+            ])
+        );
+        expect(facts.textures).toHaveLength(2);
+        expect(facts.textures).toEqual(
+            expect.arrayContaining([
+                { mimeType: "image/png", byteLength: TinyPng.byteLength },
+                { mimeType: "image/png", byteLength: TinyPngWithTrailingByte.byteLength },
+            ])
+        );
     });
 
     it("uses unambiguous basename fallback for ordinary flat browser references", async () => {

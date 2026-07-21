@@ -76,7 +76,6 @@ function GetSourceFileMimeType(path: string): string | undefined {
 
 function ValidateUploadedFiles(primary: IOBJSourceFile, companions: ReadonlyArray<IOBJSourceFile>): void {
     const normalizedPaths = new Set<string>();
-    const companionBaseNames = new Set<string>();
     const files = [primary, ...companions];
 
     for (let index = 0; index < files.length; index++) {
@@ -103,12 +102,6 @@ function ValidateUploadedFiles(primary: IOBJSourceFile, companions: ReadonlyArra
         if (!normalizedPath.endsWith(".mtl") && (!mimeType || !SupportedTextureMimeTypes.has(mimeType))) {
             throw new TypeError(`The OBJ companion "${file.path}" must be an MTL or supported texture file.`);
         }
-
-        const baseName = normalizedPath.slice(normalizedPath.lastIndexOf("/") + 1);
-        if (companionBaseNames.has(baseName)) {
-            throw new TypeError(`The OBJ companion basename "${baseName}" is ambiguous.`);
-        }
-        companionBaseNames.add(baseName);
     }
 }
 

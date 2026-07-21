@@ -66,6 +66,40 @@ describe("OBJ local file bundle", () => {
         expect(store).toEqual({});
     });
 
+    it("keeps repeated basenames exact and leaves basename-only references unresolved", async () => {
+        const store: Record<string, File> = {};
+        const firstTextureBytes = new Uint8Array([1]);
+        const secondTextureBytes = new Uint8Array([2]);
+        const source = new OBJSourceAsset(
+            {
+                path: "model.obj",
+                bytes: new TextEncoder().encode("mtllib materials/catalog.mtl"),
+            },
+            "model.obj",
+            "upload",
+            [
+                {
+                    path: "materials/catalog.mtl",
+                    bytes: new TextEncoder().encode("newmtl Catalog\nmap_Kd shared.png"),
+                },
+                { path: "materials/a/shared.png", bytes: firstTextureBytes },
+                { path: "materials/b/shared.png", bytes: secondTextureBytes },
+            ]
+        );
+        const lease = AcquireOBJLocalFileBundle(source, {
+            store,
+            createFile: (file) => new File([file.bytes], file.path),
+        });
+        const rootKey = lease.rootUrl.slice("file:".length);
+
+        expect(new Uint8Array(await store[`${rootKey}materials/a/shared.png`].arrayBuffer())).toEqual(firstTextureBytes);
+        expect(new Uint8Array(await store[`${rootKey}materials/b/shared.png`].arrayBuffer())).toEqual(secondTextureBytes);
+        expect(store[`${rootKey}shared.png`]).toBeUndefined();
+
+        lease.dispose();
+        expect(store).toEqual({});
+    });
+
     it("cleans only owned entries and is idempotent", () => {
         const store: Record<string, File> = {};
         const source = CreateSource([{ path: "material.mtl", bytes: Bytes }]);
