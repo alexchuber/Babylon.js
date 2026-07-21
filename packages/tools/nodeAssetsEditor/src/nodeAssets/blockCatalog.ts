@@ -131,7 +131,7 @@ export interface IBlockDescriptor {
     readonly paletteItemId: string;
     /** Human readable label, used both in the palette and as the new node's title. */
     readonly label: string;
-    /** Concise explanation shown in the palette. */
+    /** Optional concise explanation exposed as palette help and used by search. */
     readonly description?: string;
     /** Workflow terms and aliases used by palette search. */
     readonly keywords?: readonly string[];

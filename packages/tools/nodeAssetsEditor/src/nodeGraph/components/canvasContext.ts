@@ -34,6 +34,8 @@ export type CanvasContextValue = {
     readonly selectWire: (wireId: string, event: ReactPointerEvent) => void;
     /** Opens a context menu for the given target at the pointer position. */
     readonly openContextMenu: (target: ContextMenuTarget, event: ReactMouseEvent) => void;
+    /** Runs a discrete canvas action only when no pointer gesture owns the canvas. */
+    readonly runWhenIdle: (action: () => void) => boolean;
 };
 
 const CanvasContext = createContext<CanvasContextValue | undefined>(undefined);
