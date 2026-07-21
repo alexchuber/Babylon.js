@@ -57,4 +57,7 @@ export enum NodeAssetConnectionPointType {
 
     /** A shallow OBJ source payload consumed only by OBJ-to-Universal transcoding. */
     OBJ_SOURCE = 11,
+
+    /** Immutable uploaded FBX source bytes consumed only by FBX-to-Universal transcoding. */
+    FBX_SOURCE = 12,
 }

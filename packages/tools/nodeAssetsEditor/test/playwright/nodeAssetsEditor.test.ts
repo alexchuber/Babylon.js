@@ -198,6 +198,49 @@ function CreateBabylonFunnelEditorFile(): string {
     });
 }
 
+function CreateAsciiFbxTriangle(): Buffer {
+    return Buffer.from(
+        [
+            "; FBX 7.4.0 project file",
+            "GlobalSettings: {",
+            "    Version: 1000",
+            "    Properties70: {",
+            '        P: "UpAxis", "int", "Integer", "",1',
+            '        P: "UpAxisSign", "int", "Integer", "",1',
+            '        P: "FrontAxis", "int", "Integer", "",2',
+            '        P: "FrontAxisSign", "int", "Integer", "",1',
+            '        P: "CoordAxis", "int", "Integer", "",0',
+            '        P: "CoordAxisSign", "int", "Integer", "",1',
+            '        P: "UnitScaleFactor", "double", "Number", "",1',
+            "    }",
+            "}",
+            "Objects: {",
+            '    Geometry: 1, "Geometry::Triangle", "Mesh" {',
+            "        Vertices: *9 {",
+            "            a: 0,0,0,1,0,0,0,1,0",
+            "        }",
+            "        PolygonVertexIndex: *3 {",
+            "            a: 0,1,-3",
+            "        }",
+            "        LayerElementNormal: 0 {",
+            '            MappingInformationType: "ByControlPoint"',
+            '            ReferenceInformationType: "Direct"',
+            "            Normals: *9 {",
+            "                a: 0,0,1,0,0,1,0,0,1",
+            "            }",
+            "        }",
+            "    }",
+            '    Model: 2, "Model::Triangle", "Mesh" {',
+            "    }",
+            "}",
+            "Connections: {",
+            '    C: "OO", 1, 2',
+            '    C: "OO", 2, 0',
+            "}",
+        ].join("\n")
+    );
+}
+
 function createAdvancedCodecEditorFile(): string {
     const source = Buffer.from(BuiltInLibraryFixtures.gltf).toString("base64");
     const blocks = [
@@ -700,6 +743,7 @@ test.describe("Node Assets Editor — maintained default pipeline", () => {
             "Import OBJ",
             "Import USD",
             "Import Babylon",
+            "Import FBX",
             "Import Node Geometry",
             "Weld Vertices",
             "Deduplicate Resources",
@@ -725,7 +769,7 @@ test.describe("Node Assets Editor — maintained default pipeline", () => {
 
         await expect(showPrimitives).not.toBeChecked();
         await expect(nodeGeometryCategory).toHaveCount(0);
-        await expect(categories).toHaveText(["Inputs (5)", "Universal (17)", "glTF (3)"]);
+        await expect(categories).toHaveText(["Inputs (6)", "Universal (17)", "glTF (3)"]);
         await expect(families).toHaveText(["Aggregate imports", "Cleanup", "Reduction", "Structure", "Attributes", "Textures", "Encoding/output"]);
         await expect(items).toHaveText(defaultItems);
         await search.fill("Write glTF");
@@ -737,27 +781,29 @@ test.describe("Node Assets Editor — maintained default pipeline", () => {
         await showPrimitives.check();
         await expect(items).toHaveText(["Write glTF"]);
         await search.clear();
-        await expect(categories).toHaveText(["Inputs (10)", "Universal (22)", "glTF (5)", "OBJ (1)", "USD (1)", "Babylon (1)", "Node Geometry (1)"]);
+        await expect(categories).toHaveText(["Inputs (12)", "Universal (22)", "glTF (5)", "OBJ (1)", "USD (1)", "Babylon (1)", "FBX (1)", "Node Geometry (1)"]);
         await expect(families).toHaveText(["Aggregate imports", "Cleanup", "Reduction", "Structure", "Attributes", "Textures", "Encoding/output"]);
         await expect(items).toHaveText([
-            ...defaultItems.slice(0, 5),
+            ...defaultItems.slice(0, 6),
             "Read glTF",
             "Read OBJ",
             "Read USD",
             "Read Babylon",
+            "Read FBX",
             "Read Node Geometry",
-            ...defaultItems.slice(5, 22),
+            ...defaultItems.slice(6, 23),
             "Universal → glTF",
             "Deduplicate Materials",
             "Deduplicate Textures",
             "Reuse Identical Meshes",
             "Deduplicate Data",
-            ...defaultItems.slice(22),
+            ...defaultItems.slice(23),
             "glTF → Universal",
             "Write glTF",
             "OBJ to Universal",
             "USD → Universal",
             "Babylon → Universal",
+            "FBX → Universal",
             "Node Geometry → Universal",
         ]);
         await expect(nodeGeometryCategory).toBeVisible();
@@ -769,7 +815,8 @@ test.describe("Node Assets Editor — maintained default pipeline", () => {
         await showPrimitives.uncheck();
         await expect(nodeGeometryCategory).toHaveCount(0);
         await expect(editor.paletteItem("Read Babylon")).toHaveCount(0);
-        await expect(categories).toHaveText(["Inputs (5)", "Universal (17)", "glTF (3)"]);
+        await expect(editor.paletteItem("Read FBX")).toHaveCount(0);
+        await expect(categories).toHaveText(["Inputs (6)", "Universal (17)", "glTF (3)"]);
         await expect(items).toHaveText(defaultItems);
         await expect(editor.nodeByTitle("Read Babylon")).toBeVisible();
         await expect(editor.nodeByTitle("Write glTF")).toBeVisible();
@@ -777,7 +824,7 @@ test.describe("Node Assets Editor — maintained default pipeline", () => {
         await showPrimitives.check();
         await page.reload({ waitUntil: "load" });
         await expect(showPrimitives).toBeChecked();
-        await expect(categories).toHaveText(["Inputs (10)", "Universal (22)", "glTF (5)", "OBJ (1)", "USD (1)", "Babylon (1)", "Node Geometry (1)"]);
+        await expect(categories).toHaveText(["Inputs (12)", "Universal (22)", "glTF (5)", "OBJ (1)", "USD (1)", "Babylon (1)", "FBX (1)", "Node Geometry (1)"]);
     });
 
     test("extends node selection with the platform multi-select modifier", async ({ page }) => {
@@ -1798,6 +1845,47 @@ test.describe("Node Assets Editor — Babylon Universal funnel", () => {
         await page.getByRole("button", { name: "Export .glb" }).click();
         const gltf = parseGlbJson(await readDownloadedGlb(await downloadPromise));
         expect(gltf.nodes?.map((node) => node.name)).toContain("babylon-triangle");
+    });
+});
+
+test.describe("Node Assets Editor — FBX Universal aggregate", () => {
+    test.describe.configure({ timeout: 180_000 });
+
+    test("uploads and expands Import FBX, previews its Universal output, and downloads a valid GLB", async ({ page }) => {
+        const editor = new NodeAssetsEditorPage(page);
+        await editor.goto();
+        await editor.waitForNextSuccessfulPreviewBuild();
+
+        await editor.dropPaletteItem("Import FBX", { x: 0.18, y: 0.72 });
+        await editor.selectNode("Import FBX");
+        const fileChooserPromise = page.waitForEvent("filechooser");
+        await page.getByRole("button", { name: "Upload FBX…" }).click();
+        const fileChooser = await fileChooserPromise;
+        await fileChooser.setFiles({
+            name: "triangle.fbx",
+            mimeType: "application/octet-stream",
+            buffer: CreateAsciiFbxTriangle(),
+        });
+        await expect(page.getByRole("textbox").nth(2)).toHaveValue("triangle.fbx");
+
+        await editor.connectPorts(editor.portOfNode("Import FBX", "out"), editor.portOfNode("Export glTF", "in"));
+        await editor.waitForSuccessfulPreviewBuild();
+        await expect(editor.previewCanvas).toBeVisible();
+
+        await editor.nodeByTitle("Import FBX").getByRole("button", { name: "Expand aggregate" }).click();
+        await expect(editor.nodeByTitle("Read FBX")).toBeVisible();
+        await expect(editor.nodeByTitle("FBX → Universal")).toBeVisible();
+        await expect(page.locator('[data-testid="graph-wire"][data-from-node-title="Read FBX"][data-to-node-title="FBX → Universal"]')).toHaveCount(1);
+
+        await editor.selectNode("Read FBX");
+        await expect(page.getByRole("textbox").nth(2)).toHaveValue("triangle.fbx");
+
+        await editor.selectNode("Export glTF");
+        const downloadPromise = page.waitForEvent("download");
+        await page.getByRole("button", { name: "Export .glb" }).click();
+        const exported = parseGlbJson(await readDownloadedGlb(await downloadPromise));
+        expect((exported.meshes ?? []).length).toBe(1);
+        expect((exported.nodes ?? []).map((node) => node.name)).toContain("Triangle");
     });
 });
 
