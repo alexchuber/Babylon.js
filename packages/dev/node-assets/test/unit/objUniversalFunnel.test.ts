@@ -17,6 +17,8 @@ import { NodeAssetConnectionPointType } from "../../src/connection/nodeAssetConn
 import { NodeAsset } from "../../src/nodeAsset";
 import { IsOBJSourceAsset, OBJSourceAsset } from "../../src/representations/objSourceAsset";
 
+vi.mock("draco3dgltf", async () => await vi.importActual("draco3dgltf"));
+
 const OBJFixture = new TextEncoder().encode(`# Synthetic NodeAssets OBJ fixture
 o FirstObject
 v 0 0 0

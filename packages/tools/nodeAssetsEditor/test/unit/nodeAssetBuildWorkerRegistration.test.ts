@@ -11,6 +11,8 @@ import { CreateBlockByClassName, GetRegisteredBlockClassNames } from "node-asset
 import { NodeAsset } from "node-assets/nodeAsset";
 import { CreateBuiltInNodeAssetLibraryEntries, GetDefaultBuiltInNodeAssetLibraryEntry } from "../../src/nodeAssets/builtInLibraryEntries";
 
+vi.mock("draco3dgltf", async () => await vi.importActual("draco3dgltf"));
+
 // The built-in block ClassNames, hardcoded (not derived from the package barrel) so this test fails
 // if the worker realm ever registers a different set than the package publishes. Keep in sync with
 // packages/dev/node-assets/test/unit/blockRegistry.test.ts.
