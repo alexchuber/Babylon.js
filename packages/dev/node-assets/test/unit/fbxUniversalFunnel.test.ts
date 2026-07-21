@@ -1,5 +1,9 @@
 import { WebIO } from "@gltf-transform/core";
 import { ALL_EXTENSIONS } from "@gltf-transform/extensions";
+import { AssetContainer } from "core/assetContainer";
+import { NullEngine } from "core/Engines/nullEngine";
+import { Scene } from "core/scene";
+import { GLTF2Export } from "serializers/glTF/2.0/glTFSerializer";
 import { describe, expect, it, vi } from "vitest";
 
 import { ExportGLTFAggregateBlock } from "../../src/Blocks/exportGLTFAggregateBlock";
@@ -55,6 +59,19 @@ async function ReadStableMeshFactsAsync(glb: Uint8Array): Promise<{
 }
 
 describe("FBX Universal funnel", () => {
+    function CreateExportingAsset(data?: Uint8Array): NodeAsset {
+        const asset = new NodeAsset("fbx-errors");
+        const read = new ReadFBXBlock("Read FBX", asset);
+        if (data) {
+            read.setUploadedSource(data, "triangle.fbx");
+        }
+        const toUniversal = new FBXToUniversalBlock("FBX \u2192 Universal", asset);
+        const exporter = new ExportGLTFAggregateBlock("Export glTF", asset);
+        read.output.connectTo(toUniversal.input);
+        toUniversal.output.connectTo(exporter.input);
+        return asset;
+    }
+
     it("builds an uploaded ASCII FBX through saved aggregate and primitive funnels without fetching", async () => {
         const source = CreateAsciiFbx74TriangleFixture();
 
@@ -122,5 +139,64 @@ describe("FBX Universal funnel", () => {
         } finally {
             vi.unstubAllGlobals();
         }
+    });
+
+    it("accounts uploaded bytes and rejects a missing source before parsing", async () => {
+        await expect(CreateExportingAsset().buildAsync()).rejects.toThrow(/Upload a \.fbx file before building/);
+
+        const source = CreateAsciiFbx74TriangleFixture();
+        await expect(CreateExportingAsset(source).buildAsync({ limits: { maxSourceAssetBytes: source.byteLength - 1 } })).rejects.toMatchObject({
+            code: "NODE_ASSET_LIMIT_SOURCE_BYTES",
+            actual: source.byteLength,
+        });
+    });
+
+    it("rejects malformed FBX contextually while retaining the parser cause", async () => {
+        const error = await CreateExportingAsset(new TextEncoder().encode("not an FBX document")).buildAsync().catch((reason: unknown) => reason);
+
+        expect(error).toBeInstanceOf(Error);
+        expect((error as Error).message).toMatch(/failed to convert "triangle\.fbx" to Universal/);
+        expect((error as Error).cause).toBeInstanceOf(Error);
+    });
+
+    it("disposes the FBX container, scene, and engine on success and export failure", async () => {
+        const containerDispose = vi.spyOn(AssetContainer.prototype, "dispose");
+        const sceneDispose = vi.spyOn(Scene.prototype, "dispose");
+        const engineDispose = vi.spyOn(NullEngine.prototype, "dispose");
+        try {
+            await expect(CreateExportingAsset(CreateAsciiFbx74TriangleFixture()).buildAsync()).resolves.toBeInstanceOf(Uint8Array);
+            expect(containerDispose).toHaveBeenCalled();
+            expect(sceneDispose).toHaveBeenCalled();
+            expect(engineDispose).toHaveBeenCalled();
+
+            containerDispose.mockClear();
+            sceneDispose.mockClear();
+            engineDispose.mockClear();
+            const exportFailure = new Error("forced FBX export failure");
+            vi.spyOn(GLTF2Export, "GLBAsync").mockRejectedValueOnce(exportFailure);
+
+            const error = await CreateExportingAsset(CreateAsciiFbx74TriangleFixture())
+                .buildAsync()
+                .catch((reason: unknown) => reason);
+            expect(error).toBeInstanceOf(Error);
+            expect((error as Error).cause).toBe(exportFailure);
+            expect(containerDispose).toHaveBeenCalled();
+            expect(sceneDispose).toHaveBeenCalled();
+            expect(engineDispose).toHaveBeenCalled();
+        } finally {
+            vi.restoreAllMocks();
+        }
+    });
+
+    it("rejects non-upload source kinds during strict graph parsing", () => {
+        const asset = new NodeAsset("strict-fbx-state");
+        const importer = new ImportFBXAggregateBlock("Import FBX", asset);
+        importer.setUploadedSource(CreateAsciiFbx74TriangleFixture(), "triangle.fbx");
+        const serialization = JSON.parse(JSON.stringify(asset.serialize())) as {
+            blocks: Array<{ subgraph: { blocks: Array<{ sourceKind?: string }> } }>;
+        };
+        serialization.blocks[0].subgraph.blocks[0].sourceKind = "url";
+
+        expect(() => NodeAsset.Parse(serialization)).toThrow('Invalid serialized block property "sourceKind"');
     });
 });

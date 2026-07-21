@@ -24,6 +24,7 @@ import {
     ExportGLTFAggregateBlock,
     ExportGLTFBlock,
     ExportImageBlock,
+    FBXToUniversalBlock,
     ExtractTexture,
     FixFaceWindingBlock,
     FlattenBlock,
@@ -37,6 +38,7 @@ import {
     GLTFToUniversalBlock,
     ImportBabylonBlock,
     ImportBabylonAggregateBlock,
+    ImportFBXAggregateBlock,
     ImportGLTFBlock,
     ImportGLTFAggregateBlock,
     ImportNodeGeometryAggregateBlock,
@@ -81,6 +83,7 @@ import {
     ReadGLTFBlock,
     ReadNodeGeometryBlock,
     ReadBabylonBlock,
+    ReadFBXBlock,
     ReuseIdenticalMeshesBlock,
     ReadUSDBlock,
     USDToUniversalBlock,
@@ -269,12 +272,15 @@ describe("block self-registration", () => {
                     ReadBabylonBlock.ClassName,
                     BabylonToUniversalBlock.ClassName,
                     ImportBabylonAggregateBlock.ClassName,
+                    ReadFBXBlock.ClassName,
+                    FBXToUniversalBlock.ClassName,
+                    ImportFBXAggregateBlock.ClassName,
                     ReadUSDBlock.ClassName,
                     USDToUniversalBlock.ClassName,
                     ImportUSDAggregateBlock.ClassName,
                 ])
             );
-            expect(registeredClassNames).toHaveLength(80);
+            expect(registeredClassNames).toHaveLength(83);
         });
 
         it.each(registeredClassNames)("round-trips %s through serialize/Parse", (className) => {
