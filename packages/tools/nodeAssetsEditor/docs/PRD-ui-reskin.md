@@ -31,15 +31,22 @@ NAE's `MakeModularTool` shell registers: Palette (left), Canvas (center), Proper
 
 ### 2. Toolbar & command surfaces
 
-All four siblings have **no shell-level toolbar** — every command (Save/Load/Snippet/Zoom-to-fit/Reorganize/Reset/etc.) lives as `ButtonLineComponent`/`FileButtonLine` rows inside collapsible sections of the Properties panel's no-selection default view.
+All four siblings have **no shell-level toolbar** — every command lives as `ButtonLineComponent`/`FileButtonLine` rows inside titled, collapsible sections of the Properties panel's no-selection default view: **UI** (Zoom to fit, Reorganize), **FILE** (Save, Load, Generate code, Export), **SNIPPET** (Save/Load via snippet server), **GENERAL** (Name, Mode, Reset to default), etc.
 
 NAE instead has a **dedicated compact toolbar** (Undo, Redo, ZoomToFit, Reorganize, Save, Load) at the shell level via `MakeModularTool`'s `toolbarMode: "compact"`.
 
-| Surface | Sibling convention | NAE today | Verdict |
-|---|---|---|---|
-| Command discoverability | Buried in Properties panel, requires deselecting current node | Always-visible toolbar | ⛔ **Documented exception: keep NAE's dedicated toolbar.** It is a genuine usability improvement over the legacy pattern (commands are visible regardless of selection state) and is consistent with modern Fluent app-shell conventions. Do not regress to embedding commands in the Properties panel. |
-| Visual styling of toolbar buttons | N/A (no toolbar exists) | Fluent `Button`/icon buttons | ✅ keep Fluent-styled, verify icons come from `@fluentui/react-icons` consistently |
-| MCP AI-assistant integration (`McpSessionComponent`) | ✅ present in all 4 siblings' Properties panel | ❌ absent in NAE | ⛔ **Out of scope** — this is a functional/product integration, not a visual reskin concern. Track separately if desired; not part of this PRD's acceptance criteria. |
+**Revised verdict (corrected — subjective UX preference is not a valid basis for divergence; only a concrete domain constraint or a missing sibling analogue is):**
+
+| Command | Sibling convention | Verdict |
+|---|---|---|
+| **Zoom to fit** | Grouped under a labeled **"UI"** section in the Properties panel default view, in every sibling | 🔧 **Align placement/grouping**: relocate into the Properties panel's default (no-selection) view, in a Fluent-styled, clearly labeled section equivalent to sibling's "UI" grouping (e.g., a titled `Accordion`/section named "View" or "UI" containing Zoom to fit + Reorganize together, mirroring the sibling's grouping semantics). Keep the Fluent implementation technology (accordion/button components), but match placement and grouping. |
+| **Reorganize** | Same "UI" section, grouped with Zoom to fit | 🔧 Same relocation, grouped together with Zoom to fit per sibling convention (see above). |
+| **Save** (→ NAE's Save-to-Library) | Grouped under a labeled **"FILE"** section | 🔧 **Align placement/grouping**: relocate into the Properties panel default view under a Fluent-styled section equivalent to "FILE", grouped with Load. |
+| **Load** (→ NAE's Open-Library) | Same "FILE" section, grouped with Save | 🔧 Same relocation, grouped with Save per sibling convention. |
+| **Undo** / **Redo** | **No visible analogue in any sibling** — undo/redo exist only as invisible `Ctrl+Z`/`Ctrl+Y` keyboard shortcuts in every one of NME/NGE/NRGE/NPE; no sibling renders an Undo/Redo button anywhere | ⛔ **Valid, narrow exception**: keep Undo/Redo as visible Fluent toolbar buttons. This qualifies under "missing sibling analogue" (not subjective superiority) — there is no sibling convention to align to for a *visible* undo/redo control, so NAE's addition is a net-new affordance, not a divergence from an existing pattern. Keep as-is. |
+| MCP AI-assistant integration (`McpSessionComponent`) | ✅ present in all 4 siblings' Properties panel | ⛔ **Out of scope** — concrete constraint: this is a functional/product AI-assistant integration unrelated to visual/interaction reskin; adding it would be a feature addition, not a UI parity change. Not part of this PRD's acceptance criteria. |
+
+**Net effect**: NAE's shell-level toolbar is reduced to Undo/Redo only (the one command pair with no sibling analogue to match). Zoom to fit, Reorganize, Save, and Load move into the Properties panel's default (no-selection) view, Fluent-styled, grouped into "View" and "File" sections that mirror sibling placement/grouping semantics. This is a real behavior change from NAE's current always-visible-toolbar convenience — tracked as its own work item (see Decomposition) since it touches shell registration (`nodeAssetsEditorService.tsx`) and the Properties panel (`PropertiesView.tsx`) directly.
 
 ### 3. Palette
 
@@ -189,7 +196,7 @@ NAE instead has a **dedicated compact toolbar** (Undo, Redo, ZoomToFit, Reorgani
 - NG3: Do not change the aggregate/primitive/palette *data model* beyond what's needed to support new interactions (frame authoring, frame/port property tabs).
 - NG4: Do not adopt the Smart Filters Editor's flat/opaque aggregate presentation — explicitly rejected pattern, cited nowhere else in this PRD as a target.
 - NG5: Do not remove or degrade any existing Playwright-covered behavior.
-- NG6: Do not replicate sibling technical debt: no native `window.alert/prompt/confirm` dialogs, no non-Fluent toolbar-in-properties-panel pattern, no raw SVG icon imports, no regression of the Fluent Dialog-based pipeline library to a snippet-ID/`window.prompt()` pattern.
+- NG6: Do not replicate sibling technical debt when relocating commands into the Properties panel (§2): implement with Fluent components (sections/accordion/buttons), not legacy `LineContainerComponent`/`ButtonLineComponent`. Do not adopt native `window.alert/prompt/confirm` dialogs, raw SVG icon imports, or regress the Fluent Dialog-based pipeline library to a snippet-ID/`window.prompt()` pattern — those remain documented exceptions per §11/§14.
 - NG7: Do not add MCP AI-assistant integration, execution-time labels, or breakpoint badges — out of scope, not applicable to NAE's build-pipeline domain (see §6, §2).
 - NG8: Keyboard-shortcut help/cheat-sheet UI and Ctrl+F find-in-graph are optional stretch enhancements, not required acceptance criteria — no sibling editor has either as an enabled-by-default feature.
 
@@ -228,7 +235,7 @@ Every 🔧/➕ item in the parity matrix must have:
 
 - All work lands on feature branches → PRs targeting **`docs/nae/ui-reskin-prd`** (the feature integration branch/PR; never push directly to `preview/nae`, and never target `preview/nae` from an individual work-item PR).
 - `docs/nae/ui-reskin-prd` (PR #42) stays in **draft** until all decomposed work items are integrated, feature-level validation passes, and the 9 representative workflows are visually verified — then it is retitled from "PRD" to the full feature summary and handed to the creator session, which owns merging into `preview/nae`.
-- Sequencing: (1) canvas/palette visual foundations + typography fix + responsive blocker → (2) frame authoring → (3) frame visual/interaction parity (depends on 2) + Log panel (independent) → (4) properties pane (color picker, empty state, frame/port property tabs) → (5) port/wire interaction states (hover, incompatible glow) → (6) library management → (7) canvas interaction polish (disconnect-all, optional find-in-graph) → (8) feature-level validation and final integration.
+- Sequencing: (1) canvas/palette visual foundations + typography fix + responsive blocker + port sizing → (2) frame authoring → (3) frame visual/interaction parity (depends on 2) + Log panel (independent) → (4) properties pane (color picker, empty state, frame/port property tabs, node comment field) → (5) toolbar/command relocation to Properties panel (depends on 4, shares `PropertiesView.tsx`) → (6) port/wire interaction states (hover, incompatible glow) → (7) library management → (8) canvas interaction polish (disconnect-all, optional find-in-graph) → (9) feature-level validation and final integration.
 
 ## Risks
 
