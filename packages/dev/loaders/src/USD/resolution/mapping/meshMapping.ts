@@ -32,6 +32,10 @@ interface IResolvedVertex {
     readonly corner: ITriangulatedCorner;
 }
 
+type ProjectedPoint = readonly [number, number];
+
+const MaxEarClippingChecks = 1_000_000;
+
 /**
  * Maps a Mesh prim into a resolved mesh with triangulated topology and expanded primvars.
  * @param prim Mesh prim to map
@@ -48,7 +52,7 @@ export function ResolveMesh(prim: ISdfPrimSpec, context: IStageMappingContext): 
         return undefined;
     }
 
-    const topology = TriangulateTopology(faceVertexCounts, faceVertexIndices, prim.path, context);
+    const topology = TriangulateTopology(points, faceVertexCounts, faceVertexIndices, prim.path, context);
     const normalSource = ResolveVec3Primvar(prim, "normals", points.length, faceVertexCounts.length, faceVertexIndices.length);
     const uvSources = ResolveUvSources(prim, points.length, faceVertexCounts.length, faceVertexIndices.length);
     const displayColorSource = ResolveVec3Primvar(prim, "primvars:displayColor", points.length, faceVertexCounts.length, faceVertexIndices.length);
@@ -114,7 +118,7 @@ export function BuildMeshPoolKey(mesh: IResolvedMesh): string {
     ].join(";");
 }
 
-function TriangulateTopology(faceVertexCounts: number[], faceVertexIndices: number[], path: string, context: IStageMappingContext): IMeshTopology {
+function TriangulateTopology(points: Vec3[], faceVertexCounts: number[], faceVertexIndices: number[], path: string, context: IStageMappingContext): IMeshTopology {
     const corners: ITriangulatedCorner[] = [];
     const faceRanges: IFaceIndexRange[] = [];
     let faceVertexOffset = 0;
@@ -128,11 +132,16 @@ function TriangulateTopology(faceVertexCounts: number[], faceVertexIndices: numb
             faceVertexOffset += count;
             continue;
         }
-        for (let corner = 1; corner < count - 1; corner++) {
+        const triangulatedCorners = TriangulateFace(points, faceVertexIndices, faceVertexOffset, count);
+        const cornerIndices = triangulatedCorners ?? BuildTriangleFan(count);
+        if (!triangulatedCorners) {
+            context.diagnostics.push({ severity: "warning", path, message: `Face ${faceIndex} could not be robustly triangulated; a triangle fan fallback was used.` });
+        }
+        for (let corner = 0; corner < cornerIndices.length; corner += 3) {
             corners.push(
-                { faceIndex, faceVertexOffset, pointIndex: faceVertexIndices[faceVertexOffset] ?? 0 },
-                { faceIndex, faceVertexOffset: faceVertexOffset + corner, pointIndex: faceVertexIndices[faceVertexOffset + corner] ?? 0 },
-                { faceIndex, faceVertexOffset: faceVertexOffset + corner + 1, pointIndex: faceVertexIndices[faceVertexOffset + corner + 1] ?? 0 }
+                CreateTriangulatedCorner(faceIndex, faceVertexOffset, cornerIndices[corner], faceVertexIndices),
+                CreateTriangulatedCorner(faceIndex, faceVertexOffset, cornerIndices[corner + 1], faceVertexIndices),
+                CreateTriangulatedCorner(faceIndex, faceVertexOffset, cornerIndices[corner + 2], faceVertexIndices)
             );
         }
         faceRanges.push({ indexOffset, indexCount: corners.length - indexOffset });
@@ -140,6 +149,158 @@ function TriangulateTopology(faceVertexCounts: number[], faceVertexIndices: numb
     }
 
     return { corners, faceRanges };
+}
+
+function CreateTriangulatedCorner(faceIndex: number, faceVertexOffset: number, localCornerIndex: number, faceVertexIndices: number[]): ITriangulatedCorner {
+    const cornerOffset = faceVertexOffset + localCornerIndex;
+    return { faceIndex, faceVertexOffset: cornerOffset, pointIndex: faceVertexIndices[cornerOffset] ?? 0 };
+}
+
+function BuildTriangleFan(count: number): number[] {
+    const corners: number[] = [];
+    for (let corner = 1; corner < count - 1; corner++) {
+        corners.push(0, corner, corner + 1);
+    }
+    return corners;
+}
+
+function TriangulateFace(points: Vec3[], faceVertexIndices: number[], faceVertexOffset: number, count: number): number[] | undefined {
+    if (count === 3) {
+        return [0, 1, 2];
+    }
+
+    const facePoints = Array.from({ length: count }, (_, index) => points[faceVertexIndices[faceVertexOffset + index]] ?? ([0, 0, 0] as Vec3));
+    const projected = ProjectFace(facePoints);
+    if (!projected) {
+        return undefined;
+    }
+
+    const area = SignedArea(projected);
+    let minimumX = projected[0][0];
+    let maximumX = minimumX;
+    let minimumY = projected[0][1];
+    let maximumY = minimumY;
+    for (let index = 1; index < projected.length; index++) {
+        minimumX = Math.min(minimumX, projected[index][0]);
+        maximumX = Math.max(maximumX, projected[index][0]);
+        minimumY = Math.min(minimumY, projected[index][1]);
+        maximumY = Math.max(maximumY, projected[index][1]);
+    }
+    const scale = Math.max(maximumX - minimumX, maximumY - minimumY, Number.EPSILON);
+    const epsilon = scale * scale * 1e-12;
+    if (Math.abs(area) <= epsilon) {
+        return undefined;
+    }
+
+    const orientation = area > 0 ? 1 : -1;
+    if (IsConvexPolygon(projected, orientation, epsilon)) {
+        return BuildTriangleFan(count);
+    }
+
+    const remaining = Array.from({ length: count }, (_, index) => index);
+    const triangles: number[] = [];
+    let checks = 0;
+    while (remaining.length > 3) {
+        let earFound = false;
+        for (let index = 0; index < remaining.length; index++) {
+            if (++checks > MaxEarClippingChecks) {
+                return undefined;
+            }
+            const previous = remaining[(index + remaining.length - 1) % remaining.length];
+            const current = remaining[index];
+            const next = remaining[(index + 1) % remaining.length];
+            if (orientation * Cross2D(projected[previous], projected[current], projected[next]) <= epsilon) {
+                continue;
+            }
+            let containsVertex = false;
+            for (const candidate of remaining) {
+                if (candidate === previous || candidate === current || candidate === next) {
+                    continue;
+                }
+                if (++checks > MaxEarClippingChecks) {
+                    return undefined;
+                }
+                if (IsPointInTriangle(projected[candidate], projected[previous], projected[current], projected[next], orientation, epsilon)) {
+                    containsVertex = true;
+                    break;
+                }
+            }
+            if (containsVertex) {
+                continue;
+            }
+
+            triangles.push(previous, current, next);
+            remaining.splice(index, 1);
+            earFound = true;
+            break;
+        }
+        if (!earFound) {
+            return undefined;
+        }
+    }
+
+    triangles.push(remaining[0], remaining[1], remaining[2]);
+    return triangles;
+}
+
+function ProjectFace(points: Vec3[]): ProjectedPoint[] | undefined {
+    let normalX = 0;
+    let normalY = 0;
+    let normalZ = 0;
+    for (let index = 0; index < points.length; index++) {
+        const current = points[index];
+        const next = points[(index + 1) % points.length];
+        normalX += (current[1] - next[1]) * (current[2] + next[2]);
+        normalY += (current[2] - next[2]) * (current[0] + next[0]);
+        normalZ += (current[0] - next[0]) * (current[1] + next[1]);
+    }
+
+    const absoluteX = Math.abs(normalX);
+    const absoluteY = Math.abs(normalY);
+    const absoluteZ = Math.abs(normalZ);
+    const normalMagnitude = Math.max(absoluteX, absoluteY, absoluteZ);
+    if (normalMagnitude === 0 || !Number.isFinite(normalMagnitude)) {
+        return undefined;
+    }
+    if (absoluteX >= absoluteY && absoluteX >= absoluteZ) {
+        return points.map((point) => [point[1], point[2]]);
+    }
+    if (absoluteY >= absoluteZ) {
+        return points.map((point) => [point[0], point[2]]);
+    }
+    return points.map((point) => [point[0], point[1]]);
+}
+
+function SignedArea(points: ProjectedPoint[]): number {
+    let doubledArea = 0;
+    for (let index = 0; index < points.length; index++) {
+        const current = points[index];
+        const next = points[(index + 1) % points.length];
+        doubledArea += current[0] * next[1] - next[0] * current[1];
+    }
+    return doubledArea / 2;
+}
+
+function IsConvexPolygon(points: ProjectedPoint[], orientation: number, epsilon: number): boolean {
+    for (let index = 0; index < points.length; index++) {
+        const previous = points[(index + points.length - 1) % points.length];
+        const current = points[index];
+        const next = points[(index + 1) % points.length];
+        if (orientation * Cross2D(previous, current, next) < -epsilon) {
+            return false;
+        }
+    }
+    return true;
+}
+
+function IsPointInTriangle(point: ProjectedPoint, first: ProjectedPoint, second: ProjectedPoint, third: ProjectedPoint, orientation: number, epsilon: number): boolean {
+    return (
+        orientation * Cross2D(first, second, point) >= -epsilon && orientation * Cross2D(second, third, point) >= -epsilon && orientation * Cross2D(third, first, point) >= -epsilon
+    );
+}
+
+function Cross2D(first: ProjectedPoint, second: ProjectedPoint, third: ProjectedPoint): number {
+    return (second[0] - first[0]) * (third[1] - first[1]) - (second[1] - first[1]) * (third[0] - first[0]);
 }
 
 function ResolveUvSources(prim: ISdfPrimSpec, pointCount: number, faceCount: number, faceVertexCount: number): IPrimvarSource<Vec2>[] {

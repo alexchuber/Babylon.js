@@ -104,7 +104,7 @@ describe("USD fidelity diagnostics", () => {
         expect(diagnostic?.message).not.toMatch(/texture/i);
     });
 
-    it.each(["Capsule", "Cone", "Cube", "Cylinder", "Sphere", "Plane", "BasisCurves", "NurbsCurves", "HermiteCurves", "Points", "NurbsPatch", "TetMesh", "Volume"])(
+    it.each(["Plane", "BasisCurves", "NurbsCurves", "HermiteCurves", "Points", "NurbsPatch", "TetMesh", "Volume"])(
         "emits exactly one diagnostic naming an unsupported %s prim",
         (typeName) => {
             const prim: ISdfPrimSpec = { name: typeName, path: `/${typeName}`, specifier: "def", typeName, properties: {}, children: [] };
@@ -113,6 +113,13 @@ describe("USD fidelity diagnostics", () => {
             expect(diagnostics[0].message).toContain(typeName);
         }
     );
+
+    it.each(["Capsule", "Cone", "Cube", "Cylinder", "Sphere"])("does not flag a supported %s prim as unsupported", (typeName) => {
+        const prim: ISdfPrimSpec = { name: typeName, path: `/${typeName}`, specifier: "def", typeName, properties: {}, children: [] };
+        const stage = MapLayerToResolvedStage(layerOf([prim]));
+        expect(stage.meshes).toHaveLength(1);
+        expect(stage.diagnostics.some((entry) => /not supported/i.test(entry.message) && entry.path === `/${typeName}`)).toBe(false);
+    });
 
     it("does not flag a supported Mesh as unsupported", () => {
         const stage = MapLayerToResolvedStage(layerOf([meshPrim("M")]));

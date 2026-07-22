@@ -10,6 +10,7 @@ import {
 import { type ISdfLayer, type ISdfPrimSpec } from "../sdf/index";
 import { ResolvePrimAnimation } from "./animationMapping";
 import { ResolveCamera } from "./cameraMapping";
+import { ResolveGeometricPrimitive } from "./geometricPrimitiveMapping";
 import { ResolveLight } from "./lightMapping";
 import { ResolveMaterialIndex, GetMaterialBindingPath, GetDisplayColorFallback } from "./materialMapping";
 import { type IStageMappingContext } from "./mappingContext";
@@ -69,7 +70,7 @@ function ResolveStageMetadata(layer: ISdfLayer): IStageMetadata {
     return {
         upAxis: layer.upAxis === "Z" ? "Z" : "Y",
         metersPerUnit: layer.metersPerUnit ?? 0.01,
-        timeCodesPerSecond: layer.timeCodesPerSecond ?? 24,
+        timeCodesPerSecond: layer.timeCodesPerSecond ?? layer.framesPerSecond ?? 24,
         startTimeCode: layer.startTimeCode ?? 0,
         endTimeCode: layer.endTimeCode ?? 0,
         defaultPrimPath: layer.defaultPrim ? (layer.defaultPrim.startsWith("/") ? layer.defaultPrim : `/${layer.defaultPrim}`) : undefined,
@@ -140,15 +141,12 @@ function ApplySchemaPayload(prim: IResolvedPrim, primSpec: ISdfPrimSpec, metadat
         return;
     }
 
-    if (primSpec.typeName !== "Mesh") {
+    const mesh = primSpec.typeName === "Mesh" ? ResolveMesh(primSpec, context) : ResolveGeometricPrimitive(primSpec);
+    if (!mesh) {
         ApplyUnsupportedSchemaDiagnostics(primSpec, context);
         return;
     }
 
-    const mesh = ResolveMesh(primSpec, context);
-    if (!mesh) {
-        return;
-    }
     const meshIndex = PoolMesh(mesh, context);
     if (materialPath) {
         prim.materialBinding = { materialIndex: ResolveMaterialIndex(materialPath, context, GetDisplayColorFallback(primSpec)) };
@@ -160,7 +158,9 @@ function ApplySchemaPayload(prim: IResolvedPrim, primSpec: ISdfPrimSpec, metadat
         prim.kind = "mesh";
         prim.meshIndex = meshIndex;
     }
-    prim.skinning = ResolveSkinning(primSpec, context, metadata.timeCodesPerSecond, mesh);
+    if (primSpec.typeName === "Mesh") {
+        prim.skinning = ResolveSkinning(primSpec, context, metadata.timeCodesPerSecond, mesh);
+    }
 }
 
 function PoolMesh(mesh: NonNullable<ReturnType<typeof ResolveMesh>>, context: IStageMappingContext): number {
@@ -200,25 +200,9 @@ function ApplyUnsupportedSchemaDiagnostics(primSpec: ISdfPrimSpec, context: ISta
     }
 }
 
-// Renderable UsdGeom gprim types this loader cannot yet import. They are skipped, so surface a
-// diagnostic rather than dropping them silently.
 // Renderable UsdGeom gprim/curve/volume types this loader cannot yet import. They are skipped, so
-// surface a diagnostic rather than dropping them silently. The supported Mesh is intentionally absent.
-const UnsupportedRenderableSchemas = [
-    "Capsule",
-    "Cone",
-    "Cube",
-    "Cylinder",
-    "Sphere",
-    "Plane",
-    "BasisCurves",
-    "NurbsCurves",
-    "HermiteCurves",
-    "Points",
-    "NurbsPatch",
-    "TetMesh",
-    "Volume",
-];
+// surface a diagnostic rather than dropping them silently.
+const UnsupportedRenderableSchemas = ["Plane", "BasisCurves", "NurbsCurves", "HermiteCurves", "Points", "NurbsPatch", "TetMesh", "Volume"];
 
 function IsUnsupportedRenderableSchema(typeName: string | undefined): boolean {
     return typeName !== undefined && UnsupportedRenderableSchemas.includes(typeName);

@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import * as fflate from "fflate";
 import { NullEngine } from "core/Engines/nullEngine";
+import { type AbstractMesh } from "core/Meshes/abstractMesh";
 import { Scene } from "core/scene";
 import { PBRMaterial } from "core/Materials/PBR/pbrMaterial.pure";
 import { USDFileLoader } from "loaders/USD/usdFileLoader";
@@ -230,7 +231,433 @@ def Xform "World"
 }
 `;
 
+const geometricPrimitivesUsda = `#usda 1.0
+(
+    upAxis = "Y"
+    metersPerUnit = 1
+)
+
+def Cube "Cube"
+{
+}
+
+def Sphere "Sphere"
+{
+}
+
+def Cylinder "Cylinder"
+{
+}
+
+def Cone "Cone"
+{
+}
+
+def Capsule "Capsule"
+{
+}
+`;
+
+const authoredGeometricPrimitivesUsda = `#usda 1.0
+(
+    upAxis = "Y"
+    metersPerUnit = 1
+)
+
+def Xform "World"
+{
+    rel material:binding = </World/Material>
+
+    def Cube "Cube"
+    {
+        double size = 4
+    }
+
+    def Sphere "Sphere"
+    {
+        double radius = 0.25
+    }
+
+    def Cylinder "Cylinder"
+    {
+        double radius = 0.5
+        double height = 4
+        uniform token axis = "X"
+    }
+
+    def Cone "Cone"
+    {
+        double radius = 1.5
+        double height = 6
+        uniform token axis = "Y"
+    }
+
+    def Capsule "Capsule"
+    {
+        double radius = 0.75
+        double height = 2
+        uniform token axis = "X"
+    }
+
+    def Material "Material"
+    {
+        def Shader "Preview"
+        {
+            uniform token info:id = "UsdPreviewSurface"
+            color3f inputs:diffuseColor = (0.2, 0.4, 0.8)
+        }
+    }
+}
+`;
+
+function expectMeshExtents(mesh: AbstractMesh, minimum: readonly number[], maximum: readonly number[]): void {
+    const bounds = mesh.getBoundingInfo().boundingBox;
+    for (let component = 0; component < 3; component++) {
+        expect(bounds.minimum.asArray()[component]).toBeCloseTo(minimum[component]);
+        expect(bounds.maximum.asArray()[component]).toBeCloseTo(maximum[component]);
+    }
+}
+
+function getTriangleAreaSquared(positions: Float32Array, first: number, second: number, third: number): number {
+    const firstOffset = first * 3;
+    const secondOffset = second * 3;
+    const thirdOffset = third * 3;
+    const abX = positions[secondOffset] - positions[firstOffset];
+    const abY = positions[secondOffset + 1] - positions[firstOffset + 1];
+    const abZ = positions[secondOffset + 2] - positions[firstOffset + 2];
+    const acX = positions[thirdOffset] - positions[firstOffset];
+    const acY = positions[thirdOffset + 1] - positions[firstOffset + 1];
+    const acZ = positions[thirdOffset + 2] - positions[firstOffset + 2];
+    const crossX = abY * acZ - abZ * acY;
+    const crossY = abZ * acX - abX * acZ;
+    const crossZ = abX * acY - abY * acX;
+    return crossX * crossX + crossY * crossY + crossZ * crossZ;
+}
+
+function getTriangleNormalAlignment(positions: Float32Array, normals: Float32Array, first: number, second: number, third: number): number {
+    const firstOffset = first * 3;
+    const secondOffset = second * 3;
+    const thirdOffset = third * 3;
+    const abX = positions[secondOffset] - positions[firstOffset];
+    const abY = positions[secondOffset + 1] - positions[firstOffset + 1];
+    const abZ = positions[secondOffset + 2] - positions[firstOffset + 2];
+    const acX = positions[thirdOffset] - positions[firstOffset];
+    const acY = positions[thirdOffset + 1] - positions[firstOffset + 1];
+    const acZ = positions[thirdOffset + 2] - positions[firstOffset + 2];
+    const crossX = abY * acZ - abZ * acY;
+    const crossY = abZ * acX - abX * acZ;
+    const crossZ = abX * acY - abY * acX;
+    const normalX = normals[firstOffset] + normals[secondOffset] + normals[thirdOffset];
+    const normalY = normals[firstOffset + 1] + normals[secondOffset + 1] + normals[thirdOffset + 1];
+    const normalZ = normals[firstOffset + 2] + normals[secondOffset + 2] + normals[thirdOffset + 2];
+    return crossX * normalX + crossY * normalY + crossZ * normalZ;
+}
+
 describe("USD loader integration", () => {
+    it("imports USD geometric schemas with their default extents", async () => {
+        const engine = new NullEngine();
+        const scene = new Scene(engine);
+        const loader = new USDFileLoader();
+
+        const result = await loader.importMeshAsync(null, scene, geometricPrimitivesUsda, "");
+
+        const expectedExtents = [
+            { name: "Cube", minimum: [-1, -1, -1], maximum: [1, 1, 1] },
+            { name: "Sphere", minimum: [-1, -1, -1], maximum: [1, 1, 1] },
+            { name: "Cylinder", minimum: [-1, -1, -1], maximum: [1, 1, 1] },
+            { name: "Cone", minimum: [-1, -1, -1], maximum: [1, 1, 1] },
+            { name: "Capsule", minimum: [-0.5, -0.5, -1], maximum: [0.5, 0.5, 1] },
+        ];
+        for (const expected of expectedExtents) {
+            const mesh = result.meshes.find((candidate) => candidate.name === expected.name);
+            expect(mesh, `${expected.name} should produce a mesh`).toBeDefined();
+            expectMeshExtents(mesh!, expected.minimum, expected.maximum);
+        }
+
+        scene.dispose();
+        engine.dispose();
+    });
+
+    it("applies authored dimensions, axes, and inherited materials to USD geometric schemas", async () => {
+        const engine = new NullEngine();
+        const scene = new Scene(engine);
+        const loader = new USDFileLoader();
+
+        const result = await loader.importMeshAsync(null, scene, authoredGeometricPrimitivesUsda, "");
+
+        const expectedExtents = [
+            { name: "Cube", minimum: [-2, -2, -2], maximum: [2, 2, 2] },
+            { name: "Sphere", minimum: [-0.25, -0.25, -0.25], maximum: [0.25, 0.25, 0.25] },
+            { name: "Cylinder", minimum: [-2, -0.5, -0.5], maximum: [2, 0.5, 0.5] },
+            { name: "Cone", minimum: [-1.5, -3, -1.5], maximum: [1.5, 3, 1.5] },
+            { name: "Capsule", minimum: [-1.75, -0.75, -0.75], maximum: [1.75, 0.75, 0.75] },
+        ];
+        for (const expected of expectedExtents) {
+            const mesh = result.meshes.find((candidate) => candidate.name === expected.name);
+            expect(mesh, `${expected.name} should produce a mesh`).toBeDefined();
+            expectMeshExtents(mesh!, expected.minimum, expected.maximum);
+            expect(mesh!.material).toBeInstanceOf(PBRMaterial);
+            expect((mesh!.material as PBRMaterial).albedoColor.asArray()).toEqual([0.2, 0.4, 0.8]);
+        }
+
+        scene.dispose();
+        engine.dispose();
+    });
+
+    it("does not emit zero-area triangles for positive-size USD geometric schemas", async () => {
+        const stage = await ResolveUsdStageWithFetcherAsync(geometricPrimitivesUsda, "", "primitives.usda", {}, async (identifier) => {
+            throw new Error(`No external layers expected, but requested: ${identifier}`);
+        });
+
+        for (const mesh of stage.meshes) {
+            for (let offset = 0; offset < mesh.indices.length; offset += 3) {
+                const first = mesh.indices[offset];
+                const second = mesh.indices[offset + 1];
+                const third = mesh.indices[offset + 2];
+                expect(getTriangleAreaSquared(mesh.positions, first, second, third)).toBeGreaterThan(1e-12);
+                expect(getTriangleNormalAlignment(mesh.positions, mesh.normals!, first, second, third)).toBeGreaterThan(0);
+            }
+        }
+    });
+
+    it("preserves left-handed orientation and double-sided state on intrinsic geometry", async () => {
+        const stage = await ResolveUsdStageWithFetcherAsync(
+            `#usda 1.0
+def Cube "InsideOut"
+{
+    uniform token orientation = "leftHanded"
+    uniform bool doubleSided = true
+}
+`,
+            "",
+            "orientation.usda",
+            {},
+            async (identifier) => {
+                throw new Error(`No external layers expected, but requested: ${identifier}`);
+            }
+        );
+
+        const mesh = stage.meshes[0];
+        const first = mesh.indices[0] * 3;
+        const second = mesh.indices[1] * 3;
+        const third = mesh.indices[2] * 3;
+        const abX = mesh.positions[second] - mesh.positions[first];
+        const abY = mesh.positions[second + 1] - mesh.positions[first + 1];
+        const acX = mesh.positions[third] - mesh.positions[first];
+        const acY = mesh.positions[third + 1] - mesh.positions[first + 1];
+        const geometricNormalZ = abX * acY - abY * acX;
+
+        expect(mesh.orientation).toBe("leftHanded");
+        expect(mesh.doubleSided).toBe(true);
+        expect(geometricNormalZ * mesh.normals![first + 2]).toBeLessThan(0);
+    });
+
+    it("uses framesPerSecond when timeCodesPerSecond is absent", async () => {
+        const stage = await ResolveUsdStageWithFetcherAsync(
+            `#usda 1.0
+(
+    framesPerSecond = 60
+)
+
+def Xform "Animated"
+{
+    double3 xformOp:translate.timeSamples = {
+        0: (0, 0, 0),
+        60: (1, 0, 0),
+    }
+    uniform token[] xformOpOrder = ["xformOp:translate"]
+}
+`,
+            "",
+            "animation.usda",
+            {},
+            async (identifier) => {
+                throw new Error(`No external layers expected, but requested: ${identifier}`);
+            }
+        );
+
+        expect(stage.metadata.timeCodesPerSecond).toBe(60);
+        expect(Array.from(stage.root.children[0].animation!.tracks[0].times)).toEqual([0, 1]);
+    });
+
+    it("prefers timeCodesPerSecond over framesPerSecond", async () => {
+        const stage = await ResolveUsdStageWithFetcherAsync(
+            `#usda 1.0
+(
+    framesPerSecond = 24
+    timeCodesPerSecond = 60
+)
+
+def Xform "Animated"
+{
+    double3 xformOp:translate.timeSamples = {
+        0: (0, 0, 0),
+        60: (1, 0, 0),
+    }
+    uniform token[] xformOpOrder = ["xformOp:translate"]
+}
+`,
+            "",
+            "animation.usda",
+            {},
+            async (identifier) => {
+                throw new Error(`No external layers expected, but requested: ${identifier}`);
+            }
+        );
+
+        expect(stage.metadata.timeCodesPerSecond).toBe(60);
+        expect(Array.from(stage.root.children[0].animation!.tracks[0].times)).toEqual([0, 1]);
+    });
+
+    it("preserves authored face-varying normals through triangulation", async () => {
+        const stage = await ResolveUsdStageWithFetcherAsync(
+            `#usda 1.0
+def Mesh "AuthoredNormals"
+{
+    uniform token subdivisionScheme = "none"
+    int[] faceVertexCounts = [4]
+    int[] faceVertexIndices = [0, 1, 2, 3]
+    point3f[] points = [(-1, -1, 0), (1, -1, 0), (1, 1, 0), (-1, 1, 0)]
+    normal3f[] normals = [(0, 1, 0), (0, 1, 0), (0, 1, 0), (0, 1, 0)] (
+        interpolation = "faceVarying"
+    )
+}
+`,
+            "",
+            "normals.usda",
+            {},
+            async (identifier) => {
+                throw new Error(`No external layers expected, but requested: ${identifier}`);
+            }
+        );
+
+        const normals = Array.from(stage.meshes[0].normals!);
+        expect(normals).toHaveLength(12);
+        for (let offset = 0; offset < normals.length; offset += 3) {
+            expect(normals.slice(offset, offset + 3)).toEqual([0, 1, 0]);
+        }
+    });
+
+    it("triangulates concave polygon faces without filling the concavity", async () => {
+        const stage = await ResolveUsdStageWithFetcherAsync(
+            `#usda 1.0
+def Mesh "Concave"
+{
+    uniform token subdivisionScheme = "none"
+    int[] faceVertexCounts = [8]
+    int[] faceVertexIndices = [0, 1, 2, 3, 4, 5, 6, 7]
+    point3f[] points = [(0, 0, 0), (3, 0, 0), (3, 3, 0), (2, 3, 0), (2, 1, 0), (1, 1, 0), (1, 3, 0), (0, 3, 0)]
+    normal3f[] normals = [(0, 0, 1), (1, 0, 1), (2, 0, 1), (3, 0, 1), (4, 0, 1), (5, 0, 1), (6, 0, 1), (7, 0, 1)] (
+        interpolation = "faceVarying"
+    )
+}
+`,
+            "",
+            "concave.usda",
+            {},
+            async (identifier) => {
+                throw new Error(`No external layers expected, but requested: ${identifier}`);
+            }
+        );
+
+        const mesh = stage.meshes[0];
+        let triangulatedArea = 0;
+        for (let offset = 0; offset < mesh.indices.length; offset += 3) {
+            const pointA = mesh.indices[offset] * 3;
+            const pointB = mesh.indices[offset + 1] * 3;
+            const pointC = mesh.indices[offset + 2] * 3;
+            triangulatedArea +=
+                Math.abs(
+                    (mesh.positions[pointB] - mesh.positions[pointA]) * (mesh.positions[pointC + 1] - mesh.positions[pointA + 1]) -
+                        (mesh.positions[pointB + 1] - mesh.positions[pointA + 1]) * (mesh.positions[pointC] - mesh.positions[pointA])
+                ) / 2;
+        }
+
+        expect(mesh.indices).toHaveLength(18);
+        expect(triangulatedArea).toBeCloseTo(7);
+        expect(mesh.sourcePointIndices).toBeDefined();
+        for (let vertex = 0; vertex < mesh.sourcePointIndices!.length; vertex++) {
+            expect(mesh.normals![vertex * 3]).toBe(mesh.sourcePointIndices![vertex]);
+        }
+    });
+
+    it("triangulates concave polygon faces independently of their coordinate offset", async () => {
+        const stage = await ResolveUsdStageWithFetcherAsync(
+            `#usda 1.0
+def Mesh "TranslatedConcave"
+{
+    uniform token subdivisionScheme = "none"
+    int[] faceVertexCounts = [8]
+    int[] faceVertexIndices = [0, 1, 2, 3, 4, 5, 6, 7]
+    point3f[] points = [
+        (10000000, 10000000, 0),
+        (10000003, 10000000, 0),
+        (10000003, 10000003, 0),
+        (10000002, 10000003, 0),
+        (10000002, 10000001, 0),
+        (10000001, 10000001, 0),
+        (10000001, 10000003, 0),
+        (10000000, 10000003, 0)
+    ]
+}
+`,
+            "",
+            "translated-concave.usda",
+            {},
+            async (identifier) => {
+                throw new Error(`No external layers expected, but requested: ${identifier}`);
+            }
+        );
+
+        const mesh = stage.meshes[0];
+        let triangulatedArea = 0;
+        for (let offset = 0; offset < mesh.indices.length; offset += 3) {
+            triangulatedArea += Math.sqrt(getTriangleAreaSquared(mesh.positions, mesh.indices[offset], mesh.indices[offset + 1], mesh.indices[offset + 2])) / 2;
+        }
+
+        expect(mesh.indices).toHaveLength(18);
+        expect(triangulatedArea).toBeCloseTo(7);
+    });
+
+    it("triangulates concave polygon faces independently of their coordinate scale", async () => {
+        const scale = 0.000000001;
+        const stage = await ResolveUsdStageWithFetcherAsync(
+            `#usda 1.0
+def Mesh "SmallConcave"
+{
+    uniform token subdivisionScheme = "none"
+    int[] faceVertexCounts = [8]
+    int[] faceVertexIndices = [0, 1, 2, 3, 4, 5, 6, 7]
+    point3f[] points = [
+        (0, 0, 0),
+        (0.000000003, 0, 0),
+        (0.000000003, 0.000000003, 0),
+        (0.000000002, 0.000000003, 0),
+        (0.000000002, 0.000000001, 0),
+        (0.000000001, 0.000000001, 0),
+        (0.000000001, 0.000000003, 0),
+        (0, 0.000000003, 0)
+    ]
+}
+`,
+            "",
+            "small-concave.usda",
+            {},
+            async (identifier) => {
+                throw new Error(`No external layers expected, but requested: ${identifier}`);
+            }
+        );
+
+        const mesh = stage.meshes[0];
+        let triangulatedArea = 0;
+        for (let offset = 0; offset < mesh.indices.length; offset += 3) {
+            triangulatedArea += Math.sqrt(getTriangleAreaSquared(mesh.positions, mesh.indices[offset], mesh.indices[offset + 1], mesh.indices[offset + 2])) / 2;
+        }
+
+        expect(mesh.indices).toHaveLength(18);
+        expect(triangulatedArea / (scale * scale)).toBeCloseTo(7);
+    });
+
     it("composes a referenced child layer into the scene via an injected fetcher", async () => {
         const engine = new NullEngine();
         const scene = new Scene(engine);

@@ -390,6 +390,9 @@ class UsdaParser {
                 case "timeCodesPerSecond":
                     layer.timeCodesPerSecond = RawToNumber(value);
                     break;
+                case "framesPerSecond":
+                    layer.framesPerSecond = RawToNumber(value);
+                    break;
                 case "startTimeCode":
                     layer.startTimeCode = RawToNumber(value);
                     break;

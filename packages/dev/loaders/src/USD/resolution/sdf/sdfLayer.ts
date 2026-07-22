@@ -26,7 +26,7 @@ import { type SdfMetadata } from "./sdfValue";
  * Time remapping applied by sublayers, references, and payloads.
  */
 export interface ISdfLayerOffset {
-    /** Offset added to the referenced layer's time codes before scaling. */
+    /** Offset added to the referenced layer's time codes after scaling. */
     offset: number;
     /** Scale applied to the referenced layer's time codes. */
     scale: number;
@@ -80,6 +80,8 @@ export interface ISdfLayer {
     metersPerUnit?: number;
     /** Authored time codes per second. When absent, composition applies USD's fallback. */
     timeCodesPerSecond?: number;
+    /** Authored playback frame rate; on a root layer, this is the legacy fallback when timeCodesPerSecond is absent. */
+    framesPerSecond?: number;
     /** Authored start time code for playback. */
     startTimeCode?: number;
     /** Authored end time code for playback. */

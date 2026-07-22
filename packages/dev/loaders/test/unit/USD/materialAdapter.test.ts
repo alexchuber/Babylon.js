@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { NullEngine } from "core/Engines/nullEngine";
+import { PBRMaterial } from "core/Materials/PBR/pbrMaterial.pure";
 import { Scene } from "core/scene";
 import { Texture } from "core/Materials/Textures/texture.pure";
 import { type IResolvedMaterial } from "loaders/USD/resolution/resolvedStage";
@@ -91,6 +92,94 @@ describe("USD material adapter", () => {
 
         expect(material.microSurface).toBeCloseTo(0.2);
         expect(material.microSurfaceTexture).toBeNull();
+
+        scene.dispose();
+        engine.dispose();
+    });
+
+    it.each([
+        { name: "alpha test", opacity: 1, opacityThreshold: 0.5, expected: PBRMaterial.PBRMATERIAL_ALPHATEST },
+        { name: "alpha blend", opacity: 0.5, opacityThreshold: undefined, expected: PBRMaterial.PBRMATERIAL_ALPHABLEND },
+        { name: "alpha test and blend", opacity: 0.5, opacityThreshold: 0.5, expected: PBRMaterial.PBRMATERIAL_ALPHATESTANDBLEND },
+    ])("selects $name from resolved opacity inputs", ({ opacity, opacityThreshold, expected }) => {
+        const engine = new NullEngine();
+        const scene = new Scene(engine);
+        const resolvedMaterial: IResolvedMaterial = {
+            name: "Transparency",
+            baseColor: [1, 1, 1],
+            opacity,
+            opacityThreshold,
+            metallic: 0,
+            roughness: 0.5,
+            emissiveColor: [0, 0, 0],
+            ior: 1.5,
+            occlusion: 1,
+            clearcoat: 0,
+            clearcoatRoughness: 0,
+            useSpecularWorkflow: false,
+            specularColor: [1, 1, 1],
+            textures: {},
+        };
+
+        const material = CreateMaterialFromResolved(resolvedMaterial, scene, {});
+
+        expect(material.transparencyMode).toBe(expected);
+        if (opacityThreshold !== undefined) {
+            expect(material.alphaCutOff).toBe(opacityThreshold);
+        }
+
+        scene.dispose();
+        engine.dispose();
+    });
+
+    it("maps a packed metallic-roughness texture and black wrap mode", () => {
+        const engine = new NullEngine();
+        const scene = new Scene(engine);
+        const resolvedMaterial: IResolvedMaterial = {
+            name: "PackedMetallicRoughness",
+            baseColor: [1, 1, 1],
+            opacity: 1,
+            metallic: 1,
+            roughness: 1,
+            emissiveColor: [0, 0, 0],
+            ior: 1.5,
+            occlusion: 1,
+            clearcoat: 0,
+            clearcoatRoughness: 0,
+            useSpecularWorkflow: false,
+            specularColor: [1, 1, 1],
+            textures: {
+                metallic: {
+                    uri: "packed.png",
+                    data: OneByOnePng,
+                    uvSet: 0,
+                    wrapU: "black",
+                    wrapV: "black",
+                    colorSpace: "raw",
+                    channel: "b",
+                    scale: [1, 1, 0.25, 1],
+                },
+                roughness: {
+                    uri: "packed.png",
+                    data: OneByOnePng,
+                    uvSet: 0,
+                    wrapU: "black",
+                    wrapV: "black",
+                    colorSpace: "raw",
+                    channel: "g",
+                },
+            },
+        };
+
+        const material = CreateMaterialFromResolved(resolvedMaterial, scene, {});
+
+        expect(material.metallicTexture).toBeInstanceOf(Texture);
+        expect(material.microSurfaceTexture).toBeNull();
+        expect(material.useMetallnessFromMetallicTextureBlue).toBe(true);
+        expect(material.useRoughnessFromMetallicTextureGreen).toBe(true);
+        expect(material.metallicTexture!.wrapU).toBe(Texture.CLAMP_ADDRESSMODE);
+        expect(material.metallicTexture!.wrapV).toBe(Texture.CLAMP_ADDRESSMODE);
+        expect(material.metallicTexture!.level).toBeCloseTo(0.25);
 
         scene.dispose();
         engine.dispose();

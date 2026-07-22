@@ -459,6 +459,10 @@ function ApplyLayerFields(layer: ISdfLayer, fieldReps: Map<string, bigint>, cont
     if (timeCodesPerSecond?.type === "double" || timeCodesPerSecond?.type === "float") {
         layer.timeCodesPerSecond = timeCodesPerSecond.value;
     }
+    const framesPerSecond = DecodeField(context, fieldReps, "framesPerSecond");
+    if (framesPerSecond?.type === "double" || framesPerSecond?.type === "float") {
+        layer.framesPerSecond = framesPerSecond.value;
+    }
     const startTimeCode = DecodeField(context, fieldReps, "startTimeCode");
     if (startTimeCode?.type === "double" || startTimeCode?.type === "float") {
         layer.startTimeCode = startTimeCode.value;

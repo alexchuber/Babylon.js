@@ -4,8 +4,10 @@ import { ParseUsda } from "loaders/USD/resolution/parser/usda/usdaParser";
 
 const BootstrapSize = 88;
 const SpecTypePrim = 6;
+const SpecTypePseudoRoot = 7;
 const SpecTypeAttribute = 1;
 const ValueTypeInt = 3;
+const ValueTypeDouble = 9;
 const ValueTypeToken = 11;
 const ValueTypeQuatf = 17;
 
@@ -96,6 +98,12 @@ def Xform "root"
         });
     });
 
+    it("decodes framesPerSecond from pseudo-root layer metadata", () => {
+        const layer = ParseCrate(CreateLayerMetadataCrate().buffer, "memory:metadata.usdc");
+
+        expect(layer.framesPerSecond).toBe(60);
+    });
+
     it("decodes inlined attribute values into the property's typeName and default", () => {
         const layer = ParseCrate(CreateAttributeCrate().buffer, "memory:attribute.usdc");
 
@@ -153,6 +161,26 @@ function CreateAttributeCrate(): Uint8Array {
     }
 
     return AssembleCrate(sectionRecords);
+}
+
+function CreateLayerMetadataCrate(): Uint8Array {
+    const payload = Bytes(Float64Bytes([60]));
+    const tokenBlob = AsciiBytes("root\0framesPerSecond\0");
+    const sections = [
+        ["TOKENS", Bytes([...Uint64Bytes(2), ...Uint64Bytes(tokenBlob.length), ...tokenBlob])],
+        ["STRINGS", Bytes(Uint64Bytes(0))],
+        ["FIELDS", Bytes([...Uint64Bytes(1), ...FieldRecordBytes(1, ValueRep(ValueTypeDouble, BootstrapSize))])],
+        ["FIELDSETS", Bytes([...Uint64Bytes(3), ...Uint32Bytes(0xffffffff), ...Uint32Bytes(0), ...Uint32Bytes(0xffffffff)])],
+        ["PATHS", Bytes([...Uint64Bytes(2), ...PathHeaderBytes(0, 0, 1), ...PathHeaderBytes(1, 0, 0)])],
+        ["SPECS", Bytes([...Uint64Bytes(1), ...Uint32Bytes(1), ...Uint32Bytes(1), ...Int32Bytes(SpecTypePseudoRoot)])],
+    ] as const;
+    let nextSectionOffset = BootstrapSize + payload.length;
+    const sectionRecords: Array<{ name: string; start: number; bytes: Uint8Array }> = [];
+    for (const [name, bytes] of sections) {
+        sectionRecords.push({ name, start: nextSectionOffset, bytes });
+        nextSectionOffset += bytes.length;
+    }
+    return AssembleCrate(sectionRecords, payload);
 }
 
 function CreateQuaternionCrate(): Uint8Array {
@@ -272,6 +300,13 @@ function Float32Bytes(values: number[]): number[] {
     const bytes = new Uint8Array(values.length * 4);
     const view = new DataView(bytes.buffer);
     values.forEach((value, index) => view.setFloat32(index * 4, value, true));
+    return Array.from(bytes);
+}
+
+function Float64Bytes(values: number[]): number[] {
+    const bytes = new Uint8Array(values.length * 8);
+    const view = new DataView(bytes.buffer);
+    values.forEach((value, index) => view.setFloat64(index * 8, value, true));
     return Array.from(bytes);
 }
 

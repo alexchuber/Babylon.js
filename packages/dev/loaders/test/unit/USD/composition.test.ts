@@ -210,7 +210,7 @@ describe("USD composition", () => {
         expectTokenValue(layer.rootPrims[0].properties.value, "first");
     });
 
-    it("applies layer offset after scaling sample times", () => {
+    it("applies automatic rate scaling before an authored layer offset", () => {
         const animated = createLayer("animated.usd", [
             createPrim("/Animated", {
                 properties: {
@@ -222,12 +222,161 @@ describe("USD composition", () => {
                 },
             }),
         ]);
+        animated.timeCodesPerSecond = 12;
         const root = createLayer("root.usd", [], [{ assetPath: "animated.usd", layerOffset: { scale: 2, offset: 10 } }]);
+        root.timeCodesPerSecond = 24;
 
         const { layer } = ComposeLayerStack(root, () => animated);
 
         const property = layer.rootPrims[0].properties.value;
-        expect(property.kind === "attribute" ? property.timeSamples?.times : undefined).toEqual([12]);
+        expect(property.kind === "attribute" ? property.timeSamples?.times : undefined).toEqual([14]);
+    });
+
+    it.each([0, -1])("ignores an invalid layer offset scale of %s", (scale) => {
+        const animated = createLayer("animated.usd", [
+            createPrim("/Animated", {
+                properties: {
+                    value: {
+                        kind: "attribute",
+                        typeName: "float",
+                        timeSamples: { times: [1], values: [{ type: "float", value: 1 }] },
+                    },
+                },
+            }),
+        ]);
+        const root = createLayer("root.usd", [], [{ assetPath: "animated.usd", layerOffset: { scale, offset: 10 } }]);
+
+        const { layer, diagnostics } = ComposeLayerStack(root, () => animated);
+
+        const property = layer.rootPrims[0].properties.value;
+        expect(property.kind === "attribute" ? property.timeSamples?.times : undefined).toEqual([1]);
+        expect(diagnostics).toContainEqual(
+            expect.objectContaining({
+                code: "composition-invalid-layer-offset",
+                severity: "error",
+                layerIdentifier: "root.usd",
+                assetPath: "animated.usd",
+            })
+        );
+    });
+
+    it("automatically remaps referenced animation samples into the source layer rate", () => {
+        const animated = createLayer("animated.usd", [
+            createPrim("/Animated", {
+                properties: {
+                    value: {
+                        kind: "attribute",
+                        typeName: "float",
+                        timeSamples: { times: [12], values: [{ type: "float", value: 1 }] },
+                    },
+                },
+            }),
+        ]);
+        animated.timeCodesPerSecond = 12;
+        const root = createLayer("root.usd", [
+            createPrim("/World", {
+                references: explicitReferences([{ assetPath: "animated.usd", primPath: "/Animated" }]),
+            }),
+        ]);
+        root.timeCodesPerSecond = 24;
+
+        const { layer } = ComposeLayerStack(root, () => animated);
+
+        const property = layer.rootPrims[0].properties.value;
+        expect(property.kind === "attribute" ? property.timeSamples?.times : undefined).toEqual([24]);
+    });
+
+    it("applies automatic rate scaling across a nested sublayer stack", () => {
+        const base = createLayer("base.usd", [
+            createPrim("/Animated", {
+                properties: {
+                    value: {
+                        kind: "attribute",
+                        typeName: "float",
+                        timeSamples: { times: [6], values: [{ type: "float", value: 1 }] },
+                    },
+                },
+            }),
+        ]);
+        base.timeCodesPerSecond = 6;
+        const middle = createLayer("middle.usd", [], [{ assetPath: "base.usd" }]);
+        middle.timeCodesPerSecond = 12;
+        const root = createLayer("root.usd", [], [{ assetPath: "middle.usd" }]);
+        root.timeCodesPerSecond = 24;
+        const layers = new Map([
+            [base.identifier, base],
+            [middle.identifier, middle],
+        ]);
+
+        const { layer } = ComposeLayerStack(root, (assetPath) => layers.get(assetPath));
+
+        const property = layer.rootPrims[0].properties.value;
+        expect(property.kind === "attribute" ? property.timeSamples?.times : undefined).toEqual([24]);
+    });
+
+    it("uses the root framesPerSecond before a sublayer timeCodesPerSecond", () => {
+        const animated = createLayer("animated.usd", [
+            createPrim("/Animated", {
+                properties: {
+                    value: {
+                        kind: "attribute",
+                        typeName: "float",
+                        timeSamples: { times: [60], values: [{ type: "float", value: 1 }] },
+                    },
+                },
+            }),
+        ]);
+        animated.timeCodesPerSecond = 60;
+        const root = createLayer("root.usd", [], [{ assetPath: "animated.usd" }]);
+        root.framesPerSecond = 30;
+
+        const { layer } = ComposeLayerStack(root, () => animated);
+
+        const property = layer.rootPrims[0].properties.value;
+        expect(layer.timeCodesPerSecond).toBe(30);
+        expect(property.kind === "attribute" ? property.timeSamples?.times : undefined).toEqual([30]);
+    });
+
+    it("does not promote stage metadata from a sublayer into the root layer", () => {
+        const subLayer = createLayer("metadata.usd", [createPrim("/SubLayerDefault")]);
+        subLayer.upAxis = "Z";
+        subLayer.metersPerUnit = 1;
+        subLayer.startTimeCode = 10;
+        subLayer.endTimeCode = 20;
+        subLayer.defaultPrim = "SubLayerDefault";
+        const root = createLayer("root.usd", [], [{ assetPath: "metadata.usd" }]);
+
+        const { layer } = ComposeLayerStack(root, () => subLayer);
+
+        expect(layer.upAxis).toBe("Y");
+        expect(layer.metersPerUnit).toBe(0.01);
+        expect(layer.startTimeCode).toBeUndefined();
+        expect(layer.endTimeCode).toBeUndefined();
+        expect(layer.defaultPrim).toBeUndefined();
+    });
+
+    it("does not use a sublayer defaultPrim for an internal root-layer reference", () => {
+        const subLayer = createLayer("defaults.usd", [createPrim("/Source", { properties: { value: tokenAttribute("source") } })]);
+        subLayer.defaultPrim = "Source";
+        const root = createLayer(
+            "root.usd",
+            [
+                createPrim("/Target", {
+                    references: explicitReferences([{ assetPath: "" }]),
+                }),
+            ],
+            [{ assetPath: "defaults.usd" }]
+        );
+
+        const { layer, diagnostics } = ComposeLayerStack(root, () => subLayer);
+
+        expect(layer.rootPrims.find((prim) => prim.path === "/Target")!.properties.value).toBeUndefined();
+        expect(diagnostics).toContainEqual(
+            expect.objectContaining({
+                code: "composition-missing-internal-reference",
+                primPath: "/Target",
+            })
+        );
     });
 
     it("resolves an internal reference without a prim path through defaultPrim", () => {

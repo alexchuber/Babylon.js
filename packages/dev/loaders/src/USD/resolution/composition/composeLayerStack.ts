@@ -107,6 +107,8 @@ interface ICompositionBudget {
 
 interface ILayerCompositionState {
     readonly localLayer: ISdfLayer;
+    readonly timeCodesPerSecond: number;
+    readonly defaultPrim?: string;
     readonly primIndex: Map<string, ISdfPrimSpec>;
     readonly composingPrims: Set<string>;
 }
@@ -187,6 +189,34 @@ function ResolveCompositionLimit(value: number | undefined, fallback: number, op
     return value === undefined ? fallback : ValidateResourceLimit(value, option);
 }
 
+function ResolveLayerTimeCodesPerSecond(layer: ISdfLayer): number {
+    const authoredRate = layer.timeCodesPerSecond ?? layer.framesPerSecond;
+    return authoredRate !== undefined && Number.isFinite(authoredRate) && authoredRate > 0 ? authoredRate : DefaultTimeCodesPerSecond;
+}
+
+function ComposeTimeOffset(
+    layerOffset: ISdfLayerOffset | undefined,
+    targetRate: number,
+    sourceRate: number,
+    context: ICompositionContext,
+    details: Pick<ICompositionDiagnostic, "layerIdentifier" | "primPath" | "assetPath">
+): ISdfLayerOffset | undefined {
+    const rateScale = targetRate / sourceRate;
+    if (layerOffset && (!Number.isFinite(layerOffset.scale) || layerOffset.scale <= 0 || !Number.isFinite(layerOffset.offset))) {
+        AddDiagnostic(context, {
+            code: "composition-invalid-layer-offset",
+            message: "Ignoring a layer offset whose scale is not positive and finite or whose offset is not finite.",
+            severity: "error",
+            ...details,
+        });
+        return rateScale === 1 ? undefined : { scale: rateScale, offset: 0 };
+    }
+
+    const scale = (layerOffset?.scale ?? 1) * rateScale;
+    const offset = layerOffset?.offset ?? 0;
+    return scale === 1 && offset === 0 ? undefined : { scale, offset };
+}
+
 function ComposeLayer(layer: ISdfLayer, context: ICompositionContext): ISdfLayer {
     const cachedLayer = context.composedLayers.get(layer.identifier);
     if (cachedLayer) {
@@ -212,6 +242,8 @@ function ComposeLayer(layer: ISdfLayer, context: ICompositionContext): ISdfLayer
     const localLayer = BuildLocalLayer(layer, context);
     const state: ILayerCompositionState = {
         localLayer,
+        timeCodesPerSecond: ResolveLayerTimeCodesPerSecond(layer),
+        defaultPrim: layer.defaultPrim,
         primIndex: CreatePrimIndex(localLayer.rootPrims),
         composingPrims: new Set<string>(),
     };
@@ -221,12 +253,13 @@ function ComposeLayer(layer: ISdfLayer, context: ICompositionContext): ISdfLayer
     const composedLayer: ISdfLayer = {
         identifier: localLayer.identifier,
         filePath: localLayer.filePath,
-        upAxis: localLayer.upAxis ?? DefaultUpAxis,
-        metersPerUnit: localLayer.metersPerUnit ?? DefaultMetersPerUnit,
-        timeCodesPerSecond: localLayer.timeCodesPerSecond ?? DefaultTimeCodesPerSecond,
-        startTimeCode: localLayer.startTimeCode,
-        endTimeCode: localLayer.endTimeCode,
-        defaultPrim: localLayer.defaultPrim,
+        upAxis: layer.upAxis ?? DefaultUpAxis,
+        metersPerUnit: layer.metersPerUnit ?? DefaultMetersPerUnit,
+        timeCodesPerSecond: state.timeCodesPerSecond,
+        framesPerSecond: layer.framesPerSecond,
+        startTimeCode: layer.startTimeCode,
+        endTimeCode: layer.endTimeCode,
+        defaultPrim: layer.defaultPrim,
         subLayers: [],
         rootPrims,
         metadata: CloneOptional(localLayer.metadata),
@@ -273,7 +306,11 @@ function BuildLocalLayer(layer: ISdfLayer, context: ICompositionContext): ISdfLa
             continue;
         }
 
-        const composedSubLayerStack = ApplyLayerOffsetToLayer(BuildLocalLayer(resolvedLayer, context), subLayer.layerOffset);
+        const layerOffset = ComposeTimeOffset(subLayer.layerOffset, ResolveLayerTimeCodesPerSecond(layer), ResolveLayerTimeCodesPerSecond(resolvedLayer), context, {
+            layerIdentifier: layer.identifier,
+            assetPath: subLayer.assetPath,
+        });
+        const composedSubLayerStack = ApplyLayerOffsetToLayer(BuildLocalLayer(resolvedLayer, context), layerOffset);
         mergedLayer = MergeLayerOpinions(context, mergedLayer, composedSubLayerStack);
     }
 
@@ -410,8 +447,8 @@ function ComposeAssetArc(
     arcName: "reference" | "payload"
 ): ISdfPrimSpec | undefined {
     if (!arc.assetPath) {
-        const fallbackPrim = state.localLayer.defaultPrim
-            ? state.localLayer.rootPrims.find((prim) => prim.name === state.localLayer.defaultPrim)
+        const fallbackPrim = state.defaultPrim
+            ? state.localLayer.rootPrims.find((prim) => prim.name === state.defaultPrim)
             : state.localLayer.rootPrims.length === 1
               ? state.localLayer.rootPrims[0]
               : undefined;
@@ -430,7 +467,11 @@ function ComposeAssetArc(
         }
 
         ChargeGraft(context, internalPrim);
-        return ApplyLayerOffsetToPrim(RebasePrimTree(internalPrim, internalPrim.path, targetPrim.path), arc.layerOffset);
+        const layerOffset = ComposeTimeOffset(arc.layerOffset, state.timeCodesPerSecond, state.timeCodesPerSecond, context, {
+            layerIdentifier: state.localLayer.identifier,
+            primPath: targetPrim.path,
+        });
+        return ApplyLayerOffsetToPrim(RebasePrimTree(internalPrim, internalPrim.path, targetPrim.path), layerOffset);
     }
 
     const layer = context.resolveLayer(arc.assetPath, state.localLayer.identifier);
@@ -455,7 +496,12 @@ function ComposeAssetArc(
     }
 
     ChargeGraft(context, sourcePrim);
-    return ApplyLayerOffsetToPrim(RebasePrimTree(sourcePrim, sourcePrim.path, targetPrim.path), arc.layerOffset);
+    const layerOffset = ComposeTimeOffset(arc.layerOffset, state.timeCodesPerSecond, ResolveLayerTimeCodesPerSecond(composedLayer), context, {
+        layerIdentifier: state.localLayer.identifier,
+        primPath: targetPrim.path,
+        assetPath: arc.assetPath,
+    });
+    return ApplyLayerOffsetToPrim(RebasePrimTree(sourcePrim, sourcePrim.path, targetPrim.path), layerOffset);
 }
 
 function SelectReferencedPrim(
@@ -607,6 +653,7 @@ function MergeLayerOpinions(context: ICompositionContext, weakerLayer: ISdfLayer
         upAxis: strongerLayer.upAxis ?? weakerLayer.upAxis,
         metersPerUnit: strongerLayer.metersPerUnit ?? weakerLayer.metersPerUnit,
         timeCodesPerSecond: strongerLayer.timeCodesPerSecond ?? weakerLayer.timeCodesPerSecond,
+        framesPerSecond: strongerLayer.framesPerSecond ?? weakerLayer.framesPerSecond,
         startTimeCode: strongerLayer.startTimeCode ?? weakerLayer.startTimeCode,
         endTimeCode: strongerLayer.endTimeCode ?? weakerLayer.endTimeCode,
         defaultPrim: strongerLayer.defaultPrim ?? weakerLayer.defaultPrim,
@@ -942,6 +989,7 @@ function CreateEmptyLayer(layer: ISdfLayer): ISdfLayer {
         upAxis: layer.upAxis,
         metersPerUnit: layer.metersPerUnit,
         timeCodesPerSecond: layer.timeCodesPerSecond,
+        framesPerSecond: layer.framesPerSecond,
         startTimeCode: layer.startTimeCode,
         endTimeCode: layer.endTimeCode,
         defaultPrim: layer.defaultPrim,
