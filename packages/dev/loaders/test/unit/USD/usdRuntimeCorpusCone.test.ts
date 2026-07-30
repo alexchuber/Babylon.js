@@ -27,6 +27,46 @@ function resolveUsda(usda: string) {
 const EXPECTED_VERTICES = 100;
 const EXPECTED_INDICES = 192;
 
+function computeBounds(pos: Float32Array) {
+    let minX = Infinity,
+        maxX = -Infinity,
+        minY = Infinity,
+        maxY = -Infinity,
+        minZ = Infinity,
+        maxZ = -Infinity;
+    for (let v = 0; v < pos.length; v += 3) {
+        minX = Math.min(minX, pos[v]);
+        maxX = Math.max(maxX, pos[v]);
+        minY = Math.min(minY, pos[v + 1]);
+        maxY = Math.max(maxY, pos[v + 1]);
+        minZ = Math.min(minZ, pos[v + 2]);
+        maxZ = Math.max(maxZ, pos[v + 2]);
+    }
+    return { minX, maxX, minY, maxY, minZ, maxZ };
+}
+
+function assertWindingMatchesNormals(pos: Float32Array, idx: Uint32Array, nrm: Float32Array) {
+    for (let t = 0; t < idx.length; t += 3) {
+        const i0 = idx[t],
+            i1 = idx[t + 1],
+            i2 = idx[t + 2];
+        const ax = pos[i1 * 3] - pos[i0 * 3],
+            ay = pos[i1 * 3 + 1] - pos[i0 * 3 + 1],
+            az = pos[i1 * 3 + 2] - pos[i0 * 3 + 2];
+        const bx = pos[i2 * 3] - pos[i0 * 3],
+            by = pos[i2 * 3 + 1] - pos[i0 * 3 + 1],
+            bz = pos[i2 * 3 + 2] - pos[i0 * 3 + 2];
+        const cx = ay * bz - az * by,
+            cy = az * bx - ax * bz,
+            cz = ax * by - ay * bx;
+        const nx = nrm[i0 * 3],
+            ny = nrm[i0 * 3 + 1],
+            nz = nrm[i0 * 3 + 2];
+        const dot = cx * nx + cy * ny + cz * nz;
+        expect(dot).toBeGreaterThan(0);
+    }
+}
+
 describe("USD runtime corpus - Cone", () => {
     let engine: NullEngine;
     let scene: Scene;
@@ -41,7 +81,9 @@ describe("USD runtime corpus - Cone", () => {
         engine.dispose();
     });
 
-    it("loads through module-level ImportMeshAsync and produces the expected hierarchy", async () => {
+    // --- Real corpus asset (public loader) tests ---
+
+    it("loads through module-level ImportMeshAsync and produces the expected hierarchy with Geom parented under Cone", async () => {
         const result = await importConeAsync(scene);
 
         const coneNode = result.transformNodes.find((n) => n.name === "Cone");
@@ -49,7 +91,8 @@ describe("USD runtime corpus - Cone", () => {
 
         const geomMesh = result.meshes.find((m) => m.name === "Geom");
         expect(geomMesh).toBeDefined();
-        expect(geomMesh!.parent?.name).toBe("Cone");
+        expect(geomMesh!.parent).toBeDefined();
+        expect(geomMesh!.parent!.name).toBe("Cone");
     });
 
     it("produces one renderable cone mesh with expected vertex and index counts", async () => {
@@ -61,67 +104,70 @@ describe("USD runtime corpus - Cone", () => {
         expect(geomMesh!.getTotalIndices()).toBe(EXPECTED_INDICES);
     });
 
-    it("produces bounds matching authored radius=0.5, height=1, axis=Y", async () => {
+    it("produces exact Babylon world bounds matching authored radius=0.5, height=1, axis=Y", async () => {
         const result = await importConeAsync(scene);
 
-        const geomMesh = result.meshes.find((m) => m.getTotalVertices() > 0);
-        expect(geomMesh).toBeDefined();
-
-        const positions = geomMesh!.getVerticesData(VertexBuffer.PositionKind);
-        expect(positions).toBeDefined();
-
-        let minX = Infinity,
-            maxX = -Infinity;
-        let minY = Infinity,
-            maxY = -Infinity;
-        let minZ = Infinity,
-            maxZ = -Infinity;
-
-        for (let v = 0; v < positions!.length; v += 3) {
-            minX = Math.min(minX, positions![v]);
-            maxX = Math.max(maxX, positions![v]);
-            minY = Math.min(minY, positions![v + 1]);
-            maxY = Math.max(maxY, positions![v + 1]);
-            minZ = Math.min(minZ, positions![v + 2]);
-            maxZ = Math.max(maxZ, positions![v + 2]);
-        }
+        const geomMesh = result.meshes.find((m) => m.getTotalVertices() > 0)!;
+        const positions = geomMesh.getVerticesData(VertexBuffer.PositionKind)!;
+        const b = computeBounds(new Float32Array(positions));
 
         // Cone with radius=0.5: X and Z span [-0.5, 0.5]
-        expect(minX).toBeCloseTo(-0.5, 4);
-        expect(maxX).toBeCloseTo(0.5, 4);
+        expect(b.minX).toBeCloseTo(-0.5, 4);
+        expect(b.maxX).toBeCloseTo(0.5, 4);
         // height=1: Y spans [-0.5, 0.5]
-        expect(minY).toBeCloseTo(-0.5);
-        expect(maxY).toBeCloseTo(0.5);
-        expect(minZ).toBeCloseTo(-0.5, 4);
-        expect(maxZ).toBeCloseTo(0.5, 4);
+        expect(b.minY).toBeCloseTo(-0.5);
+        expect(b.maxY).toBeCloseTo(0.5);
+        expect(b.minZ).toBeCloseTo(-0.5, 4);
+        expect(b.maxZ).toBeCloseTo(0.5, 4);
     });
 
-    it("produces outward-facing normals whose winding agrees with the cross product", async () => {
+    it("resolves identity Babylon transform, no vertex colors, and correct mesh properties for the real corpus asset", async () => {
+        const stage = await ResolveUsdStageAsync(readRuntimeCorpusText(ConeAsset.fileName), "", ConeAsset.fileName, {});
+
+        expect(stage.meshes).toHaveLength(1);
+        const mesh = stage.meshes[0];
+
+        expect(mesh.positions.length).toBe(EXPECTED_VERTICES * 3);
+        expect(mesh.indices.length).toBe(EXPECTED_INDICES);
+        expect(mesh.normals).toBeDefined();
+        expect(mesh.normals!.length).toBe(EXPECTED_VERTICES * 3);
+        expect(mesh.subdivisionScheme).toBe("none");
+        expect(mesh.doubleSided).toBe(false);
+        expect(mesh.orientation).toBe("rightHanded");
+        expect(mesh.colors).toBeUndefined();
+
+        const geomPrim = stage.root.children[0]?.children[0];
+        expect(geomPrim).toBeDefined();
+        expect(geomPrim!.name).toBe("Geom");
+        expect(geomPrim!.kind).toBe("mesh");
+
+        // Identity transform
+        expect(geomPrim!.transform.translation).toEqual([0, 0, 0]);
+        expect(geomPrim!.transform.rotation).toEqual([0, 0, 0, 1]);
+        expect(geomPrim!.transform.scale).toEqual([1, 1, 1]);
+        expect(geomPrim!.transform.matrix).toBeUndefined();
+    });
+
+    it("produces representative side normals pointing outward and base normals pointing along -Y for axis=Y", async () => {
         const stage = await ResolveUsdStageAsync(readRuntimeCorpusText(ConeAsset.fileName), "", ConeAsset.fileName, {});
         const mesh = stage.meshes[0];
-        const pos = mesh.positions;
-        const idx = mesh.indices;
         const nrm = mesh.normals!;
 
-        for (let t = 0; t < idx.length; t += 3) {
-            const i0 = idx[t],
-                i1 = idx[t + 1],
-                i2 = idx[t + 2];
-            const ax = pos[i1 * 3] - pos[i0 * 3],
-                ay = pos[i1 * 3 + 1] - pos[i0 * 3 + 1],
-                az = pos[i1 * 3 + 2] - pos[i0 * 3 + 2];
-            const bx = pos[i2 * 3] - pos[i0 * 3],
-                by = pos[i2 * 3 + 1] - pos[i0 * 3 + 1],
-                bz = pos[i2 * 3 + 2] - pos[i0 * 3 + 2];
-            const cx = ay * bz - az * by,
-                cy = az * bx - ax * bz,
-                cz = ax * by - ay * bx;
-            const nx = nrm[i0 * 3],
-                ny = nrm[i0 * 3 + 1],
-                nz = nrm[i0 * 3 + 2];
-            const dot = cx * nx + cy * ny + cz * nz;
-            expect(dot).toBeGreaterThan(0);
-        }
+        // Side vertices are indices 0..(66-1). Check first base ring vertex (i=0):
+        // normal should be approximately (nr, ny, 0) with nr>0 and ny>0 (slanted outward+up).
+        const sideNx = nrm[0];
+        const sideNy = nrm[1];
+        const sideNz = nrm[2];
+        expect(sideNx).toBeGreaterThan(0);
+        expect(sideNy).toBeGreaterThan(0);
+        expect(Math.abs(sideNz)).toBeLessThan(1e-6);
+
+        // Base disk center is at vertex index 66 (sideVertCount = 66).
+        // Its normal should be (0, -1, 0) for axis=Y.
+        const baseStart = 66;
+        expect(nrm[baseStart * 3]).toBeCloseTo(0);
+        expect(nrm[baseStart * 3 + 1]).toBeCloseTo(-1);
+        expect(nrm[baseStart * 3 + 2]).toBeCloseTo(0);
     });
 
     it("does not emit an unsupported-Cone diagnostic for valid authored Cone input", async () => {
@@ -138,95 +184,127 @@ describe("USD runtime corpus - Cone", () => {
         }
     });
 
-    it("resolves the Cone at the resolution layer with correct mesh properties", async () => {
-        const stage = await ResolveUsdStageAsync(readRuntimeCorpusText(ConeAsset.fileName), "", ConeAsset.fileName, {});
+    // --- Cross-product winding tests for all axes ---
 
-        expect(stage.meshes).toHaveLength(1);
+    it("produces outward-facing normals with consistent winding for axis=Y (real corpus asset)", async () => {
+        const stage = await ResolveUsdStageAsync(readRuntimeCorpusText(ConeAsset.fileName), "", ConeAsset.fileName, {});
         const mesh = stage.meshes[0];
-
-        expect(mesh.positions.length).toBe(EXPECTED_VERTICES * 3);
-        expect(mesh.indices.length).toBe(EXPECTED_INDICES);
-        expect(mesh.normals).toBeDefined();
-        expect(mesh.normals!.length).toBe(EXPECTED_VERTICES * 3);
-        expect(mesh.subdivisionScheme).toBe("none");
-        expect(mesh.doubleSided).toBe(false);
-        expect(mesh.orientation).toBe("rightHanded");
+        assertWindingMatchesNormals(mesh.positions, mesh.indices, mesh.normals!);
     });
 
-    it("resolves identity transform and no display color for the real Cone corpus asset", async () => {
-        const stage = await ResolveUsdStageAsync(readRuntimeCorpusText(ConeAsset.fileName), "", ConeAsset.fileName, {});
-
-        const geomPrim = stage.root.children[0]?.children[0];
-        expect(geomPrim).toBeDefined();
-        expect(geomPrim!.kind).toBe("mesh");
-
-        expect(geomPrim!.transform.translation).toEqual([0, 0, 0]);
-        expect(geomPrim!.transform.scale).toEqual([1, 1, 1]);
-        expect(geomPrim!.transform.matrix).toBeUndefined();
-
-        const mesh = stage.meshes[geomPrim!.meshIndex!];
-        expect(mesh.colors).toBeUndefined();
-    });
-
-    it("uses default radius=1 and height=2 when no dimensions are authored", async () => {
+    it.each(["X", "Y", "Z"] as const)("produces outward-facing normals with consistent winding for axis=%s", async (axis) => {
         const usda = `#usda 1.0
 def Cone "C"
 {
+    double radius = 1
+    double height = 2
+    uniform token axis = "${axis}"
+}
+`;
+        const stage = await resolveUsda(usda);
+        const mesh = stage.meshes[0];
+        assertWindingMatchesNormals(mesh.positions, mesh.indices, mesh.normals!);
+    });
+
+    it("resolves leftHanded orientation and still produces consistent winding", async () => {
+        const usda = `#usda 1.0
+def Cone "C"
+{
+    double radius = 1
+    double height = 2
+    token orientation = "leftHanded"
 }
 `;
         const stage = await resolveUsda(usda);
         expect(stage.meshes).toHaveLength(1);
-        const pos = stage.meshes[0].positions;
-
-        let minX = Infinity,
-            maxX = -Infinity;
-        let minY = Infinity,
-            maxY = -Infinity;
-
-        for (let v = 0; v < pos.length; v += 3) {
-            minX = Math.min(minX, pos[v]);
-            maxX = Math.max(maxX, pos[v]);
-            minY = Math.min(minY, pos[v + 1]);
-            maxY = Math.max(maxY, pos[v + 1]);
-        }
-
-        // Default radius=1 → X range [-1,1], default height=2 → Y range [-1,1]
-        expect(minX).toBeCloseTo(-1.0, 4);
-        expect(maxX).toBeCloseTo(1.0, 4);
-        expect(minY).toBeCloseTo(-1.0);
-        expect(maxY).toBeCloseTo(1.0);
+        expect(stage.meshes[0].orientation).toBe("leftHanded");
+        // Cross-product still agrees with authored normals; the adapter interprets orientation.
+        assertWindingMatchesNormals(stage.meshes[0].positions, stage.meshes[0].indices, stage.meshes[0].normals!);
     });
 
-    it("diagnoses a malformed radius value deterministically", async () => {
+    // --- Default axis is Z per OpenUSD schema ---
+
+    it("uses default axis=Z when no axis is authored (OpenUSD schema default)", async () => {
+        const usda = `#usda 1.0
+def Cone "C"
+{
+    double radius = 1
+    double height = 2
+}
+`;
+        const stage = await resolveUsda(usda);
+        const pos = stage.meshes[0].positions;
+        const b = computeBounds(pos);
+
+        // Default axis=Z: height along Z [-1,1], radius along X and Y [-1,1]
+        expect(b.minX).toBeCloseTo(-1.0, 4);
+        expect(b.maxX).toBeCloseTo(1.0, 4);
+        expect(b.minY).toBeCloseTo(-1.0, 4);
+        expect(b.maxY).toBeCloseTo(1.0, 4);
+        expect(b.minZ).toBeCloseTo(-1.0);
+        expect(b.maxZ).toBeCloseTo(1.0);
+    });
+
+    // --- Malformed input tests with exact assertions ---
+
+    it("diagnoses invalid radius with exact path, message, and fallback dimensions", async () => {
         const usda = `#usda 1.0
 def Cone "C"
 {
     double radius = -1
+    double height = 3
+    uniform token axis = "Y"
 }
 `;
         const stage = await resolveUsda(usda);
         const diag = stage.diagnostics.find((d) => /radius/i.test(d.message));
         expect(diag).toBeDefined();
         expect(diag!.severity).toBe("warning");
+        expect(diag!.path).toBe("/C");
+        expect(diag!.message).toContain("-1");
+        expect(diag!.message).toContain("default radius 1");
+
+        // Fallback radius=1, authored height=3, authored axis=Y
+        const pos = stage.meshes[0].positions;
+        const b = computeBounds(pos);
+        expect(b.minX).toBeCloseTo(-1.0, 4);
+        expect(b.maxX).toBeCloseTo(1.0, 4);
+        expect(b.minY).toBeCloseTo(-1.5);
+        expect(b.maxY).toBeCloseTo(1.5);
     });
 
-    it("diagnoses a malformed height value deterministically", async () => {
+    it("diagnoses invalid height with exact path, message, and fallback dimensions", async () => {
         const usda = `#usda 1.0
 def Cone "C"
 {
+    double radius = 0.5
     double height = 0
+    uniform token axis = "Y"
 }
 `;
         const stage = await resolveUsda(usda);
         const diag = stage.diagnostics.find((d) => /height/i.test(d.message));
         expect(diag).toBeDefined();
         expect(diag!.severity).toBe("warning");
+        expect(diag!.path).toBe("/C");
+        expect(diag!.message).toContain("0");
+        expect(diag!.message).toContain("default height 2");
+
+        // Authored radius=0.5, fallback height=2, authored axis=Y
+        const pos = stage.meshes[0].positions;
+        const b = computeBounds(pos);
+        expect(b.minX).toBeCloseTo(-0.5, 4);
+        expect(b.maxX).toBeCloseTo(0.5, 4);
+        expect(b.minY).toBeCloseTo(-1.0);
+        expect(b.maxY).toBeCloseTo(1.0);
     });
 
-    it("diagnoses an invalid axis value deterministically", async () => {
+    it("diagnoses invalid axis with exact path, message, and fallback to Z", async () => {
         const usda = `#usda 1.0
 def Cone "C"
 {
+    double radius = 1
+    double height = 2
     uniform token axis = "W"
 }
 `;
@@ -234,7 +312,20 @@ def Cone "C"
         const diag = stage.diagnostics.find((d) => /axis/i.test(d.message));
         expect(diag).toBeDefined();
         expect(diag!.severity).toBe("warning");
+        expect(diag!.path).toBe("/C");
+        expect(diag!.message).toContain('"W"');
+        expect(diag!.message).toContain('default axis "Z"');
+
+        // Fallback axis=Z: height along Z, radius along X and Y
+        const pos = stage.meshes[0].positions;
+        const b = computeBounds(pos);
+        expect(b.minZ).toBeCloseTo(-1.0);
+        expect(b.maxZ).toBeCloseTo(1.0);
+        expect(b.minX).toBeCloseTo(-1.0, 4);
+        expect(b.maxX).toBeCloseTo(1.0, 4);
     });
+
+    // --- Axis rotation bounds tests ---
 
     it("produces axis=X geometry with bounds rotated to the X axis", async () => {
         const usda = `#usda 1.0
@@ -246,31 +337,15 @@ def Cone "C"
 }
 `;
         const stage = await resolveUsda(usda);
-        const pos = stage.meshes[0].positions;
-
-        let minX = Infinity,
-            maxX = -Infinity;
-        let minY = Infinity,
-            maxY = -Infinity;
-        let minZ = Infinity,
-            maxZ = -Infinity;
-
-        for (let v = 0; v < pos.length; v += 3) {
-            minX = Math.min(minX, pos[v]);
-            maxX = Math.max(maxX, pos[v]);
-            minY = Math.min(minY, pos[v + 1]);
-            maxY = Math.max(maxY, pos[v + 1]);
-            minZ = Math.min(minZ, pos[v + 2]);
-            maxZ = Math.max(maxZ, pos[v + 2]);
-        }
+        const b = computeBounds(stage.meshes[0].positions);
 
         // X axis: height along X [-1,1], radius along Y and Z [-1,1]
-        expect(minX).toBeCloseTo(-1.0);
-        expect(maxX).toBeCloseTo(1.0);
-        expect(minY).toBeCloseTo(-1.0, 4);
-        expect(maxY).toBeCloseTo(1.0, 4);
-        expect(minZ).toBeCloseTo(-1.0, 4);
-        expect(maxZ).toBeCloseTo(1.0, 4);
+        expect(b.minX).toBeCloseTo(-1.0);
+        expect(b.maxX).toBeCloseTo(1.0);
+        expect(b.minY).toBeCloseTo(-1.0, 4);
+        expect(b.maxY).toBeCloseTo(1.0, 4);
+        expect(b.minZ).toBeCloseTo(-1.0, 4);
+        expect(b.maxZ).toBeCloseTo(1.0, 4);
     });
 
     it("produces axis=Z geometry with bounds rotated to the Z axis", async () => {
@@ -283,32 +358,18 @@ def Cone "C"
 }
 `;
         const stage = await resolveUsda(usda);
-        const pos = stage.meshes[0].positions;
-
-        let minX = Infinity,
-            maxX = -Infinity;
-        let minY = Infinity,
-            maxY = -Infinity;
-        let minZ = Infinity,
-            maxZ = -Infinity;
-
-        for (let v = 0; v < pos.length; v += 3) {
-            minX = Math.min(minX, pos[v]);
-            maxX = Math.max(maxX, pos[v]);
-            minY = Math.min(minY, pos[v + 1]);
-            maxY = Math.max(maxY, pos[v + 1]);
-            minZ = Math.min(minZ, pos[v + 2]);
-            maxZ = Math.max(maxZ, pos[v + 2]);
-        }
+        const b = computeBounds(stage.meshes[0].positions);
 
         // Z axis: height along Z [-1,1], radius along X and Y [-1,1]
-        expect(minX).toBeCloseTo(-1.0, 4);
-        expect(maxX).toBeCloseTo(1.0, 4);
-        expect(minY).toBeCloseTo(-1.0, 4);
-        expect(maxY).toBeCloseTo(1.0, 4);
-        expect(minZ).toBeCloseTo(-1.0);
-        expect(maxZ).toBeCloseTo(1.0);
+        expect(b.minX).toBeCloseTo(-1.0, 4);
+        expect(b.maxX).toBeCloseTo(1.0, 4);
+        expect(b.minY).toBeCloseTo(-1.0, 4);
+        expect(b.maxY).toBeCloseTo(1.0, 4);
+        expect(b.minZ).toBeCloseTo(-1.0);
+        expect(b.maxZ).toBeCloseTo(1.0);
     });
+
+    // --- doubleSided & display color ---
 
     it("reads doubleSided = true from a standard USDA boolean", async () => {
         const usda = `#usda 1.0

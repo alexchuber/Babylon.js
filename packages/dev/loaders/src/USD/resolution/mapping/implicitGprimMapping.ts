@@ -152,7 +152,7 @@ function ReadConstantOpacity(value: ReturnType<typeof GetAttributeValue>): numbe
 
 type Axis = "X" | "Y" | "Z";
 
-// USD default Cone radius is 1.0, height is 2.0, axis is "Y".
+// USD default Cone radius is 1.0, height is 2.0, axis is "Z" (per OpenUSD schema.usda).
 function ResolveCone(prim: ISdfPrimSpec, diagnostics: IResolvedDiagnostic[], inheritedPrimvars: IInheritedPrimvars): IResolvedMesh {
     const rawRadius = AsNumber(GetAttributeValue(GetAttribute(prim, "radius")));
     let radius = rawRadius ?? 1.0;
@@ -177,7 +177,7 @@ function ResolveCone(prim: ISdfPrimSpec, diagnostics: IResolvedDiagnostic[], inh
     }
 
     const rawAxis = AsToken(GetAttributeValue(GetAttribute(prim, "axis")));
-    let axis: Axis = "Y";
+    let axis: Axis = "Z";
     if (rawAxis !== undefined) {
         if (rawAxis === "X" || rawAxis === "Y" || rawAxis === "Z") {
             axis = rawAxis;
@@ -185,7 +185,7 @@ function ResolveCone(prim: ISdfPrimSpec, diagnostics: IResolvedDiagnostic[], inh
             diagnostics.push({
                 severity: "warning",
                 path: prim.path,
-                message: `Cone has invalid axis "${rawAxis}"; falling back to default axis "Y".`,
+                message: `Cone has invalid axis "${rawAxis}"; falling back to default axis "Z".`,
             });
         }
     }

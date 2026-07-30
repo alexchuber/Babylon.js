@@ -5511,7 +5511,7 @@
         },
         {
             "title": "USD loader - Cone corpus",
-            "playgroundId": "#MOV41L#0",
+            "playgroundId": "#GOHM3A#0",
             "referenceImage": "usd-loader-cone-corpus.png",
             "renderCount": 1,
             "dependsOn": ["Loaders", "Meshes"]
