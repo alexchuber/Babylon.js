@@ -9,11 +9,10 @@ Assets are served by the existing local Babylon CDN server at
 
 ## Source snapshot
 
-All files were copied byte-for-byte from **provided-source-shapes-v1** (snapshot
-date: 2026-07-30). The snapshot label is a neutral identifier for the original
-provided source of representative USD shapes; it does not imply a specific public
-repository or release. Re-pin intentionally by updating hashes and the snapshot
-label.
+Assets derive from **provided-source-runtime-corpus-v1** (snapshot date: 2026-07-30).
+The snapshot label is a neutral identifier for the original provided source of
+representative USD shapes; it does not imply a specific public repository or
+release. Re-pin intentionally by updating hashes and the snapshot label.
 
 > **TODO — Licensing verification:** Formal redistribution permission for these
 > assets has not yet been verified. Confirm the license terms before including
@@ -21,11 +20,13 @@ label.
 
 ## Per-file provenance
 
-Paths are relative to this directory. Hashes are SHA-256 over the original,
-byte-preserved fixture bytes.
+Paths are relative to this directory. Hashes are SHA-256 over the **committed
+fixture bytes** (which may differ from the original source when neutral
+redactions have been applied — see the Modifications section).
 
-| File | Description | SHA-256 | Size (bytes) | Sidecars |
-| ---- | ----------- | ------- | ------------ | -------- |
+| File | Description | SHA-256 (committed) | Size (bytes) | Sidecars |
+| ---- | ----------- | ------------------- | ------------ | -------- |
+| `Box.usda` | Unit cube via implicit UsdGeomCube with authored size (redacted derivative) | `d182a886584fd2c4d886cc56852280ac9625911fb6d0ec244fc565b8878798a2` | 205 | None |
 | `Plane.usda` | Single quad mesh on the XZ plane with constant authored normals | `8ff6aec006b18f5c0a37bc013ade382d87823d935a707ec62f574a641f09e974` | 583 | None |
 | `HospitalBed/Hospital_Bed.usda` | Large polygon mesh with face-varying normals/UVs, PreviewSurface material, and relative diffuse texture | `dd8afae46e2571f3801363e9dc3385ceb075a3122e6ba7f8f3ff66dd2da13e64` | 9,418,448 | `HospitalBed/textures/HospitalBed_Diffuse.png` |
 | `HospitalBed/textures/HospitalBed_Diffuse.png` | Diffuse texture sidecar for Hospital_Bed.usda | `2a765428504204e8c9bc2cc8dc5058996677e528f52c24ccbf21b3c841e353b3` | 2,319,219 | (sidecar of Hospital_Bed.usda) |
@@ -37,7 +38,11 @@ preserved verbatim. Retain it.
 
 ## Modifications
 
-No files have been modified from their provided-source form.
+`Box.usda`: application-specific comments removed for neutral provenance; the
+committed file is a redacted derivative. The original byte-preserved hash is
+stored only in local session artifacts, not in this public document.
+
+All other files are unmodified from their provided-source form.
 
 ## Sidecars
 

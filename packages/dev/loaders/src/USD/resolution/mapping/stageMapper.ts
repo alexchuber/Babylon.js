@@ -10,6 +10,7 @@ import {
 import { type ISdfLayer, type ISdfPrimSpec } from "../sdf/index";
 import { ResolvePrimAnimation } from "./animationMapping";
 import { ResolveCamera } from "./cameraMapping";
+import { ResolveImplicitGprim } from "./implicitGprimMapping";
 import { ResolveMaterialIndex, GetMaterialBindingPath, GetDisplayColorFallback } from "./materialMapping";
 import { type IStageMappingContext } from "./mappingContext";
 import { BuildMeshPoolKey, CollectInheritablePrimvars, EmptyInheritedPrimvars, ResolveMesh, type IInheritedPrimvars } from "./meshMapping";
@@ -182,20 +183,24 @@ function ApplySchemaPayload(
     // Only polygonal UsdGeomMesh is in profile. Implicit gprims, point instancers, lights, curves,
     // points and volumes are diagnosed and skipped at this schema seam rather than mapped.
     const mesh = primSpec.typeName === "Mesh" ? ResolveMesh(primSpec, context, inheritedPrimvars) : undefined;
-    if (!mesh) {
+    const implicitMesh = !mesh ? ResolveImplicitGprim(primSpec, context.diagnostics, inheritedPrimvars) : undefined;
+    const resolvedMesh = mesh ?? implicitMesh;
+    if (!resolvedMesh) {
         ApplyUnsupportedSchemaDiagnostics(primSpec, context);
         return;
     }
 
     prim.kind = "mesh";
-    prim.meshIndex = PoolMesh(mesh, context);
+    prim.meshIndex = PoolMesh(resolvedMesh, context);
     if (materialPath) {
         prim.materialBinding = { materialIndex: ResolveMaterialIndex(materialPath, context, GetDisplayColorFallback(primSpec)) };
     }
-    prim.skinning = ResolveSkinning(primSpec, context, metadata.timeCodesPerSecond, mesh);
+    if (mesh) {
+        prim.skinning = ResolveSkinning(primSpec, context, metadata.timeCodesPerSecond, mesh);
+    }
 }
 
-function PoolMesh(mesh: NonNullable<ReturnType<typeof ResolveMesh>>, context: IStageMappingContext): number {
+function PoolMesh(mesh: IResolvedMesh, context: IStageMappingContext): number {
     const key = BuildMeshPoolKey(mesh);
     const existing = context.meshIndexByKey.get(key);
     if (existing !== undefined) {
@@ -308,7 +313,6 @@ function ApplyUnsupportedSchemaDiagnostics(primSpec: ISdfPrimSpec, context: ISta
 // rather than dropped silently or mapped into misleading geometry: implicit gprims, point instancers,
 // curves, points, patches and volumes.
 const UnsupportedRenderableSchemas = [
-    "Cube",
     "Sphere",
     "Cylinder",
     "Cone",

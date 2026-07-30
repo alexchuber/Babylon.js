@@ -5503,6 +5503,13 @@
             "dependsOn": ["Loaders", "Meshes"]
         },
         {
+            "title": "USD loader - Box corpus",
+            "playgroundId": "#KRG46I#0",
+            "referenceImage": "usd-loader-box-corpus.png",
+            "renderCount": 1,
+            "dependsOn": ["Loaders", "Meshes"]
+        },
+        {
             "title": "USD loader - Hospital Bed corpus",
             "playgroundId": "#3SIRFS#0",
             "referenceImage": "usd-loader-hospital-bed-corpus.png",
