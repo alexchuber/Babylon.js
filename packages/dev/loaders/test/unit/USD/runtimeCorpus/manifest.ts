@@ -21,4 +21,15 @@ export const PlaneAsset: IRuntimeCorpusEntry = {
     metersPerUnit: 1,
 } as const;
 
-export const RuntimeCorpusManifest: readonly IRuntimeCorpusEntry[] = [PlaneAsset] as const;
+export const HospitalBedAsset: IRuntimeCorpusEntry = {
+    fileName: "HospitalBed/Hospital_Bed.usda",
+    description: "Large polygon mesh with face-varying normals/UVs, PreviewSurface material, and relative diffuse texture",
+    sha256: "dd8afae46e2571f3801363e9dc3385ceb075a3122e6ba7f8f3ff66dd2da13e64",
+    sizeBytes: 9_418_448,
+    sidecars: ["HospitalBed/textures/HospitalBed_Diffuse.png"],
+    defaultPrim: "Mesh",
+    upAxis: "Y",
+    metersPerUnit: 1,
+} as const;
+
+export const RuntimeCorpusManifest: readonly IRuntimeCorpusEntry[] = [PlaneAsset, HospitalBedAsset] as const;

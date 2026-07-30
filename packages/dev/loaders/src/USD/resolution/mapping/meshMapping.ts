@@ -113,7 +113,8 @@ export function ResolveMesh(prim: ISdfPrimSpec, context: IStageMappingContext, i
         faceVertexResolvedIndices[corner.faceVertexOffset] = vertexIndex;
     }
 
-    const subdivisionScheme = ResolveSubdivisionScheme(prim);
+    const hasFaceVaryingData = normalSource?.interpolation === "faceVarying" || uvSources.some((source) => source.interpolation === "faceVarying");
+    const subdivisionScheme = ResolveSubdivisionScheme(prim, hasFaceVaryingData);
     EmitSubdivisionDiagnostic(prim, subdivisionScheme, context);
 
     return {
@@ -789,9 +790,19 @@ function BuildSubsetRanges(faceIndices: number[], faceRanges: IFaceIndexRange[])
     return merged;
 }
 
-function ResolveSubdivisionScheme(prim: ISdfPrimSpec): IResolvedMesh["subdivisionScheme"] {
+function ResolveSubdivisionScheme(prim: ISdfPrimSpec, hasFaceVaryingData: boolean): IResolvedMesh["subdivisionScheme"] {
     const scheme = AsToken(GetAttributeValue(GetAttribute(prim, "subdivisionScheme")));
-    return scheme === "none" || scheme === "loop" || scheme === "bilinear" ? scheme : "catmullClark";
+    if (scheme === "none" || scheme === "loop" || scheme === "bilinear") {
+        return scheme;
+    }
+    // When subdivisionScheme is not explicitly authored, USD defaults to catmullClark. However,
+    // face-varying normals or UVs are meaningful only on a direct polygon mesh — a subdivision
+    // surface discards face-corner data during limit-surface evaluation. Treat an unset scheme with
+    // face-varying primvars as "none" so the authored per-face-corner data is preserved.
+    if (scheme === undefined && hasFaceVaryingData) {
+        return "none";
+    }
+    return "catmullClark";
 }
 
 // Subdivision is only ever approximated by this loader (a single Catmull-Clark refinement, or uniform
