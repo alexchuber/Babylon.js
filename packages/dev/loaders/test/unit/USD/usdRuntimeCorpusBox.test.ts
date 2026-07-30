@@ -18,6 +18,10 @@ function importBoxAsync(scene: Scene) {
     });
 }
 
+function resolveUsda(usda: string) {
+    return ResolveUsdStageAsync(usda, "", "test.usda", {});
+}
+
 describe("USD runtime corpus - Box", () => {
     let engine: NullEngine;
     let scene: Scene;
@@ -35,7 +39,6 @@ describe("USD runtime corpus - Box", () => {
     it("loads through module-level ImportMeshAsync and produces the expected hierarchy", async () => {
         const result = await importBoxAsync(scene);
 
-        // Xform "Box" > Cube "Geom" → transform node "Box" + mesh "Geom"
         const boxNode = result.transformNodes.find((n) => n.name === "Box");
         expect(boxNode).toBeDefined();
 
@@ -44,13 +47,11 @@ describe("USD runtime corpus - Box", () => {
         expect(geomMesh!.parent?.name).toBe("Box");
     });
 
-    it("produces one renderable cube mesh with 8 vertices and 36 indices (12 triangles)", async () => {
+    it("produces one renderable cube mesh with 24 vertices and 36 indices (12 triangles)", async () => {
         const result = await importBoxAsync(scene);
 
         const geomMesh = result.meshes.find((m) => m.getTotalVertices() > 0);
         expect(geomMesh).toBeDefined();
-
-        // A unit cube: 24 vertices (4 per face × 6 faces, for distinct normals) and 36 indices (12 tris)
         expect(geomMesh!.getTotalVertices()).toBe(24);
         expect(geomMesh!.getTotalIndices()).toBe(36);
     });
@@ -88,20 +89,32 @@ describe("USD runtime corpus - Box", () => {
         expect(maxZ).toBeCloseTo(0.5);
     });
 
-    it("produces per-face normals (each face normal is axis-aligned)", async () => {
-        const result = await importBoxAsync(scene);
+    it("produces per-face normals whose winding agrees with the outward face direction", async () => {
+        const stage = await ResolveUsdStageAsync(readRuntimeCorpusText(BoxAsset.fileName), "", BoxAsset.fileName, {});
+        const mesh = stage.meshes[0];
+        const pos = mesh.positions;
+        const idx = mesh.indices;
+        const nrm = mesh.normals!;
 
-        const geomMesh = result.meshes.find((m) => m.getTotalVertices() > 0);
-        expect(geomMesh).toBeDefined();
-
-        const normals = geomMesh!.getVerticesData(VertexBuffer.NormalKind);
-        expect(normals).toBeDefined();
-        expect(normals!.length).toBe(24 * 3);
-
-        // Every normal should be axis-aligned: exactly one component ±1, others 0
-        for (let v = 0; v < normals!.length; v += 3) {
-            const absSum = Math.abs(normals![v]) + Math.abs(normals![v + 1]) + Math.abs(normals![v + 2]);
-            expect(absSum).toBeCloseTo(1);
+        // Each triangle's cross product must point in the same direction as its face normal.
+        for (let t = 0; t < idx.length; t += 3) {
+            const i0 = idx[t],
+                i1 = idx[t + 1],
+                i2 = idx[t + 2];
+            const ax = pos[i1 * 3] - pos[i0 * 3],
+                ay = pos[i1 * 3 + 1] - pos[i0 * 3 + 1],
+                az = pos[i1 * 3 + 2] - pos[i0 * 3 + 2];
+            const bx = pos[i2 * 3] - pos[i0 * 3],
+                by = pos[i2 * 3 + 1] - pos[i0 * 3 + 1],
+                bz = pos[i2 * 3 + 2] - pos[i0 * 3 + 2];
+            const cx = ay * bz - az * by,
+                cy = az * bx - ax * bz,
+                cz = ax * by - ay * bx;
+            const nx = nrm[i0 * 3],
+                ny = nrm[i0 * 3 + 1],
+                nz = nrm[i0 * 3 + 2];
+            const dot = cx * nx + cy * ny + cz * nz;
+            expect(dot).toBeGreaterThan(0);
         }
     });
 
@@ -125,7 +138,6 @@ describe("USD runtime corpus - Box", () => {
         expect(stage.meshes).toHaveLength(1);
         const mesh = stage.meshes[0];
 
-        // 24 vertices (4 per face × 6 faces), 36 indices (12 triangles)
         expect(mesh.positions.length).toBe(24 * 3);
         expect(mesh.indices.length).toBe(36);
         expect(mesh.normals).toBeDefined();
@@ -133,6 +145,23 @@ describe("USD runtime corpus - Box", () => {
         expect(mesh.subdivisionScheme).toBe("none");
         expect(mesh.doubleSided).toBe(false);
         expect(mesh.orientation).toBe("rightHanded");
+    });
+
+    it("resolves identity transform and no display color for the real Box corpus asset", async () => {
+        const stage = await ResolveUsdStageAsync(readRuntimeCorpusText(BoxAsset.fileName), "", BoxAsset.fileName, {});
+
+        const geomPrim = stage.root.children[0]?.children[0];
+        expect(geomPrim).toBeDefined();
+        expect(geomPrim!.kind).toBe("mesh");
+
+        // No authored transform → identity
+        expect(geomPrim!.transform.translation).toEqual([0, 0, 0]);
+        expect(geomPrim!.transform.scale).toEqual([1, 1, 1]);
+        expect(geomPrim!.transform.matrix).toBeUndefined();
+
+        // No authored displayColor/displayOpacity → no vertex colors
+        const mesh = stage.meshes[geomPrim!.meshIndex!];
+        expect(mesh.colors).toBeUndefined();
     });
 
     it("diagnoses a malformed size value deterministically", async () => {
@@ -151,10 +180,77 @@ def Xform "Box"
     }
 }
 `;
-        const stage = await ResolveUsdStageAsync(malformedUsda, "", "malformed.usda", {});
-
-        // A negative size is malformed; the loader should diagnose it
+        const stage = await resolveUsda(malformedUsda);
         const sizeDiag = stage.diagnostics.find((d) => /size/i.test(d.message));
         expect(sizeDiag).toBeDefined();
+    });
+
+    it("reads doubleSided = true from a standard USDA boolean", async () => {
+        const usda = `#usda 1.0
+def Cube "C"
+{
+    double size = 1
+    uniform bool doubleSided = true
+}
+`;
+        const stage = await resolveUsda(usda);
+        expect(stage.meshes).toHaveLength(1);
+        expect(stage.meshes[0].doubleSided).toBe(true);
+    });
+
+    it("reads doubleSided = false from a standard USDA boolean", async () => {
+        const usda = `#usda 1.0
+def Cube "C"
+{
+    double size = 1
+    uniform bool doubleSided = false
+}
+`;
+        const stage = await resolveUsda(usda);
+        expect(stage.meshes).toHaveLength(1);
+        expect(stage.meshes[0].doubleSided).toBe(false);
+    });
+
+    it("resolves direct displayColor and scalar displayOpacity on the Cube prim", async () => {
+        const usda = `#usda 1.0
+def Cube "C"
+{
+    double size = 1
+    color3f[] primvars:displayColor = [(0.8, 0.2, 0.1)]
+    float[] primvars:displayOpacity = [0.5]
+}
+`;
+        const stage = await resolveUsda(usda);
+        expect(stage.meshes).toHaveLength(1);
+        const colors = stage.meshes[0].colors;
+        expect(colors).toBeDefined();
+        expect(colors![0]).toBeCloseTo(0.8);
+        expect(colors![1]).toBeCloseTo(0.2);
+        expect(colors![2]).toBeCloseTo(0.1);
+        expect(colors![3]).toBeCloseTo(0.5);
+    });
+
+    it("inherits constant displayColor from an ancestor Xform", async () => {
+        const usda = `#usda 1.0
+def Xform "Parent"
+{
+    color3f[] primvars:displayColor = [(0.3, 0.6, 0.9)] (
+        interpolation = "constant"
+    )
+
+    def Cube "Child"
+    {
+        double size = 1
+    }
+}
+`;
+        const stage = await resolveUsda(usda);
+        expect(stage.meshes).toHaveLength(1);
+        const colors = stage.meshes[0].colors;
+        expect(colors).toBeDefined();
+        expect(colors![0]).toBeCloseTo(0.3);
+        expect(colors![1]).toBeCloseTo(0.6);
+        expect(colors![2]).toBeCloseTo(0.9);
+        expect(colors![3]).toBeCloseTo(1.0);
     });
 });

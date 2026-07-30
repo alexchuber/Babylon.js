@@ -183,7 +183,7 @@ function ApplySchemaPayload(
     // Only polygonal UsdGeomMesh is in profile. Implicit gprims, point instancers, lights, curves,
     // points and volumes are diagnosed and skipped at this schema seam rather than mapped.
     const mesh = primSpec.typeName === "Mesh" ? ResolveMesh(primSpec, context, inheritedPrimvars) : undefined;
-    const implicitMesh = !mesh ? ResolveImplicitGprim(primSpec, context.diagnostics) : undefined;
+    const implicitMesh = !mesh ? ResolveImplicitGprim(primSpec, context.diagnostics, inheritedPrimvars) : undefined;
     const resolvedMesh = mesh ?? implicitMesh;
     if (!resolvedMesh) {
         ApplyUnsupportedSchemaDiagnostics(primSpec, context);
