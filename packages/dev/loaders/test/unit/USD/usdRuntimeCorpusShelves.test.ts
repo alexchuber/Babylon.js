@@ -193,7 +193,7 @@ describe("USD RuntimeCorpus - Shelves", () => {
 
         const mesh = allGeometryMeshes[0];
         mesh.computeWorldMatrix(true);
-        mesh.refreshBoundingInfo();
+        mesh.refreshBoundingInfo(false, false);
         const bb = mesh.getBoundingInfo().boundingBox;
 
         // Exact aggregate min/max from the committed GLB geometry

@@ -29,6 +29,8 @@ function readCorpusFile(relativePath: string): string {
  * Application-owned handler that delegates OBJ loading to Babylon's registered OBJ plugin
  * via the module-level `LoadAssetContainerAsync`. `Tools.LoadFile` is mocked in the test
  * setup to serve MTL data from disk.
+ * @param request external asset request emitted for an authored USD property
+ * @returns the handled OBJ container or an unhandled result for other properties
  */
 async function deliveryBoxHandler(request: IUsdExternalAssetRequest): Promise<UsdExternalAssetResult> {
     if (request.propertyName !== "assetInfo:source") {
@@ -145,7 +147,7 @@ describe("USD RuntimeCorpus - Delivery Box", () => {
             expect(meshWithGeometry!.getTotalIndices()).toBe(816);
 
             // Exact authored bounds from OBJ vertices (5.504698 × 3.133665 × 3.835611)
-            meshWithGeometry!.refreshBoundingInfo();
+            meshWithGeometry!.refreshBoundingInfo(false, false);
             const bounds = meshWithGeometry!.getBoundingInfo().boundingBox;
             const width = bounds.maximumWorld.x - bounds.minimumWorld.x;
             const height = bounds.maximumWorld.y - bounds.minimumWorld.y;

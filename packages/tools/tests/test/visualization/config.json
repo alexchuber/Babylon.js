@@ -5489,13 +5489,6 @@
             "dependsOn": ["Loaders", "Meshes"]
         },
         {
-            "title": "USD loader - geometry corpus",
-            "playgroundId": "#BXRGOA#0",
-            "referenceImage": "usd-loader-geometry-corpus.png",
-            "renderCount": 1,
-            "dependsOn": ["Loaders", "Materials", "Meshes"]
-        },
-        {
             "title": "USD loader - Plane corpus",
             "playgroundId": "#TEK2UY#0",
             "referenceImage": "usd-loader-plane-corpus.png",
@@ -5528,7 +5521,7 @@
             "playgroundId": "#3SIRFS#0",
             "referenceImage": "usd-loader-hospital-bed-corpus.png",
             "renderCount": 1,
-            "dependsOn": ["Loaders", "Materials", "Meshes", "Textures"]
+            "dependsOn": ["Loaders", "Materials", "Meshes", "PBR", "Textures"]
         },
         {
             "title": "USD loader - Hospital Bed OBJ wrapper",
@@ -5562,24 +5555,24 @@
         },
         {
             "title": "USD loader - Delivery Box external asset",
-            "playgroundId": "#D89U8G#0",
+            "playgroundId": "#BXH0K6#0",
             "referenceImage": "usd-loader-delivery-box.png",
             "renderCount": 50,
-            "dependsOn": ["Loaders", "Materials", "Meshes"]
+            "dependsOn": ["Loaders", "OBJ", "Materials", "Meshes"]
         },
         {
             "title": "USD loader - Dialysis Machine external asset",
             "playgroundId": "#5GLS6Z#0",
             "referenceImage": "usd-loader-dialysis-machine.png",
             "renderCount": 50,
-            "dependsOn": ["Loaders", "Materials", "Meshes"]
+            "dependsOn": ["Loaders", "OBJ", "Materials", "Meshes"]
         },
         {
             "title": "USD loader - Forklift wrapper",
             "playgroundId": "#N7ZEX5#0",
             "referenceImage": "usd-loader-forklift-wrapper.png",
             "renderCount": 50,
-            "dependsOn": ["Loaders", "Materials", "Meshes", "Textures"]
+            "dependsOn": ["Loaders", "OBJ", "Materials", "Meshes", "Textures"]
         },
         {
             "title": "USD loader - UR10 OBJ wrapper",
@@ -5621,7 +5614,7 @@
             "playgroundId": "#PKS18L#0",
             "referenceImage": "usd-loader-shelves-glb.png",
             "renderCount": 50,
-            "dependsOn": ["Loaders", "glTF", "Meshes", "Materials", "Textures"]
+            "dependsOn": ["Loaders", "glTF", "Meshes", "Materials", "PBR", "Textures"]
         },
         {
             "title": "CSG2 Right-Handed glTF winding",

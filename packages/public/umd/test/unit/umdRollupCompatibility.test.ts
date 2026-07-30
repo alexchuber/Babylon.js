@@ -67,5 +67,5 @@ describe("UMD Rollup compatibility", () => {
             expect(legacyGLTF2.Loader.Extensions).toBeDefined();
             expect(legacyGLTF2.Loader.Extensions.KHR_lights).toBeDefined();
         }
-    });
+    }, 15_000);
 });

@@ -5,12 +5,12 @@ import { fileURLToPath } from "url";
 import { NullEngine } from "core/Engines/nullEngine";
 import { VertexBuffer } from "core/Buffers/buffer";
 import { Scene } from "core/scene";
+import { type TransformNode } from "core/Meshes/transformNode";
 import { AssetContainer } from "core/assetContainer";
 import { ImportMeshAsync, LoadAssetContainerAsync, type ISceneLoaderAsyncResult } from "core/Loading/sceneLoader";
 import { Logger } from "core/Misc/logger";
 import { Observable } from "core/Misc/observable";
 import { type IFileRequest } from "core/Misc/fileRequest";
-import { type IOfflineProvider } from "core/Offline/IOfflineProvider";
 import { LoadFileError } from "core/Misc/fileTools";
 import { Tools } from "core/Misc/tools";
 import { MeshBuilder } from "core/Meshes/meshBuilder";
@@ -182,33 +182,23 @@ function createUr10Handler(options: IUr10HandlerOptions): (request: IUsdExternal
 }
 
 function mockMtlLoadFile(requestedUrls: string[], response: string | Error): void {
-    vi.spyOn(Tools, "LoadFile").mockImplementation(
-        (
-            fileOrUrl: File | string,
-            onSuccess: (data: string | ArrayBuffer, responseURL?: string, contentType?: string | null) => void,
-            _onProgress?: (event: ProgressEvent) => void,
-            _offlineProvider?: IOfflineProvider | null,
-            _useArrayBuffer?: boolean,
-            onError?: (request?: unknown, exception?: LoadFileError) => void
-        ): IFileRequest => {
-            const fileRequest: IFileRequest = {
-                abort: () => {},
-                onCompleteObservable: new Observable<IFileRequest>(),
-            };
-            const url = typeof fileOrUrl === "string" ? fileOrUrl : fileOrUrl.name;
-            requestedUrls.push(url);
-            setTimeout(() => {
-                if (!url.endsWith(".mtl")) {
-                    onError?.(undefined, new LoadFileError(`Unexpected sidecar request: ${url}`, undefined));
-                } else if (response instanceof Error) {
-                    onError?.(undefined, new LoadFileError(response.message, undefined));
-                } else {
-                    onSuccess(response);
-                }
-            }, 0);
-            return fileRequest;
-        }
-    );
+    vi.spyOn(Tools, "LoadFile").mockImplementation((url, onSuccess, _onProgress, _offlineProvider, _useArrayBuffer, onError) => {
+        const fileRequest: IFileRequest = {
+            abort: () => {},
+            onCompleteObservable: new Observable<IFileRequest>(),
+        };
+        requestedUrls.push(url);
+        setTimeout(() => {
+            if (!url.endsWith(".mtl")) {
+                onError?.(undefined, new LoadFileError(`Unexpected sidecar request: ${url}`, undefined));
+            } else if (response instanceof Error) {
+                onError?.(undefined, new LoadFileError(response.message, undefined));
+            } else {
+                onSuccess(response);
+            }
+        }, 0);
+        return fileRequest;
+    });
 }
 
 function createSyntheticUsda(assetPath: string): string {
@@ -233,11 +223,7 @@ def Xform "UR10"
 }`;
 }
 
-function expectIdentityTransform(node: {
-    position: { x: number; y: number; z: number };
-    scaling: { x: number; y: number; z: number };
-    rotationQuaternion: { x: number; y: number; z: number; w: number } | null;
-}): void {
+function expectIdentityTransform(node: TransformNode): void {
     expect(node.position.asArray()).toEqual([0, 0, 0]);
     expect(node.scaling.asArray()).toEqual([1, 1, 1]);
     expect(node.rotationQuaternion).toBeDefined();
@@ -370,7 +356,7 @@ describe("USD RuntimeCorpus - UR10", () => {
         let maxZ = -Infinity;
         for (const mesh of renderableMeshes) {
             mesh.computeWorldMatrix(true);
-            mesh.refreshBoundingInfo();
+            mesh.refreshBoundingInfo(false, false);
             const bounds = mesh.getBoundingInfo().boundingBox;
             minX = Math.min(minX, bounds.minimumWorld.x);
             minY = Math.min(minY, bounds.minimumWorld.y);
@@ -635,8 +621,8 @@ describe("USD RuntimeCorpus - UR10 sidecar failures and diagnostics", () => {
         const engine = new NullEngine();
         const scene = new Scene(engine);
         const logCalls: string[] = [];
-        vi.mocked(Logger.Log).mockImplementation((message: string) => {
-            logCalls.push(message);
+        vi.mocked(Logger.Log).mockImplementation((message) => {
+            logCalls.push(typeof message === "string" ? message : message.map(String).join(" "));
         });
         try {
             const result = await ImportMeshAsync("data:" + readRuntimeCorpusText(UR10Asset.fileName), scene, {

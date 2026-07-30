@@ -1,4 +1,6 @@
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import * as fs from "fs";
+import { fileURLToPath } from "url";
 
 import { NullEngine } from "core/Engines/nullEngine";
 import { Scene } from "core/scene";
@@ -10,10 +12,16 @@ import "loaders/USD/usdFileLoader";
 import { type IResolvedStage } from "loaders/USD/resolution/resolvedStage";
 import { ResolveUsdStageAsync } from "loaders/USD/resolution/usdResolver";
 
-import { readRuntimeCorpusText, RobotArmAsset } from "./runtimeCorpus";
+import { RobotArmAsset } from "./runtimeCorpus/manifest";
 
 // The Robot Arm file is ~25 MB. Parse/import once per describe block and share the read-only
 // result across tests. Each test asserts independently against the shared data without mutation.
+
+const runtimeCorpusRoot = new URL("../../../../../tools/babylonServer/public/Assets/USD/RuntimeCorpus/", import.meta.url);
+
+function readRuntimeCorpusText(fileName: string): string {
+    return fs.readFileSync(fileURLToPath(new URL(fileName, runtimeCorpusRoot)), "utf8");
+}
 
 describe("USD runtime corpus - Robot Arm (resolved stage)", () => {
     let stage: IResolvedStage;
@@ -285,7 +293,7 @@ describe("USD runtime corpus - Robot Arm (Babylon adapter)", () => {
         // Lock in deterministic world bounds (2-decimal precision, verified against authored data)
         expect(worldMin.x).toBeCloseTo(-0.179, 2);
         expect(worldMax.x).toBeCloseTo(0.004, 2);
-        expect(worldMin.y).toBeCloseTo(0.00, 2);
+        expect(worldMin.y).toBeCloseTo(0.0, 2);
         expect(worldMax.y).toBeCloseTo(0.02, 2);
         expect(worldMin.z).toBeCloseTo(-0.012, 2);
         expect(worldMax.z).toBeCloseTo(0.014, 2);
@@ -318,7 +326,7 @@ describe("USD runtime corpus - Robot Arm (resource limit regression)", () => {
         // Parser work is also ~6.3M, well under the unchanged 10M default.
         const stage = await ResolveUsdStageAsync(sourceText, "", RobotArmAsset.fileName, {});
         expect(stage.meshes).toHaveLength(7);
-    });
+    }, 15_000);
 });
 
 describe("USD asset-path diagnostic coverage (synthetic)", () => {

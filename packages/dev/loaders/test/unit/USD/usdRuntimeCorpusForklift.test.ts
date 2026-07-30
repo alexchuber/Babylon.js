@@ -267,7 +267,7 @@ describe("USD RuntimeCorpus - Forklift", () => {
         it("has deterministic final world bounds after 0.03 scale via computeWorldMatrix", () => {
             const mesh = sharedResult.meshes.find((m) => m.getTotalVertices() > 0)!;
             mesh.computeWorldMatrix(true);
-            mesh.refreshBoundingInfo();
+            mesh.refreshBoundingInfo(false, false);
             const bb = mesh.getBoundingInfo().boundingBox;
 
             expect(bb.minimumWorld.x).toBeCloseTo(-5.87, 2);
