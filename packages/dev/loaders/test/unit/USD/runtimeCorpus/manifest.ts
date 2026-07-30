@@ -32,4 +32,15 @@ export const HospitalBedAsset: IRuntimeCorpusEntry = {
     metersPerUnit: 1,
 } as const;
 
-export const RuntimeCorpusManifest: readonly IRuntimeCorpusEntry[] = [PlaneAsset, HospitalBedAsset] as const;
+export const RobotArmAsset: IRuntimeCorpusEntry = {
+    fileName: "RobotArm2/RobotArm.usda",
+    description: "Large multi-mesh Z-up centimeter-scale robot arm with MDL-only materials, authored face-varying normals, no UVs",
+    sha256: "148c6386bc4a7249acdb0c45c8300ca3b230627f85e6c9296885038d50b01d9d",
+    sizeBytes: 25_766_805,
+    sidecars: [],
+    defaultPrim: "RobotArm",
+    upAxis: "Z",
+    metersPerUnit: 0.01,
+} as const;
+
+export const RuntimeCorpusManifest: readonly IRuntimeCorpusEntry[] = [PlaneAsset, HospitalBedAsset, RobotArmAsset] as const;
