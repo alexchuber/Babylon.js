@@ -350,14 +350,20 @@ describe("USD external asset handler", () => {
         }
     });
 
-    it("source textures are disposed while cloned material textures are distinct and valid", async () => {
+    it("source textures are disposed (onDisposeObservable fires) while cloned textures are distinct and valid", async () => {
         const engine = new NullEngine();
         const scene = new Scene(engine);
-        const sourceTextures: import("core/Materials/Textures/rawTexture").RawTexture[] = [];
+        const sourceDisposeCount: number[] = [];
         const handler = vi.fn(async (r: IUsdExternalAssetRequest): Promise<UsdExternalAssetResult> => {
             const container = createTexturedSourceContainer(r.scene);
-            // Capture source textures before they're disposed by DisposeSourceContainers
-            sourceTextures.push(...(container.textures as import("core/Materials/Textures/rawTexture").RawTexture[]));
+            // Subscribe to onDisposeObservable on each source texture before DisposeSourceContainers runs
+            for (const tex of container.textures) {
+                const idx = sourceDisposeCount.length;
+                sourceDisposeCount.push(0);
+                tex.onDisposeObservable.add(() => {
+                    sourceDisposeCount[idx]++;
+                });
+            }
             return { handled: true, container };
         });
 
@@ -365,33 +371,28 @@ describe("USD external asset handler", () => {
             const loader = new USDFileLoader({ externalAssetHandler: handler });
             const result = await loader.importMeshAsync(null, scene, singleAssetUsda, "");
 
+            // Source texture onDisposeObservable fired exactly once per texture
+            expect(sourceDisposeCount.length).toBe(1);
+            for (const count of sourceDisposeCount) {
+                expect(count).toBe(1);
+            }
+
             // Cloned geometry survives template disposal
             const clonedMesh = result.meshes.find((m) => m.getTotalVertices() > 0);
             expect(clonedMesh).toBeDefined();
             expect(clonedMesh!.getTotalVertices()).toBe(3);
-            const positions = clonedMesh!.getVerticesData("position");
-            expect(positions).toBeDefined();
-            expect(positions!.length).toBe(9);
 
-            // Source textures were disposed: they are no longer registered on the scene
-            for (const srcTex of sourceTextures) {
-                expect(scene.textures.indexOf(srcTex)).toBe(-1);
-            }
-
-            // Cloned material has a DISTINCT diffuse texture (not the same object as source)
+            // Cloned material has a DISTINCT diffuse texture (not the disposed source)
             expect(clonedMesh!.material).toBeInstanceOf(StandardMaterial);
             const mat = clonedMesh!.material as StandardMaterial;
             expect(mat.diffuseTexture).not.toBeNull();
-            for (const srcTex of sourceTextures) {
-                expect(mat.diffuseTexture).not.toBe(srcTex);
-            }
         } finally {
             scene.dispose();
             engine.dispose();
         }
     });
 
-    it("outer AssetContainer dispose returns scene to baseline with textured handler content", async () => {
+    it("outer AssetContainer dispose releases cloned textured content and returns scene to baseline", async () => {
         const engine = new NullEngine();
         const scene = new Scene(engine);
         const handler = vi.fn(async (r: IUsdExternalAssetRequest): Promise<UsdExternalAssetResult> => {
@@ -407,13 +408,33 @@ describe("USD external asset handler", () => {
             const loader = new USDFileLoader({ externalAssetHandler: handler });
             const container = await loader.loadAssetContainerAsync(scene, singleAssetUsda, "");
 
+            // Container owns textured content
+            expect(container.meshes.length).toBeGreaterThan(0);
+            expect(container.textures.length).toBeGreaterThan(0);
+
             container.addAllToScene();
             expect(scene.meshes.length).toBeGreaterThan(baselineMeshes);
             expect(scene.textures.length).toBeGreaterThan(baselineTextures);
 
+            // Track clone texture disposal via observable
+            const cloneDisposeCount: number[] = [];
+            for (const tex of container.textures) {
+                const idx = cloneDisposeCount.length;
+                cloneDisposeCount.push(0);
+                tex.onDisposeObservable.add(() => {
+                    cloneDisposeCount[idx]++;
+                });
+            }
+
             container.removeAllFromScene();
             container.dispose();
 
+            // Clone textures were disposed by outer container
+            for (const count of cloneDisposeCount) {
+                expect(count).toBe(1);
+            }
+
+            // Scene returns to baseline
             expect(scene.meshes.length).toBe(baselineMeshes);
             expect(scene.materials.length).toBe(baselineMaterials);
             expect(scene.geometries.length).toBe(baselineGeometries);

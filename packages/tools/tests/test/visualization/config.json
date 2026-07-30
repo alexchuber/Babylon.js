@@ -5567,7 +5567,7 @@
         },
         {
             "title": "USD loader - Shelves external asset GLB",
-            "playgroundId": "#K6OUJC#0",
+            "playgroundId": "#N2F0GU#0",
             "referenceImage": "usd-loader-shelves-glb.png",
             "renderCount": 50,
             "dependsOn": ["Loaders", "glTF", "Meshes", "Materials", "Textures"]
