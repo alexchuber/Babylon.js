@@ -36,6 +36,9 @@ redactions have been applied — see the Modifications section).
 | `DeliveryBox.usda` | USDA wrapper exercising the optional external-asset handler with OBJ/MTL sidecars | `e24af6aa2e1af8f3a500fe3aba8c259ebad025f97a57a800dc8f9645b0cb5994` | 525 | `DeliveryBox/DeliveryBox.obj`, `DeliveryBox/DeliveryBox.mtl` |
 | `DeliveryBox/DeliveryBox.obj` | Delivery Box geometry sidecar | `a807116330157780ea20a3a44ae36bcd8d9806ca18c96dab013e685d3bc1364a` | 13,704 | `DeliveryBox/DeliveryBox.mtl` |
 | `DeliveryBox/DeliveryBox.mtl` | Delivery Box material sidecar | `84fefbdd1c6b4338cbea17ffda4ea6c70142b3af4084e6473b9d1439325a5060` | 208 | (sidecar of DeliveryBox.obj) |
+| `DialysisMachine.usda` | USDA wrapper for dialysis machine OBJ/MTL sidecars via the optional external-asset handler with authored -90° X rotation and 0.02 uniform scale (redacted derivative — see Modifications) | `1c56f082c5de599e6d7ab83f781c4bf70a9e0594cc8152afe705f691ff30af91` | 543 | `DialysisMachine/DialysisMachine.obj`, `DialysisMachine/DialysisMachine.mtl` |
+| `DialysisMachine/DialysisMachine.obj` | Dialysis machine geometry sidecar (392K+ lines, 89K vertices, 32 material groups) | `2c45313495ef44acad8e5e46a931d078f4d63f480398a004f0cddffe0c8a2796` | 14,301,576 | `DialysisMachine/DialysisMachine.mtl` |
+| `DialysisMachine/DialysisMachine.mtl` | Dialysis machine material sidecar with 32 materials (redacted derivative — see Modifications) | `2c922fa528c9cd349daa69341e61bf95093e1b3c47a320fe23af67933edad1af` | 2,983 | (sidecar of DialysisMachine.obj) |
 | `Plane.usda` | Single quad mesh on the XZ plane with constant authored normals | `8ff6aec006b18f5c0a37bc013ade382d87823d935a707ec62f574a641f09e974` | 583 | None |
 | `HospitalBed/Hospital_Bed.usda` | Large polygon mesh with face-varying normals/UVs, PreviewSurface material, and relative diffuse texture | `dd8afae46e2571f3801363e9dc3385ceb075a3122e6ba7f8f3ff66dd2da13e64` | 9,418,448 | `HospitalBed/textures/HospitalBed_Diffuse.png` |
 | `HospitalBed/textures/HospitalBed_Diffuse.png` | Diffuse texture sidecar for Hospital_Bed.usda | `2a765428504204e8c9bc2cc8dc5058996677e528f52c24ccbf21b3c841e353b3` | 2,319,219 | (sidecar of Hospital_Bed.usda) |
@@ -54,6 +57,9 @@ preserved verbatim. Retain it.
 
 `DeliveryBox/DeliveryBox.obj` retains its embedded Blender attribution header.
 
+`DialysisMachine/DialysisMachine.obj` retains its embedded DEEP Exploration / Right Hemisphere
+attribution header.
+
 ## Modifications
 
 - `Box.usda` is a redacted derivative: application-specific comments were removed
@@ -68,6 +74,12 @@ preserved verbatim. Retain it.
   and replaced with a neutral description. The USD data and prim structure (defaultPrim,
   metersPerUnit, upAxis, and single Xform prim) are unchanged from the source; committed
   bytes and hash reflect the neutral comment derivative.
+- `DialysisMachine.usda` is a redacted derivative: a manufacturer/model identifier in the
+  comment was replaced with a neutral description. The USD data and prim structure are
+  unchanged from the source; committed bytes and hash reflect the neutral comment derivative.
+- `DialysisMachine/DialysisMachine.mtl` is a redacted derivative: a manufacturer/model
+  identifier in the header comment was replaced with a neutral description. Material
+  definitions are unchanged; committed bytes and hash reflect the neutral comment derivative.
 
 `Room.usda` and `stairs.usda`: unmodified from their provided-source form.
 Source comments in these files describe legacy intent (e.g. room dimensions,
@@ -85,3 +97,5 @@ All other files are unmodified from their provided-source form.
   and is kept beside it so relative asset-path resolution works.
 - `DeliveryBox.usda` references `./DeliveryBox/DeliveryBox.obj`, whose `mtllib`
   statement resolves `DeliveryBox.mtl` beside the OBJ.
+- `DialysisMachine.usda` references `./DialysisMachine/DialysisMachine.obj`, whose `mtllib`
+  statement resolves `DialysisMachine.mtl` beside the OBJ.

@@ -43,6 +43,17 @@ export const DeliveryBoxAsset: IRuntimeCorpusEntry = {
     metersPerUnit: 1,
 } as const;
 
+export const DialysisMachineAsset: IRuntimeCorpusEntry = {
+    fileName: "DialysisMachine.usda",
+    description: "USDA wrapper for dialysis machine OBJ/MTL sidecars via the optional external-asset handler with authored -90° X rotation and 0.02 uniform scale",
+    sha256: "1c56f082c5de599e6d7ab83f781c4bf70a9e0594cc8152afe705f691ff30af91",
+    sizeBytes: 543,
+    sidecars: ["DialysisMachine/DialysisMachine.obj", "DialysisMachine/DialysisMachine.mtl"],
+    defaultPrim: "DialysisMachine",
+    upAxis: "Y",
+    metersPerUnit: 1,
+} as const;
+
 export const PlaneAsset: IRuntimeCorpusEntry = {
     fileName: "Plane.usda",
     description: "Single quad mesh on the XZ plane with constant authored normals",
@@ -148,6 +159,7 @@ export const RuntimeCorpusManifest: readonly IRuntimeCorpusEntry[] = [
     ConeAsset,
     CylinderAsset,
     DeliveryBoxAsset,
+    DialysisMachineAsset,
     HospitalBedAsset,
     PlaceholderAsset,
     RobotArmAsset,
