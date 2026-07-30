@@ -90,4 +90,29 @@ describe("USD runtime corpus - Placeholder", () => {
         const errors = stage.diagnostics.filter((d) => d.severity === "error");
         expect(errors).toHaveLength(0);
     });
+
+    it("is distinguishable from a rejected document via authored hierarchy", async () => {
+        // A rejected/failed load would produce an error or an empty result with no transform
+        // nodes. This test verifies in one module-level load that the result is a valid
+        // document with exact stage-root + Placeholder hierarchy, zero meshes, and no errors.
+        const errorSpy = vi.spyOn(Logger, "Error").mockImplementation(() => {});
+        try {
+            const result = await importPlaceholderAsync(scene);
+
+            // Exactly 2 transform nodes: stage root + Placeholder
+            expect(result.transformNodes).toHaveLength(2);
+            const placeholderNode = result.transformNodes.find((n) => n.name === "Placeholder");
+            expect(placeholderNode).toBeDefined();
+            expect(placeholderNode!.parent).toBeDefined();
+
+            // Exact zero meshes
+            expect(result.meshes).toHaveLength(0);
+
+            // No error-level diagnostics logged
+            const errors = errorSpy.mock.calls.map((c) => String(c[0]));
+            expect(errors.filter((msg) => /usd/i.test(msg))).toHaveLength(0);
+        } finally {
+            errorSpy.mockRestore();
+        }
+    });
 });

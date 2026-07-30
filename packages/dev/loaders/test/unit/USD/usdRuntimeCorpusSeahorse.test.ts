@@ -63,22 +63,21 @@ describe("USD runtime corpus - Seahorse text placeholder", () => {
 
     it("does not attempt to load the sibling USDZ archive", async () => {
         // The textual seahorse USDA is a standalone layer. It must not select, sniff, fetch,
-        // or load the similarly named .usdz sibling. The loader operates in single-layer
-        // direct-USDA mode with no composition, so there is no mechanism to discover or
-        // reference the archive. Verify by confirming a clean load with no fetch-related
-        // errors or warnings.
-        const warnSpy = vi.spyOn(Logger, "Warn").mockImplementation(() => {});
-        const errorSpy = vi.spyOn(Logger, "Error").mockImplementation(() => {});
+        // or load the similarly named .usdz sibling. Install a hard spy on scene._loadFile so
+        // any unexpected file request fails immediately — this proves structurally that no
+        // network or file I/O occurs for the sibling archive.
+        const loadFileSpy = vi.spyOn(scene, "_loadFile").mockImplementation((...args: unknown[]) => {
+            const url = typeof args[0] === "string" ? args[0] : "";
+            throw new Error(`Unexpected file request during Seahorse load: ${url}`);
+        });
         try {
             const result = await importSeahorseAsync(scene);
             expect(result).toBeDefined();
 
-            const allLogs = [...warnSpy.mock.calls, ...errorSpy.mock.calls].map((c) => String(c[0]));
-            const fetchRelated = allLogs.filter((msg) => /usdz|archive|fetch|reference/i.test(msg));
-            expect(fetchRelated).toHaveLength(0);
+            // Assert zero file requests — especially no .usdz
+            expect(loadFileSpy).not.toHaveBeenCalled();
         } finally {
-            warnSpy.mockRestore();
-            errorSpy.mockRestore();
+            loadFileSpy.mockRestore();
         }
     });
 

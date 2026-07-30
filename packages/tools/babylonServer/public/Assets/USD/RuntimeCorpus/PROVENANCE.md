@@ -55,8 +55,9 @@ preserved verbatim. Retain it.
   preserves the same USD structure and nonportable-path test behavior.
 - `seahorse_anim_mtl_variant.usda` is a redacted derivative: authoring-environment
   identifiers and application-specific implementation references in the comment were removed
-  and replaced with a neutral description. The USD structure (defaultPrim, metersPerUnit,
-  upAxis, and single Xform prim) is preserved byte-for-byte from the source.
+  and replaced with a neutral description. The USD data and prim structure (defaultPrim,
+  metersPerUnit, upAxis, and single Xform prim) are unchanged from the source; committed
+  bytes and hash reflect the neutral comment derivative.
 
 All other files are unmodified from their provided-source form.
 
