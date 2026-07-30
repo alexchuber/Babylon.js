@@ -7,6 +7,8 @@ import { ImportMeshAsync } from "core/Loading/sceneLoader";
 import { VertexBuffer } from "core/Buffers/buffer";
 import "loaders/USD/usdFileLoader";
 
+import { ResolveUsdStageAsync } from "loaders/USD/resolution/usdResolver";
+
 import { readRuntimeCorpusText, PlaneAsset } from "./runtimeCorpus";
 
 function importPlaneAsync(scene: Scene) {
@@ -109,6 +111,20 @@ describe("USD runtime corpus - Plane", () => {
             expect(logged.some((msg) => /subdivision/i.test(msg))).toBe(true);
         } finally {
             log.mockRestore();
+        }
+    });
+
+    // Regression: the primvars:normals fix in meshMapping must resolve the authored constant
+    // normal before Catmull-Clark drops it. Without the fallback, mesh.normals is undefined.
+    it("resolves authored primvars:normals as (0,1,0) before tessellation", async () => {
+        const stage = await ResolveUsdStageAsync(readRuntimeCorpusText(PlaneAsset.fileName), "", PlaneAsset.fileName, {});
+        const mesh = stage.meshes[0];
+
+        expect(mesh.normals).toBeDefined();
+        for (let offset = 0; offset < mesh.normals!.length; offset += 3) {
+            expect(mesh.normals![offset]).toBeCloseTo(0);
+            expect(mesh.normals![offset + 1]).toBeCloseTo(1);
+            expect(mesh.normals![offset + 2]).toBeCloseTo(0);
         }
     });
 });
