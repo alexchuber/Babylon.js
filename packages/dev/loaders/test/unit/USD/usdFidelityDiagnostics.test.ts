@@ -97,7 +97,6 @@ describe("USD fidelity diagnostics", () => {
         "Volume",
         "Sphere",
         "Cylinder",
-        "Cone",
         "Capsule",
         "PointInstancer",
     ])("emits exactly one diagnostic naming an unsupported %s prim and creates no mesh", (typeName) => {

@@ -1,4 +1,4 @@
-// Maps implicit USD gprims (Cube, and later Cylinder/Sphere/Cone) into resolved meshes
+// Maps implicit USD gprims (Cube, Cone, and later Cylinder/Sphere) into resolved meshes
 // that flow through the existing geometry adapter. Each gprim produces a canonical
 // IResolvedMesh with generated positions, normals, and indices (subdivisionScheme "none").
 
@@ -19,6 +19,8 @@ export function ResolveImplicitGprim(prim: ISdfPrimSpec, diagnostics: IResolvedD
     switch (prim.typeName) {
         case "Cube":
             return ResolveCube(prim, diagnostics, inheritedPrimvars);
+        case "Cone":
+            return ResolveCone(prim, diagnostics, inheritedPrimvars);
         default:
             return undefined;
     }
@@ -146,4 +148,196 @@ function ReadConstantOpacity(value: ReturnType<typeof GetAttributeValue>): numbe
         return arr[0];
     }
     return undefined;
+}
+
+type Axis = "X" | "Y" | "Z";
+
+// USD default Cone radius is 1.0, height is 2.0, axis is "Z" (per OpenUSD schema.usda).
+function ResolveCone(prim: ISdfPrimSpec, diagnostics: IResolvedDiagnostic[], inheritedPrimvars: IInheritedPrimvars): IResolvedMesh {
+    const rawRadius = AsNumber(GetAttributeValue(GetAttribute(prim, "radius")));
+    let radius = rawRadius ?? 1.0;
+    if (rawRadius !== undefined && (rawRadius <= 0 || !Number.isFinite(rawRadius))) {
+        diagnostics.push({
+            severity: "warning",
+            path: prim.path,
+            message: `Cone has invalid radius ${rawRadius}; falling back to default radius 1.`,
+        });
+        radius = 1.0;
+    }
+
+    const rawHeight = AsNumber(GetAttributeValue(GetAttribute(prim, "height")));
+    let height = rawHeight ?? 2.0;
+    if (rawHeight !== undefined && (rawHeight <= 0 || !Number.isFinite(rawHeight))) {
+        diagnostics.push({
+            severity: "warning",
+            path: prim.path,
+            message: `Cone has invalid height ${rawHeight}; falling back to default height 2.`,
+        });
+        height = 2.0;
+    }
+
+    const rawAxis = AsToken(GetAttributeValue(GetAttribute(prim, "axis")));
+    let axis: Axis = "Z";
+    if (rawAxis !== undefined) {
+        if (rawAxis === "X" || rawAxis === "Y" || rawAxis === "Z") {
+            axis = rawAxis;
+        } else {
+            diagnostics.push({
+                severity: "warning",
+                path: prim.path,
+                message: `Cone has invalid axis "${rawAxis}"; falling back to default axis "Z".`,
+            });
+        }
+    }
+
+    return BuildConeMesh(radius, height, axis, prim, inheritedPrimvars);
+}
+
+// Deterministic tessellation with 32 segments. Generates a closed cone with a base disk.
+// The cone is centered at the origin along the chosen axis:
+//   base center at -height/2, apex at +height/2.
+// Geometry is generated in canonical Y-up space; positions and normals are rotated for X/Z axes.
+// Vertex layout:
+//   - Side: (segments + 1) vertices per ring × 2 rings (base ring + apex ring) = 2*(segments+1)
+//     The last vertex in each ring duplicates the first for UV seam closure.
+//   - Base disk: segments + 1 vertices (center + ring, last duplicates first)
+// Index layout:
+//   - Side: segments × 2 triangles = segments × 6 indices
+//   - Base: segments triangles = segments × 3 indices
+const CONE_SEGMENTS = 32;
+
+function BuildConeMesh(radius: number, height: number, axis: Axis, prim: ISdfPrimSpec, inheritedPrimvars: IInheritedPrimvars): IResolvedMesh {
+    const seg = CONE_SEGMENTS;
+    const halfHeight = height / 2;
+    // Side slope for normals: the normal to the cone surface makes an angle with the base
+    // whose tangent is radius/height, so ny = radius/slant, nr = height/slant.
+    const slant = Math.sqrt(radius * radius + height * height);
+    const ny = radius / slant;
+    const nr = height / slant;
+
+    // Side vertices: 2 rings of (seg+1) vertices each.
+    // Ring 0 = base circle at y = -halfHeight
+    // Ring 1 = apex ring at y = +halfHeight (all at the same apex point, distinct normals)
+    const sideVertCount = (seg + 1) * 2;
+    // Base disk: center + (seg+1) ring vertices
+    const baseVertCount = seg + 2;
+    const totalVerts = sideVertCount + baseVertCount;
+
+    const positions = new Float32Array(totalVerts * 3);
+    const normals = new Float32Array(totalVerts * 3);
+
+    // Generate side vertices
+    for (let i = 0; i <= seg; i++) {
+        const theta = (i / seg) * 2 * Math.PI;
+        const cosT = Math.cos(theta);
+        const sinT = Math.sin(theta);
+
+        // Base ring vertex
+        const bi = i;
+        positions[bi * 3] = radius * cosT;
+        positions[bi * 3 + 1] = -halfHeight;
+        positions[bi * 3 + 2] = radius * sinT;
+        normals[bi * 3] = nr * cosT;
+        normals[bi * 3 + 1] = ny;
+        normals[bi * 3 + 2] = nr * sinT;
+
+        // Apex ring vertex
+        const ai = seg + 1 + i;
+        positions[ai * 3] = 0;
+        positions[ai * 3 + 1] = halfHeight;
+        positions[ai * 3 + 2] = 0;
+        normals[ai * 3] = nr * cosT;
+        normals[ai * 3 + 1] = ny;
+        normals[ai * 3 + 2] = nr * sinT;
+    }
+
+    // Generate base disk vertices (all at y = -halfHeight, normals pointing down)
+    const baseStart = sideVertCount;
+    // Center vertex
+    positions[baseStart * 3] = 0;
+    positions[baseStart * 3 + 1] = -halfHeight;
+    positions[baseStart * 3 + 2] = 0;
+    normals[baseStart * 3] = 0;
+    normals[baseStart * 3 + 1] = -1;
+    normals[baseStart * 3 + 2] = 0;
+
+    for (let i = 0; i <= seg; i++) {
+        const theta = (i / seg) * 2 * Math.PI;
+        const vi = baseStart + 1 + i;
+        positions[vi * 3] = radius * Math.cos(theta);
+        positions[vi * 3 + 1] = -halfHeight;
+        positions[vi * 3 + 2] = radius * Math.sin(theta);
+        normals[vi * 3] = 0;
+        normals[vi * 3 + 1] = -1;
+        normals[vi * 3 + 2] = 0;
+    }
+
+    // Rotate for non-Y axes
+    if (axis !== "Y") {
+        RotateBufferToAxis(positions, axis);
+        RotateBufferToAxis(normals, axis);
+    }
+
+    // Side indices: for each segment, one triangle from base to apex
+    const sideIndexCount = seg * 3;
+    // Base indices: fan from center
+    const baseIndexCount = seg * 3;
+    const indices = new Uint32Array(sideIndexCount + baseIndexCount);
+
+    let idx = 0;
+    // Side triangles (CCW when viewed from outside, right-handed)
+    for (let i = 0; i < seg; i++) {
+        const b0 = i;
+        const b1 = i + 1;
+        const a0 = seg + 1 + i;
+        // Triangle: base[i], apex[i], base[i+1]
+        indices[idx++] = b0;
+        indices[idx++] = a0;
+        indices[idx++] = b1;
+    }
+
+    // Base disk triangles (CCW when viewed from below = -Y direction, right-handed)
+    const center = baseStart;
+    for (let i = 0; i < seg; i++) {
+        const r0 = baseStart + 1 + i;
+        const r1 = baseStart + 1 + i + 1;
+        indices[idx++] = center;
+        indices[idx++] = r0;
+        indices[idx++] = r1;
+    }
+
+    const doubleSided = AsBoolean(GetAttributeValue(GetAttribute(prim, "doubleSided"))) ?? false;
+    const orientation = AsToken(GetAttributeValue(GetAttribute(prim, "orientation"))) === "leftHanded" ? "leftHanded" : "rightHanded";
+    const colors = ResolveConstantDisplayColors(prim, totalVerts, inheritedPrimvars);
+
+    return {
+        positions,
+        indices,
+        normals,
+        doubleSided,
+        orientation,
+        subdivisionScheme: "none",
+        colors,
+    };
+}
+
+// Rotates a flat xyz buffer from canonical Y-up to the target axis.
+// Y→X: (x,y,z) → (y,-x,z), i.e. 90° rotation around Z
+// Y→Z: (x,y,z) → (x,z,-y), i.e. -90° rotation around X
+function RotateBufferToAxis(buf: Float32Array, axis: Axis): void {
+    for (let i = 0; i < buf.length; i += 3) {
+        const x = buf[i];
+        const y = buf[i + 1];
+        const z = buf[i + 2];
+        if (axis === "X") {
+            buf[i] = y;
+            buf[i + 1] = -x;
+            buf[i + 2] = z;
+        } else {
+            // Z
+            buf[i] = x;
+            buf[i + 1] = z;
+            buf[i + 2] = -y;
+        }
+    }
 }

@@ -21,6 +21,17 @@ export const BoxAsset: IRuntimeCorpusEntry = {
     metersPerUnit: 1,
 } as const;
 
+export const ConeAsset: IRuntimeCorpusEntry = {
+    fileName: "Cone.usda",
+    description: "Cone via implicit UsdGeomCone with authored radius, height, and axis",
+    sha256: "e613871f2518722667c435dd9aa6dc2f925e8496a36388c2303a5775f01149b7",
+    sizeBytes: 272,
+    sidecars: [],
+    defaultPrim: "Cone",
+    upAxis: "Y",
+    metersPerUnit: 1,
+} as const;
+
 export const DeliveryBoxAsset: IRuntimeCorpusEntry = {
     fileName: "DeliveryBox.usda",
     description: "USDA wrapper that delegates an OBJ/MTL sidecar pair through the optional external-asset handler",
@@ -112,6 +123,7 @@ export const SeahorseTextAsset: IRuntimeCorpusEntry = {
 export const RuntimeCorpusManifest: readonly IRuntimeCorpusEntry[] = [
     PlaneAsset,
     BoxAsset,
+    ConeAsset,
     DeliveryBoxAsset,
     HospitalBedAsset,
     PlaceholderAsset,

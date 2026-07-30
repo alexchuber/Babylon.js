@@ -5510,6 +5510,13 @@
             "dependsOn": ["Loaders", "Meshes"]
         },
         {
+            "title": "USD loader - Cone corpus",
+            "playgroundId": "#GOHM3A#0",
+            "referenceImage": "usd-loader-cone-corpus.png",
+            "renderCount": 1,
+            "dependsOn": ["Loaders", "Meshes"]
+        },
+        {
             "title": "USD loader - Hospital Bed corpus",
             "playgroundId": "#3SIRFS#0",
             "referenceImage": "usd-loader-hospital-bed-corpus.png",

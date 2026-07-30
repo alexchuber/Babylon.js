@@ -4,6 +4,7 @@ import { fileURLToPath } from "url";
 export {
     RuntimeCorpusManifest,
     BoxAsset,
+    ConeAsset,
     DeliveryBoxAsset,
     HospitalBedAsset,
     PlaceholderAsset,
