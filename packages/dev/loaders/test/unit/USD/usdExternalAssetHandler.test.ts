@@ -268,17 +268,26 @@ describe("USD external asset handler", () => {
             const loader = new USDFileLoader({ externalAssetHandler: handler });
             const result = await loader.importMeshAsync(null, scene, singleAssetUsda, "");
 
-            // Source container was disposed (spy verify)
+            // Source container was deterministically disposed
             for (const container of containers) {
                 expect(container.meshes.length).toBe(0);
             }
 
-            // Cloned geometry and material remain valid on the scene
+            // Cloned geometry remains valid: position buffer contents and vertex count
             expect(result.meshes.length).toBeGreaterThan(0);
             const clonedMesh = result.meshes.find((m) => m.getTotalVertices() > 0);
             expect(clonedMesh).toBeDefined();
             expect(clonedMesh!.getTotalVertices()).toBe(3);
+            const positions = clonedMesh!.getVerticesData("position");
+            expect(positions).toBeDefined();
+            expect(positions!.length).toBe(9);
+            expect(positions![0]).toBe(0);
+            expect(positions![3]).toBe(1);
+            expect(positions![7]).toBe(1);
+
+            // Cloned material remains valid and usable
             expect(clonedMesh!.material).toBeDefined();
+            expect(clonedMesh!.material).toBeInstanceOf(StandardMaterial);
         } finally {
             scene.dispose();
             engine.dispose();
@@ -296,6 +305,7 @@ describe("USD external asset handler", () => {
             const baselineMeshes = scene.meshes.length;
             const baselineTransforms = scene.transformNodes.length;
             const baselineMaterials = scene.materials.length;
+            const baselineGeometries = scene.geometries.length;
 
             const loader = new USDFileLoader({ externalAssetHandler: handler });
             const container = await loader.loadAssetContainerAsync(scene, singleAssetUsda, "");
@@ -312,6 +322,7 @@ describe("USD external asset handler", () => {
             expect(scene.meshes.length).toBe(baselineMeshes);
             expect(scene.transformNodes.length).toBe(baselineTransforms);
             expect(scene.materials.length).toBe(baselineMaterials);
+            expect(scene.geometries.length).toBe(baselineGeometries);
         } finally {
             scene.dispose();
             engine.dispose();

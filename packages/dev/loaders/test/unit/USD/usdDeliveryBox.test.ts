@@ -7,9 +7,14 @@ import { NullEngine } from "core/Engines/nullEngine";
 import { Scene } from "core/scene";
 import "core/Meshes/instancedMesh";
 import { Logger } from "core/Misc/logger";
+import { Observable } from "core/Misc/observable";
 import { type IFileRequest } from "core/Misc/fileRequest";
+import { type IOfflineProvider } from "core/Offline/IOfflineProvider";
+import { type WebRequest } from "core/Misc/webRequest";
+import { LoadFileError } from "core/Misc/fileTools";
 import { Tools } from "core/Misc/tools";
 import { ImportMeshAsync, LoadAssetContainerAsync } from "core/Loading/sceneLoader";
+import { StandardMaterial } from "core/Materials/standardMaterial";
 import { RegisterOBJFileLoader } from "loaders/OBJ/objFileLoader.pure";
 import { RegisterUSDFileLoader } from "loaders/USD/usdFileLoader.pure";
 import { type IUsdExternalAssetRequest, type UsdExternalAssetResult } from "loaders/USD/usdExternalAssetHandler";
@@ -53,22 +58,22 @@ describe("USD RuntimeCorpus - Delivery Box", () => {
         vi.spyOn(Logger, "Warn").mockImplementation(() => {});
         vi.spyOn(Logger, "Error").mockImplementation(() => {});
 
-        // Mock Tools.LoadFile to serve MTL from disk. Returns a properly typed IFileRequest
-        // and calls the error callback for unexpected requests.
+        // Mock Tools.LoadFile to serve MTL from disk with the actual LoadFile signature.
         vi.spyOn(Tools, "LoadFile").mockImplementation(
             (
-                url: string,
-                onSuccess: (data: string | ArrayBuffer, responseURL?: string) => void,
-                _onProgress?: (data: { loaded: number; total: number }) => void,
-                _offlineProvider?: any,
+                fileOrUrl: File | string,
+                onSuccess: (data: string | ArrayBuffer, responseURL?: string, contentType?: string | null) => void,
+                _onProgress?: (ev: ProgressEvent) => void,
+                _offlineProvider?: IOfflineProvider | null,
                 _useArrayBuffer?: boolean,
-                onError?: (request?: any, exception?: any) => void
+                onError?: (request?: WebRequest, exception?: LoadFileError) => void
             ): IFileRequest => {
                 const fileRequest: IFileRequest = {
                     abort: () => {},
-                    onCompleteObservable: { notifyObservers: () => false, add: () => null, remove: () => false } as any,
+                    onCompleteObservable: new Observable<IFileRequest>(),
                 };
-                if (typeof url === "string" && url.endsWith(".mtl")) {
+                const url = typeof fileOrUrl === "string" ? fileOrUrl : fileOrUrl.name;
+                if (url.endsWith(".mtl")) {
                     const mtlName = url.split("/").pop() ?? url;
                     try {
                         const mtlData = readCorpusFile("DeliveryBox/" + mtlName);
@@ -76,14 +81,14 @@ describe("USD RuntimeCorpus - Delivery Box", () => {
                     } catch (readError) {
                         setTimeout(() => {
                             if (onError) {
-                                onError(undefined, readError);
+                                onError(undefined, new LoadFileError(`Failed to read ${url}: ${readError}`, undefined));
                             }
                         }, 0);
                     }
                 } else {
                     setTimeout(() => {
                         if (onError) {
-                            onError(undefined, new Error(`Unexpected Tools.LoadFile request: ${url}`));
+                            onError(undefined, new LoadFileError(`Unexpected Tools.LoadFile request: ${url}`, undefined));
                         }
                     }, 0);
                 }
@@ -139,18 +144,24 @@ describe("USD RuntimeCorpus - Delivery Box", () => {
             expect(meshWithGeometry!.getTotalVertices()).toBe(520);
             expect(meshWithGeometry!.getTotalIndices()).toBe(816);
 
-            // Deterministic bounds
+            // Exact authored bounds from OBJ vertices (5.504698 × 3.133665 × 3.835611)
             meshWithGeometry!.refreshBoundingInfo();
             const bounds = meshWithGeometry!.getBoundingInfo().boundingBox;
             const width = bounds.maximumWorld.x - bounds.minimumWorld.x;
             const height = bounds.maximumWorld.y - bounds.minimumWorld.y;
             const depth = bounds.maximumWorld.z - bounds.minimumWorld.z;
-            expect(width).toBeGreaterThan(4);
-            expect(height).toBeGreaterThan(3);
-            expect(depth).toBeGreaterThan(3);
+            expect(width).toBeCloseTo(5.504698, 3);
+            expect(height).toBeCloseTo(3.133665, 3);
+            expect(depth).toBeCloseTo(3.835611, 3);
 
-            // Material from MTL (Kd 0.72 0.51 0.27) — served by the Tools.LoadFile mock
+            // MTL material: StandardMaterial with diffuseColor from Kd (0.72, 0.51, 0.27)
             expect(meshWithGeometry!.material).toBeDefined();
+            expect(meshWithGeometry!.material).toBeInstanceOf(StandardMaterial);
+            const material = meshWithGeometry!.material as StandardMaterial;
+            expect(material.name).toBe("Clone of Box");
+            expect(material.diffuseColor.r).toBeCloseTo(0.72, 2);
+            expect(material.diffuseColor.g).toBeCloseTo(0.51, 2);
+            expect(material.diffuseColor.b).toBeCloseTo(0.27, 2);
         } finally {
             scene.dispose();
             engine.dispose();
