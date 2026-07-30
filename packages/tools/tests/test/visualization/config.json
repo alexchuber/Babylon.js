@@ -5573,6 +5573,13 @@
             "dependsOn": ["Loaders", "Materials", "Meshes", "Textures"]
         },
         {
+            "title": "USD loader - UR10 OBJ wrapper",
+            "playgroundId": "#3SY6FL#0",
+            "referenceImage": "usd-loader-ur10-obj-wrapper.png",
+            "renderCount": 1,
+            "dependsOn": ["Loaders", "OBJ", "Materials", "Meshes"]
+        },
+        {
             "title": "USD loader - Placeholder corpus",
             "playgroundId": "#01JZK1#0",
             "referenceImage": "usd-loader-placeholder-corpus.png",

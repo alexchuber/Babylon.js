@@ -1,0 +1,22 @@
+#usda 1.0
+(
+    defaultPrim = "UR10"
+    metersPerUnit = 1
+    upAxis = "Y"
+)
+
+# Universal Robots UR10 arm. OBJ + sibling MTL with vertex color materials.
+def Xform "UR10"
+{
+    def Xform "Arm" (
+        kind = "reference"
+    )
+    {
+        custom asset assetInfo:source = @./UR10/obj_arm.obj@
+        # OBJ extents look like inches; convert to meters.
+        double3 xformOp:translate = (0, 0, 0)
+        float3 xformOp:rotateXYZ = (0, 0, 0)
+        float3 xformOp:scale = (0.0254, 0.0254, 0.0254)
+        uniform token[] xformOpOrder = ["xformOp:translate", "xformOp:rotateXYZ", "xformOp:scale"]
+    }
+}
