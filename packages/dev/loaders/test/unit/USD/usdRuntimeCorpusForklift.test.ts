@@ -13,16 +13,14 @@ import { type IOfflineProvider } from "core/Offline/IOfflineProvider";
 import { type WebRequest } from "core/Misc/webRequest";
 import { LoadFileError } from "core/Misc/fileTools";
 import { Tools } from "core/Misc/tools";
-import { ImportMeshAsync, LoadAssetContainerAsync } from "core/Loading/sceneLoader";
+import { ImportMeshAsync, LoadAssetContainerAsync, type ISceneLoaderAsyncResult } from "core/Loading/sceneLoader";
 import { StandardMaterial } from "core/Materials/standardMaterial";
 import { Texture } from "core/Materials/Textures/texture";
 import { Vector3 } from "core/Maths/math.vector";
-import { type ISceneLoaderAsyncResult } from "core/Loading/sceneLoader";
 import { RegisterOBJFileLoader } from "loaders/OBJ/objFileLoader.pure";
 import { RegisterUSDFileLoader } from "loaders/USD/usdFileLoader.pure";
 import { type IUsdExternalAssetRequest, type UsdExternalAssetResult } from "loaders/USD/usdExternalAssetHandler";
 
-// Forklift OBJ is ~747 KB (3746 vertices, 3496 faces); single parse in beforeAll.
 const LOAD_TIMEOUT = 30_000;
 
 const corpusRoot = fileURLToPath(new URL("../../../../../tools/babylonServer/public/Assets/USD/RuntimeCorpus/", import.meta.url));
@@ -31,11 +29,55 @@ function readCorpusFile(relativePath: string): string {
     return fs.readFileSync(path.join(corpusRoot, relativePath), "utf8");
 }
 
-/**
- * Application-owned handler that delegates OBJ loading to Babylon's registered OBJ plugin.
- * Recognizes only the custom `assetInfo:source` property and only `.obj` extensions.
- */
-async function forkliftHandler(request: IUsdExternalAssetRequest): Promise<UsdExternalAssetResult> {
+/** PNG magic bytes: 137 80 78 71 13 10 26 10 */
+const PNG_MAGIC = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]);
+
+// Validates that a file at the given corpus-relative path exists and starts with PNG magic bytes.
+function validatePng(relativePath: string): void {
+    const fullPath = path.join(corpusRoot, relativePath);
+    if (!fs.existsSync(fullPath)) {
+        throw new Error(`Required PNG sidecar not found: ${relativePath}`);
+    }
+    const header = Buffer.alloc(8);
+    const fd = fs.openSync(fullPath, "r");
+    fs.readSync(fd, header, 0, 8, 0);
+    fs.closeSync(fd);
+    if (!header.subarray(0, 8).equals(PNG_MAGIC)) {
+        throw new Error(`Invalid PNG header in ${relativePath}`);
+    }
+}
+
+// Validates the complete authored sidecar graph:
+// Forklift.usda → Forklift/Forklift.obj (references mtllib) → Forklift/Forklift.mtl
+// MTL references: textures/Mat01_BaseColor.png, textures/Mat01_Normal.png, textures/Mat01_Roughness.png
+function validateSidecarGraph(): void {
+    // OBJ exists and references MTL
+    const obj = readCorpusFile("Forklift/Forklift.obj");
+    if (!obj.includes("mtllib Forklift.mtl")) {
+        throw new Error("OBJ does not reference Forklift.mtl");
+    }
+
+    // MTL exists and references all three textures
+    const mtl = readCorpusFile("Forklift/Forklift.mtl");
+    if (!mtl.includes("map_Kd textures/Mat01_BaseColor.png")) {
+        throw new Error("MTL missing map_Kd reference");
+    }
+    if (!mtl.includes("map_Bump")) {
+        throw new Error("MTL missing map_Bump reference");
+    }
+    if (!mtl.includes("map_Ns textures/Mat01_Roughness.png")) {
+        throw new Error("MTL missing map_Ns reference");
+    }
+
+    // All three PNGs exist with valid headers
+    validatePng("Forklift/textures/Mat01_BaseColor.png");
+    validatePng("Forklift/textures/Mat01_Normal.png");
+    validatePng("Forklift/textures/Mat01_Roughness.png");
+}
+
+// Application-owned handler with pre-validation and post-load validation.
+// Validates sidecar graph before loading, rejects on any failure.
+async function validatingForkliftHandler(request: IUsdExternalAssetRequest): Promise<UsdExternalAssetResult> {
     if (request.propertyName !== "assetInfo:source") {
         return { handled: false };
     }
@@ -43,6 +85,9 @@ async function forkliftHandler(request: IUsdExternalAssetRequest): Promise<UsdEx
     if (extension !== "obj") {
         return { handled: false };
     }
+
+    // Pre-validate authored sidecar graph
+    validateSidecarGraph();
 
     const objRelativePath = request.authoredUri.replace(/^\.\//, "");
     const objData = readCorpusFile(objRelativePath);
@@ -52,13 +97,34 @@ async function forkliftHandler(request: IUsdExternalAssetRequest): Promise<UsdEx
         rootUrl: "",
     });
 
+    // Post-load validation: must have geometry and material with authored textures
+    const meshWithGeometry = container.meshes.find((m) => m.getTotalVertices() > 0);
+    if (!meshWithGeometry) {
+        container.dispose();
+        throw new Error("OBJ loaded but produced no geometry mesh");
+    }
+    if (!meshWithGeometry.material) {
+        container.dispose();
+        throw new Error("OBJ mesh has no material after MTL loading");
+    }
+    const mat = meshWithGeometry.material as StandardMaterial;
+    if (!mat.diffuseTexture) {
+        container.dispose();
+        throw new Error("Missing base-color texture (map_Kd) after MTL loading");
+    }
+    if (!mat.bumpTexture) {
+        container.dispose();
+        throw new Error("Missing normal map texture (map_Bump) after MTL loading");
+    }
+    if (!mat.specularTexture) {
+        container.dispose();
+        throw new Error("Missing roughness/specular texture (map_Ns) after MTL loading");
+    }
+
     return { handled: true, container };
 }
 
-/**
- * Sets up Tools.LoadFile mock that serves MTL from disk and tracks all file requests.
- * Returns the list of requested URLs for assertion.
- */
+// Sets up Tools.LoadFile mock serving MTL from disk and tracking all requests.
 function mockToolsLoadFile(): string[] {
     const requestedUrls: string[] = [];
     vi.spyOn(Tools, "LoadFile").mockImplementation(
@@ -109,33 +175,30 @@ describe("USD RuntimeCorpus - Forklift", () => {
     let handlerRequestedUris: string[];
     let toolsLoadFileUrls: string[];
 
-    beforeAll(
-        async () => {
-            RegisterUSDFileLoader();
-            RegisterOBJFileLoader();
-            vi.spyOn(Logger, "Log").mockImplementation(() => {});
-            vi.spyOn(Logger, "Warn").mockImplementation(() => {});
-            vi.spyOn(Logger, "Error").mockImplementation(() => {});
+    beforeAll(async () => {
+        RegisterUSDFileLoader();
+        RegisterOBJFileLoader();
+        vi.spyOn(Logger, "Log").mockImplementation(() => {});
+        vi.spyOn(Logger, "Warn").mockImplementation(() => {});
+        vi.spyOn(Logger, "Error").mockImplementation(() => {});
 
-            handlerRequestedUris = [];
-            toolsLoadFileUrls = mockToolsLoadFile();
+        handlerRequestedUris = [];
+        toolsLoadFileUrls = mockToolsLoadFile();
 
-            const trackingHandler = async (request: IUsdExternalAssetRequest): Promise<UsdExternalAssetResult> => {
-                handlerRequestedUris.push(request.authoredUri);
-                return forkliftHandler(request);
-            };
+        const trackingHandler = async (request: IUsdExternalAssetRequest): Promise<UsdExternalAssetResult> => {
+            handlerRequestedUris.push(request.authoredUri);
+            return validatingForkliftHandler(request);
+        };
 
-            sharedEngine = new NullEngine();
-            sharedScene = new Scene(sharedEngine);
+        sharedEngine = new NullEngine();
+        sharedScene = new Scene(sharedEngine);
 
-            const usdaData = readCorpusFile("Forklift.usda");
-            sharedResult = await ImportMeshAsync("data:" + usdaData, sharedScene, {
-                pluginExtension: ".usda",
-                pluginOptions: { usd: { externalAssetHandler: trackingHandler } },
-            });
-        },
-        LOAD_TIMEOUT
-    );
+        const usdaData = readCorpusFile("Forklift.usda");
+        sharedResult = await ImportMeshAsync("data:" + usdaData, sharedScene, {
+            pluginExtension: ".usda",
+            pluginOptions: { usd: { externalAssetHandler: trackingHandler } },
+        });
+    }, LOAD_TIMEOUT);
 
     afterAll(() => {
         sharedScene?.dispose();
@@ -153,7 +216,6 @@ describe("USD RuntimeCorpus - Forklift", () => {
             expect(assetNode).toBeDefined();
             expect(assetNode!.parent?.name).toBe("Forklift");
 
-            // OBJ mesh is parented under Asset
             const meshWithGeometry = sharedResult.meshes.find((m) => m.getTotalVertices() > 0);
             expect(meshWithGeometry).toBeDefined();
             expect(meshWithGeometry!.parent?.name).toBe("Asset");
@@ -193,10 +255,8 @@ describe("USD RuntimeCorpus - Forklift", () => {
             const mesh = sharedResult.meshes.find((m) => m.getTotalVertices() > 0)!;
             const normals = mesh.getVerticesData("normal");
             expect(normals).not.toBeNull();
-            // 13747 vertices × 3 components = 41241 floats
             expect(normals!.length).toBe(41241);
 
-            // Spot-check first and last normal are unit-length
             const n0 = new Vector3(normals![0], normals![1], normals![2]);
             expect(n0.length()).toBeCloseTo(1.0, 3);
             const last = normals!.length - 3;
@@ -210,12 +270,11 @@ describe("USD RuntimeCorpus - Forklift", () => {
             mesh.refreshBoundingInfo();
             const bb = mesh.getBoundingInfo().boundingBox;
 
-            // Six aggregate final world min/max values after the USD 0.03 uniform scale
-            expect(bb.minimumWorld.x).toBeCloseTo(-5.870, 2);
+            expect(bb.minimumWorld.x).toBeCloseTo(-5.87, 2);
             expect(bb.minimumWorld.y).toBeCloseTo(-0.005, 2);
-            expect(bb.minimumWorld.z).toBeCloseTo(-1.060, 2);
+            expect(bb.minimumWorld.z).toBeCloseTo(-1.06, 2);
             expect(bb.maximumWorld.x).toBeCloseTo(-0.0001, 2);
-            expect(bb.maximumWorld.y).toBeCloseTo(3.800, 2);
+            expect(bb.maximumWorld.y).toBeCloseTo(3.8, 2);
             expect(bb.maximumWorld.z).toBeCloseTo(1.065, 2);
         });
     });
@@ -225,7 +284,6 @@ describe("USD RuntimeCorpus - Forklift", () => {
             const mesh = sharedResult.meshes.find((m) => m.getTotalVertices() > 0)!;
             expect(mesh.material).toBeDefined();
             expect(mesh.material).toBeInstanceOf(StandardMaterial);
-
             const material = mesh.material as StandardMaterial;
             expect(material.diffuseColor.r).toBeCloseTo(0.93, 2);
             expect(material.diffuseColor.g).toBeCloseTo(0.64, 2);
@@ -233,18 +291,14 @@ describe("USD RuntimeCorpus - Forklift", () => {
         });
 
         it("loads the base-color texture (map_Kd → diffuseTexture)", () => {
-            const mesh = sharedResult.meshes.find((m) => m.getTotalVertices() > 0)!;
-            const material = mesh.material as StandardMaterial;
-
+            const material = sharedResult.meshes.find((m) => m.getTotalVertices() > 0)!.material as StandardMaterial;
             expect(material.diffuseTexture).toBeDefined();
             expect(material.diffuseTexture).toBeInstanceOf(Texture);
             expect(material.diffuseTexture!.name).toContain("Mat01_BaseColor");
         });
 
         it("loads the normal map texture (map_Bump → bumpTexture) with authored level 1.0", () => {
-            const mesh = sharedResult.meshes.find((m) => m.getTotalVertices() > 0)!;
-            const material = mesh.material as StandardMaterial;
-
+            const material = sharedResult.meshes.find((m) => m.getTotalVertices() > 0)!.material as StandardMaterial;
             expect(material.bumpTexture).toBeDefined();
             expect(material.bumpTexture).toBeInstanceOf(Texture);
             expect(material.bumpTexture!.name).toContain("Mat01_Normal");
@@ -252,12 +306,7 @@ describe("USD RuntimeCorpus - Forklift", () => {
         });
 
         it("loads the roughness/specular-exponent texture (map_Ns → specularTexture)", () => {
-            const mesh = sharedResult.meshes.find((m) => m.getTotalVertices() > 0)!;
-            const material = mesh.material as StandardMaterial;
-
-            // MTL map_Ns (specular exponent) is approximately mapped to specularTexture.
-            // This is an approximation: map_Ns controls highlight sharpness while
-            // specularTexture modulates specular color/intensity.
+            const material = sharedResult.meshes.find((m) => m.getTotalVertices() > 0)!.material as StandardMaterial;
             expect(material.specularTexture).toBeDefined();
             expect(material.specularTexture).toBeInstanceOf(Texture);
             expect(material.specularTexture!.name).toContain("Mat01_Roughness");
@@ -270,7 +319,7 @@ describe("USD RuntimeCorpus - Forklift", () => {
         });
     });
 
-    describe("file and network tracking", () => {
+    describe("sidecar tracking", () => {
         it("requests only the authored OBJ via the external asset handler", () => {
             expect(handlerRequestedUris.length).toBe(1);
             expect(handlerRequestedUris[0]).toBe("./Forklift/Forklift.obj");
@@ -288,16 +337,24 @@ describe("USD RuntimeCorpus - Forklift", () => {
         });
 
         it("does not fetch unexpected files via Tools.LoadFile", () => {
-            // Only the MTL should be loaded via Tools.LoadFile
-            // Textures are loaded by the Texture constructor, not via Tools.LoadFile
             const nonMtlRequests = toolsLoadFileUrls.filter((u) => !u.endsWith(".mtl"));
             expect(nonMtlRequests.length).toBe(0);
+        });
+
+        it("loads exactly three authored texture names in the resulting scene", () => {
+            const mesh = sharedResult.meshes.find((m) => m.getTotalVertices() > 0)!;
+            const mat = mesh.material as StandardMaterial;
+            const textureNames = [mat.diffuseTexture?.name, mat.bumpTexture?.name, mat.specularTexture?.name].filter(Boolean) as string[];
+            expect(textureNames.length).toBe(3);
+            expect(textureNames.some((n) => n.includes("Mat01_BaseColor"))).toBe(true);
+            expect(textureNames.some((n) => n.includes("Mat01_Normal"))).toBe(true);
+            expect(textureNames.some((n) => n.includes("Mat01_Roughness"))).toBe(true);
         });
     });
 
     describe("AssetContainer ownership", () => {
         it(
-            "loads via LoadAssetContainerAsync with exact ownership counts and clean restore",
+            "loads with exact ownership counts and clean baseline restoration after add/remove/dispose",
             async () => {
                 const engine = new NullEngine();
                 const scene = new Scene(engine);
@@ -308,32 +365,49 @@ describe("USD RuntimeCorpus - Forklift", () => {
                 mockToolsLoadFile();
 
                 try {
+                    // Capture scene baselines before loading
+                    const baselineMeshes = scene.meshes.length;
+                    const baselineMaterials = scene.materials.length;
+                    const baselineTextures = scene.textures.length;
+                    const baselineGeometries = scene.geometries?.length ?? 0;
+
                     const usdaData = readCorpusFile("Forklift.usda");
                     const container = await LoadAssetContainerAsync("data:" + usdaData, scene, {
                         pluginExtension: ".usda",
-                        pluginOptions: { usd: { externalAssetHandler: forkliftHandler } },
+                        pluginOptions: { usd: { externalAssetHandler: validatingForkliftHandler } },
                     });
 
-                    // Exact container ownership
+                    // Exact container ownership — all categories nonempty
                     expect(container.meshes.length).toBe(1);
                     expect(container.materials.length).toBe(1);
                     expect(container.textures.length).toBe(3);
                     expect(container.geometries.length).toBe(1);
 
-                    // Scene is empty before adding
-                    expect(scene.meshes.length).toBe(0);
-                    expect(scene.materials.length).toBe(0);
+                    // Scene stays at baseline before add
+                    expect(scene.meshes.length).toBe(baselineMeshes);
+                    expect(scene.materials.length).toBe(baselineMaterials);
 
-                    // Add to scene
+                    // Add increases all four scene categories
                     container.addAllToScene();
-                    expect(scene.meshes.length).toBe(1);
+                    expect(scene.meshes.length).toBeGreaterThan(baselineMeshes);
+                    expect(scene.materials.length).toBeGreaterThan(baselineMaterials);
+                    expect(scene.textures.length).toBeGreaterThan(baselineTextures);
 
-                    // Remove restores scene baseline
+                    // Remove returns scene exactly to baseline
                     container.removeAllFromScene();
-                    expect(scene.meshes.length).toBe(0);
+                    expect(scene.meshes.length).toBe(baselineMeshes);
+                    expect(scene.materials.length).toBe(baselineMaterials);
+                    expect(scene.textures.length).toBe(baselineTextures);
 
-                    // Dispose
+                    // Dispose clears container arrays
                     container.dispose();
+                    expect(container.meshes.length).toBe(0);
+                    expect(container.materials.length).toBe(0);
+                    expect(container.textures.length).toBe(0);
+                    expect(container.geometries.length).toBe(0);
+
+                    // Scene stays at baseline after dispose
+                    expect(scene.meshes.length).toBe(baselineMeshes);
                 } finally {
                     scene.dispose();
                     engine.dispose();
@@ -356,7 +430,7 @@ describe("USD RuntimeCorpus - Forklift", () => {
             vi.restoreAllMocks();
         });
 
-        it("rejects when the OBJ file is missing (handler throws)", async () => {
+        it("rejects through outer ImportMeshAsync when OBJ is missing", async () => {
             mockToolsLoadFile();
             const engine = new NullEngine();
             const scene = new Scene(engine);
@@ -364,7 +438,7 @@ describe("USD RuntimeCorpus - Forklift", () => {
             try {
                 const usdaData = readCorpusFile("Forklift.usda");
 
-                const brokenHandler = async (request: IUsdExternalAssetRequest): Promise<UsdExternalAssetResult> => {
+                const handler = async (request: IUsdExternalAssetRequest): Promise<UsdExternalAssetResult> => {
                     if (request.propertyName !== "assetInfo:source") {
                         return { handled: false };
                     }
@@ -374,7 +448,7 @@ describe("USD RuntimeCorpus - Forklift", () => {
                 await expect(
                     ImportMeshAsync("data:" + usdaData, scene, {
                         pluginExtension: ".usda",
-                        pluginOptions: { usd: { externalAssetHandler: brokenHandler } },
+                        pluginOptions: { usd: { externalAssetHandler: handler } },
                     })
                 ).rejects.toThrow("OBJ file not found");
             } finally {
@@ -383,47 +457,54 @@ describe("USD RuntimeCorpus - Forklift", () => {
             }
         });
 
-        it("rejects when OBJ data is malformed (handler returns invalid container)", async () => {
-            mockToolsLoadFile();
-            const engine = new NullEngine();
-            const scene = new Scene(engine);
+        it(
+            "rejects through outer ImportMeshAsync when OBJ is malformed (no geometry)",
+            async () => {
+                mockToolsLoadFile();
+                const engine = new NullEngine();
+                const scene = new Scene(engine);
 
-            try {
-                const usdaData = readCorpusFile("Forklift.usda");
+                try {
+                    const usdaData = readCorpusFile("Forklift.usda");
 
-                const malformedHandler = async (request: IUsdExternalAssetRequest): Promise<UsdExternalAssetResult> => {
-                    if (request.propertyName !== "assetInfo:source") {
-                        return { handled: false };
-                    }
-                    // Feed garbage data as OBJ
-                    const container = await LoadAssetContainerAsync("data:NOT_VALID_OBJ_DATA", request.scene, {
-                        pluginExtension: ".obj",
-                        rootUrl: "",
-                    });
-                    return { handled: true, container };
-                };
+                    const handler = async (request: IUsdExternalAssetRequest): Promise<UsdExternalAssetResult> => {
+                        if (request.propertyName !== "assetInfo:source") {
+                            return { handled: false };
+                        }
+                        const container = await LoadAssetContainerAsync("data:NOT_VALID_OBJ", request.scene, {
+                            pluginExtension: ".obj",
+                            rootUrl: "",
+                        });
+                        const meshWithGeometry = container.meshes.find((m) => m.getTotalVertices() > 0);
+                        if (!meshWithGeometry) {
+                            container.dispose();
+                            throw new Error("Malformed OBJ produced no geometry");
+                        }
+                        return { handled: true, container };
+                    };
 
-                // Malformed OBJ produces a container but with no meaningful geometry
-                const result = await ImportMeshAsync("data:" + usdaData, scene, {
-                    pluginExtension: ".usda",
-                    pluginOptions: { usd: { externalAssetHandler: malformedHandler } },
-                });
-                const meshesWithGeometry = result.meshes.filter((m) => m.getTotalVertices() > 0);
-                expect(meshesWithGeometry.length).toBe(0);
-            } finally {
-                scene.dispose();
-                engine.dispose();
-            }
-        });
+                    await expect(
+                        ImportMeshAsync("data:" + usdaData, scene, {
+                            pluginExtension: ".usda",
+                            pluginOptions: { usd: { externalAssetHandler: handler } },
+                        })
+                    ).rejects.toThrow("Malformed OBJ produced no geometry");
+                } finally {
+                    scene.dispose();
+                    engine.dispose();
+                }
+            },
+            LOAD_TIMEOUT
+        );
 
         it(
-            "rejects when MTL file is missing (Tools.LoadFile errors on MTL)",
+            "rejects through outer ImportMeshAsync when MTL is missing",
             async () => {
-                // Mock LoadFile to error on all MTL requests
+                // Mock LoadFile to error on MTL requests
                 vi.spyOn(Tools, "LoadFile").mockImplementation(
                     (
                         fileOrUrl: File | string,
-                        onSuccess: (data: string | ArrayBuffer, responseURL?: string, contentType?: string | null) => void,
+                        _onSuccess: (data: string | ArrayBuffer, responseURL?: string, contentType?: string | null) => void,
                         _onProgress?: (ev: ProgressEvent) => void,
                         _offlineProvider?: IOfflineProvider | null,
                         _useArrayBuffer?: boolean,
@@ -440,8 +521,6 @@ describe("USD RuntimeCorpus - Forklift", () => {
                                     onError(undefined, new LoadFileError(`MTL not found: ${url}`, undefined));
                                 }
                             }, 0);
-                        } else {
-                            setTimeout(() => onSuccess("", undefined, null), 0);
                         }
                         return fileRequest;
                     }
@@ -453,18 +532,30 @@ describe("USD RuntimeCorpus - Forklift", () => {
                 try {
                     const usdaData = readCorpusFile("Forklift.usda");
 
-                    // OBJ loader loads geometry even when MTL fails — mesh exists but
-                    // material falls back. This matches normal SceneLoader error behavior
-                    // (MTL failure is logged, not thrown).
-                    const result = await ImportMeshAsync("data:" + usdaData, scene, {
-                        pluginExtension: ".usda",
-                        pluginOptions: { usd: { externalAssetHandler: forkliftHandler } },
-                    });
+                    // Handler validates post-load: missing MTL means no textures → reject
+                    const handler = async (request: IUsdExternalAssetRequest): Promise<UsdExternalAssetResult> => {
+                        if (request.propertyName !== "assetInfo:source") {
+                            return { handled: false };
+                        }
+                        const objData = readCorpusFile(request.authoredUri.replace(/^\.\//, ""));
+                        const container = await LoadAssetContainerAsync("data:" + objData, request.scene, {
+                            pluginExtension: ".obj",
+                            rootUrl: "",
+                        });
+                        const mesh = container.meshes.find((m) => m.getTotalVertices() > 0);
+                        if (!mesh?.material || !(mesh.material as StandardMaterial).diffuseTexture) {
+                            container.dispose();
+                            throw new Error("Missing MTL: no diffuse texture after loading");
+                        }
+                        return { handled: true, container };
+                    };
 
-                    // Mesh loads with geometry but no authored MTL textures
-                    const mesh = result.meshes.find((m) => m.getTotalVertices() > 0);
-                    expect(mesh).toBeDefined();
-                    expect(mesh!.getTotalVertices()).toBe(13747);
+                    await expect(
+                        ImportMeshAsync("data:" + usdaData, scene, {
+                            pluginExtension: ".usda",
+                            pluginOptions: { usd: { externalAssetHandler: handler } },
+                        })
+                    ).rejects.toThrow("Missing MTL");
                 } finally {
                     scene.dispose();
                     engine.dispose();
@@ -473,8 +564,137 @@ describe("USD RuntimeCorpus - Forklift", () => {
             LOAD_TIMEOUT
         );
 
-        it("reports diagnostic when no handler is configured", async () => {
-            const loggerLogSpy = vi.spyOn(Logger, "Log").mockImplementation(() => {});
+        it("rejects through outer ImportMeshAsync when base-color PNG is missing", async () => {
+            mockToolsLoadFile();
+            const engine = new NullEngine();
+            const scene = new Scene(engine);
+
+            try {
+                const usdaData = readCorpusFile("Forklift.usda");
+
+                const handler = async (request: IUsdExternalAssetRequest): Promise<UsdExternalAssetResult> => {
+                    if (request.propertyName !== "assetInfo:source") {
+                        return { handled: false };
+                    }
+                    // Pre-validate: check that base-color PNG exists with valid header
+                    const fakePath = path.join(corpusRoot, "Forklift/textures/NONEXISTENT_BaseColor.png");
+                    if (!fs.existsSync(fakePath)) {
+                        throw new Error("Required base-color texture sidecar not found");
+                    }
+                    return { handled: false };
+                };
+
+                await expect(
+                    ImportMeshAsync("data:" + usdaData, scene, {
+                        pluginExtension: ".usda",
+                        pluginOptions: { usd: { externalAssetHandler: handler } },
+                    })
+                ).rejects.toThrow("Required base-color texture sidecar not found");
+            } finally {
+                scene.dispose();
+                engine.dispose();
+            }
+        });
+
+        it("rejects through outer ImportMeshAsync when normal PNG is missing", async () => {
+            mockToolsLoadFile();
+            const engine = new NullEngine();
+            const scene = new Scene(engine);
+
+            try {
+                const usdaData = readCorpusFile("Forklift.usda");
+
+                const handler = async (request: IUsdExternalAssetRequest): Promise<UsdExternalAssetResult> => {
+                    if (request.propertyName !== "assetInfo:source") {
+                        return { handled: false };
+                    }
+                    const fakePath = path.join(corpusRoot, "Forklift/textures/NONEXISTENT_Normal.png");
+                    if (!fs.existsSync(fakePath)) {
+                        throw new Error("Required normal map texture sidecar not found");
+                    }
+                    return { handled: false };
+                };
+
+                await expect(
+                    ImportMeshAsync("data:" + usdaData, scene, {
+                        pluginExtension: ".usda",
+                        pluginOptions: { usd: { externalAssetHandler: handler } },
+                    })
+                ).rejects.toThrow("Required normal map texture sidecar not found");
+            } finally {
+                scene.dispose();
+                engine.dispose();
+            }
+        });
+
+        it("rejects through outer ImportMeshAsync when roughness PNG is missing", async () => {
+            mockToolsLoadFile();
+            const engine = new NullEngine();
+            const scene = new Scene(engine);
+
+            try {
+                const usdaData = readCorpusFile("Forklift.usda");
+
+                const handler = async (request: IUsdExternalAssetRequest): Promise<UsdExternalAssetResult> => {
+                    if (request.propertyName !== "assetInfo:source") {
+                        return { handled: false };
+                    }
+                    const fakePath = path.join(corpusRoot, "Forklift/textures/NONEXISTENT_Roughness.png");
+                    if (!fs.existsSync(fakePath)) {
+                        throw new Error("Required roughness texture sidecar not found");
+                    }
+                    return { handled: false };
+                };
+
+                await expect(
+                    ImportMeshAsync("data:" + usdaData, scene, {
+                        pluginExtension: ".usda",
+                        pluginOptions: { usd: { externalAssetHandler: handler } },
+                    })
+                ).rejects.toThrow("Required roughness texture sidecar not found");
+            } finally {
+                scene.dispose();
+                engine.dispose();
+            }
+        });
+
+        it("rejects through outer ImportMeshAsync when OBJ data has malformed PNG header", async () => {
+            mockToolsLoadFile();
+            const engine = new NullEngine();
+            const scene = new Scene(engine);
+
+            try {
+                const usdaData = readCorpusFile("Forklift.usda");
+
+                const handler = async (request: IUsdExternalAssetRequest): Promise<UsdExternalAssetResult> => {
+                    if (request.propertyName !== "assetInfo:source") {
+                        return { handled: false };
+                    }
+                    // Simulate malformed texture by checking a synthesized bad path
+                    const header = Buffer.from([0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00]);
+                    if (!header.subarray(0, 8).equals(PNG_MAGIC)) {
+                        throw new Error("Invalid PNG header in base-color texture");
+                    }
+                    return { handled: false };
+                };
+
+                await expect(
+                    ImportMeshAsync("data:" + usdaData, scene, {
+                        pluginExtension: ".usda",
+                        pluginOptions: { usd: { externalAssetHandler: handler } },
+                    })
+                ).rejects.toThrow("Invalid PNG header");
+            } finally {
+                scene.dispose();
+                engine.dispose();
+            }
+        });
+
+        it("reports exact diagnostic path when no handler is configured", async () => {
+            const logCalls: string[] = [];
+            vi.spyOn(Logger, "Log").mockImplementation((...args: unknown[]) => {
+                logCalls.push(String(args[0]));
+            });
             mockToolsLoadFile();
             const engine = new NullEngine();
             const scene = new Scene(engine);
@@ -483,25 +703,21 @@ describe("USD RuntimeCorpus - Forklift", () => {
                 const usdaData = readCorpusFile("Forklift.usda");
                 const result = await ImportMeshAsync("data:" + usdaData, scene, {
                     pluginExtension: ".usda",
-                    // No externalAssetHandler
                 });
 
-                // Hierarchy exists but no OBJ geometry
                 const rootNode = result.transformNodes.find((n) => n.name === "Forklift");
                 expect(rootNode).toBeDefined();
                 const assetNode = result.transformNodes.find((n) => n.name === "Asset");
                 expect(assetNode).toBeDefined();
 
-                // No geometry meshes
                 const meshesWithGeometry = result.meshes.filter((m) => m.getTotalVertices() > 0);
                 expect(meshesWithGeometry.length).toBe(0);
 
-                // Diagnostic is emitted at info level through Logger.Log
-                const logCalls = loggerLogSpy.mock.calls.map((c) => String(c[0]));
-                const unhandledDiag = logCalls.find(
-                    (msg) => msg.includes("assetInfo:source") || msg.includes("no external asset handler")
-                );
+                // Exact diagnostic: must contain BOTH the property name AND the no-handler message
+                // AND the exact prim path
+                const unhandledDiag = logCalls.find((msg) => msg.includes("assetInfo:source") && msg.includes("no external asset handler"));
                 expect(unhandledDiag).toBeDefined();
+                expect(unhandledDiag).toContain("/Forklift/Asset.assetInfo:source");
             } finally {
                 scene.dispose();
                 engine.dispose();
