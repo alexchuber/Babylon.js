@@ -7,6 +7,7 @@ import "core/Meshes/instancedMesh";
 import { TransformNode } from "core/Meshes/transformNode";
 import { VertexData } from "core/Meshes/mesh.vertexData";
 import { StandardMaterial } from "core/Materials/standardMaterial";
+import { RawTexture } from "core/Materials/Textures/rawTexture";
 import { Logger } from "core/Misc/logger";
 import { ImportMeshAsync, LoadAssetContainerAsync } from "core/Loading/sceneLoader";
 import { RegisterUSDFileLoader } from "loaders/USD/usdFileLoader.pure";
@@ -172,6 +173,26 @@ function createNestedSourceContainer(scene: Scene): AssetContainer {
     return container;
 }
 
+// Textured: Mesh with geometry + StandardMaterial with a RawTexture (tests texture ownership transfer)
+function createTexturedSourceContainer(scene: Scene): AssetContainer {
+    const container = new AssetContainer(scene);
+    const mesh = new Mesh("textured-mesh", scene);
+    const vertexData = new VertexData();
+    vertexData.positions = [0, 0, 0, 1, 0, 0, 0, 1, 0];
+    vertexData.indices = [0, 1, 2];
+    vertexData.applyToMesh(mesh);
+    const material = new StandardMaterial("textured-mat", scene);
+    const texture = RawTexture.CreateRGBATexture(new Uint8Array([255, 0, 0, 255]), 1, 1, scene, false, false);
+    texture.name = "synthetic-diffuse";
+    material.diffuseTexture = texture;
+    mesh.material = material;
+    container.meshes.push(mesh);
+    container.materials.push(material);
+    container.textures.push(texture);
+    container.removeAllFromScene();
+    return container;
+}
+
 describe("USD external asset handler", () => {
     let logSpy: ReturnType<typeof vi.spyOn>;
     let warnSpy: ReturnType<typeof vi.spyOn>;
@@ -323,6 +344,69 @@ describe("USD external asset handler", () => {
             expect(scene.transformNodes.length).toBe(baselineTransforms);
             expect(scene.materials.length).toBe(baselineMaterials);
             expect(scene.geometries.length).toBe(baselineGeometries);
+        } finally {
+            scene.dispose();
+            engine.dispose();
+        }
+    });
+
+    it("cloned geometry and textures remain valid after textured source template disposal", async () => {
+        const engine = new NullEngine();
+        const scene = new Scene(engine);
+        const handler = vi.fn(async (r: IUsdExternalAssetRequest): Promise<UsdExternalAssetResult> => {
+            return { handled: true, container: createTexturedSourceContainer(r.scene) };
+        });
+
+        try {
+            const loader = new USDFileLoader({ externalAssetHandler: handler });
+            const result = await loader.importMeshAsync(null, scene, singleAssetUsda, "");
+
+            // Cloned geometry survives template disposal
+            const clonedMesh = result.meshes.find((m) => m.getTotalVertices() > 0);
+            expect(clonedMesh).toBeDefined();
+            expect(clonedMesh!.getTotalVertices()).toBe(3);
+            const positions = clonedMesh!.getVerticesData("position");
+            expect(positions).toBeDefined();
+            expect(positions!.length).toBe(9);
+
+            // Cloned material's diffuse texture survives template disposal
+            expect(clonedMesh!.material).toBeDefined();
+            expect(clonedMesh!.material).toBeInstanceOf(StandardMaterial);
+            const mat = clonedMesh!.material as StandardMaterial;
+            expect(mat.diffuseTexture).not.toBeNull();
+        } finally {
+            scene.dispose();
+            engine.dispose();
+        }
+    });
+
+    it("outer AssetContainer dispose returns scene to baseline with textured handler content", async () => {
+        const engine = new NullEngine();
+        const scene = new Scene(engine);
+        const handler = vi.fn(async (r: IUsdExternalAssetRequest): Promise<UsdExternalAssetResult> => {
+            return { handled: true, container: createTexturedSourceContainer(r.scene) };
+        });
+
+        try {
+            const baselineMeshes = scene.meshes.length;
+            const baselineMaterials = scene.materials.length;
+            const baselineGeometries = scene.geometries.length;
+            const baselineTextures = scene.textures.length;
+
+            const loader = new USDFileLoader({ externalAssetHandler: handler });
+            const container = await loader.loadAssetContainerAsync(scene, singleAssetUsda, "");
+
+            container.addAllToScene();
+            expect(scene.meshes.length).toBeGreaterThan(baselineMeshes);
+            expect(scene.textures.length).toBeGreaterThan(baselineTextures);
+
+            container.removeAllFromScene();
+            container.dispose();
+
+            expect(scene.meshes.length).toBe(baselineMeshes);
+            expect(scene.materials.length).toBe(baselineMaterials);
+            expect(scene.geometries.length).toBe(baselineGeometries);
+            expect(scene.textures.length).toBe(baselineTextures);
         } finally {
             scene.dispose();
             engine.dispose();
