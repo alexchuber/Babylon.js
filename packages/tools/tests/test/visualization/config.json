@@ -5490,6 +5490,13 @@
             "dependsOn": ["Loaders", "Materials", "Meshes"]
         },
         {
+            "title": "USD loader - Delivery Box external asset",
+            "playgroundId": "#D89U8G#0",
+            "referenceImage": "usd-loader-delivery-box.png",
+            "renderCount": 50,
+            "dependsOn": ["Loaders", "Materials", "Meshes"]
+        },
+        {
             "title": "CSG2 Right-Handed glTF winding",
             "playgroundId": "#1HYT9N#0",
             "referenceImage": "csg2-righthanded-gltf-winding.png",
