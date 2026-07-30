@@ -54,6 +54,23 @@ export const DialysisMachineAsset: IRuntimeCorpusEntry = {
     metersPerUnit: 1,
 } as const;
 
+export const ForkliftAsset: IRuntimeCorpusEntry = {
+    fileName: "Forklift.usda",
+    description: "USDA wrapper that delegates a textured Forklift OBJ through the optional external-asset handler with authored 0.03 scale",
+    sha256: "949e532756cce3801520d206c8ff01aaf401472a6764290b614f89fa525dd07c",
+    sizeBytes: 518,
+    sidecars: [
+        "Forklift/Forklift.obj",
+        "Forklift/Forklift.mtl",
+        "Forklift/textures/Mat01_BaseColor.png",
+        "Forklift/textures/Mat01_Normal.png",
+        "Forklift/textures/Mat01_Roughness.png",
+    ],
+    defaultPrim: "Forklift",
+    upAxis: "Y",
+    metersPerUnit: 1,
+} as const;
+
 export const ShelvesAsset: IRuntimeCorpusEntry = {
     fileName: "shelves_01.usda",
     description: "USDA wrapper that delegates a self-contained shelving-unit GLB through the optional external-asset handler",
@@ -171,6 +188,7 @@ export const RuntimeCorpusManifest: readonly IRuntimeCorpusEntry[] = [
     CylinderAsset,
     DeliveryBoxAsset,
     DialysisMachineAsset,
+    ForkliftAsset,
     ShelvesAsset,
     HospitalBedAsset,
     PlaceholderAsset,

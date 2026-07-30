@@ -8,6 +8,7 @@ export {
     CylinderAsset,
     DeliveryBoxAsset,
     DialysisMachineAsset,
+    ForkliftAsset,
     ShelvesAsset,
     HospitalBedAsset,
     PlaceholderAsset,

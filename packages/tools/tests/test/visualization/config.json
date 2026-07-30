@@ -5566,6 +5566,13 @@
             "dependsOn": ["Loaders", "Materials", "Meshes"]
         },
         {
+            "title": "USD loader - Forklift wrapper",
+            "playgroundId": "#N7ZEX5#0",
+            "referenceImage": "usd-loader-forklift-wrapper.png",
+            "renderCount": 50,
+            "dependsOn": ["Loaders", "Materials", "Meshes", "Textures"]
+        },
+        {
             "title": "USD loader - Placeholder corpus",
             "playgroundId": "#01JZK1#0",
             "referenceImage": "usd-loader-placeholder-corpus.png",
