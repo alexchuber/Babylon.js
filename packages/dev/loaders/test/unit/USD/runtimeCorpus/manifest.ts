@@ -35,8 +35,8 @@ export const HospitalBedAsset: IRuntimeCorpusEntry = {
 export const RobotArmAsset: IRuntimeCorpusEntry = {
     fileName: "RobotArm2/RobotArm.usda",
     description: "Large multi-mesh Z-up centimeter-scale robot arm with MDL-only materials, authored face-varying normals, no UVs",
-    sha256: "148c6386bc4a7249acdb0c45c8300ca3b230627f85e6c9296885038d50b01d9d",
-    sizeBytes: 25_766_805,
+    sha256: "63ea1085c87e394e70aecec81d866cc349c0b247617f6d41731ad76f5290f7e4",
+    sizeBytes: 25_766_794,
     sidecars: [],
     defaultPrim: "RobotArm",
     upAxis: "Z",
