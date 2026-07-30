@@ -5503,6 +5503,13 @@
             "dependsOn": ["Loaders", "Meshes"]
         },
         {
+            "title": "USD loader - Box corpus",
+            "playgroundId": "#KRG46I#0",
+            "referenceImage": "usd-loader-box-corpus.png",
+            "renderCount": 1,
+            "dependsOn": ["Loaders", "Meshes"]
+        },
+        {
             "title": "CSG2 Right-Handed glTF winding",
             "playgroundId": "#1HYT9N#0",
             "referenceImage": "csg2-righthanded-gltf-winding.png",

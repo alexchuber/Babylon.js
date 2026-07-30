@@ -13,8 +13,8 @@ export interface IRuntimeCorpusEntry {
 export const BoxAsset: IRuntimeCorpusEntry = {
     fileName: "Box.usda",
     description: "Unit cube via implicit UsdGeomCube with authored size",
-    sha256: "9c48de53a2ef06fcdff87b9cd4ea9827e63655c29cb4d765fd924216c998bb2c",
-    sizeBytes: 346,
+    sha256: "d182a886584fd2c4d886cc56852280ac9625911fb6d0ec244fc565b8878798a2",
+    sizeBytes: 205,
     sidecars: [],
     defaultPrim: "Box",
     upAxis: "Y",
