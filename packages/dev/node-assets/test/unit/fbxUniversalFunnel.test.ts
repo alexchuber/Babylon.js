@@ -14,6 +14,7 @@ import { NodeAssetBlock } from "../../src/blockFoundation/nodeAssetBlock";
 import { type NodeAssetConnectionPoint } from "../../src/connection/nodeAssetConnectionPoint";
 import { NodeAssetConnectionPointType } from "../../src/connection/nodeAssetConnectionPointType";
 import { NodeAsset } from "../../src/nodeAsset";
+import { FBXSource, IsFBXSource } from "../../src/representations/fbxSource";
 import { GetGltfAsset, type GltfAsset } from "../../src/representations/gltfAsset";
 import { CreateAsciiFbx74TriangleFixture } from "./testFbxSource";
 
@@ -58,6 +59,10 @@ async function ReadStableMeshFactsAsync(glb: Uint8Array): Promise<{
     };
 }
 
+function ArrayBufferFor(bytes: Uint8Array): ArrayBuffer {
+    return bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength) as ArrayBuffer;
+}
+
 describe("FBX Universal funnel", () => {
     function CreateExportingAsset(data?: Uint8Array): NodeAsset {
         const asset = new NodeAsset("fbx-errors");
@@ -71,6 +76,170 @@ describe("FBX Universal funnel", () => {
         toUniversal.output.connectTo(exporter.input);
         return asset;
     }
+
+    it("loads a URL through an injected fetch boundary and preserves its source payload root", async () => {
+        const source = "https://cdn.example.com/scenes/remote.fbx?version=1";
+        const bytes = CreateAsciiFbx74TriangleFixture();
+        const asset = new NodeAsset("url-fbx-source");
+        const read = new ReadFBXBlock("Read FBX", asset);
+        const toUniversal = new FBXToUniversalBlock("FBX \u2192 Universal", asset);
+        const exporter = new ExportGLTFAggregateBlock("Export glTF", asset);
+        read.output.connectTo(toUniversal.input);
+        toUniversal.output.connectTo(exporter.input);
+
+        const fetcher = vi.fn(async (requestedUrl: string) => ({
+            ok: true,
+            status: 200,
+            statusText: "OK",
+            arrayBuffer: async () => ArrayBufferFor(bytes),
+        }));
+        await read.setUrlAsync(source, fetcher);
+        const result = await asset.buildAsync();
+
+        expect(fetcher).toHaveBeenCalledExactlyOnceWith(source);
+        expect(read.data).toEqual(bytes);
+        expect(read.source).toBe(source);
+        expect(read.sourceKind).toBe("url");
+        expect(result.subarray(0, 4)).toEqual(new TextEncoder().encode("glTF"));
+        expect(IsFBXSource(read.output.value)).toBe(true);
+        if (!IsFBXSource(read.output.value)) {
+            throw new Error("Expected the Read FBX block to emit an FBX source payload.");
+        }
+        const payload: FBXSource = read.output.value;
+        expect(payload.data).toEqual(bytes);
+        expect(payload.source).toBe(source);
+        expect(payload.rootUrl).toBe("https://cdn.example.com/scenes/");
+        expect(new URL("textures/diffuse.png", payload.rootUrl).href).toBe("https://cdn.example.com/scenes/textures/diffuse.png");
+
+        expect(JSON.parse(JSON.stringify(asset.serialize())).blocks[0]).toMatchObject({
+            data: expect.any(String),
+            source,
+            sourceKind: "url",
+        });
+    });
+
+    it("parses and round-trips a URL-only state before hydrating and building it", async () => {
+        const source = "https://cdn.example.com/scenes/remote.fbx";
+        const bytes = CreateAsciiFbx74TriangleFixture();
+        const asset = new NodeAsset("url-only-fbx-state");
+        const read = new ReadFBXBlock("Read FBX", asset);
+        const toUniversal = new FBXToUniversalBlock("FBX \u2192 Universal", asset);
+        const exporter = new ExportGLTFAggregateBlock("Export glTF", asset);
+        read.output.connectTo(toUniversal.input);
+        toUniversal.output.connectTo(exporter.input);
+
+        const serialized = JSON.parse(JSON.stringify(asset.serialize())) as {
+            blocks: Array<Record<string, unknown>>;
+        };
+        Object.assign(serialized.blocks[0], { data: null, source, sourceKind: "url" });
+
+        const parsed = NodeAsset.Parse(serialized);
+        const parsedRead = parsed.attachedBlocks[0] as ReadFBXBlock;
+        expect(parsedRead.data).toBeNull();
+        expect(parsedRead.source).toBe(source);
+        expect(parsedRead.sourceKind).toBe("url");
+        expect(parsed.serialize()).toEqual(serialized);
+
+        const fetcher = vi.fn(async () => ({
+            ok: true,
+            status: 200,
+            statusText: "OK",
+            arrayBuffer: async () => ArrayBufferFor(bytes),
+        }));
+        await parsedRead.setUrlAsync(source, fetcher);
+        expect(parsedRead.data).toEqual(bytes);
+        expect(await parsed.buildAsync()).toBeInstanceOf(Uint8Array);
+        expect(fetcher).toHaveBeenCalledExactlyOnceWith(source);
+    });
+
+    it("preserves the last successful FBX source when a URL fails with contextual error", async () => {
+        const uploaded = CreateAsciiFbx74TriangleFixture();
+        const asset = new NodeAsset("fbx-source-failure");
+        const read = new ReadFBXBlock("Read FBX", asset);
+        read.setUploadedSource(uploaded, "uploaded.fbx");
+
+        await expect(
+            read.setUrlAsync("https://example.invalid/missing.fbx", async () => ({
+                ok: false,
+                status: 404,
+                statusText: "Not Found",
+                arrayBuffer: async () => new ArrayBuffer(0),
+            }))
+        ).rejects.toThrow(/Could not load FBX from "https:\/\/example\.invalid\/missing\.fbx".*404 Not Found/);
+        expect(read.data).toEqual(uploaded);
+        expect(read.source).toBe("uploaded.fbx");
+        expect(read.sourceKind).toBe("upload");
+    });
+
+    it.each([
+        ["upload", "success"],
+        ["url", "success"],
+        ["clear", "success"],
+        ["upload", "failure"],
+        ["url", "failure"],
+        ["clear", "failure"],
+    ] as const)("ignores a stale FBX URL %s after a newer %s", async (replacement, outcome) => {
+        const initial = CreateAsciiFbx74TriangleFixture();
+        const newerUrl = "https://cdn.example.com/scenes/newer.fbx";
+        const newerUrlBytes = new Uint8Array([7, 8, 9]);
+        const asset = new NodeAsset(`fbx-source-race-${replacement}-${outcome}`);
+        const read = new ReadFBXBlock("Read FBX", asset);
+        read.setUploadedSource(initial, "initial.fbx");
+
+        let resolveResponse: ((response: { ok: boolean; status: number; statusText: string; arrayBuffer: () => Promise<ArrayBuffer> }) => void) | undefined;
+        const pendingUrl = read.setUrlAsync(
+            "https://cdn.example.com/scenes/stale.fbx",
+            async () =>
+                await new Promise((resolve) => {
+                    resolveResponse = resolve;
+                })
+        );
+
+        let expectedData: Uint8Array | null = initial;
+        let expectedSource: string | null = "initial.fbx";
+        let expectedSourceKind: "upload" | "url" | null = "upload";
+        if (replacement === "upload") {
+            expectedData = newerUrlBytes;
+            expectedSource = "newer.fbx";
+            read.setUploadedSource(newerUrlBytes, "newer.fbx");
+        } else if (replacement === "url") {
+            expectedData = newerUrlBytes;
+            expectedSource = newerUrl;
+            expectedSourceKind = "url";
+            await read.setUrlAsync(newerUrl, async () => ({
+                ok: true,
+                status: 200,
+                statusText: "OK",
+                arrayBuffer: async () => ArrayBufferFor(newerUrlBytes),
+            }));
+        } else {
+            expectedData = null;
+            expectedSource = null;
+            expectedSourceKind = null;
+            read.clearSource();
+        }
+
+        resolveResponse?.(
+            outcome === "success"
+                ? {
+                      ok: true,
+                      status: 200,
+                      statusText: "OK",
+                      arrayBuffer: async () => ArrayBufferFor(new Uint8Array([1, 2, 3])),
+                  }
+                : {
+                      ok: false,
+                      status: 503,
+                      statusText: "Unavailable",
+                      arrayBuffer: async () => new ArrayBuffer(0),
+                  }
+        );
+        await expect(pendingUrl).resolves.toBeUndefined();
+
+        expect(read.data).toEqual(expectedData);
+        expect(read.source).toBe(expectedSource);
+        expect(read.sourceKind).toBe(expectedSourceKind);
+    });
 
     it("builds an uploaded ASCII FBX through saved aggregate and primitive funnels without fetching", async () => {
         const source = CreateAsciiFbx74TriangleFixture();

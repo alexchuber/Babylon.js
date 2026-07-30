@@ -390,6 +390,56 @@ describe("OBJ Universal funnel", () => {
         }
     });
 
+    it("round-trips a URL-only persisted source before hydration and keeps URL sources companion-free", async () => {
+        const source = "https://cdn.example.com/catalogs/remote.obj?version=2";
+        const asset = new NodeAsset("url-only-obj-state");
+        const read = new ReadOBJBlock("Read OBJ", asset);
+        const toUniversal = new OBJToUniversalBlock("OBJ to Universal", asset);
+        const exporter = new ExportGLTFAggregateBlock("Export glTF", asset);
+        read.output.connectTo(toUniversal.input);
+        toUniversal.output.connectTo(exporter.input);
+
+        const serialized = JSON.parse(JSON.stringify(asset.serialize())) as {
+            blocks: Array<Record<string, unknown>>;
+        };
+        Object.assign(serialized.blocks[0], { primary: null, source, sourceKind: "url", companions: [] });
+
+        const parsed = NodeAsset.Parse(serialized);
+        const parsedRead = parsed.attachedBlocks[0] as ReadOBJBlock;
+        expect(parsedRead.primary).toBeNull();
+        expect(parsedRead.source).toBe(source);
+        expect(parsedRead.sourceKind).toBe("url");
+        expect(parsedRead.companions).toEqual([]);
+        expect(parsed.serialize()).toEqual(serialized);
+
+        const fetcher = vi.fn(async () => ({
+            ok: true,
+            status: 200,
+            statusText: "OK",
+            arrayBuffer: async () => ArrayBufferFor(OBJFixture),
+        }));
+        await parsedRead.setUrlAsync(source, fetcher);
+        expect(parsedRead.primary).toEqual({ path: source, bytes: OBJFixture });
+        expect(parsedRead.companions).toEqual([]);
+
+        const result = await parsed.buildAsync();
+        expect(fetcher).toHaveBeenCalledExactlyOnceWith(source);
+        expect(await GetAssetFactsAsync(result)).toMatchObject({ meshCount: 2, primitiveCount: 2 });
+        expect(IsOBJSourceAsset(parsedRead.output.value)).toBe(true);
+        if (!IsOBJSourceAsset(parsedRead.output.value)) {
+            throw new Error("Expected the Read OBJ block to emit an OBJ source payload.");
+        }
+        expect(parsedRead.output.value.source).toBe(source);
+        expect(parsedRead.output.value.sourceKind).toBe("url");
+        expect(parsedRead.output.value.companions).toEqual([]);
+        expect(parsed.serialize().blocks[0]).toMatchObject({
+            primary: { path: source, bytes: expect.any(String) },
+            source,
+            sourceKind: "url",
+            companions: [],
+        });
+    });
+
     it("resolves URL textures relative to the OBJ source folder", async () => {
         const source = "https://example.com/assets/model.obj";
         const materialUrl = "https://example.com/assets/model.mtl";
