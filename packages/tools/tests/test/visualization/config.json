@@ -5589,6 +5589,13 @@
             "dependsOn": ["Loaders", "OBJ", "Materials", "Meshes"]
         },
         {
+            "title": "USD loader - Robot Arm external OBJ and texture",
+            "playgroundId": "#T8WO9R#0",
+            "referenceImage": "usd-loader-robot-arm-obj-texture.png",
+            "renderCount": 50,
+            "dependsOn": ["Loaders", "OBJ", "Materials", "Meshes", "Textures", "Scene"]
+        },
+        {
             "title": "USD loader - Placeholder corpus",
             "playgroundId": "#01JZK1#0",
             "referenceImage": "usd-loader-placeholder-corpus.png",
