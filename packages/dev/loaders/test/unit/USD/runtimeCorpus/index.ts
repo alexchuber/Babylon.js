@@ -13,6 +13,7 @@ export {
     RobotArmAsset,
     RoomAsset,
     SeahorseTextAsset,
+    SphereAsset,
     StairsAsset,
     type IRuntimeCorpusEntry,
 } from "./manifest";

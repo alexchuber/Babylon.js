@@ -1,4 +1,4 @@
-// Maps implicit USD gprims (Cube, Cone, Cylinder, and later Sphere) into resolved meshes
+// Maps implicit USD gprims (Cube, Cone, Cylinder, and Sphere) into resolved meshes
 // that flow through the existing geometry adapter. Each gprim produces a canonical
 // IResolvedMesh with generated positions, normals, and indices (subdivisionScheme "none").
 
@@ -23,6 +23,8 @@ export function ResolveImplicitGprim(prim: ISdfPrimSpec, diagnostics: IResolvedD
             return ResolveCylinder(prim, diagnostics, inheritedPrimvars);
         case "Cone":
             return ResolveCone(prim, diagnostics, inheritedPrimvars);
+        case "Sphere":
+            return ResolveSphere(prim, diagnostics, inheritedPrimvars);
         default:
             return undefined;
     }
@@ -500,6 +502,129 @@ function BuildConeMesh(radius: number, height: number, axis: Axis, prim: ISdfPri
     const doubleSided = AsBoolean(GetAttributeValue(GetAttribute(prim, "doubleSided"))) ?? false;
     const orientation = AsToken(GetAttributeValue(GetAttribute(prim, "orientation"))) === "leftHanded" ? "leftHanded" : "rightHanded";
     const colors = ResolveConstantDisplayColors(prim, totalVerts, inheritedPrimvars);
+
+    return {
+        positions,
+        indices,
+        normals,
+        doubleSided,
+        orientation,
+        subdivisionScheme: "none",
+        colors,
+    };
+}
+
+// USD default Sphere radius is 1.0 (unit sphere centered at the origin).
+function ResolveSphere(prim: ISdfPrimSpec, diagnostics: IResolvedDiagnostic[], inheritedPrimvars: IInheritedPrimvars): IResolvedMesh {
+    const rawRadius = AsNumber(GetAttributeValue(GetAttribute(prim, "radius")));
+    let radius = rawRadius ?? 1.0;
+
+    if (rawRadius !== undefined && (rawRadius <= 0 || !Number.isFinite(rawRadius))) {
+        diagnostics.push({
+            severity: "warning",
+            path: prim.path,
+            message: `Sphere has invalid radius ${rawRadius}; falling back to default radius 1.`,
+        });
+        radius = 1.0;
+    }
+
+    return BuildSphereMesh(radius, prim, inheritedPrimvars);
+}
+
+// Tessellates a UV sphere with no degenerate pole triangles:
+//   - Latitudinal rings from the south pole to the north pole.
+//   - Each pole has a single shared vertex; pole cap triangles fan from it.
+//   - Polar caps use triangles (fans); body uses quads split into 2 triangles.
+//   - Seam closure: each body ring has lonSegments + 1 vertices where the
+//     last column (lonI = lonSegments) duplicates the first (lonI = 0).
+//
+// Segment counts: 32 longitudinal × 16 latitudinal.
+// Normals are outward-facing unit vectors and winding is counter-clockwise
+// when viewed from outside.
+const SphereLatSegments = 16;
+const SphereLonSegments = 32;
+
+function BuildSphereMesh(radius: number, prim: ISdfPrimSpec, inheritedPrimvars: IInheritedPrimvars): IResolvedMesh {
+    const lat = SphereLatSegments;
+    const lon = SphereLonSegments;
+    const bodyVertices = (lat - 1) * (lon + 1);
+    const vertexCount = bodyVertices + 2;
+
+    const positions = new Float32Array(vertexCount * 3);
+    const normals = new Float32Array(vertexCount * 3);
+
+    positions[1] = -radius;
+    normals[1] = -1;
+
+    let vertexIndex = 1;
+    for (let latitude = 1; latitude < lat; latitude++) {
+        const theta = (Math.PI * latitude) / lat;
+        const sinTheta = Math.sin(theta);
+        const cosTheta = Math.cos(theta);
+
+        for (let longitude = 0; longitude <= lon; longitude++) {
+            const phi = (2 * Math.PI * longitude) / lon;
+            const nx = sinTheta * Math.cos(phi);
+            const ny = -cosTheta;
+            const nz = sinTheta * Math.sin(phi);
+            const offset = vertexIndex * 3;
+
+            positions[offset] = nx * radius;
+            positions[offset + 1] = ny * radius;
+            positions[offset + 2] = nz * radius;
+            normals[offset] = nx;
+            normals[offset + 1] = ny;
+            normals[offset + 2] = nz;
+            vertexIndex++;
+        }
+    }
+
+    const northPoleOffset = vertexIndex * 3;
+    positions[northPoleOffset + 1] = radius;
+    normals[northPoleOffset + 1] = 1;
+
+    const triangleCount = lon + (lat - 2) * lon * 2 + lon;
+    const indices = new Uint32Array(triangleCount * 3);
+    let indexOffset = 0;
+
+    const southPole = 0;
+    const firstRingStart = 1;
+    for (let longitude = 0; longitude < lon; longitude++) {
+        indices[indexOffset++] = southPole;
+        indices[indexOffset++] = firstRingStart + longitude;
+        indices[indexOffset++] = firstRingStart + longitude + 1;
+    }
+
+    for (let latitude = 0; latitude < lat - 2; latitude++) {
+        const ringStart = 1 + latitude * (lon + 1);
+        const nextRingStart = ringStart + (lon + 1);
+        for (let longitude = 0; longitude < lon; longitude++) {
+            const bottomLeft = ringStart + longitude;
+            const bottomRight = ringStart + longitude + 1;
+            const topLeft = nextRingStart + longitude;
+            const topRight = nextRingStart + longitude + 1;
+
+            indices[indexOffset++] = bottomLeft;
+            indices[indexOffset++] = topLeft;
+            indices[indexOffset++] = bottomRight;
+
+            indices[indexOffset++] = bottomRight;
+            indices[indexOffset++] = topLeft;
+            indices[indexOffset++] = topRight;
+        }
+    }
+
+    const northPole = vertexCount - 1;
+    const lastRingStart = 1 + (lat - 2) * (lon + 1);
+    for (let longitude = 0; longitude < lon; longitude++) {
+        indices[indexOffset++] = lastRingStart + longitude;
+        indices[indexOffset++] = northPole;
+        indices[indexOffset++] = lastRingStart + longitude + 1;
+    }
+
+    const doubleSided = AsBoolean(GetAttributeValue(GetAttribute(prim, "doubleSided"))) ?? false;
+    const orientation = AsToken(GetAttributeValue(GetAttribute(prim, "orientation"))) === "leftHanded" ? "leftHanded" : "rightHanded";
+    const colors = ResolveConstantDisplayColors(prim, vertexCount, inheritedPrimvars);
 
     return {
         positions,

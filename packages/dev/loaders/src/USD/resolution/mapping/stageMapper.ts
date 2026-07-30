@@ -316,7 +316,7 @@ function ApplyUnsupportedSchemaDiagnostics(primSpec: ISdfPrimSpec, context: ISta
 // Renderable USD schema types outside the polygonal-Mesh profile. They are skipped with a diagnostic
 // rather than dropped silently or mapped into misleading geometry: implicit gprims, point instancers,
 // curves, points, patches and volumes.
-const UnsupportedRenderableSchemas = ["Sphere", "Capsule", "Plane", "PointInstancer", "BasisCurves", "NurbsCurves", "HermiteCurves", "Points", "NurbsPatch", "TetMesh", "Volume"];
+const UnsupportedRenderableSchemas = ["Capsule", "Plane", "PointInstancer", "BasisCurves", "NurbsCurves", "HermiteCurves", "Points", "NurbsPatch", "TetMesh", "Volume"];
 
 function IsUnsupportedRenderableSchema(typeName: string | undefined): boolean {
     return typeName !== undefined && UnsupportedRenderableSchemas.includes(typeName);

@@ -120,6 +120,17 @@ export const StairsAsset: IRuntimeCorpusEntry = {
     metersPerUnit: 1,
 } as const;
 
+export const SphereAsset: IRuntimeCorpusEntry = {
+    fileName: "Sphere.usda",
+    description: "Implicit UsdGeomSphere with authored radius = 0.5",
+    sha256: "bb63928fb419e0addea97c29c8c3ab6e2e5d62501f56f0c573af17e0dc73ec48",
+    sizeBytes: 217,
+    sidecars: [],
+    defaultPrim: "Sphere",
+    upAxis: "Y",
+    metersPerUnit: 1,
+} as const;
+
 export const SeahorseTextAsset: IRuntimeCorpusEntry = {
     fileName: "seahorse_anim_mtl_variant.usda",
     description: "Placeholder wrapper with a single named Xform group and no geometry (redacted derivative)",
@@ -142,5 +153,6 @@ export const RuntimeCorpusManifest: readonly IRuntimeCorpusEntry[] = [
     RobotArmAsset,
     RoomAsset,
     SeahorseTextAsset,
+    SphereAsset,
     StairsAsset,
 ] as const;
