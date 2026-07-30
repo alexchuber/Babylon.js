@@ -82,8 +82,8 @@ export async function AdaptResolvedStageToScene(
     try {
         await ProcessExternalAssetsForTree(stage.root, context, externalAssetState, stage, emptyAncestorUris);
     } finally {
-        // Deterministically dispose all off-scene source templates. Clone-mode instantiation
-        // uses ref-counted shared geometry, so disposing the source is safe after cloning.
+        // Deterministically dispose all off-scene source templates. Geometries are preserved
+        // (shared with clones); source textures are disposed (cloned materials own distinct copies).
         DisposeSourceContainers(externalAssetState);
     }
 

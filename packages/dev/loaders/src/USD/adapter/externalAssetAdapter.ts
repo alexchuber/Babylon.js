@@ -46,16 +46,31 @@ export function CreateExternalAssetState(options: Readonly<USDLoadingOptions>): 
 }
 
 /**
- * Deterministically disposes every off-scene source container template. Safe to call after
- * all occurrences have been cloned: `instantiateModelsToScene` in clone mode
- * (`doNotInstantiate: true`) produces full `Mesh.clone` copies with ref-counted shared
- * geometry, so disposing the source mesh decrements the geometry ref count without
- * invalidating the clones' buffers.
+ * Deterministically disposes every off-scene source container template while preserving
+ * shared geometry that cloned meshes still reference.
+ *
+ * `instantiateModelsToScene` in clone mode produces `Mesh.clone` copies that share the
+ * same `Geometry` object with the source mesh. `AssetContainer.dispose()` explicitly
+ * disposes all tracked geometries, which would release the underlying vertex buffers.
+ * Clearing `container.geometries` before disposal prevents this; the cloned meshes
+ * retain their own geometry references and the outer `_LoadAssetContainerAsync` captures
+ * them into the public AssetContainer for proper ownership and cleanup.
+ *
+ * Source textures are NOT cleared: `PBRMaterial.clone` (via `SerializationHelper.Clone`)
+ * calls `Texture.clone()` for each serialized texture field, producing distinct Texture
+ * objects on the cloned material. Disposing the source container correctly releases the
+ * source-only textures and their internal refs; the cloned textures are independent.
+ *
  * @param state the external asset state to clean up
  */
 export function DisposeSourceContainers(state: IExternalAssetState): void {
     for (const [, container] of state.sourceCache) {
         if (container) {
+            // Prevent dispose() from force-releasing shared vertex buffers.
+            // Cloned meshes reference the same Geometry objects as the source; clearing
+            // the container's array prevents dispose() from destroying them. The outer
+            // container's collectNewEntities sweep captures them for proper ownership.
+            container.geometries.length = 0;
             container.dispose();
         }
     }

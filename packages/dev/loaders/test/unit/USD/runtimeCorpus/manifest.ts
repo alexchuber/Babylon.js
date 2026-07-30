@@ -54,6 +54,17 @@ export const DialysisMachineAsset: IRuntimeCorpusEntry = {
     metersPerUnit: 1,
 } as const;
 
+export const ShelvesAsset: IRuntimeCorpusEntry = {
+    fileName: "shelves_01.usda",
+    description: "USDA wrapper that delegates a self-contained shelving-unit GLB through the optional external-asset handler",
+    sha256: "8c5e6a8551c3a8cdd9228b0d207589f4ed8963dfcd07cd9a8bdef530e731807f",
+    sizeBytes: 545,
+    sidecars: ["shelves_01.glb"],
+    defaultPrim: "Shelves",
+    upAxis: "Y",
+    metersPerUnit: 1,
+} as const;
+
 export const PlaneAsset: IRuntimeCorpusEntry = {
     fileName: "Plane.usda",
     description: "Single quad mesh on the XZ plane with constant authored normals",
@@ -160,6 +171,7 @@ export const RuntimeCorpusManifest: readonly IRuntimeCorpusEntry[] = [
     CylinderAsset,
     DeliveryBoxAsset,
     DialysisMachineAsset,
+    ShelvesAsset,
     HospitalBedAsset,
     PlaceholderAsset,
     RobotArmAsset,
