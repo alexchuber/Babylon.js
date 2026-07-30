@@ -252,9 +252,12 @@ describe("USD RuntimeCorpus - Shelves ownership", () => {
             // Scene is empty before addAllToScene
             expect(scene.meshes.length).toBe(baselineMeshes);
 
-            // addAllToScene transfers
+            // addAllToScene transfers all categories to the scene
             container.addAllToScene();
             expect(scene.meshes.length).toBeGreaterThan(baselineMeshes);
+            expect(scene.materials.length).toBeGreaterThan(baselineMaterials);
+            expect(scene.geometries.length).toBeGreaterThan(baselineGeometries);
+            expect(scene.textures.length).toBeGreaterThan(baselineTextures);
 
             // removeAllFromScene restores all four baselines
             container.removeAllFromScene();
@@ -299,30 +302,54 @@ describe("USD RuntimeCorpus - Shelves error paths", () => {
         vi.restoreAllMocks();
     });
 
-    it("genuinely absent GLB path rejects through handler prevalidation", async () => {
+    it("genuinely absent GLB sidecar rejects through handler path prevalidation", async () => {
         const engine = new NullEngine();
         const scene = new Scene(engine);
 
-        // Handler that checks the file exists before loading, rejecting with a
-        // descriptive error for genuinely absent paths — exercises the normal
-        // SceneLoader error propagation for missing files.
-        const absentPathHandler = async (request: IUsdExternalAssetRequest): Promise<UsdExternalAssetResult> => {
+        // Synthetic USDA referencing a GLB that does not exist in the corpus
+        const missingGlbUsda = `#usda 1.0
+(
+    defaultPrim = "Root"
+    metersPerUnit = 1
+    upAxis = "Y"
+)
+
+def Xform "Root"
+{
+    def Xform "Asset"
+    {
+        custom asset assetInfo:source = @./Missing.glb@
+        double3 xformOp:translate = (0, 0, 0)
+        uniform token[] xformOpOrder = ["xformOp:translate"]
+    }
+}
+`;
+
+        // Handler that prevalidates the resolved path against known corpus files
+        const knownCorpusFiles = new Set(["shelves_01.glb"]);
+        const prevalidatingHandler = async (request: IUsdExternalAssetRequest): Promise<UsdExternalAssetResult> => {
             if (request.propertyName !== "assetInfo:source") {
                 return { handled: false };
             }
-            // The authored path is ./shelves_01.glb but this handler refuses to
-            // load it, simulating a missing file on the file system / CDN.
-            throw new Error(`Cannot load '${request.authoredUri}': file not found at resolved URI '${request.resolvedUri}'`);
+            const fileName = request.authoredUri.replace(/^\.\//, "");
+            if (!knownCorpusFiles.has(fileName)) {
+                throw new Error(`Missing sidecar: '${request.authoredUri}' not found (resolved '${request.resolvedUri}')`);
+            }
+            const glbBase64 = getGlbBase64();
+            const container = await LoadAssetContainerAsync("data:;base64," + glbBase64, request.scene, {
+                pluginExtension: ".glb",
+                rootUrl: "",
+            });
+            return { handled: true, container };
         };
 
         try {
-            const usdaData = readCorpusFile("shelves_01.usda");
             await expect(
-                ImportMeshAsync("data:" + usdaData, scene, {
+                ImportMeshAsync("data:" + missingGlbUsda, scene, {
                     pluginExtension: ".usda",
-                    pluginOptions: { usd: { externalAssetHandler: absentPathHandler } },
+                    pluginOptions: { usd: { externalAssetHandler: prevalidatingHandler } },
                 })
-            ).rejects.toThrow("file not found");
+            ).rejects.toThrow("Missing sidecar");
         } finally {
             scene.dispose();
             engine.dispose();
