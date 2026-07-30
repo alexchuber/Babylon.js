@@ -1,7 +1,8 @@
 import { type TransformNode } from "core/Meshes/transformNode.pure";
+import { type AbstractMesh } from "core/Meshes/abstractMesh";
 import { type AssetContainer } from "core/assetContainer";
 
-import { type IResolvedPrim, type IResolvedUnhandledAssetProperty } from "../resolution/resolvedStage";
+import { type IResolvedPrim } from "../resolution/resolvedStage";
 import { type USDLoadingOptions } from "../usdLoadingOptions";
 import { type IUsdExternalAssetRequest, type UsdExternalAssetResult } from "../usdExternalAssetHandler";
 import { ValidateResourceLimit } from "../usdErrors";
@@ -13,49 +14,21 @@ const DefaultMaxExternalAssetDepth = 32;
 
 /**
  * Mutable state for the external asset handler within a single load operation.
- * Tracks canonical-URI deduplication, request counts, and the active URI chain
- * for ancestry-based cycle protection.
+ * Tracks canonical-URI deduplication and request counts.
  */
 export interface IExternalAssetState {
-    /** Canonical URI → source container cache for deduplication. `null` means the handler reported unsupported. */
+    /**
+     * Canonical URI → off-scene source container template. `null` means the handler reported
+     * unsupported. Every occurrence (including the first) is instantiated from the template via
+     * `instantiateModelsToScene`; the template itself never enters the scene.
+     */
     readonly sourceCache: Map<string, AssetContainer | null>;
     /** Number of handler invocations issued so far. */
     requestCount: number;
     /** Validated maximum handler invocations. */
     readonly maxRequests: number;
-    /** Validated maximum external asset request chain depth. */
+    /** Validated maximum external asset URI ancestry depth. */
     readonly maxDepth: number;
-    /** Active canonical URI chain for ancestry-based cycle detection. A URI is added before handler invocation and removed after. */
-    readonly activeUriChain: Set<string>;
-    /** Source containers that have already been instantiated once (used for clone-on-reuse logic). */
-    readonly alreadyUsed: Set<AssetContainer>;
-}
-
-/**
- * Disposes all source containers cached during the load operation. Called once after all
- * external asset instantiations are complete. Source containers that were used via
- * `addAllToScene` (first use) have their arrays cleared without disposing scene-owned
- * entities; containers only used for cloning are fully disposed.
- * @param state the external asset state whose source containers should be cleaned up
- */
-export function DisposeSourceContainers(state: IExternalAssetState): void {
-    for (const [, container] of state.sourceCache) {
-        if (container) {
-            if (state.alreadyUsed.has(container)) {
-                // First-use container: entities are scene-owned. Clear arrays to release references
-                // without disposing the entities themselves.
-                container.meshes.length = 0;
-                container.transformNodes.length = 0;
-                container.skeletons.length = 0;
-                container.animationGroups.length = 0;
-                container.materials.length = 0;
-                container.textures.length = 0;
-                container.geometries.length = 0;
-            }
-            container.dispose();
-        }
-    }
-    state.sourceCache.clear();
 }
 
 /**
@@ -70,14 +43,27 @@ export function CreateExternalAssetState(options: Readonly<USDLoadingOptions>): 
         maxRequests:
             options.maxExternalAssetRequests !== undefined ? ValidateResourceLimit(options.maxExternalAssetRequests, "maxExternalAssetRequests") : DefaultMaxExternalAssetRequests,
         maxDepth: options.maxExternalAssetDepth !== undefined ? ValidateResourceLimit(options.maxExternalAssetDepth, "maxExternalAssetDepth") : DefaultMaxExternalAssetDepth,
-        activeUriChain: new Set(),
-        alreadyUsed: new Set(),
     };
 }
 
 /**
- * Builds the bounded ancestry array for a resolved prim by walking up the prim tree.
- * The first element is the prim itself, subsequent elements are its ancestors up to
+ * Disposes all off-scene source container templates after all external assets have been
+ * instantiated. Each template was only used via `instantiateModelsToScene` (with material
+ * cloning), so disposing it does not affect scene-owned clones.
+ * @param state the external asset state to clean up
+ */
+export function DisposeSourceContainers(state: IExternalAssetState): void {
+    for (const [, container] of state.sourceCache) {
+        if (container) {
+            container.dispose();
+        }
+    }
+    state.sourceCache.clear();
+}
+
+/**
+ * Builds the bounded ancestry array for a resolved prim from its path segments.
+ * The first element is the prim itself; subsequent elements are its ancestors up to
  * (but not including) the stage root `/`.
  * @param prim the prim to compute ancestry for
  * @returns ordered ancestor paths
@@ -93,14 +79,18 @@ export function BuildAncestry(prim: IResolvedPrim): readonly string[] {
 
 /**
  * Processes all unhandled asset properties on a single prim, invoking the handler for each.
- * Handles canonical-URI deduplication, per-prim instantiation, request limits, external-chain
- * depth limits, ancestry-based cycle protection, and container root instantiation.
+ *
+ * URI ancestry cycle protection and depth limiting are driven by `ancestorUris`, which is
+ * the set of canonical external-asset URIs from ancestor prims in the current prim-tree
+ * recursion. This models external-asset request chains through the resolved prim hierarchy
+ * rather than tracking async call depth.
  *
  * @param prim the resolved prim with unhandled asset properties
  * @param node the Babylon transform node representing this prim
  * @param context the adapter context
  * @param state external asset handler state
  * @param layerIdentifier the source layer identifier
+ * @param ancestorUris canonical URIs from ancestor prims' external asset properties
  * @returns a promise that resolves when all handler invocations are complete
  */
 export async function ProcessExternalAssets(
@@ -108,7 +98,8 @@ export async function ProcessExternalAssets(
     node: TransformNode,
     context: IUsdAdapterContext,
     state: IExternalAssetState,
-    layerIdentifier: string
+    layerIdentifier: string,
+    ancestorUris: ReadonlySet<string>
 ): Promise<void> {
     const handler = context.options.externalAssetHandler;
     const properties = prim.unhandledAssetProperties;
@@ -128,6 +119,30 @@ export async function ProcessExternalAssets(
             continue;
         }
 
+        const canonicalUri = property.resolvedPath;
+
+        // Ancestry-based cycle protection: reject if this canonical URI appears in any
+        // ancestor prim's external asset properties (would indicate a recursive chain).
+        if (ancestorUris.has(canonicalUri)) {
+            context.diagnostics.push({
+                severity: "warning",
+                path: `${prim.path}.${property.propertyName}`,
+                message: `External asset cycle detected: '${property.authoredPath}' (resolved '${canonicalUri}') is already in the ancestor URI chain.`,
+            });
+            continue;
+        }
+
+        // URI ancestry depth limit: the number of ancestor external-asset URIs is the
+        // chain depth. This is independent of prim namespace nesting.
+        if (ancestorUris.size >= state.maxDepth) {
+            context.diagnostics.push({
+                severity: "warning",
+                path: `${prim.path}.${property.propertyName}`,
+                message: `External asset depth limit reached: URI chain depth ${ancestorUris.size} has reached the ${state.maxDepth}-level limit.`,
+            });
+            continue;
+        }
+
         // Request count limit
         if (state.requestCount >= state.maxRequests) {
             context.diagnostics.push({
@@ -138,84 +153,41 @@ export async function ProcessExternalAssets(
             continue;
         }
 
-        // eslint-disable-next-line no-await-in-loop
-        await DispatchExternalAsset(prim, property, node, context, state, layerIdentifier, ancestry);
-    }
-}
-
-async function DispatchExternalAsset(
-    prim: IResolvedPrim,
-    property: IResolvedUnhandledAssetProperty,
-    node: TransformNode,
-    context: IUsdAdapterContext,
-    state: IExternalAssetState,
-    layerIdentifier: string,
-    ancestry: readonly string[]
-): Promise<void> {
-    const handler = context.options.externalAssetHandler!;
-    const canonicalUri = property.resolvedPath;
-
-    // Ancestry-based cycle protection: reject if this canonical URI is already being
-    // processed in the current request chain (would indicate recursive asset loading).
-    if (state.activeUriChain.has(canonicalUri)) {
-        context.diagnostics.push({
-            severity: "warning",
-            path: `${prim.path}.${property.propertyName}`,
-            message: `External asset cycle detected: '${property.authoredPath}' (resolved '${canonicalUri}') is already in the active request chain.`,
-        });
-        return;
-    }
-
-    // External-chain depth limit: the active URI chain depth tracks how many external
-    // asset requests are nested, independent of prim nesting depth.
-    if (state.activeUriChain.size >= state.maxDepth) {
-        context.diagnostics.push({
-            severity: "warning",
-            path: `${prim.path}.${property.propertyName}`,
-            message: `External asset depth limit reached: request chain depth ${state.activeUriChain.size} has reached the ${state.maxDepth}-level limit.`,
-        });
-        return;
-    }
-
-    // Canonical-URI deduplication: check if we already have a source container for this URI.
-    if (state.sourceCache.has(canonicalUri)) {
-        const cachedContainer = state.sourceCache.get(canonicalUri);
-        if (cachedContainer) {
-            InstantiateFromSource(cachedContainer, node, context, state.alreadyUsed);
-        } else {
-            // Cached unsupported result: emit diagnostic for this occurrence too
-            context.diagnostics.push({
-                severity: "info",
-                path: `${prim.path}.${property.propertyName}`,
-                message: `External asset handler reported unsupported for property '${property.propertyName}' referencing '${property.authoredPath}'.`,
-            });
+        // Canonical-URI deduplication: reuse a cached template without re-invoking the handler.
+        if (state.sourceCache.has(canonicalUri)) {
+            const cachedContainer = state.sourceCache.get(canonicalUri);
+            if (cachedContainer) {
+                InstantiateFromTemplate(cachedContainer, node, context);
+            } else {
+                context.diagnostics.push({
+                    severity: "info",
+                    path: `${prim.path}.${property.propertyName}`,
+                    message: `External asset handler reported unsupported for property '${property.propertyName}' referencing '${property.authoredPath}'.`,
+                });
+            }
+            continue;
         }
-        return;
-    }
 
-    const request: IUsdExternalAssetRequest = {
-        primPath: prim.path,
-        propertyName: property.propertyName,
-        authoredUri: property.authoredPath,
-        resolvedUri: property.resolvedPath,
-        sourceLayerIdentifier: layerIdentifier,
-        scene: context.scene,
-        ancestry,
-    };
+        const request: IUsdExternalAssetRequest = {
+            primPath: prim.path,
+            propertyName: property.propertyName,
+            authoredUri: property.authoredPath,
+            resolvedUri: property.resolvedPath,
+            sourceLayerIdentifier: layerIdentifier,
+            scene: context.scene,
+            ancestry,
+        };
 
-    state.requestCount++;
-    state.activeUriChain.add(canonicalUri);
+        state.requestCount++;
 
-    try {
         // Handler exceptions propagate as normal SceneLoader failures
+        // eslint-disable-next-line no-await-in-loop
         const result = await handler(request);
 
         if (result.handled) {
-            // Cache the source container for deduplication
             state.sourceCache.set(canonicalUri, result.container);
-            InstantiateFromSource(result.container, node, context, state.alreadyUsed);
+            InstantiateFromTemplate(result.container, node, context);
         } else {
-            // Cache null to indicate unsupported, so subsequent occurrences are fast
             state.sourceCache.set(canonicalUri, null);
             context.diagnostics.push({
                 severity: "info",
@@ -223,73 +195,72 @@ async function DispatchExternalAsset(
                 message: `External asset handler reported unsupported for property '${property.propertyName}' referencing '${property.authoredPath}'.`,
             });
         }
-    } finally {
-        state.activeUriChain.delete(canonicalUri);
     }
 }
 
 /**
- * Creates a distinct instance from a source AssetContainer and parents its root entities
- * under the given prim transform node. Each call adds the source container's entities to
- * the scene and re-parents rootless ones under the prim node.
+ * Returns the set of ancestor URIs extended with any canonical URIs from this prim's own
+ * unhandled asset properties. Used to thread URI ancestry through child prim processing
+ * so that cycle detection and depth limiting work across the prim-tree recursion.
+ * @param prim the prim whose external asset URIs should be added
+ * @param ancestorUris the current set of ancestor URIs
+ * @returns a new set if this prim adds URIs, or the same set if it has none
+ */
+export function ExtendAncestorUris(prim: IResolvedPrim, ancestorUris: ReadonlySet<string>): ReadonlySet<string> {
+    if (!prim.unhandledAssetProperties || prim.unhandledAssetProperties.length === 0) {
+        return ancestorUris;
+    }
+    const extended = new Set(ancestorUris);
+    for (const property of prim.unhandledAssetProperties) {
+        extended.add(property.resolvedPath);
+    }
+    return extended;
+}
+
+/**
+ * Creates a distinct instance from an off-scene source container template and parents its
+ * root nodes under the given prim transform node.
  *
- * For the first call, entities are moved directly from the source container. For subsequent
- * calls (same URI via deduplication), meshes are cloned to create independent geometry.
- * @param sourceContainer the handler-returned source container (kept off-scene)
+ * Every occurrence (including the first) goes through `instantiateModelsToScene` with
+ * material cloning enabled. The template stays off-scene and is disposed after all prims
+ * have been processed.
+ * @param template the handler-returned source container (kept off-scene)
  * @param parentNode the Babylon transform node to parent instantiated roots under
  * @param context the adapter context for ownership tracking
- * @param alreadyUsed set of source containers that have already been used (for clone logic)
  */
-function InstantiateFromSource(sourceContainer: AssetContainer, parentNode: TransformNode, context: IUsdAdapterContext, alreadyUsed: Set<AssetContainer>): void {
-    const isReuse = alreadyUsed.has(sourceContainer);
-    alreadyUsed.add(sourceContainer);
+function InstantiateFromTemplate(template: AssetContainer, parentNode: TransformNode, context: IUsdAdapterContext): void {
+    const entries = template.instantiateModelsToScene(undefined, true, { doNotInstantiate: false });
 
-    if (!isReuse) {
-        // First use: move source entities directly into the scene
-        sourceContainer.addAllToScene();
-        for (const mesh of sourceContainer.meshes) {
-            if (!mesh.parent) {
-                mesh.parent = parentNode;
+    for (const rootNode of entries.rootNodes) {
+        rootNode.parent = parentNode;
+        if (IsAbstractMesh(rootNode)) {
+            if (!context.meshes.includes(rootNode)) {
+                context.meshes.push(rootNode);
             }
-            if (!context.meshes.includes(mesh)) {
-                context.meshes.push(mesh);
-            }
-        }
-        for (const tn of sourceContainer.transformNodes) {
-            if (!tn.parent) {
-                tn.parent = parentNode;
-            }
+        } else {
+            const tn = rootNode as TransformNode;
             if (!context.transformNodes.includes(tn)) {
                 context.transformNodes.push(tn);
             }
         }
-        for (const skeleton of sourceContainer.skeletons) {
-            if (!context.skeletons.includes(skeleton)) {
-                context.skeletons.push(skeleton);
-            }
-        }
-        for (const animationGroup of sourceContainer.animationGroups) {
-            if (!context.animationGroups.includes(animationGroup)) {
-                context.animationGroups.push(animationGroup);
-            }
-        }
-    } else {
-        // Reuse: clone each root mesh to create an independent hierarchy
-        for (const mesh of sourceContainer.meshes) {
-            const cloned = mesh.clone(mesh.name, parentNode);
-            if (cloned) {
-                if (!context.meshes.includes(cloned)) {
-                    context.meshes.push(cloned);
-                }
-            }
-        }
-        for (const tn of sourceContainer.transformNodes) {
-            const cloned = tn.clone(tn.name, parentNode);
-            if (cloned) {
-                if (!context.transformNodes.includes(cloned)) {
-                    context.transformNodes.push(cloned);
-                }
+        for (const child of rootNode.getChildMeshes(false)) {
+            if (!context.meshes.includes(child)) {
+                context.meshes.push(child);
             }
         }
     }
+    for (const skeleton of entries.skeletons) {
+        if (!context.skeletons.includes(skeleton)) {
+            context.skeletons.push(skeleton);
+        }
+    }
+    for (const animationGroup of entries.animationGroups) {
+        if (!context.animationGroups.includes(animationGroup)) {
+            context.animationGroups.push(animationGroup);
+        }
+    }
+}
+
+function IsAbstractMesh(node: import("core/node").Node): node is AbstractMesh {
+    return "geometry" in node;
 }

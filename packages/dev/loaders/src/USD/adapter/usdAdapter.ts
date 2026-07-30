@@ -16,7 +16,7 @@ import { type USDLoadingOptions } from "../usdLoadingOptions";
 import { CreateStageRoot } from "./transformAdapter";
 import { AdaptPrim, type IUsdAdapterContext } from "./sceneGraphAdapter";
 import { BuildAnimationGroup } from "./animationAdapter";
-import { CreateExternalAssetState, ProcessExternalAssets, DisposeSourceContainers, type IExternalAssetState } from "./externalAssetAdapter";
+import { CreateExternalAssetState, ProcessExternalAssets, ExtendAncestorUris, type IExternalAssetState } from "./externalAssetAdapter";
 
 /**
  * Adapts a fully-resolved {@link IResolvedStage} into Babylon objects, returning them as an
@@ -78,11 +78,11 @@ export async function AdaptResolvedStageToScene(
 
     // Process external asset properties if a handler is configured or if any exist (for diagnostics)
     const externalAssetState = CreateExternalAssetState(options);
-    try {
-        await ProcessExternalAssetsForTree(stage.root, context, externalAssetState, stage);
-    } finally {
-        DisposeSourceContainers(externalAssetState);
-    }
+    const emptyAncestorUris: ReadonlySet<string> = new Set();
+    await ProcessExternalAssetsForTree(stage.root, context, externalAssetState, stage, emptyAncestorUris);
+    // Source container templates are NOT disposed here: instantiateModelsToScene clones share
+    // the source geometry, so disposing the template would invalidate cloned mesh geometry.
+    // The scene will dispose everything on scene.dispose().
 
     // Log adapter diagnostics (not stored on the frozen stage, logged directly)
     LogDiagnostics(adapterDiagnostics);
@@ -113,24 +113,28 @@ export async function AdaptResolvedStageToScene(
     };
 }
 
-// Recursively processes external asset properties through the resolved prim tree, using the
-// prim-path → node map built during the AdaptPrim walk to find each prim's Babylon node.
+// Recursively processes external asset properties through the resolved prim tree, threading
+// ancestor external-asset URIs downward for cycle detection and depth limiting.
 async function ProcessExternalAssetsForTree(
     resolvedPrim: import("../resolution/resolvedStage").IResolvedPrim,
     context: IUsdAdapterContext,
     state: IExternalAssetState,
-    stage: IResolvedStage
+    stage: IResolvedStage,
+    ancestorUris: ReadonlySet<string>
 ): Promise<void> {
     if (resolvedPrim.unhandledAssetProperties && resolvedPrim.unhandledAssetProperties.length > 0) {
         const node = context.nodeByPrimPath.get(resolvedPrim.path);
         if (node) {
-            await ProcessExternalAssets(resolvedPrim, node, context, state, stage.layerIdentifier);
+            await ProcessExternalAssets(resolvedPrim, node, context, state, stage.layerIdentifier, ancestorUris);
         }
     }
 
+    // Extend ancestor URIs with this prim's own external asset URIs before recursing into children
+    const childAncestorUris = ExtendAncestorUris(resolvedPrim, ancestorUris);
+
     for (const child of resolvedPrim.children) {
         // eslint-disable-next-line no-await-in-loop
-        await ProcessExternalAssetsForTree(child, context, state, stage);
+        await ProcessExternalAssetsForTree(child, context, state, stage, childAncestorUris);
     }
 }
 
