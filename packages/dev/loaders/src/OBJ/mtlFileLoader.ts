@@ -124,14 +124,14 @@ export class MTLFileLoader {
                 // Specular texture map with a loaded image
                 //We must first get the folder of the image
                 material.specularTexture = MTLFileLoader._GetTexture(rootUrl, value, scene);
-            } else if (key === "map_ns") {
-                //Specular
-                //Specular highlight component
-                //We must first get the folder of the image
-                //
-                //Not supported by BABYLON
-                //
-                //    continue;
+            } else if (key === "map_ns" && material) {
+                // Specular exponent (shininess) texture. MTL's map_Ns modulates the Ns
+                // exponent per-pixel, controlling highlight sharpness. StandardMaterial
+                // has no dedicated specular exponent texture, so this is approximately
+                // mapped to specularTexture, which modulates specular color/intensity.
+                // The visual result is an approximation: highlight spread (Ns) vs
+                // highlight intensity (Ks) are different physical properties.
+                material.specularTexture = MTLFileLoader._GetTexture(rootUrl, value, scene);
             } else if (key === "map_bump" && material) {
                 //The bump texture
                 const values = value.split(delimiterPattern);
