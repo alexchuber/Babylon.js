@@ -4,8 +4,11 @@ import { NodeAsset } from "node-assets/nodeAsset";
 import { CustomAggregateBlock } from "node-assets/blockFoundation/customAggregateBlock";
 import { DracoCompressionBlock } from "node-assets/Blocks/dracoCompressionBlock";
 import { ExportGLTFAggregateBlock } from "node-assets/Blocks/exportGLTFAggregateBlock";
+import { ReadFBXBlock } from "node-assets/Blocks/readFBXBlock";
 import { ImportGLTFAggregateBlock } from "node-assets/Blocks/importGLTFAggregateBlock";
 import { KTX2CompressionBlock } from "node-assets/Blocks/ktx2CompressionBlock";
+import { ReadOBJBlock } from "node-assets/Blocks/readOBJBlock";
+import { ReadUSDBlock } from "node-assets/Blocks/readUSDBlock";
 import { type GLTFSourceFetcher } from "node-assets/Blocks/readGLTFBlock";
 import { StringLiteral } from "node-assets/Blocks/stringLiteral";
 
@@ -64,13 +67,154 @@ function CountBuildRelevantChanges(controller: NodeAssetGraphController): { read
     };
 }
 
-function CreateGltfResponse(data: Uint8Array) {
+function CreateFetchResponse(data: Uint8Array) {
     return {
         ok: true,
         status: 200,
         statusText: "OK",
         arrayBuffer: async () => data.slice().buffer,
     };
+}
+
+function CreateGltfResponse(data: Uint8Array) {
+    return CreateFetchResponse(data);
+}
+
+type HydrationSourceKind = "usd" | "obj" | "fbx";
+
+interface IHydrationSourceFixture {
+    readonly kind: HydrationSourceKind;
+    readonly label: string;
+    readonly customType: string;
+    readonly url: string;
+    readonly fileName: string;
+    readonly bytes: Uint8Array;
+}
+
+const HydrationSourceFixtures: readonly IHydrationSourceFixture[] = [
+    {
+        kind: "usd",
+        label: "USD",
+        customType: ReadUSDBlock.ClassName,
+        url: "https://example.test/assets/scene.usdz",
+        fileName: "scene.usdz",
+        bytes: new Uint8Array([1, 2, 3, 4]),
+    },
+    {
+        kind: "obj",
+        label: "OBJ",
+        customType: ReadOBJBlock.ClassName,
+        url: "https://example.test/assets/mesh.obj",
+        fileName: "mesh.obj",
+        bytes: new Uint8Array([5, 6, 7, 8]),
+    },
+    {
+        kind: "fbx",
+        label: "FBX",
+        customType: ReadFBXBlock.ClassName,
+        url: "https://example.test/assets/character.fbx",
+        fileName: "character.fbx",
+        bytes: new Uint8Array([9, 10, 11, 12]),
+    },
+];
+
+function IsRecord(value: unknown): value is Record<string, unknown> {
+    return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+function FindSerializedBlocks(value: unknown): Array<Record<string, unknown>> {
+    if (!IsRecord(value) || !Array.isArray(value.blocks)) {
+        return [];
+    }
+
+    const blocks: Array<Record<string, unknown>> = [];
+    for (const candidate of value.blocks) {
+        if (!IsRecord(candidate)) {
+            continue;
+        }
+        blocks.push(candidate);
+        blocks.push(...FindSerializedBlocks(candidate.subgraph));
+    }
+    return blocks;
+}
+
+function CreateEditorFile(graph: ReturnType<NodeAsset["serialize"]>): string {
+    return JSON.stringify({ graph, editor: { blocks: [], frames: [] } });
+}
+
+function AddReadBlock(kind: HydrationSourceKind, nodeAsset: NodeAsset, name: string): void {
+    switch (kind) {
+        case "usd":
+            new ReadUSDBlock(name, nodeAsset);
+            return;
+        case "obj":
+            new ReadOBJBlock(name, nodeAsset);
+            return;
+        case "fbx":
+            new ReadFBXBlock(name, nodeAsset);
+            return;
+    }
+}
+
+function SetUrlOnlySource(block: Record<string, unknown>, fixture: IHydrationSourceFixture): void {
+    block.source = fixture.url;
+    block.sourceKind = "url";
+    if (fixture.kind === "obj") {
+        block.primary = null;
+        block.companions = [];
+    } else {
+        block.data = null;
+    }
+}
+
+function CreateUrlOnlyReadGraph(fixtures: readonly IHydrationSourceFixture[], aggregateDepth = 0): string {
+    const asset = new NodeAsset("url-hydration");
+    let owner = asset;
+    for (let index = 0; index < aggregateDepth; index++) {
+        owner = new CustomAggregateBlock(`aggregate ${index}`, owner).subgraph;
+    }
+    for (const fixture of fixtures) {
+        AddReadBlock(fixture.kind, owner, `Read ${fixture.label}`);
+    }
+
+    const graph = asset.serialize();
+    const serializedBlocks = FindSerializedBlocks(graph);
+    for (const fixture of fixtures) {
+        const block = serializedBlocks.find((candidate) => candidate.customType === fixture.customType);
+        if (!block) {
+            throw new Error(`Could not find serialized ${fixture.label} source block.`);
+        }
+        SetUrlOnlySource(block, fixture);
+    }
+    return CreateEditorFile(graph);
+}
+
+function CreateUploadedReadGraph(fixture: IHydrationSourceFixture): string {
+    const asset = new NodeAsset("uploaded-source");
+    switch (fixture.kind) {
+        case "usd":
+            new ReadUSDBlock("Read USD", asset).setUploadedSource(fixture.bytes, fixture.fileName);
+            break;
+        case "obj":
+            new ReadOBJBlock("Read OBJ", asset).setUploadedSource(fixture.bytes, fixture.fileName);
+            break;
+        case "fbx":
+            new ReadFBXBlock("Read FBX", asset).setUploadedSource(fixture.bytes, fixture.fileName);
+            break;
+    }
+    return CreateEditorFile(asset.serialize());
+}
+
+function ExpectSerializedSource(graph: unknown, fixture: IHydrationSourceFixture, sourceKind: "url" | "upload"): void {
+    const block = FindSerializedBlocks(graph).find((candidate) => candidate.customType === fixture.customType);
+    expect(block).toBeDefined();
+    expect(block).toMatchObject({ source: sourceKind === "url" ? fixture.url : fixture.fileName, sourceKind });
+    const encodedBytes = Buffer.from(fixture.bytes).toString("base64");
+    if (fixture.kind === "obj") {
+        expect(block?.primary).toEqual({ path: sourceKind === "url" ? fixture.url : fixture.fileName, bytes: encodedBytes });
+    } else {
+        expect(block?.data).toBe(encodedBytes);
+    }
 }
 
 function CreateUnusedBuildClient(): INodeAssetBuildClient {
@@ -431,6 +575,199 @@ describe("NodeAssetGraphController", () => {
                 blocks: Array<{ customType: string; data?: string | null; source?: string | null; sourceKind?: string; subgraph?: { blocks: unknown[] } }>;
             };
             expect(JSON.stringify(serializedGraph)).toContain(Buffer.from(BuiltInLibraryFixtures.gltf).toString("base64"));
+        } finally {
+            controller.dispose();
+        }
+    });
+
+    it.each(HydrationSourceFixtures)("hydrates the active URL-only Read $label block before worker serialization", async (fixture) => {
+        const buildClient: INodeAssetBuildClient = {
+            buildAsync: vi.fn(async () => new Uint8Array([1, 2, 3])),
+            dispose: vi.fn(),
+        };
+        const sourceFetcher = vi.fn<GLTFSourceFetcher>(async () => CreateFetchResponse(fixture.bytes));
+        const controller = new NodeAssetGraphController(buildClient, sourceFetcher);
+        try {
+            controller.load(CreateUrlOnlyReadGraph([fixture]));
+
+            await expect(controller.buildAsync()).resolves.toEqual(new Uint8Array([1, 2, 3]));
+
+            expect(sourceFetcher).toHaveBeenCalledOnce();
+            expect(sourceFetcher).toHaveBeenCalledWith(fixture.url);
+            expect(buildClient.buildAsync).toHaveBeenCalledOnce();
+            ExpectSerializedSource(vi.mocked(buildClient.buildAsync).mock.calls[0][0], fixture, "url");
+        } finally {
+            controller.dispose();
+        }
+    });
+
+    it.each(HydrationSourceFixtures)("recursively hydrates URL-only Read $label blocks nested in aggregate subgraphs", async (fixture) => {
+        const buildClient: INodeAssetBuildClient = {
+            buildAsync: vi.fn(async () => new Uint8Array([1, 2, 3])),
+            dispose: vi.fn(),
+        };
+        const sourceFetcher = vi.fn<GLTFSourceFetcher>(async () => CreateFetchResponse(fixture.bytes));
+        const controller = new NodeAssetGraphController(buildClient, sourceFetcher);
+        try {
+            controller.load(CreateUrlOnlyReadGraph([fixture], 2));
+            await controller.loadDefaultImportAsync();
+
+            expect(sourceFetcher).toHaveBeenCalledOnce();
+            expect(sourceFetcher).toHaveBeenCalledWith(fixture.url);
+
+            await expect(controller.buildAsync()).resolves.toEqual(new Uint8Array([1, 2, 3]));
+            expect(buildClient.buildAsync).toHaveBeenCalledOnce();
+            ExpectSerializedSource(vi.mocked(buildClient.buildAsync).mock.calls[0][0], fixture, "url");
+        } finally {
+            controller.dispose();
+        }
+    });
+
+    it("waits for every active URL source before dispatching one worker build", async () => {
+        type FetchResponse = ReturnType<typeof CreateFetchResponse>;
+        const buildClient: INodeAssetBuildClient = {
+            buildAsync: vi.fn(async () => new Uint8Array([1, 2, 3])),
+            dispose: vi.fn(),
+        };
+        const pending = new Map<string, (response: FetchResponse) => void>();
+        const sourceFetcher = vi.fn<GLTFSourceFetcher>(
+            (url) =>
+                new Promise<FetchResponse>((resolve) => {
+                    pending.set(url, resolve);
+                })
+        );
+        const controller = new NodeAssetGraphController(buildClient, sourceFetcher);
+        try {
+            controller.load(CreateUrlOnlyReadGraph(HydrationSourceFixtures));
+            const build = controller.buildAsync();
+
+            await vi.waitFor(() => expect(sourceFetcher).toHaveBeenCalledTimes(HydrationSourceFixtures.length));
+            expect(buildClient.buildAsync).not.toHaveBeenCalled();
+
+            for (const fixture of HydrationSourceFixtures) {
+                const resolve = pending.get(fixture.url);
+                if (!resolve) {
+                    throw new Error(`The source fetch for "${fixture.url}" was not started.`);
+                }
+                resolve(CreateFetchResponse(fixture.bytes));
+            }
+
+            await expect(build).resolves.toEqual(new Uint8Array([1, 2, 3]));
+            expect(buildClient.buildAsync).toHaveBeenCalledOnce();
+            for (const fixture of HydrationSourceFixtures) {
+                expect(sourceFetcher.mock.calls.filter(([url]) => url === fixture.url)).toHaveLength(1);
+                ExpectSerializedSource(vi.mocked(buildClient.buildAsync).mock.calls[0][0], fixture, "url");
+            }
+        } finally {
+            controller.dispose();
+        }
+    });
+
+    it("does not apply stale URL bytes after replacing the graph during hydration", async () => {
+        const oldFixture = HydrationSourceFixtures[0];
+        const activeFixture = HydrationSourceFixtures[1];
+        let resolveOld: ((response: ReturnType<typeof CreateFetchResponse>) => void) | undefined;
+        const oldResponse = new Promise<ReturnType<typeof CreateFetchResponse>>((resolve) => {
+            resolveOld = resolve;
+        });
+        const sourceFetcher = vi.fn<GLTFSourceFetcher>(async () => await oldResponse);
+        const buildClient: INodeAssetBuildClient = {
+            buildAsync: vi.fn(async () => new Uint8Array([1, 2, 3])),
+            dispose: vi.fn(),
+        };
+        const controller = new NodeAssetGraphController(buildClient, sourceFetcher);
+        try {
+            controller.load(CreateUrlOnlyReadGraph([oldFixture]));
+            const staleBuild = controller.buildAsync();
+            await vi.waitFor(() => expect(sourceFetcher).toHaveBeenCalledOnce());
+
+            controller.load(CreateUploadedReadGraph(activeFixture));
+            const activeSerialization = controller.serialize();
+            resolveOld?.(CreateFetchResponse(oldFixture.bytes));
+
+            await expect(staleBuild).rejects.toThrow("graph changed");
+            expect(controller.serialize()).toBe(activeSerialization);
+
+            await expect(controller.buildAsync()).resolves.toEqual(new Uint8Array([1, 2, 3]));
+            expect(buildClient.buildAsync).toHaveBeenCalledOnce();
+            ExpectSerializedSource(vi.mocked(buildClient.buildAsync).mock.calls[0][0], activeFixture, "upload");
+        } finally {
+            controller.dispose();
+        }
+    });
+
+    it("does not publish a stale URL failure after replacing the graph during hydration", async () => {
+        const oldFixture = HydrationSourceFixtures[0];
+        const activeFixture = HydrationSourceFixtures[1];
+        let rejectOld: ((reason?: unknown) => void) | undefined;
+        const oldResponse = new Promise<ReturnType<typeof CreateFetchResponse>>((_resolve, reject) => {
+            rejectOld = reject;
+        });
+        const sourceFetcher = vi.fn<GLTFSourceFetcher>(async () => await oldResponse);
+        const buildClient: INodeAssetBuildClient = {
+            buildAsync: vi.fn(async () => new Uint8Array([1, 2, 3])),
+            dispose: vi.fn(),
+        };
+        const controller = new NodeAssetGraphController(buildClient, sourceFetcher);
+        try {
+            controller.load(CreateUrlOnlyReadGraph([oldFixture]));
+            const staleBuild = controller.buildAsync();
+            await vi.waitFor(() => expect(sourceFetcher).toHaveBeenCalledOnce());
+
+            controller.load(CreateUploadedReadGraph(activeFixture));
+            const activeSerialization = controller.serialize();
+            rejectOld?.(new Error("stale source failed"));
+
+            await expect(staleBuild).rejects.toThrow("graph changed");
+            expect(controller.serialize()).toBe(activeSerialization);
+            expect(buildClient.buildAsync).not.toHaveBeenCalled();
+        } finally {
+            controller.dispose();
+        }
+    });
+
+    it.each(HydrationSourceFixtures)("rejects active Read $label fetch failure during startup and build without dispatching an incomplete graph", async (fixture) => {
+        const sourceFetcher = vi.fn<GLTFSourceFetcher>(async () => ({
+            ok: false,
+            status: 503,
+            statusText: "Unavailable",
+            arrayBuffer: async () => new ArrayBuffer(0),
+        }));
+        const buildClient: INodeAssetBuildClient = {
+            buildAsync: vi.fn(async () => new Uint8Array([1, 2, 3])),
+            dispose: vi.fn(),
+        };
+        const controller = new NodeAssetGraphController(buildClient, sourceFetcher);
+        try {
+            controller.load(CreateUrlOnlyReadGraph([fixture]));
+
+            await expect(controller.loadDefaultImportAsync()).rejects.toThrow(fixture.url);
+            expect(buildClient.buildAsync).not.toHaveBeenCalled();
+
+            await expect(controller.buildAsync()).rejects.toThrow(fixture.url);
+            expect(buildClient.buildAsync).not.toHaveBeenCalled();
+        } finally {
+            controller.dispose();
+        }
+    });
+
+    it.each(HydrationSourceFixtures)("keeps uploaded Read $label sources local and build-compatible", async (fixture) => {
+        const sourceFetcher = vi.fn<GLTFSourceFetcher>(async () => {
+            throw new Error("Uploaded sources must not use the URL fetch boundary.");
+        });
+        const buildClient: INodeAssetBuildClient = {
+            buildAsync: vi.fn(async () => new Uint8Array([1, 2, 3])),
+            dispose: vi.fn(),
+        };
+        const controller = new NodeAssetGraphController(buildClient, sourceFetcher);
+        try {
+            controller.load(CreateUploadedReadGraph(fixture));
+
+            await expect(controller.buildAsync()).resolves.toEqual(new Uint8Array([1, 2, 3]));
+
+            expect(sourceFetcher).not.toHaveBeenCalled();
+            expect(buildClient.buildAsync).toHaveBeenCalledOnce();
+            ExpectSerializedSource(vi.mocked(buildClient.buildAsync).mock.calls[0][0], fixture, "upload");
         } finally {
             controller.dispose();
         }
