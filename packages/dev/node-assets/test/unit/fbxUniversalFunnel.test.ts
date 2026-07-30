@@ -3,6 +3,7 @@ import { ALL_EXTENSIONS } from "@gltf-transform/extensions";
 import { AssetContainer } from "core/assetContainer";
 import { NullEngine } from "core/Engines/nullEngine";
 import { Scene } from "core/scene";
+import { EncodeArrayBufferToBase64 } from "core/Misc/stringTools";
 import { GLTF2Export } from "serializers/glTF/2.0/glTFSerializer";
 import { describe, expect, it, vi } from "vitest";
 
@@ -62,6 +63,8 @@ async function ReadStableMeshFactsAsync(glb: Uint8Array): Promise<{
 function ArrayBufferFor(bytes: Uint8Array): ArrayBuffer {
     return bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength) as ArrayBuffer;
 }
+
+const SerializedFBXFixture = EncodeArrayBufferToBase64(CreateAsciiFbx74TriangleFixture());
 
 describe("FBX Universal funnel", () => {
     function CreateExportingAsset(data?: Uint8Array): NodeAsset {
@@ -363,14 +366,36 @@ describe("FBX Universal funnel", () => {
         }
     });
 
-    it("rejects non-upload source kinds during strict graph parsing", () => {
+    it.each([
+        ["empty", null, null, ""],
+        ["upload", SerializedFBXFixture, "triangle.fbx", "upload"],
+        ["URL-only", null, "https://cdn.example.com/scenes/remote.fbx", "url"],
+        ["hydrated URL", SerializedFBXFixture, "https://cdn.example.com/scenes/remote.fbx", "url"],
+    ] as const)("round-trips supported FBX source state %s during strict graph parsing", (_name, data, source, sourceKind) => {
         const asset = new NodeAsset("strict-fbx-state");
         const importer = new ImportFBXAggregateBlock("Import FBX", asset);
         importer.setUploadedSource(CreateAsciiFbx74TriangleFixture(), "triangle.fbx");
         const serialization = JSON.parse(JSON.stringify(asset.serialize())) as {
-            blocks: Array<{ subgraph: { blocks: Array<{ sourceKind?: string }> } }>;
+            blocks: Array<{ subgraph: { blocks: Array<Record<string, unknown>> } }>;
         };
-        serialization.blocks[0].subgraph.blocks[0].sourceKind = "url";
+        Object.assign(serialization.blocks[0].subgraph.blocks[0], { data, source, sourceKind });
+
+        const parsed = NodeAsset.Parse(serialization);
+        const parsedRead = (parsed.attachedBlocks[0] as ImportFBXAggregateBlock).subgraph.attachedBlocks[0] as ReadFBXBlock;
+        expect(parsed.serialize()).toEqual(serialization);
+        expect(parsedRead.data).toEqual(data === null ? null : CreateAsciiFbx74TriangleFixture());
+        expect(parsedRead.source).toBe(source);
+        expect(parsedRead.sourceKind).toBe(sourceKind || null);
+    });
+
+    it("rejects unsupported source kinds during strict graph parsing", () => {
+        const asset = new NodeAsset("unsupported-fbx-state");
+        const importer = new ImportFBXAggregateBlock("Import FBX", asset);
+        importer.setUploadedSource(CreateAsciiFbx74TriangleFixture(), "triangle.fbx");
+        const serialization = JSON.parse(JSON.stringify(asset.serialize())) as {
+            blocks: Array<{ subgraph: { blocks: Array<Record<string, unknown>> } }>;
+        };
+        serialization.blocks[0].subgraph.blocks[0].sourceKind = "remote";
 
         expect(() => NodeAsset.Parse(serialization)).toThrow('Invalid serialized block property "sourceKind"');
     });
@@ -398,6 +423,11 @@ describe("FBX Universal funnel", () => {
             source: "triangle.fbx",
             sourceKind: "upload",
         },
+        { data: null, source: "https://cdn.example.com/scenes/remote.fbx", sourceKind: "" },
+        { data: null, source: null, sourceKind: "url" },
+        { data: SerializedFBXFixture, source: null, sourceKind: "url" },
+        { data: SerializedFBXFixture, source: "https://cdn.example.com/scenes/remote.fbx", sourceKind: "" },
+        { data: null, source: "https://cdn.example.com/scenes/remote.fbx", sourceKind: "upload" },
     ])("rejects partial or non-canonical serialized source state: %j", (sourceState) => {
         const asset = new NodeAsset("invalid-fbx-state");
         const read = new ReadFBXBlock("Read FBX", asset);
