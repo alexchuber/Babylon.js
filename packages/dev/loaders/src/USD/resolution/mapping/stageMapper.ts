@@ -319,7 +319,6 @@ function ApplyUnsupportedSchemaDiagnostics(primSpec: ISdfPrimSpec, context: ISta
 const UnsupportedRenderableSchemas = [
     "Sphere",
     "Cylinder",
-    "Cone",
     "Capsule",
     "Plane",
     "PointInstancer",
