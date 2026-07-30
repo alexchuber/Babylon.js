@@ -392,12 +392,14 @@ describe("USD RuntimeCorpus - Forklift", () => {
                     expect(scene.meshes.length).toBeGreaterThan(baselineMeshes);
                     expect(scene.materials.length).toBeGreaterThan(baselineMaterials);
                     expect(scene.textures.length).toBeGreaterThan(baselineTextures);
+                    expect(scene.geometries!.length).toBeGreaterThan(baselineGeometries);
 
                     // Remove returns scene exactly to baseline
                     container.removeAllFromScene();
                     expect(scene.meshes.length).toBe(baselineMeshes);
                     expect(scene.materials.length).toBe(baselineMaterials);
                     expect(scene.textures.length).toBe(baselineTextures);
+                    expect(scene.geometries!.length).toBe(baselineGeometries);
 
                     // Dispose clears container arrays
                     container.dispose();
@@ -406,8 +408,11 @@ describe("USD RuntimeCorpus - Forklift", () => {
                     expect(container.textures.length).toBe(0);
                     expect(container.geometries.length).toBe(0);
 
-                    // Scene stays at baseline after dispose
+                    // Scene stays at exact baseline after dispose
                     expect(scene.meshes.length).toBe(baselineMeshes);
+                    expect(scene.materials.length).toBe(baselineMaterials);
+                    expect(scene.textures.length).toBe(baselineTextures);
+                    expect(scene.geometries!.length).toBe(baselineGeometries);
                 } finally {
                     scene.dispose();
                     engine.dispose();
@@ -556,6 +561,69 @@ describe("USD RuntimeCorpus - Forklift", () => {
                             pluginOptions: { usd: { externalAssetHandler: handler } },
                         })
                     ).rejects.toThrow("Missing MTL");
+                } finally {
+                    scene.dispose();
+                    engine.dispose();
+                }
+            },
+            LOAD_TIMEOUT
+        );
+
+        it(
+            "rejects through outer ImportMeshAsync when MTL is malformed (garbage data, no material)",
+            async () => {
+                // Mock LoadFile to return garbage MTL data
+                vi.spyOn(Tools, "LoadFile").mockImplementation(
+                    (
+                        fileOrUrl: File | string,
+                        onSuccess: (data: string | ArrayBuffer, responseURL?: string, contentType?: string | null) => void,
+                        _onProgress?: (ev: ProgressEvent) => void,
+                        _offlineProvider?: IOfflineProvider | null,
+                        _useArrayBuffer?: boolean,
+                        _onError?: (request?: WebRequest, exception?: LoadFileError) => void
+                    ): IFileRequest => {
+                        const fileRequest: IFileRequest = {
+                            abort: () => {},
+                            onCompleteObservable: new Observable<IFileRequest>(),
+                        };
+                        const url = typeof fileOrUrl === "string" ? fileOrUrl : fileOrUrl.name;
+                        if (url.endsWith(".mtl")) {
+                            // Return garbage that won't produce any valid material
+                            setTimeout(() => onSuccess("THIS_IS_NOT_VALID_MTL_DATA\nGARBAGE"), 0);
+                        }
+                        return fileRequest;
+                    }
+                );
+
+                const engine = new NullEngine();
+                const scene = new Scene(engine);
+
+                try {
+                    const usdaData = readCorpusFile("Forklift.usda");
+
+                    const handler = async (request: IUsdExternalAssetRequest): Promise<UsdExternalAssetResult> => {
+                        if (request.propertyName !== "assetInfo:source") {
+                            return { handled: false };
+                        }
+                        const objData = readCorpusFile(request.authoredUri.replace(/^\.\//, ""));
+                        const container = await LoadAssetContainerAsync("data:" + objData, request.scene, {
+                            pluginExtension: ".obj",
+                            rootUrl: "",
+                        });
+                        const mesh = container.meshes.find((m) => m.getTotalVertices() > 0);
+                        if (!mesh?.material || !(mesh.material as StandardMaterial).diffuseTexture) {
+                            container.dispose();
+                            throw new Error("Malformed MTL: no diffuse texture after loading");
+                        }
+                        return { handled: true, container };
+                    };
+
+                    await expect(
+                        ImportMeshAsync("data:" + usdaData, scene, {
+                            pluginExtension: ".usda",
+                            pluginOptions: { usd: { externalAssetHandler: handler } },
+                        })
+                    ).rejects.toThrow("Malformed MTL");
                 } finally {
                     scene.dispose();
                     engine.dispose();

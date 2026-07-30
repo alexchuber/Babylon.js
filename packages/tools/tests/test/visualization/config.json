@@ -5560,7 +5560,7 @@
         },
         {
             "title": "USD loader - Forklift wrapper",
-            "playgroundId": "#2NYFI6#0",
+            "playgroundId": "#N7ZEX5#0",
             "referenceImage": "usd-loader-forklift-wrapper.png",
             "renderCount": 50,
             "dependsOn": ["Loaders", "Materials", "Meshes", "Textures"]

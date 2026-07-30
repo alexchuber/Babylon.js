@@ -36,6 +36,11 @@ describe("MTLFileLoader - map_Ns specular exponent texture", () => {
         const mat = mtl.materials[0];
         expect(mat.specularTexture).toBeDefined();
         expect(mat.specularTexture!.name).toContain("specular.png");
+
+        // Exactly one texture survives in the scene — provisional map_Ns was disposed
+        const specTextures = scene.textures.filter((t) => t.name.includes("specular.png") || t.name.includes("roughness.png"));
+        expect(specTextures.length).toBe(1);
+        expect(specTextures[0].name).toContain("specular.png");
     });
 
     it("map_Ks wins over map_Ns when map_Ks appears BEFORE map_Ns", () => {
@@ -46,6 +51,11 @@ describe("MTLFileLoader - map_Ns specular exponent texture", () => {
         const mat = mtl.materials[0];
         expect(mat.specularTexture).toBeDefined();
         expect(mat.specularTexture!.name).toContain("specular.png");
+
+        // Exactly one texture survives — map_Ns was skipped entirely
+        const specTextures = scene.textures.filter((t) => t.name.includes("specular.png") || t.name.includes("roughness.png"));
+        expect(specTextures.length).toBe(1);
+        expect(specTextures[0].name).toContain("specular.png");
     });
 
     it("map_Ks alone works unchanged", () => {
