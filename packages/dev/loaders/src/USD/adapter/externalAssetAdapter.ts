@@ -1,7 +1,6 @@
 import { AbstractMesh } from "core/Meshes/abstractMesh";
 import { type TransformNode } from "core/Meshes/transformNode.pure";
 import { type AssetContainer } from "core/assetContainer";
-import { type Scene } from "core/scene";
 import { type Node } from "core/node";
 
 import { type IResolvedPrim } from "../resolution/resolvedStage";
@@ -48,27 +47,30 @@ export function CreateExternalAssetState(options: Readonly<USDLoadingOptions>): 
 
 /**
  * Deterministically disposes every off-scene source container template while preserving
- * shared resources (geometries and textures) that cloned meshes still reference.
+ * shared geometry that cloned meshes still reference.
  *
- * Before disposing each template, its geometries and textures arrays are cleared so that
- * `AssetContainer.dispose()` does not force-release vertex buffers and texture data that
- * cloned meshes and cloned materials still reference. The scene already tracks these
- * resources internally (added during the handler's glTF/OBJ load), and the outer
- * `_LoadAssetContainerAsync` captures them into the public AssetContainer for proper
- * ownership and cleanup.
+ * `instantiateModelsToScene` in clone mode produces `Mesh.clone` copies that share the
+ * same `Geometry` object with the source mesh. `AssetContainer.dispose()` explicitly
+ * disposes all tracked geometries, which would release the underlying vertex buffers.
+ * Clearing `container.geometries` before disposal prevents this; the cloned meshes
+ * retain their own geometry references and the outer `_LoadAssetContainerAsync` captures
+ * them into the public AssetContainer for proper ownership and cleanup.
+ *
+ * Source textures are NOT cleared: `PBRMaterial.clone` (via `SerializationHelper.Clone`)
+ * calls `Texture.clone()` for each serialized texture field, producing distinct Texture
+ * objects on the cloned material. Disposing the source container correctly releases the
+ * source-only textures and their internal refs; the cloned textures are independent.
  *
  * @param state the external asset state to clean up
- * @param scene the Babylon scene (used for future resource tracking if needed)
  */
-export function DisposeSourceContainers(state: IExternalAssetState, scene: Scene): void {
+export function DisposeSourceContainers(state: IExternalAssetState): void {
     for (const [, container] of state.sourceCache) {
         if (container) {
-            // Prevent dispose() from force-releasing shared vertex buffers and texture data.
-            // Cloned meshes reference the same Geometry objects; cloned materials reference
-            // the same Texture objects. Both are already registered on the scene and will be
-            // captured by the outer container's collectNewEntities sweep.
+            // Prevent dispose() from force-releasing shared vertex buffers.
+            // Cloned meshes reference the same Geometry objects as the source; clearing
+            // the container's array prevents dispose() from destroying them. The outer
+            // container's collectNewEntities sweep captures them for proper ownership.
             container.geometries.length = 0;
-            container.textures.length = 0;
             container.dispose();
         }
     }

@@ -1,4 +1,4 @@
-import { describe, expect, it, vi, beforeAll, beforeEach, afterEach, afterAll } from "vitest";
+import { describe, expect, it, vi, beforeAll, afterAll, beforeEach, afterEach } from "vitest";
 import * as fs from "fs";
 import * as path from "path";
 import { fileURLToPath } from "url";
@@ -22,7 +22,7 @@ function readCorpusFile(relativePath: string): string {
     return fs.readFileSync(path.join(corpusRoot, relativePath), "utf8");
 }
 
-// Cache the GLB base64 string — the file is ~54 MB; avoid repeated disk reads/encodes.
+// Cache the GLB base64 — the file is ~54 MB; avoid repeated disk reads/encodes.
 let cachedGlbBase64: string | null = null;
 function getGlbBase64(): string {
     if (!cachedGlbBase64) {
@@ -54,10 +54,15 @@ async function shelvesHandler(request: IUsdExternalAssetRequest): Promise<UsdExt
     return { handled: true, container };
 }
 
+// ─── Shared public wrapper load ──────────────────────────────────────────────
+// One beforeAll ImportMeshAsync through the public SceneLoader seam, exercising
+// the full USD→handler→glTF→clone→dispose cycle. All read-only assertions in
+// the main describe share this result to avoid re-parsing the 54 MB GLB.
+
 describe("USD RuntimeCorpus - Shelves", () => {
     let engine: NullEngine;
     let scene: Scene;
-    let sharedResult: ISceneLoaderAsyncResult;
+    let result: ISceneLoaderAsyncResult;
 
     beforeAll(async () => {
         RegisterUSDFileLoader();
@@ -72,7 +77,7 @@ describe("USD RuntimeCorpus - Shelves", () => {
         vi.spyOn(Logger, "Error").mockImplementation(() => {});
 
         const usdaData = readCorpusFile("shelves_01.usda");
-        sharedResult = await ImportMeshAsync("data:" + usdaData, scene, {
+        result = await ImportMeshAsync("data:" + usdaData, scene, {
             pluginExtension: ".usda",
             pluginOptions: { usd: { externalAssetHandler: shelvesHandler } },
         });
@@ -84,50 +89,55 @@ describe("USD RuntimeCorpus - Shelves", () => {
         vi.restoreAllMocks();
     });
 
-    // --- Authored USD hierarchy and transform ---
+    // ── Authored USD hierarchy and transform ──
 
     it("creates the authored USD hierarchy: Shelves → Asset", () => {
-        const shelvesNode = sharedResult.transformNodes.find((n) => n.name === "Shelves");
+        const shelvesNode = result.transformNodes.find((n) => n.name === "Shelves");
         expect(shelvesNode).toBeDefined();
 
-        const assetNode = sharedResult.transformNodes.find((n) => n.name === "Asset");
+        const assetNode = result.transformNodes.find((n) => n.name === "Asset");
         expect(assetNode).toBeDefined();
         expect(assetNode!.parent?.name).toBe("Shelves");
     });
 
-    it("applies the authored identity transform on the Asset prim", () => {
-        const assetNode = sharedResult.transformNodes.find((n) => n.name === "Asset")!;
+    it("applies the authored identity transform (position, rotation, scale)", () => {
+        const assetNode = result.transformNodes.find((n) => n.name === "Asset")!;
 
+        // Identity position
         expect(assetNode.position.x).toBeCloseTo(0);
         expect(assetNode.position.y).toBeCloseTo(0);
         expect(assetNode.position.z).toBeCloseTo(0);
+
+        // Identity rotation (euler)
+        expect(assetNode.rotation.x).toBeCloseTo(0);
+        expect(assetNode.rotation.y).toBeCloseTo(0);
+        expect(assetNode.rotation.z).toBeCloseTo(0);
+
+        // Identity scale
         expect(assetNode.scaling.x).toBeCloseTo(1);
         expect(assetNode.scaling.y).toBeCloseTo(1);
         expect(assetNode.scaling.z).toBeCloseTo(1);
     });
 
-    // --- Loaded GLB geometry through the wrapper ---
+    // ── Loaded GLB geometry through the wrapper ──
 
-    it("loads exact GLB geometry through the USD wrapper (3633 vertices, 13044 indices)", () => {
-        const geometryMesh = sharedResult.meshes.find((m) => m.name.includes("steel_frame_shelves_02"));
+    it("loads exact GLB geometry through the USD wrapper: 3633 vertices, 13044 indices", () => {
+        const geometryMesh = result.meshes.find((m) => m.name.includes("steel_frame_shelves_02"));
         expect(geometryMesh).toBeDefined();
         expect(geometryMesh!.getTotalVertices()).toBe(3633);
         expect(geometryMesh!.getTotalIndices()).toBe(13044);
     });
 
     it("produces exactly 2 meshes: root dummy and geometry mesh", () => {
-        expect(sharedResult.meshes.length).toBe(2);
-        const rootMesh = sharedResult.meshes.find((m) => m.name.includes("__root__"));
+        expect(result.meshes.length).toBe(2);
+        const rootMesh = result.meshes.find((m) => m.name.includes("__root__"));
         expect(rootMesh).toBeDefined();
         expect(rootMesh!.getTotalVertices()).toBe(0);
-
-        const geometryMesh = sharedResult.meshes.find((m) => m.name.includes("steel_frame_shelves_02"));
-        expect(geometryMesh).toBeDefined();
     });
 
     it("parents the GLB mesh under the USD Asset prim transform", () => {
-        const assetNode = sharedResult.transformNodes.find((n) => n.name === "Asset")!;
-        const geometryMesh = sharedResult.meshes.find((m) => m.name.includes("steel_frame_shelves_02"))!;
+        const assetNode = result.transformNodes.find((n) => n.name === "Asset")!;
+        const geometryMesh = result.meshes.find((m) => m.name.includes("steel_frame_shelves_02"))!;
 
         let ancestor = geometryMesh.parent;
         let foundAssetAncestor = false;
@@ -141,68 +151,67 @@ describe("USD RuntimeCorpus - Shelves", () => {
         expect(foundAssetAncestor).toBe(true);
     });
 
-    // --- PBR material and texture assertions ---
+    it("geometry mesh has identity rotation quaternion", () => {
+        const geometryMesh = result.meshes.find((m) => m.name.includes("steel_frame_shelves_02"))!;
+        const rq = geometryMesh.rotationQuaternion;
+        expect(rq).not.toBeNull();
+        expect(rq!.x).toBeCloseTo(0);
+        expect(rq!.y).toBeCloseTo(0);
+        expect(rq!.z).toBeCloseTo(0);
+        expect(rq!.w).toBeCloseTo(1);
+    });
 
-    it("assigns the steel_frame_shelves_02 PBR material with 3 textures", () => {
-        const geometryMesh = sharedResult.meshes.find((m) => m.name.includes("steel_frame_shelves_02"))!;
+    // ── PBR material and texture assertions ──
+
+    it("assigns the steel_frame_shelves_02 PBR material with exact texture channels", () => {
+        const geometryMesh = result.meshes.find((m) => m.name.includes("steel_frame_shelves_02"))!;
         expect(geometryMesh.material).toBeDefined();
-        expect(geometryMesh.material!.name).toContain("steel_frame_shelves_02");
+        expect(geometryMesh.material!.name).toBe("Clone of steel_frame_shelves_02");
         expect(geometryMesh.material).toBeInstanceOf(PBRMaterial);
 
         const pbrMat = geometryMesh.material as PBRMaterial;
 
-        // Base color / albedo texture (diffuse)
+        // Base color / albedo texture
         expect(pbrMat.albedoTexture).toBeDefined();
+        expect(pbrMat.albedoTexture!.name).toBe("steel_frame_shelves_02 (Base Color)");
 
         // Normal map
         expect(pbrMat.bumpTexture).toBeDefined();
+        expect(pbrMat.bumpTexture!.name).toBe("steel_frame_shelves_02 (Normal)");
 
         // Metallic-roughness texture
         expect(pbrMat.metallicTexture).toBeDefined();
+        expect(pbrMat.metallicTexture!.name).toBe("steel_frame_shelves_02 (Metallic Roughness)");
     });
 
-    it("registers at least 3 textures on the scene (normal, diffuse, metallic-roughness from GLB)", () => {
-        // The GLB contains 3 source images. Material cloning may register additional texture
-        // objects on the scene; the PBR material texture assertions above verify the exact
-        // semantic channels.
-        expect(scene.textures.length).toBeGreaterThanOrEqual(3);
+    // ── Exact deterministic aggregate world bounds ──
+
+    it("produces exact deterministic aggregate world bounds across all geometry", () => {
+        const allGeometryMeshes = result.meshes.filter((m: AbstractMesh) => m.getTotalVertices() > 0);
+        expect(allGeometryMeshes.length).toBe(1);
+
+        const mesh = allGeometryMeshes[0];
+        mesh.computeWorldMatrix(true);
+        mesh.refreshBoundingInfo();
+        const bb = mesh.getBoundingInfo().boundingBox;
+
+        // Exact aggregate min/max from the committed GLB geometry
+        expect(bb.minimumWorld.x).toBeCloseTo(-0.2967, 3);
+        expect(bb.minimumWorld.y).toBeCloseTo(-0.0011, 3);
+        expect(bb.minimumWorld.z).toBeCloseTo(-0.2512, 3);
+        expect(bb.maximumWorld.x).toBeCloseTo(0.2967, 3);
+        expect(bb.maximumWorld.y).toBeCloseTo(2.1405, 3);
+        expect(bb.maximumWorld.z).toBeCloseTo(0.2512, 3);
     });
 
-    // --- Deterministic aggregate world bounds ---
-
-    it("produces deterministic non-degenerate aggregate world bounds", () => {
-        const allGeometryMeshes = sharedResult.meshes.filter((m: AbstractMesh) => m.getTotalVertices() > 0);
-        expect(allGeometryMeshes.length).toBeGreaterThan(0);
-
-        let minX = Infinity, minY = Infinity, minZ = Infinity;
-        let maxX = -Infinity, maxY = -Infinity, maxZ = -Infinity;
-
-        for (const mesh of allGeometryMeshes) {
-            mesh.refreshBoundingInfo();
-            const bb = mesh.getBoundingInfo().boundingBox;
-            minX = Math.min(minX, bb.minimumWorld.x);
-            minY = Math.min(minY, bb.minimumWorld.y);
-            minZ = Math.min(minZ, bb.minimumWorld.z);
-            maxX = Math.max(maxX, bb.maximumWorld.x);
-            maxY = Math.max(maxY, bb.maximumWorld.y);
-            maxZ = Math.max(maxZ, bb.maximumWorld.z);
-        }
-
-        const width = maxX - minX;
-        const height = maxY - minY;
-        const depth = maxZ - minZ;
-
-        expect(width).toBeGreaterThan(0);
-        expect(height).toBeGreaterThan(0);
-        expect(depth).toBeGreaterThan(0);
-    });
-
-    // --- Stage metadata ---
+    // ── Stage metadata ──
 
     it("preserves stage metadata (Y-up, metersPerUnit=1)", () => {
         expect(scene.useRightHandedSystem).toBe(true);
     });
 });
+
+// ─── Ownership lifecycle ─────────────────────────────────────────────────────
 
 describe("USD RuntimeCorpus - Shelves ownership", () => {
     beforeEach(() => {
@@ -218,7 +227,7 @@ describe("USD RuntimeCorpus - Shelves ownership", () => {
         vi.restoreAllMocks();
     });
 
-    it("LoadAssetContainerAsync owns all entities and dispose returns scene to baseline", async () => {
+    it("LoadAssetContainerAsync: container categories nonempty, removeAll restores all baselines, dispose clears all owned", async () => {
         const engine = new NullEngine();
         const scene = new Scene(engine);
 
@@ -234,20 +243,35 @@ describe("USD RuntimeCorpus - Shelves ownership", () => {
                 pluginOptions: { usd: { externalAssetHandler: shelvesHandler } },
             });
 
-            // Container holds entities, scene does not
+            // Container holds entities in every category
             expect(container.meshes.length).toBeGreaterThan(0);
+            expect(container.materials.length).toBeGreaterThan(0);
+            expect(container.geometries.length).toBeGreaterThan(0);
+            expect(container.textures.length).toBeGreaterThan(0);
+
+            // Scene is empty before addAllToScene
             expect(scene.meshes.length).toBe(baselineMeshes);
 
             // addAllToScene transfers
             container.addAllToScene();
             expect(scene.meshes.length).toBeGreaterThan(baselineMeshes);
 
-            // removeAllFromScene restores baseline
+            // removeAllFromScene restores all four baselines
             container.removeAllFromScene();
             expect(scene.meshes.length).toBe(baselineMeshes);
+            expect(scene.geometries.length).toBe(baselineGeometries);
+            expect(scene.textures.length).toBe(baselineTextures);
+            expect(scene.materials.length).toBe(baselineMaterials);
 
-            // dispose returns ALL resource counts to baseline
+            // dispose clears every owned category on the container
             container.dispose();
+            expect(container.meshes.length).toBe(0);
+            expect(container.materials.length).toBe(0);
+            expect(container.geometries.length).toBe(0);
+            expect(container.textures.length).toBe(0);
+            expect(container.transformNodes.length).toBe(0);
+
+            // Scene remains at baseline after dispose
             expect(scene.meshes.length).toBe(baselineMeshes);
             expect(scene.geometries.length).toBe(baselineGeometries);
             expect(scene.textures.length).toBe(baselineTextures);
@@ -258,6 +282,8 @@ describe("USD RuntimeCorpus - Shelves ownership", () => {
         }
     });
 });
+
+// ─── Error paths ─────────────────────────────────────────────────────────────
 
 describe("USD RuntimeCorpus - Shelves error paths", () => {
     beforeEach(() => {
@@ -273,21 +299,20 @@ describe("USD RuntimeCorpus - Shelves error paths", () => {
         vi.restoreAllMocks();
     });
 
-    it("missing GLB sidecar rejects through normal glTF SceneLoader error path", async () => {
+    it("genuinely absent GLB path rejects through handler prevalidation", async () => {
         const engine = new NullEngine();
         const scene = new Scene(engine);
 
-        const missingGlbHandler = async (request: IUsdExternalAssetRequest): Promise<UsdExternalAssetResult> => {
+        // Handler that checks the file exists before loading, rejecting with a
+        // descriptive error for genuinely absent paths — exercises the normal
+        // SceneLoader error propagation for missing files.
+        const absentPathHandler = async (request: IUsdExternalAssetRequest): Promise<UsdExternalAssetResult> => {
             if (request.propertyName !== "assetInfo:source") {
                 return { handled: false };
             }
-            // Delegate to the real glTF loader with a non-existent file — the SceneLoader
-            // itself rejects when it cannot fetch the data.
-            const container = await LoadAssetContainerAsync("data:;base64,", request.scene, {
-                pluginExtension: ".glb",
-                rootUrl: "",
-            });
-            return { handled: true, container };
+            // The authored path is ./shelves_01.glb but this handler refuses to
+            // load it, simulating a missing file on the file system / CDN.
+            throw new Error(`Cannot load '${request.authoredUri}': file not found at resolved URI '${request.resolvedUri}'`);
         };
 
         try {
@@ -295,16 +320,16 @@ describe("USD RuntimeCorpus - Shelves error paths", () => {
             await expect(
                 ImportMeshAsync("data:" + usdaData, scene, {
                     pluginExtension: ".usda",
-                    pluginOptions: { usd: { externalAssetHandler: missingGlbHandler } },
+                    pluginOptions: { usd: { externalAssetHandler: absentPathHandler } },
                 })
-            ).rejects.toThrow();
+            ).rejects.toThrow("file not found");
         } finally {
             scene.dispose();
             engine.dispose();
         }
     });
 
-    it("malformed GLB data rejects through normal glTF SceneLoader error path", async () => {
+    it("malformed GLB (invalid magic) rejects through normal glTF SceneLoader error path", async () => {
         const engine = new NullEngine();
         const scene = new Scene(engine);
 
@@ -343,125 +368,20 @@ describe("USD RuntimeCorpus - Shelves error paths", () => {
 
         try {
             const usdaData = readCorpusFile("shelves_01.usda");
-            const result = await ImportMeshAsync("data:" + usdaData, scene, {
+            const noHandlerResult = await ImportMeshAsync("data:" + usdaData, scene, {
                 pluginExtension: ".usda",
             });
 
-            // USD hierarchy nodes are present but no GLB meshes
-            const shelvesNode = result.transformNodes.find((n) => n.name === "Shelves");
+            // USD hierarchy nodes present, no GLB meshes
+            const shelvesNode = noHandlerResult.transformNodes.find((n) => n.name === "Shelves");
             expect(shelvesNode).toBeDefined();
-            expect(result.meshes.length).toBe(0);
+            expect(noHandlerResult.meshes.length).toBe(0);
 
-            // Logger.Log was called with the structured diagnostic about the unhandled property
+            // Structured diagnostic: Logger.Log called with assetInfo:source + no handler message
             const diagnosticCalls = logSpy.mock.calls.filter(
                 (args) => typeof args[0] === "string" && args[0].includes("assetInfo:source") && args[0].includes("no external asset handler")
             );
             expect(diagnosticCalls.length).toBeGreaterThan(0);
-        } finally {
-            scene.dispose();
-            engine.dispose();
-        }
-    });
-});
-
-describe("USD external asset handler - GLB geometry/texture ownership regression", () => {
-    beforeEach(() => {
-        RegisterUSDFileLoader();
-        RegisterGLTFFileLoader();
-        RegisterGLTF2Loader();
-        vi.spyOn(Logger, "Log").mockImplementation(() => {});
-        vi.spyOn(Logger, "Warn").mockImplementation(() => {});
-        vi.spyOn(Logger, "Error").mockImplementation(() => {});
-    });
-
-    afterEach(() => {
-        vi.restoreAllMocks();
-    });
-
-    it("cloned mesh vertex/index buffers remain valid after source template disposal (real GLB)", async () => {
-        const engine = new NullEngine();
-        const scene = new Scene(engine);
-
-        try {
-            const usdaData = readCorpusFile("shelves_01.usda");
-            // ImportMeshAsync disposes source templates internally via DisposeSourceContainers.
-            // After return, the cloned meshes must retain valid geometry.
-            const result = await ImportMeshAsync("data:" + usdaData, scene, {
-                pluginExtension: ".usda",
-                pluginOptions: { usd: { externalAssetHandler: shelvesHandler } },
-            });
-
-            const geometryMesh = result.meshes.find((m) => m.name.includes("steel_frame_shelves_02"));
-            expect(geometryMesh).toBeDefined();
-
-            // Vertex/index buffers must survive source template disposal
-            expect(geometryMesh!.getTotalVertices()).toBe(3633);
-            expect(geometryMesh!.getTotalIndices()).toBe(13044);
-
-            // Bounding info must be valid (not degenerate zeros)
-            geometryMesh!.refreshBoundingInfo();
-            const bb = geometryMesh!.getBoundingInfo().boundingBox;
-            expect(bb.maximumWorld.x - bb.minimumWorld.x).toBeGreaterThan(0);
-        } finally {
-            scene.dispose();
-            engine.dispose();
-        }
-    });
-
-    it("cloned textures remain valid after source template disposal (real GLB)", async () => {
-        const engine = new NullEngine();
-        const scene = new Scene(engine);
-
-        try {
-            const usdaData = readCorpusFile("shelves_01.usda");
-            const result = await ImportMeshAsync("data:" + usdaData, scene, {
-                pluginExtension: ".usda",
-                pluginOptions: { usd: { externalAssetHandler: shelvesHandler } },
-            });
-
-            const geometryMesh = result.meshes.find((m) => m.name.includes("steel_frame_shelves_02"));
-            expect(geometryMesh).toBeDefined();
-            expect(geometryMesh!.material).toBeInstanceOf(PBRMaterial);
-
-            const pbrMat = geometryMesh!.material as PBRMaterial;
-            // Textures must survive source template disposal
-            expect(pbrMat.albedoTexture).toBeDefined();
-            expect(pbrMat.bumpTexture).toBeDefined();
-            expect(pbrMat.metallicTexture).toBeDefined();
-        } finally {
-            scene.dispose();
-            engine.dispose();
-        }
-    });
-
-    it("outer AssetContainer dispose returns all resource counts to baseline after GLB handler", async () => {
-        const engine = new NullEngine();
-        const scene = new Scene(engine);
-
-        const baselineGeometries = scene.geometries.length;
-        const baselineTextures = scene.textures.length;
-        const baselineMeshes = scene.meshes.length;
-        const baselineMaterials = scene.materials.length;
-
-        try {
-            const usdaData = readCorpusFile("shelves_01.usda");
-            const container = await LoadAssetContainerAsync("data:" + usdaData, scene, {
-                pluginExtension: ".usda",
-                pluginOptions: { usd: { externalAssetHandler: shelvesHandler } },
-            });
-
-            container.addAllToScene();
-            expect(scene.meshes.length).toBeGreaterThan(baselineMeshes);
-            expect(scene.geometries.length).toBeGreaterThan(baselineGeometries);
-
-            container.removeAllFromScene();
-            container.dispose();
-
-            // All resource counts return to baseline — no leaked templates
-            expect(scene.meshes.length).toBe(baselineMeshes);
-            expect(scene.geometries.length).toBe(baselineGeometries);
-            expect(scene.textures.length).toBe(baselineTextures);
-            expect(scene.materials.length).toBe(baselineMaterials);
         } finally {
             scene.dispose();
             engine.dispose();

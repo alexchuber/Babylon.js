@@ -350,11 +350,15 @@ describe("USD external asset handler", () => {
         }
     });
 
-    it("cloned geometry and textures remain valid after textured source template disposal", async () => {
+    it("source textures are disposed while cloned material textures are distinct and valid", async () => {
         const engine = new NullEngine();
         const scene = new Scene(engine);
+        const sourceTextures: import("core/Materials/Textures/rawTexture").RawTexture[] = [];
         const handler = vi.fn(async (r: IUsdExternalAssetRequest): Promise<UsdExternalAssetResult> => {
-            return { handled: true, container: createTexturedSourceContainer(r.scene) };
+            const container = createTexturedSourceContainer(r.scene);
+            // Capture source textures before they're disposed by DisposeSourceContainers
+            sourceTextures.push(...(container.textures as import("core/Materials/Textures/rawTexture").RawTexture[]));
+            return { handled: true, container };
         });
 
         try {
@@ -369,11 +373,18 @@ describe("USD external asset handler", () => {
             expect(positions).toBeDefined();
             expect(positions!.length).toBe(9);
 
-            // Cloned material's diffuse texture survives template disposal
-            expect(clonedMesh!.material).toBeDefined();
+            // Source textures were disposed: they are no longer registered on the scene
+            for (const srcTex of sourceTextures) {
+                expect(scene.textures.indexOf(srcTex)).toBe(-1);
+            }
+
+            // Cloned material has a DISTINCT diffuse texture (not the same object as source)
             expect(clonedMesh!.material).toBeInstanceOf(StandardMaterial);
             const mat = clonedMesh!.material as StandardMaterial;
             expect(mat.diffuseTexture).not.toBeNull();
+            for (const srcTex of sourceTextures) {
+                expect(mat.diffuseTexture).not.toBe(srcTex);
+            }
         } finally {
             scene.dispose();
             engine.dispose();
