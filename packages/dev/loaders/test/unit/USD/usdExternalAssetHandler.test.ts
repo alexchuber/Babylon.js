@@ -354,10 +354,12 @@ describe("USD external asset handler", () => {
         const engine = new NullEngine();
         const scene = new Scene(engine);
         const sourceDisposeCount: number[] = [];
+        const sourceTextures: import("core/Materials/Textures/baseTexture").BaseTexture[] = [];
         const handler = vi.fn(async (r: IUsdExternalAssetRequest): Promise<UsdExternalAssetResult> => {
             const container = createTexturedSourceContainer(r.scene);
-            // Subscribe to onDisposeObservable on each source texture before DisposeSourceContainers runs
+            // Capture source texture references and subscribe to onDisposeObservable
             for (const tex of container.textures) {
+                sourceTextures.push(tex);
                 const idx = sourceDisposeCount.length;
                 sourceDisposeCount.push(0);
                 tex.onDisposeObservable.add(() => {
@@ -372,20 +374,20 @@ describe("USD external asset handler", () => {
             const result = await loader.importMeshAsync(null, scene, singleAssetUsda, "");
 
             // Source texture onDisposeObservable fired exactly once per texture
+            expect(sourceTextures.length).toBe(1);
             expect(sourceDisposeCount.length).toBe(1);
-            for (const count of sourceDisposeCount) {
-                expect(count).toBe(1);
-            }
+            expect(sourceDisposeCount[0]).toBe(1);
 
             // Cloned geometry survives template disposal
             const clonedMesh = result.meshes.find((m) => m.getTotalVertices() > 0);
             expect(clonedMesh).toBeDefined();
             expect(clonedMesh!.getTotalVertices()).toBe(3);
 
-            // Cloned material has a DISTINCT diffuse texture (not the disposed source)
+            // Cloned material's diffuse texture is a DISTINCT object from the disposed source
             expect(clonedMesh!.material).toBeInstanceOf(StandardMaterial);
             const mat = clonedMesh!.material as StandardMaterial;
             expect(mat.diffuseTexture).not.toBeNull();
+            expect(mat.diffuseTexture).not.toBe(sourceTextures[0]);
         } finally {
             scene.dispose();
             engine.dispose();
