@@ -41,6 +41,8 @@ redactions have been applied — see the Modifications section).
 | `RobotArm2/RobotArm.usda` | Large multi-mesh Z-up centimeter-scale robot arm with MDL-only materials, authored face-varying normals, no UVs (redacted derivative — see Modifications) | `63ea1085c87e394e70aecec81d866cc349c0b247617f6d41731ad76f5290f7e4` | 25,766,794 | None |
 | `Room.usda` | Modular room shell via implicit UsdGeomCube (default size=2) with authored display colors and 50% opacity | `e8f466bbfede76a4e8ac6e78ddb663539a7539f0074e8746fb465faa90dbe163` | 3,301 | None |
 | `stairs.usda` | Eight-step staircase via implicit UsdGeomCube (default size=2) with authored display colors; actual step dimensions 2.4 × 0.36 × 0.5 | `64a1426fa181ce3342fffaffcfa8c3fe346a75ba73a07127773e3abbd4571fc7` | 3,717 | None |
+| `Placeholder.usda` | Empty container asset with a single named Xform group and no geometry | `bb319d84281cb65685220f338e2f700ab8dfe206d9e44e7859955bda7f25c9d7` | 259 | None |
+| `seahorse_anim_mtl_variant.usda` | Placeholder wrapper with a single named Xform group and no geometry (redacted derivative — see Modifications) | `4db81909e2487d3d319b5b573a1e41c5487e226ea342f7fe20bf9bc5adea3f0f` | 253 | None |
 
 ## Embedded attribution
 
@@ -58,6 +60,11 @@ preserved verbatim. Retain it.
   property value and one absolute Windows texture path (`inputs:ORM_texture`) were replaced
   with neutral placeholders to remove authoring-environment identifiers. The replacement
   preserves the same USD structure and nonportable-path test behavior.
+- `seahorse_anim_mtl_variant.usda` is a redacted derivative: authoring-environment
+  identifiers and application-specific implementation references in the comment were removed
+  and replaced with a neutral description. The USD data and prim structure (defaultPrim,
+  metersPerUnit, upAxis, and single Xform prim) are unchanged from the source; committed
+  bytes and hash reflect the neutral comment derivative.
 
 `Room.usda` and `stairs.usda`: unmodified from their provided-source form.
 Source comments in these files describe legacy intent (e.g. room dimensions,
