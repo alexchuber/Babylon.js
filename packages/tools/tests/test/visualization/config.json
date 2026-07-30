@@ -5510,6 +5510,13 @@
             "dependsOn": ["Loaders", "Meshes"]
         },
         {
+            "title": "USD loader - Cylinder corpus",
+            "playgroundId": "#CV5PTU#0",
+            "referenceImage": "usd-loader-cylinder-corpus.png",
+            "renderCount": 1,
+            "dependsOn": ["Loaders", "Meshes"]
+        },
+        {
             "title": "USD loader - Hospital Bed corpus",
             "playgroundId": "#3SIRFS#0",
             "referenceImage": "usd-loader-hospital-bed-corpus.png",
