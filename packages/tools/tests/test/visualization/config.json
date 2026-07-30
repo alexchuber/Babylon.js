@@ -5532,7 +5532,7 @@
         },
         {
             "title": "USD loader - Hospital Bed OBJ wrapper",
-            "playgroundId": "#W5H6QV#0",
+            "playgroundId": "#W5H6QV#2",
             "referenceImage": "usd-loader-hospital-bed-wrapper.png",
             "renderCount": 1,
             "dependsOn": ["Loaders", "OBJ", "Materials", "Meshes", "Textures", "Scene"],
