@@ -9,6 +9,7 @@ export {
     DeliveryBoxAsset,
     DialysisMachineAsset,
     HospitalBedAsset,
+    HospitalBedWrapperAsset,
     PlaceholderAsset,
     PlaneAsset,
     RobotArmAsset,
