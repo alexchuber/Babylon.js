@@ -26,6 +26,7 @@ byte-preserved fixture bytes.
 
 | File | Description | SHA-256 | Size (bytes) | Sidecars |
 | ---- | ----------- | ------- | ------------ | -------- |
+| `Box.usda` | Unit cube via implicit UsdGeomCube with authored size | `9c48de53a2ef06fcdff87b9cd4ea9827e63655c29cb4d765fd924216c998bb2c` | 346 | None |
 | `Plane.usda` | Single quad mesh on the XZ plane with constant authored normals | `8ff6aec006b18f5c0a37bc013ade382d87823d935a707ec62f574a641f09e974` | 583 | None |
 
 ## Embedded attribution

@@ -10,6 +10,17 @@ export interface IRuntimeCorpusEntry {
 }
 
 // Source snapshot: provided-source-shapes-v1 (2026-07-30)
+export const BoxAsset: IRuntimeCorpusEntry = {
+    fileName: "Box.usda",
+    description: "Unit cube via implicit UsdGeomCube with authored size",
+    sha256: "9c48de53a2ef06fcdff87b9cd4ea9827e63655c29cb4d765fd924216c998bb2c",
+    sizeBytes: 346,
+    sidecars: [],
+    defaultPrim: "Box",
+    upAxis: "Y",
+    metersPerUnit: 1,
+} as const;
+
 export const PlaneAsset: IRuntimeCorpusEntry = {
     fileName: "Plane.usda",
     description: "Single quad mesh on the XZ plane with constant authored normals",
@@ -21,4 +32,4 @@ export const PlaneAsset: IRuntimeCorpusEntry = {
     metersPerUnit: 1,
 } as const;
 
-export const RuntimeCorpusManifest: readonly IRuntimeCorpusEntry[] = [PlaneAsset] as const;
+export const RuntimeCorpusManifest: readonly IRuntimeCorpusEntry[] = [BoxAsset, PlaneAsset] as const;
