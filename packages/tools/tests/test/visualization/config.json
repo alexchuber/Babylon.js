@@ -5590,7 +5590,7 @@
         },
         {
             "title": "USD loader - Robot Arm external OBJ and texture",
-            "playgroundId": "#XMCUWZ#0",
+            "playgroundId": "#QT6JLS#0",
             "referenceImage": "usd-loader-robot-arm-obj-texture.png",
             "renderCount": 50,
             "dependsOn": ["Loaders", "OBJ", "Materials", "Meshes", "Textures", "Scene"]
