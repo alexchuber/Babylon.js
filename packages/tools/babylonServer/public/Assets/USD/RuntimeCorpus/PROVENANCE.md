@@ -42,6 +42,7 @@ redactions have been applied — see the Modifications section).
 | `Room.usda` | Modular room shell via implicit UsdGeomCube (default size=2) with authored display colors and 50% opacity | `e8f466bbfede76a4e8ac6e78ddb663539a7539f0074e8746fb465faa90dbe163` | 3,301 | None |
 | `stairs.usda` | Eight-step staircase via implicit UsdGeomCube (default size=2) with authored display colors; actual step dimensions 2.4 × 0.36 × 0.5 | `64a1426fa181ce3342fffaffcfa8c3fe346a75ba73a07127773e3abbd4571fc7` | 3,717 | None |
 | `Placeholder.usda` | Empty container asset with a single named Xform group and no geometry | `bb319d84281cb65685220f338e2f700ab8dfe206d9e44e7859955bda7f25c9d7` | 259 | None |
+| `Sphere.usda` | Implicit UsdGeomSphere with authored radius = 0.5 | `bb63928fb419e0addea97c29c8c3ab6e2e5d62501f56f0c573af17e0dc73ec48` | 217 | None |
 | `seahorse_anim_mtl_variant.usda` | Placeholder wrapper with a single named Xform group and no geometry (redacted derivative — see Modifications) | `4db81909e2487d3d319b5b573a1e41c5487e226ea342f7fe20bf9bc5adea3f0f` | 253 | None |
 
 ## Embedded attribution

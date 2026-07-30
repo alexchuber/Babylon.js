@@ -144,12 +144,10 @@ describe("USD corpus smoke - out-of-profile", () => {
         expect(referenceDiagnostics.some((diagnostic) => diagnostic.severity === "error" || diagnostic.severity === "warning")).toBe(true);
     });
 
-    it("rejects an out-of-profile implicit gprim with a diagnostic and maps no mesh", async () => {
-        // An implicit UsdGeomSphere is out of the polygonal-Mesh profile: it must be diagnosed and
-        // skipped rather than tessellated into a mesh.
+    it("resolves an implicit UsdGeomSphere into a mesh instead of diagnosing it as unsupported", async () => {
         const stage = await resolveCorpusAsync("out-of-scope/implicit_sphere.usda");
-        expect(stage.diagnostics.some((diagnostic) => /Sphere prims are not supported/i.test(diagnostic.message))).toBe(true);
-        expect(stage.meshes).toHaveLength(0);
+        expect(stage.diagnostics.some((diagnostic) => /Sphere prims are not supported/i.test(diagnostic.message))).toBe(false);
+        expect(stage.meshes).toHaveLength(1);
     });
 });
 

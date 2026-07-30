@@ -317,7 +317,6 @@ function ApplyUnsupportedSchemaDiagnostics(primSpec: ISdfPrimSpec, context: ISta
 // rather than dropped silently or mapped into misleading geometry: implicit gprims, point instancers,
 // curves, points, patches and volumes.
 const UnsupportedRenderableSchemas = [
-    "Sphere",
     "Cylinder",
     "Cone",
     "Capsule",
