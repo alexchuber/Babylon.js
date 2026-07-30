@@ -51,11 +51,20 @@ export function CreateExternalAssetState(options: Readonly<USDLoadingOptions>): 
  * (`doNotInstantiate: true`) produces full `Mesh.clone` copies with ref-counted shared
  * geometry, so disposing the source mesh decrements the geometry ref count without
  * invalidating the clones' buffers.
+ *
+ * Geometries are cleared from the container before disposal because `AssetContainer.dispose()`
+ * explicitly disposes all tracked geometries, which would release the underlying vertex buffers
+ * shared by the cloned meshes. The cloned meshes retain their own geometry references and will
+ * release the vertex buffers when they are eventually disposed.
  * @param state the external asset state to clean up
  */
 export function DisposeSourceContainers(state: IExternalAssetState): void {
     for (const [, container] of state.sourceCache) {
         if (container) {
+            // Clear geometries before disposal to prevent destroying vertex buffers shared with
+            // cloned meshes. The clones hold their own geometry references and will clean up on
+            // their own disposal.
+            container.geometries.length = 0;
             container.dispose();
         }
     }
