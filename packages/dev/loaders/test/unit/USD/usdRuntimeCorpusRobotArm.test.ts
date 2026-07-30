@@ -1,4 +1,4 @@
-import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from "vitest";
+import { afterAll, beforeAll, describe, expect, it } from "vitest";
 
 import { NullEngine } from "core/Engines/nullEngine";
 import { Scene } from "core/scene";
@@ -9,7 +9,6 @@ import "loaders/USD/usdFileLoader";
 
 import { type IResolvedStage } from "loaders/USD/resolution/resolvedStage";
 import { ResolveUsdStageAsync } from "loaders/USD/resolution/usdResolver";
-import { UsdResourceLimitError } from "loaders/USD/usdErrors";
 
 import { readRuntimeCorpusText, RobotArmAsset } from "./runtimeCorpus";
 
@@ -156,6 +155,12 @@ describe("USD runtime corpus - Robot Arm (Babylon adapter)", () => {
             expect(xform.scaling.x, `${name} scale.x`).toBeCloseTo(0.04, 4);
             expect(xform.scaling.y, `${name} scale.y`).toBeCloseTo(0.04, 4);
             expect(xform.scaling.z, `${name} scale.z`).toBeCloseTo(0.04, 4);
+            // Authored rotateXYZ = (0,0,0) → identity quaternion
+            expect(xform.rotationQuaternion, `${name} has rotation quaternion`).toBeDefined();
+            expect(xform.rotationQuaternion!.x, `${name} rot.x`).toBeCloseTo(0, 5);
+            expect(xform.rotationQuaternion!.y, `${name} rot.y`).toBeCloseTo(0, 5);
+            expect(xform.rotationQuaternion!.z, `${name} rot.z`).toBeCloseTo(0, 5);
+            expect(Math.abs(xform.rotationQuaternion!.w), `${name} rot.w`).toBeCloseTo(1, 5);
         }
     });
 
@@ -277,14 +282,13 @@ describe("USD runtime corpus - Robot Arm (Babylon adapter)", () => {
         expect(sizeY).toBeGreaterThan(0.01);
         expect(sizeZ).toBeGreaterThan(0.01);
 
-        // Lock in deterministic values (verified against authored data with tolerance for
-        // NullEngine bounding-box computation precision)
+        // Lock in deterministic world bounds (2-decimal precision, verified against authored data)
         expect(worldMin.x).toBeCloseTo(-0.179, 2);
         expect(worldMax.x).toBeCloseTo(0.004, 2);
-        expect(worldMin.y).toBeCloseTo(0.0, 1);
-        expect(worldMax.y).toBeCloseTo(0.021, 1);
-        expect(worldMin.z).toBeCloseTo(-0.004, 1);
-        expect(worldMax.z).toBeCloseTo(0.017, 1);
+        expect(worldMin.y).toBeCloseTo(0.00, 2);
+        expect(worldMax.y).toBeCloseTo(0.02, 2);
+        expect(worldMin.z).toBeCloseTo(-0.012, 2);
+        expect(worldMax.z).toBeCloseTo(0.014, 2);
     });
 
     // -- Materials --
@@ -303,40 +307,92 @@ describe("USD runtime corpus - Robot Arm (resource limit regression)", () => {
     });
 
     it("rejects the real file with the old 5M token limit", async () => {
-        await expect(ResolveUsdStageAsync(sourceText, "", RobotArmAsset.fileName, { maxTokenCount: 5_000_000 })).rejects.toThrow(UsdResourceLimitError);
-
-        try {
-            await ResolveUsdStageAsync(sourceText, "", RobotArmAsset.fileName, { maxTokenCount: 5_000_000 });
-        } catch (e) {
-            expect(e).toBeInstanceOf(UsdResourceLimitError);
-            expect((e as UsdResourceLimitError).kind).toBe("token-count");
-            expect((e as UsdResourceLimitError).limit).toBe(5_000_000);
-        }
+        await expect(ResolveUsdStageAsync(sourceText, "", RobotArmAsset.fileName, { maxTokenCount: 5_000_000 })).rejects.toMatchObject({
+            kind: "token-count",
+            limit: 5_000_000,
+        });
     });
 
-    it("rejects the real file with the old 10M parser-work limit (given sufficient token limit)", async () => {
-        // If parser work doesn't exceed 10M, the old limit was still sufficient for this axis.
-        // In that case, prove the default increase provides headroom by testing that a tighter
-        // custom limit (just below actual usage) still rejects with the right typed error.
-        let actualWork: number | undefined;
-        try {
-            await ResolveUsdStageAsync(sourceText, "", RobotArmAsset.fileName, { maxTokenCount: 10_000_000, maxParserWork: 10_000_000 });
-            // If it passes, parser work is under 10M. Get exact usage.
-            actualWork = undefined; // passes — old limit was sufficient on this axis
-        } catch (e) {
-            expect(e).toBeInstanceOf(UsdResourceLimitError);
-            expect((e as UsdResourceLimitError).kind).toBe("parser-work");
-            return;
-        }
-
-        // Old limit was sufficient — verify a tighter limit still produces the typed error
-        if (actualWork === undefined) {
-            await expect(ResolveUsdStageAsync(sourceText, "", RobotArmAsset.fileName, { maxTokenCount: 10_000_000, maxParserWork: 1 })).rejects.toThrow(UsdResourceLimitError);
-        }
-    });
-
-    it("parses successfully with the new default limits", async () => {
+    it("parses successfully with the new 10M token default (real usage ~6.3M tokens)", async () => {
+        // The real file uses ~6.3M tokens — above the old 5M default but under the new 10M.
+        // Parser work is also ~6.3M, well under the unchanged 10M default.
         const stage = await ResolveUsdStageAsync(sourceText, "", RobotArmAsset.fileName, {});
         expect(stage.meshes).toHaveLength(7);
+    });
+});
+
+describe("USD asset-path diagnostic coverage (synthetic)", () => {
+    function makeUsdaWithMaterial(assetPath: string): string {
+        return `#usda 1.0
+(
+    defaultPrim = "Root"
+)
+def Xform "Root" {
+    def Mesh "M" (
+        prepend apiSchemas = ["MaterialBindingAPI"]
+    ) {
+        rel material:binding = </Root/Looks/Mat>
+        int[] faceVertexCounts = [3]
+        int[] faceVertexIndices = [0, 1, 2]
+        point3f[] points = [(0,0,0), (1,0,0), (0,1,0)]
+        uniform token subdivisionScheme = "none"
+    }
+    def Scope "Looks" {
+        def Material "Mat" {
+            token outputs:mdl:surface.connect = </Root/Looks/Mat/Shader.outputs:out>
+            def Shader "Shader" {
+                uniform token info:implementationSource = "sourceAsset"
+                uniform asset info:mdl:sourceAsset = @test.mdl@
+                asset inputs:test_texture = @${assetPath}@ (
+                    colorSpace = "raw"
+                )
+                token outputs:out (
+                    renderType = "material"
+                )
+            }
+        }
+    }
+}`;
+    }
+
+    it("diagnoses a Windows drive-letter absolute path without echoing it", async () => {
+        const stage = await ResolveUsdStageAsync(makeUsdaWithMaterial("D:\\\\Textures\\\\color.png"), "", "test.usda", {});
+        const diag = stage.diagnostics.find((d) => d.path === "/Root/Looks/Mat/Shader.inputs:test_texture" && /absolute nonportable/i.test(d.message));
+        expect(diag).toBeDefined();
+        expect(diag!.severity).toBe("warning");
+        expect(diag!.message).not.toContain("D:\\");
+    });
+
+    it("diagnoses a UNC absolute path without echoing it", async () => {
+        const stage = await ResolveUsdStageAsync(makeUsdaWithMaterial("\\\\\\\\server\\\\share\\\\tex.png"), "", "test.usda", {});
+        const diag = stage.diagnostics.find((d) => d.path === "/Root/Looks/Mat/Shader.inputs:test_texture" && /absolute nonportable/i.test(d.message));
+        expect(diag).toBeDefined();
+        expect(diag!.severity).toBe("warning");
+    });
+
+    it("diagnoses a Unix absolute path without echoing it", async () => {
+        const stage = await ResolveUsdStageAsync(makeUsdaWithMaterial("/usr/local/textures/color.png"), "", "test.usda", {});
+        const diag = stage.diagnostics.find((d) => d.path === "/Root/Looks/Mat/Shader.inputs:test_texture" && /absolute nonportable/i.test(d.message));
+        expect(diag).toBeDefined();
+        expect(diag!.severity).toBe("warning");
+    });
+
+    it("diagnoses an empty asset path", async () => {
+        const stage = await ResolveUsdStageAsync(makeUsdaWithMaterial(""), "", "test.usda", {});
+        const diag = stage.diagnostics.find((d) => d.path === "/Root/Looks/Mat/Shader.inputs:test_texture" && /empty path/i.test(d.message));
+        expect(diag).toBeDefined();
+        expect(diag!.severity).toBe("warning");
+    });
+
+    it("does not flag HTTP URLs as nonportable", async () => {
+        const stage = await ResolveUsdStageAsync(makeUsdaWithMaterial("https://example.com/tex.png"), "", "test.usda", {});
+        const absoluteDiag = stage.diagnostics.find((d) => /absolute nonportable/i.test(d.message));
+        expect(absoluteDiag).toBeUndefined();
+    });
+
+    it("does not flag data URIs as nonportable", async () => {
+        const stage = await ResolveUsdStageAsync(makeUsdaWithMaterial("data:image/png;base64,iVBOR"), "", "test.usda", {});
+        const absoluteDiag = stage.diagnostics.find((d) => /absolute nonportable/i.test(d.message));
+        expect(absoluteDiag).toBeUndefined();
     });
 });

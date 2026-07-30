@@ -443,6 +443,10 @@ function IsAbsoluteNonportablePath(path: string): boolean {
     if (path.startsWith("\\\\")) {
         return true;
     }
+    // Unix absolute path
+    if (path.startsWith("/")) {
+        return true;
+    }
     return false;
 }
 

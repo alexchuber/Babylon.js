@@ -9,11 +9,15 @@ Assets are served by the existing local Babylon CDN server at
 
 ## Source snapshot
 
-All files were copied byte-for-byte from **provided-source-shapes-v1** (snapshot
-date: 2026-07-30). The snapshot label is a neutral identifier for the original
-provided source of representative USD shapes; it does not imply a specific public
-repository or release. Re-pin intentionally by updating hashes and the snapshot
-label.
+Files originate from **provided-source-shapes-v1** (snapshot date: 2026-07-30).
+The snapshot label is a neutral identifier for the original provided source of
+representative USD shapes; it does not imply a specific public repository or
+release. Re-pin intentionally by updating hashes and the snapshot label.
+
+Some files are committed byte-for-byte from the source; others are redacted
+derivatives with authoring-environment identifiers replaced by neutral
+placeholders (see Modifications). Hashes and sizes below reflect committed
+fixture bytes.
 
 > **TODO — Licensing verification:** Formal redistribution permission for these
 > assets has not yet been verified. Confirm the license terms before including
@@ -21,8 +25,8 @@ label.
 
 ## Per-file provenance
 
-Paths are relative to this directory. Hashes are SHA-256 over the original,
-byte-preserved fixture bytes.
+Paths are relative to this directory. Hashes are SHA-256 over the committed
+fixture bytes.
 
 | File | Description | SHA-256 | Size (bytes) | Sidecars |
 | ---- | ----------- | ------- | ------------ | -------- |

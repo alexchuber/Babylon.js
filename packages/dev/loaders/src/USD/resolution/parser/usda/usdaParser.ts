@@ -41,7 +41,7 @@ export interface IUsdaParserLimits {
 export const DefaultUsdaParserLimits: IUsdaParserLimits = {
     maxInputBytes: 256 * 1024 * 1024,
     maxTokenCount: 10_000_000,
-    maxParserWork: 20_000_000,
+    maxParserWork: 10_000_000,
 };
 
 interface IToken {

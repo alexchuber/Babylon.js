@@ -31,7 +31,7 @@ export type USDLoadingOptions = {
      * Maximum units of parser work (token-consumption steps) a single USDA layer may spend before
      * parsing aborts with a typed {@link UsdResourceLimitError} (kind `"parser-work"`). Guards against
      * expensive untrusted input. Must be a finite, non-negative safe integer or it throws
-     * {@link UsdConfigurationError} before parsing. Defaults to 20,000,000.
+     * {@link UsdConfigurationError} before parsing. Defaults to 10,000,000.
      */
     maxParserWork?: number;
 };
