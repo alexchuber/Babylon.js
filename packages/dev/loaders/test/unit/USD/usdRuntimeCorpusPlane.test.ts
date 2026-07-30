@@ -7,9 +7,14 @@ import { ImportMeshAsync } from "core/Loading/sceneLoader";
 import { VertexBuffer } from "core/Buffers/buffer";
 import "loaders/USD/usdFileLoader";
 
-import { readRuntimeCorpusText, RuntimeCorpusManifest } from "./runtimeCorpus";
+import { readRuntimeCorpusText, PlaneAsset } from "./runtimeCorpus";
 
-const PlaneEntry = RuntimeCorpusManifest.find((e) => e.fileName === "Plane.usda")!;
+function importPlaneAsync(scene: Scene) {
+    return ImportMeshAsync(`data:${readRuntimeCorpusText(PlaneAsset.fileName)}`, scene, {
+        pluginExtension: ".usda",
+        name: PlaneAsset.fileName,
+    });
+}
 
 describe("USD runtime corpus - Plane", () => {
     let engine: NullEngine;
@@ -25,12 +30,9 @@ describe("USD runtime corpus - Plane", () => {
         engine.dispose();
     });
 
-    it("loads Plane.usda through module-level ImportMeshAsync and produces the expected hierarchy", async () => {
-        const result = await ImportMeshAsync(`data:${readRuntimeCorpusText(PlaneEntry.fileName)}`, scene, {
-            pluginExtension: ".usda", name: PlaneEntry.fileName,
-        });
+    it("loads through module-level ImportMeshAsync and produces the expected hierarchy", async () => {
+        const result = await importPlaneAsync(scene);
 
-        // The stage root contributes a __root__ TransformNode; below it sits the "Plane" Xform and its "Geom" Mesh.
         const planeNode = result.transformNodes.find((n) => n.name === "Plane");
         expect(planeNode).toBeDefined();
 
@@ -39,45 +41,37 @@ describe("USD runtime corpus - Plane", () => {
         expect(geomMesh!.parent?.name).toBe("Plane");
     });
 
-    it("produces triangulated geometry from the authored quad", async () => {
-        const result = await ImportMeshAsync(`data:${readRuntimeCorpusText(PlaneEntry.fileName)}`, scene, {
-            pluginExtension: ".usda", name: PlaneEntry.fileName,
-        });
+    it("produces exactly 9 vertices and 24 indices from the Catmull-Clark subdivided quad", async () => {
+        const result = await importPlaneAsync(scene);
 
-        const renderable = result.meshes.filter((m) => m.getTotalVertices() > 0);
-        expect(renderable.length).toBeGreaterThan(0);
-
-        const totalIndices = renderable.reduce((sum, m) => sum + m.getTotalIndices(), 0);
-        expect(totalIndices).toBeGreaterThan(0);
-        // All faces must be triangles.
-        expect(totalIndices % 3).toBe(0);
+        const geomMesh = result.meshes.find((m) => m.getTotalVertices() > 0);
+        expect(geomMesh).toBeDefined();
+        // One Catmull-Clark level on a single quad: 4 corners + 4 edge midpoints + 1 face point = 9 vertices,
+        // producing 4 sub-quads triangulated into 8 triangles = 24 indices.
+        expect(geomMesh!.getTotalVertices()).toBe(9);
+        expect(geomMesh!.getTotalIndices()).toBe(24);
     });
 
-    it("preserves authored constant normals through the public loader", async () => {
-        const result = await ImportMeshAsync(`data:${readRuntimeCorpusText(PlaneEntry.fileName)}`, scene, {
-            pluginExtension: ".usda", name: PlaneEntry.fileName,
-        });
+    it("produces normals pointing (0, -1, 0) after adapter coordinate conversion", async () => {
+        // The authored constant normal is (0, 1, 0). The adapter enables right-handed scene mode
+        // and recomputes normals for the subdivided mesh; the resulting winding yields (0, -1, 0).
+        const result = await importPlaneAsync(scene);
 
         const geomMesh = result.meshes.find((m) => m.getTotalVertices() > 0);
         expect(geomMesh).toBeDefined();
 
         const normals = geomMesh!.getVerticesData(VertexBuffer.NormalKind);
         expect(normals).toBeDefined();
-        expect(normals!.length).toBeGreaterThan(0);
-        // The authored constant normal is (0, 1, 0). The adapter's coordinate conversion may
-        // negate or swap components, but every vertex normal should be axis-aligned unit length
-        // with the dominant component on the Y axis.
+        expect(normals!.length).toBe(9 * 3);
         for (let offset = 0; offset < normals!.length; offset += 3) {
-            expect(Math.abs(normals![offset])).toBeCloseTo(0, 1);
-            expect(Math.abs(normals![offset + 1])).toBeCloseTo(1, 1);
-            expect(Math.abs(normals![offset + 2])).toBeCloseTo(0, 1);
+            expect(normals![offset]).toBeCloseTo(0);
+            expect(normals![offset + 1]).toBeCloseTo(-1);
+            expect(normals![offset + 2]).toBeCloseTo(0);
         }
     });
 
     it("produces bounds within a unit region on the XZ plane", async () => {
-        const result = await ImportMeshAsync(`data:${readRuntimeCorpusText(PlaneEntry.fileName)}`, scene, {
-            pluginExtension: ".usda", name: PlaneEntry.fileName,
-        });
+        const result = await importPlaneAsync(scene);
 
         const geomMesh = result.meshes.find((m) => m.getTotalVertices() > 0);
         expect(geomMesh).toBeDefined();
@@ -101,18 +95,15 @@ describe("USD runtime corpus - Plane", () => {
             maxZ = Math.max(maxZ, positions![v + 2]);
         }
 
-        // The authored quad spans [-0.5, 0.5] on X and Z, flat on Y.
-        expect(maxX - minX).toBeCloseTo(1, 1);
-        expect(maxY - minY).toBeCloseTo(0, 1);
-        expect(maxZ - minZ).toBeCloseTo(1, 1);
+        expect(maxX - minX).toBeCloseTo(1);
+        expect(maxY - minY).toBeCloseTo(0);
+        expect(maxZ - minZ).toBeCloseTo(1);
     });
 
     it("emits a subdivision diagnostic for the unauthored default scheme", async () => {
         const log = vi.spyOn(Logger, "Log").mockImplementation(() => {});
         try {
-            await ImportMeshAsync(`data:${readRuntimeCorpusText(PlaneEntry.fileName)}`, scene, {
-                pluginExtension: ".usda", name: PlaneEntry.fileName,
-            });
+            await importPlaneAsync(scene);
 
             const logged = log.mock.calls.map((call) => String(call[0]));
             expect(logged.some((msg) => /subdivision/i.test(msg))).toBe(true);
