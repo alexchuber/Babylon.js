@@ -9,8 +9,11 @@ Assets are served by the existing local Babylon CDN server at
 
 ## Source snapshot
 
-All files were copied from a provided-source snapshot of representative USD shapes
-and assets. The snapshot is pinned for reproducibility; re-pin intentionally.
+All files were copied byte-for-byte from **provided-source-shapes-v1** (snapshot
+date: 2026-07-30). The snapshot label is a neutral identifier for the original
+provided source of representative USD shapes; it does not imply a specific public
+repository or release. Re-pin intentionally by updating hashes and the snapshot
+label.
 
 > **TODO — Licensing verification:** Formal redistribution permission for these
 > assets has not yet been verified. Confirm the license terms before including
@@ -18,7 +21,8 @@ and assets. The snapshot is pinned for reproducibility; re-pin intentionally.
 
 ## Per-file provenance
 
-Paths are relative to this directory.
+Paths are relative to this directory. Hashes are SHA-256 over the original,
+byte-preserved fixture bytes.
 
 | File | Description | SHA-256 | Size (bytes) | Sidecars |
 | ---- | ----------- | ------- | ------------ | -------- |
