@@ -146,6 +146,18 @@ export const RobotArmAsset: IRuntimeCorpusEntry = {
     metersPerUnit: 0.01,
 } as const;
 
+export const RobotArmWrapperAsset: IRuntimeCorpusEntry = {
+    fileName: "RobotArm.usda",
+    description: "USDA wrapper that delegates the authored Robot Arm OBJ, active MTL, and color texture through the optional external-asset handler",
+    sha256: "2271e7e1d3c56fa4641d72f156c9c13fb6d473296a2f7e4bb54a987c1ed814ce",
+    sizeBytes: 611,
+    sidecars: ["RobotArm/industrial_robot_arm.obj", "RobotArm/industrial_robot_arm.mtl", "RobotArm/Robot_Arm_Color.png"],
+    unreferencedAlternatives: ["RobotArm/industrial robot arm.mtl"],
+    defaultPrim: "RobotArm",
+    upAxis: "Y",
+    metersPerUnit: 1,
+} as const;
+
 export const CylinderAsset: IRuntimeCorpusEntry = {
     fileName: "Cylinder.usda",
     description: "Implicit UsdGeomCylinder with authored radius, height, and axis",
@@ -228,6 +240,7 @@ export const RuntimeCorpusManifest: readonly IRuntimeCorpusEntry[] = [
     HospitalBedWrapperAsset,
     PlaceholderAsset,
     RobotArmAsset,
+    RobotArmWrapperAsset,
     RoomAsset,
     SeahorseTextAsset,
     SphereAsset,

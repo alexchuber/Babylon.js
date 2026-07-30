@@ -16,6 +16,7 @@ export {
     PlaceholderAsset,
     PlaneAsset,
     RobotArmAsset,
+    RobotArmWrapperAsset,
     RoomAsset,
     SeahorseTextAsset,
     SphereAsset,
