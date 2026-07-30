@@ -16,7 +16,7 @@ import { type USDLoadingOptions } from "../usdLoadingOptions";
 import { CreateStageRoot } from "./transformAdapter";
 import { AdaptPrim, type IUsdAdapterContext } from "./sceneGraphAdapter";
 import { BuildAnimationGroup } from "./animationAdapter";
-import { CreateExternalAssetState, ProcessExternalAssets, type IExternalAssetState } from "./externalAssetAdapter";
+import { CreateExternalAssetState, ProcessExternalAssets, DisposeSourceContainers, type IExternalAssetState } from "./externalAssetAdapter";
 
 /**
  * Adapts a fully-resolved {@link IResolvedStage} into Babylon objects, returning them as an
@@ -78,7 +78,11 @@ export async function AdaptResolvedStageToScene(
 
     // Process external asset properties if a handler is configured or if any exist (for diagnostics)
     const externalAssetState = CreateExternalAssetState(options);
-    await ProcessExternalAssetsForTree(stage.root, context, externalAssetState, stage);
+    try {
+        await ProcessExternalAssetsForTree(stage.root, context, externalAssetState, stage);
+    } finally {
+        DisposeSourceContainers(externalAssetState);
+    }
 
     // Log adapter diagnostics (not stored on the frozen stage, logged directly)
     LogDiagnostics(adapterDiagnostics);
@@ -120,7 +124,7 @@ async function ProcessExternalAssetsForTree(
     if (resolvedPrim.unhandledAssetProperties && resolvedPrim.unhandledAssetProperties.length > 0) {
         const node = context.nodeByPrimPath.get(resolvedPrim.path);
         if (node) {
-            await ProcessExternalAssets(resolvedPrim, node, context, state, stage.layerIdentifier, stage.root);
+            await ProcessExternalAssets(resolvedPrim, node, context, state, stage.layerIdentifier);
         }
     }
 

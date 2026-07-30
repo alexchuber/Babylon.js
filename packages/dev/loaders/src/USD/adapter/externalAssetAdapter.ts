@@ -1,4 +1,5 @@
 import { type TransformNode } from "core/Meshes/transformNode.pure";
+import { type AssetContainer } from "core/assetContainer";
 
 import { type IResolvedPrim, type IResolvedUnhandledAssetProperty } from "../resolution/resolvedStage";
 import { type USDLoadingOptions } from "../usdLoadingOptions";
@@ -12,17 +13,49 @@ const DefaultMaxExternalAssetDepth = 32;
 
 /**
  * Mutable state for the external asset handler within a single load operation.
- * Tracks canonical-URI deduplication and request counts.
+ * Tracks canonical-URI deduplication, request counts, and the active URI chain
+ * for ancestry-based cycle protection.
  */
 export interface IExternalAssetState {
-    /** Canonical URI → handler result cache for deduplication. */
-    readonly resultCache: Map<string, UsdExternalAssetResult>;
+    /** Canonical URI → source container cache for deduplication. `null` means the handler reported unsupported. */
+    readonly sourceCache: Map<string, AssetContainer | null>;
     /** Number of handler invocations issued so far. */
     requestCount: number;
     /** Validated maximum handler invocations. */
     readonly maxRequests: number;
-    /** Validated maximum ancestry depth. */
+    /** Validated maximum external asset request chain depth. */
     readonly maxDepth: number;
+    /** Active canonical URI chain for ancestry-based cycle detection. A URI is added before handler invocation and removed after. */
+    readonly activeUriChain: Set<string>;
+    /** Source containers that have already been instantiated once (used for clone-on-reuse logic). */
+    readonly alreadyUsed: Set<AssetContainer>;
+}
+
+/**
+ * Disposes all source containers cached during the load operation. Called once after all
+ * external asset instantiations are complete. Source containers that were used via
+ * `addAllToScene` (first use) have their arrays cleared without disposing scene-owned
+ * entities; containers only used for cloning are fully disposed.
+ * @param state the external asset state whose source containers should be cleaned up
+ */
+export function DisposeSourceContainers(state: IExternalAssetState): void {
+    for (const [, container] of state.sourceCache) {
+        if (container) {
+            if (state.alreadyUsed.has(container)) {
+                // First-use container: entities are scene-owned. Clear arrays to release references
+                // without disposing the entities themselves.
+                container.meshes.length = 0;
+                container.transformNodes.length = 0;
+                container.skeletons.length = 0;
+                container.animationGroups.length = 0;
+                container.materials.length = 0;
+                container.textures.length = 0;
+                container.geometries.length = 0;
+            }
+            container.dispose();
+        }
+    }
+    state.sourceCache.clear();
 }
 
 /**
@@ -32,11 +65,13 @@ export interface IExternalAssetState {
  */
 export function CreateExternalAssetState(options: Readonly<USDLoadingOptions>): IExternalAssetState {
     return {
-        resultCache: new Map(),
+        sourceCache: new Map(),
         requestCount: 0,
         maxRequests:
             options.maxExternalAssetRequests !== undefined ? ValidateResourceLimit(options.maxExternalAssetRequests, "maxExternalAssetRequests") : DefaultMaxExternalAssetRequests,
         maxDepth: options.maxExternalAssetDepth !== undefined ? ValidateResourceLimit(options.maxExternalAssetDepth, "maxExternalAssetDepth") : DefaultMaxExternalAssetDepth,
+        activeUriChain: new Set(),
+        alreadyUsed: new Set(),
     };
 }
 
@@ -45,12 +80,10 @@ export function CreateExternalAssetState(options: Readonly<USDLoadingOptions>): 
  * The first element is the prim itself, subsequent elements are its ancestors up to
  * (but not including) the stage root `/`.
  * @param prim the prim to compute ancestry for
- * @param stageRoot the resolved stage root prim
  * @returns ordered ancestor paths
  */
-export function BuildAncestry(prim: IResolvedPrim, stageRoot: IResolvedPrim): readonly string[] {
+export function BuildAncestry(prim: IResolvedPrim): readonly string[] {
     const ancestry: string[] = [prim.path];
-    // Ancestry is derived from the prim path segments
     const segments = prim.path.split("/").filter(Boolean);
     for (let depth = segments.length - 1; depth > 0; depth--) {
         ancestry.push("/" + segments.slice(0, depth).join("/"));
@@ -60,15 +93,14 @@ export function BuildAncestry(prim: IResolvedPrim, stageRoot: IResolvedPrim): re
 
 /**
  * Processes all unhandled asset properties on a single prim, invoking the handler for each.
- * Handles deduplication, request limits, depth limits, and container
- * root instantiation under the prim's transform node.
+ * Handles canonical-URI deduplication, per-prim instantiation, request limits, external-chain
+ * depth limits, ancestry-based cycle protection, and container root instantiation.
  *
  * @param prim the resolved prim with unhandled asset properties
  * @param node the Babylon transform node representing this prim
  * @param context the adapter context
  * @param state external asset handler state
  * @param layerIdentifier the source layer identifier
- * @param stageRoot the resolved stage root for ancestry computation
  * @returns a promise that resolves when all handler invocations are complete
  */
 export async function ProcessExternalAssets(
@@ -76,8 +108,7 @@ export async function ProcessExternalAssets(
     node: TransformNode,
     context: IUsdAdapterContext,
     state: IExternalAssetState,
-    layerIdentifier: string,
-    stageRoot: IResolvedPrim
+    layerIdentifier: string
 ): Promise<void> {
     const handler = context.options.externalAssetHandler;
     const properties = prim.unhandledAssetProperties;
@@ -85,17 +116,7 @@ export async function ProcessExternalAssets(
         return;
     }
 
-    const ancestry = BuildAncestry(prim, stageRoot);
-
-    // Depth limit: ancestry length is the nesting depth (prim itself = 1, child = 2, etc.)
-    if (ancestry.length > state.maxDepth) {
-        context.diagnostics.push({
-            severity: "warning",
-            path: prim.path,
-            message: `External asset properties skipped: prim depth ${ancestry.length} exceeds the ${state.maxDepth}-level depth limit.`,
-        });
-        return;
-    }
+    const ancestry = BuildAncestry(prim);
 
     for (const property of properties) {
         if (!handler) {
@@ -134,11 +155,40 @@ async function DispatchExternalAsset(
     const handler = context.options.externalAssetHandler!;
     const canonicalUri = property.resolvedPath;
 
-    // Canonical-URI deduplication: reuse a previous result for the same resolved URI
-    const cached = state.resultCache.get(canonicalUri);
-    if (cached) {
-        if (cached.handled) {
-            InstantiateContainerRoots(cached.container, node, context);
+    // Ancestry-based cycle protection: reject if this canonical URI is already being
+    // processed in the current request chain (would indicate recursive asset loading).
+    if (state.activeUriChain.has(canonicalUri)) {
+        context.diagnostics.push({
+            severity: "warning",
+            path: `${prim.path}.${property.propertyName}`,
+            message: `External asset cycle detected: '${property.authoredPath}' (resolved '${canonicalUri}') is already in the active request chain.`,
+        });
+        return;
+    }
+
+    // External-chain depth limit: the active URI chain depth tracks how many external
+    // asset requests are nested, independent of prim nesting depth.
+    if (state.activeUriChain.size >= state.maxDepth) {
+        context.diagnostics.push({
+            severity: "warning",
+            path: `${prim.path}.${property.propertyName}`,
+            message: `External asset depth limit reached: request chain depth ${state.activeUriChain.size} has reached the ${state.maxDepth}-level limit.`,
+        });
+        return;
+    }
+
+    // Canonical-URI deduplication: check if we already have a source container for this URI.
+    if (state.sourceCache.has(canonicalUri)) {
+        const cachedContainer = state.sourceCache.get(canonicalUri);
+        if (cachedContainer) {
+            InstantiateFromSource(cachedContainer, node, context, state.alreadyUsed);
+        } else {
+            // Cached unsupported result: emit diagnostic for this occurrence too
+            context.diagnostics.push({
+                severity: "info",
+                path: `${prim.path}.${property.propertyName}`,
+                message: `External asset handler reported unsupported for property '${property.propertyName}' referencing '${property.authoredPath}'.`,
+            });
         }
         return;
     }
@@ -154,59 +204,92 @@ async function DispatchExternalAsset(
     };
 
     state.requestCount++;
+    state.activeUriChain.add(canonicalUri);
 
-    // Handler exceptions propagate as normal SceneLoader failures
-    const result = await handler(request);
-    state.resultCache.set(canonicalUri, result);
+    try {
+        // Handler exceptions propagate as normal SceneLoader failures
+        const result = await handler(request);
 
-    if (result.handled) {
-        InstantiateContainerRoots(result.container, node, context);
-    } else {
-        context.diagnostics.push({
-            severity: "info",
-            path: `${prim.path}.${property.propertyName}`,
-            message: `External asset handler reported unsupported for property '${property.propertyName}' referencing '${property.authoredPath}'.`,
-        });
+        if (result.handled) {
+            // Cache the source container for deduplication
+            state.sourceCache.set(canonicalUri, result.container);
+            InstantiateFromSource(result.container, node, context, state.alreadyUsed);
+        } else {
+            // Cache null to indicate unsupported, so subsequent occurrences are fast
+            state.sourceCache.set(canonicalUri, null);
+            context.diagnostics.push({
+                severity: "info",
+                path: `${prim.path}.${property.propertyName}`,
+                message: `External asset handler reported unsupported for property '${property.propertyName}' referencing '${property.authoredPath}'.`,
+            });
+        }
+    } finally {
+        state.activeUriChain.delete(canonicalUri);
     }
 }
 
 /**
- * Instantiates the root nodes from a handler-returned AssetContainer under the given
- * parent transform node, and registers them in the adapter context for ownership tracking.
- * @param container the handler-returned asset container
- * @param parentNode the Babylon transform node to parent roots under
+ * Creates a distinct instance from a source AssetContainer and parents its root entities
+ * under the given prim transform node. Each call adds the source container's entities to
+ * the scene and re-parents rootless ones under the prim node.
+ *
+ * For the first call, entities are moved directly from the source container. For subsequent
+ * calls (same URI via deduplication), meshes are cloned to create independent geometry.
+ * @param sourceContainer the handler-returned source container (kept off-scene)
+ * @param parentNode the Babylon transform node to parent instantiated roots under
  * @param context the adapter context for ownership tracking
+ * @param alreadyUsed set of source containers that have already been used (for clone logic)
  */
-function InstantiateContainerRoots(container: import("core/assetContainer").AssetContainer, parentNode: TransformNode, context: IUsdAdapterContext): void {
-    // Add all container entities to scene first
-    container.addAllToScene();
+function InstantiateFromSource(sourceContainer: AssetContainer, parentNode: TransformNode, context: IUsdAdapterContext, alreadyUsed: Set<AssetContainer>): void {
+    const isReuse = alreadyUsed.has(sourceContainer);
+    alreadyUsed.add(sourceContainer);
 
-    // Re-parent root meshes and transform nodes under the USD prim's transform node.
-    // Root entities are those whose parent is null (scene root) after addAllToScene.
-    for (const mesh of container.meshes) {
-        if (!mesh.parent) {
-            mesh.parent = parentNode;
+    if (!isReuse) {
+        // First use: move source entities directly into the scene
+        sourceContainer.addAllToScene();
+        for (const mesh of sourceContainer.meshes) {
+            if (!mesh.parent) {
+                mesh.parent = parentNode;
+            }
+            if (!context.meshes.includes(mesh)) {
+                context.meshes.push(mesh);
+            }
         }
-        if (!context.meshes.includes(mesh)) {
-            context.meshes.push(mesh);
+        for (const tn of sourceContainer.transformNodes) {
+            if (!tn.parent) {
+                tn.parent = parentNode;
+            }
+            if (!context.transformNodes.includes(tn)) {
+                context.transformNodes.push(tn);
+            }
         }
-    }
-    for (const transformNode of container.transformNodes) {
-        if (!transformNode.parent) {
-            transformNode.parent = parentNode;
+        for (const skeleton of sourceContainer.skeletons) {
+            if (!context.skeletons.includes(skeleton)) {
+                context.skeletons.push(skeleton);
+            }
         }
-        if (!context.transformNodes.includes(transformNode)) {
-            context.transformNodes.push(transformNode);
+        for (const animationGroup of sourceContainer.animationGroups) {
+            if (!context.animationGroups.includes(animationGroup)) {
+                context.animationGroups.push(animationGroup);
+            }
         }
-    }
-    for (const skeleton of container.skeletons) {
-        if (!context.skeletons.includes(skeleton)) {
-            context.skeletons.push(skeleton);
+    } else {
+        // Reuse: clone each root mesh to create an independent hierarchy
+        for (const mesh of sourceContainer.meshes) {
+            const cloned = mesh.clone(mesh.name, parentNode);
+            if (cloned) {
+                if (!context.meshes.includes(cloned)) {
+                    context.meshes.push(cloned);
+                }
+            }
         }
-    }
-    for (const animationGroup of container.animationGroups) {
-        if (!context.animationGroups.includes(animationGroup)) {
-            context.animationGroups.push(animationGroup);
+        for (const tn of sourceContainer.transformNodes) {
+            const cloned = tn.clone(tn.name, parentNode);
+            if (cloned) {
+                if (!context.transformNodes.includes(cloned)) {
+                    context.transformNodes.push(cloned);
+                }
+            }
         }
     }
 }
