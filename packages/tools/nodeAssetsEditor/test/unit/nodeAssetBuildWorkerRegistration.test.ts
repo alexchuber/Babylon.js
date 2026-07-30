@@ -108,7 +108,7 @@ const ExpectedBlockClassNames = [
     "ImportOBJAggregateBlock",
 ] as const;
 
-const DefaultPipelineClassNames = ["ImportGLTFAggregateBlock", "WeldVerticesBlock", "RemoveUnusedResourcesBlock", "ExportGLTFAggregateBlock"] as const;
+const DefaultPipelineClassNames = ["ImportGLTFAggregateBlock", "UniversalToGLTFBlock", "KTX2CompressionBlock", "DracoCompressionBlock", "WriteGLTFBlock"] as const;
 
 describe("preview build worker block registration", () => {
     beforeEach(() => vi.stubGlobal("FileReader", TestFileReader));
@@ -144,8 +144,8 @@ describe("preview build worker block registration", () => {
         expect(parsed.attachedBlocks[0].getClassName()).toBe(className);
     });
 
-    it("reconstructs and builds the saved built-in OBJ graph offline in the worker realm", async () => {
-        const entry = CreateBuiltInNodeAssetLibraryEntries().find((candidate) => candidate.name === "OBJ to Optimized glTF");
+    it("reconstructs and builds the hydrated built-in OBJ graph offline in the worker realm", async () => {
+        const entry = CreateBuiltInNodeAssetLibraryEntries().find((candidate) => candidate.name === "Normalize a Model");
         expect(entry).toBeDefined();
         if (!entry) {
             return;
@@ -156,13 +156,20 @@ describe("preview build worker block registration", () => {
             };
         };
         const importer = editorFile.graph.blocks.find((block) => block.customType === "ImportOBJAggregateBlock");
-        expect(importer?.subgraph?.blocks[0]).toMatchObject({
-            primary: { path: "catalog-objects.obj", bytes: expect.any(String) },
-            companions: [
-                { path: "Materials/catalog.mtl", bytes: expect.any(String) },
-                { path: "Textures/tiny.png", bytes: expect.any(String) },
-            ],
+        const readBlock = importer?.subgraph?.blocks.find((block) => block.customType === "ReadOBJBlock");
+        expect(readBlock).toMatchObject({
+            source: "https://assets.babylonjs.com/meshes/Chair/Chair.obj",
+            sourceKind: "url",
+            primary: null,
+            companions: [],
         });
+        if (!readBlock) {
+            throw new Error("Could not find the Normalize a Model pipeline's Read OBJ block.");
+        }
+        readBlock.primary = {
+            path: readBlock.source,
+            bytes: Buffer.from("o Triangle\nv 0 0 0\nv 100 0 0\nv 0 100 0\nf 1 2 3\n").toString("base64"),
+        };
         const fetchMock = vi.fn(async () => {
             throw new Error("The worker OBJ graph must not request the network.");
         });
@@ -177,14 +184,7 @@ describe("preview build worker block registration", () => {
             });
             expect(result.byteLength).toBeGreaterThan(0);
             const document = await new WebIO().registerExtensions(ALL_EXTENSIONS).readBinary(result);
-            expect(
-                document
-                    .getRoot()
-                    .listMaterials()
-                    .map((material) => material.getName())
-            ).toEqual(expect.arrayContaining(["Catalog Red", "Catalog Textured"]));
-            expect(document.getRoot().listTextures()).toHaveLength(1);
-            expect(document.getRoot().listTextures()[0].getImage()?.byteLength).toBeGreaterThan(0);
+            expect(document.getRoot().listMeshes()).toHaveLength(1);
             expect(fetchMock).not.toHaveBeenCalled();
         } finally {
             vi.unstubAllGlobals();

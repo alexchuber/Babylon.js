@@ -4,7 +4,7 @@ import { resolve } from "node:path";
 
 import { CreateBuiltInNodeAssetLibraryEntries } from "../../src/nodeAssets/builtInLibraryEntries";
 import { BuiltInLibraryFixtures } from "../../src/nodeAssets/builtInLibraryFixtures";
-import { NodeAssetsEditorPage, RoundedCubeSourceUrl, useLocalGltfValidator, useLocalRoundedCubeSource } from "./nae.utils";
+import { DefaultSourceUrl, NodeAssetsEditorPage, useLocalBuiltInSources, useLocalGltfValidator } from "./nae.utils";
 
 type GltfJson = {
     readonly accessors?: readonly { readonly count?: number; readonly type?: string }[];
@@ -122,10 +122,11 @@ async function clickWirePath(page: Page, path: Locator, button: "left" | "right"
     await page.mouse.click(point.x, point.y, { button });
 }
 
-const DefaultOptimizationPipeline: readonly (readonly [string, string])[] = [
-    ["Import glTF", "Weld Vertices"],
-    ["Weld Vertices", "Remove Unused Resources"],
-    ["Remove Unused Resources", "Export glTF"],
+const DefaultCompressionPipeline: readonly (readonly [string, string])[] = [
+    ["Import glTF", "Universal to glTF"],
+    ["Universal to glTF", "Compress Textures (KTX2)"],
+    ["Compress Textures (KTX2)", "Compress Geometry (Draco)"],
+    ["Compress Geometry (Draco)", "Write glTF"],
 ];
 const BuiltInPipelineNames = CreateBuiltInNodeAssetLibraryEntries().map((entry) => entry.name);
 
@@ -455,7 +456,7 @@ async function saveEditorGraph(page: Page): Promise<SavedEditorGraph> {
 
 test.beforeEach(async ({ page }) => {
     await useLocalGltfValidator(page);
-    await useLocalRoundedCubeSource(page);
+    await useLocalBuiltInSources(page);
 });
 
 test.describe("Node Assets Editor — maintained default pipeline", () => {
@@ -473,24 +474,25 @@ test.describe("Node Assets Editor — maintained default pipeline", () => {
 
         await editor.goto();
 
-        await expect(editor.nodes).toHaveCount(4);
+        await expect(editor.nodes).toHaveCount(5);
         await expect(editor.nodeByTitle("Import glTF")).toBeVisible();
-        await expect(editor.nodeByTitle("Weld Vertices")).toBeVisible();
-        await expect(editor.nodeByTitle("Remove Unused Resources")).toBeVisible();
-        await expect(editor.nodeByTitle("Export glTF")).toBeVisible();
-        await editor.expectWiredPipeline(DefaultOptimizationPipeline);
+        await expect(editor.nodeByTitle("Universal to glTF")).toBeVisible();
+        await expect(editor.nodeByTitle("Compress Textures (KTX2)")).toBeVisible();
+        await expect(editor.nodeByTitle("Compress Geometry (Draco)")).toBeVisible();
+        await expect(editor.nodeByTitle("Write glTF")).toBeVisible();
+        await editor.expectWiredPipeline(DefaultCompressionPipeline);
         await expect(page.locator('[data-testid="graph-frame"]')).toHaveCount(0);
 
         await editor.waitForNextSuccessfulPreviewBuild();
         await expect(editor.previewCanvas).toBeVisible();
 
         await editor.selectNode("Import glTF");
-        await expect(page.getByRole("textbox").nth(3)).toHaveValue(RoundedCubeSourceUrl);
+        await expect(page.getByRole("textbox").nth(3)).toHaveValue(DefaultSourceUrl);
 
-        expect(sourceRequests).toEqual([RoundedCubeSourceUrl]);
+        expect(sourceRequests).toEqual([DefaultSourceUrl]);
         await editor.openLibraryButton.click();
         await expect(page.getByRole("dialog", { name: "NodeAsset Library" })).toBeVisible();
-        expect(sourceRequests).toEqual([RoundedCubeSourceUrl]);
+        expect(sourceRequests).toEqual([DefaultSourceUrl]);
         expect(pageErrors).toEqual([]);
     });
 
@@ -500,7 +502,7 @@ test.describe("Node Assets Editor — maintained default pipeline", () => {
             releaseResponse = resolve;
         });
         await page.unroute("https://assets.babylonjs.com/**");
-        await useLocalRoundedCubeSource(page, { status: 503, waitFor: responseReleased });
+        await useLocalBuiltInSources(page, { status: 503, waitFor: responseReleased });
         const editor = new NodeAssetsEditorPage(page);
 
         await editor.goto();
@@ -550,8 +552,8 @@ test.describe("Node Assets Editor — maintained default pipeline", () => {
 
         await editor.openLibraryButton.click();
         const dialog = page.getByRole("dialog", { name: "NodeAsset Library" });
-        await dialog.getByRole("button", { name: "Node Geometry to glTF", exact: true }).click();
-        await expect(editor.nodeByTitle("Import Node Geometry")).toBeVisible();
+        await dialog.getByRole("button", { name: "Convert a Model", exact: true }).click();
+        await expect(editor.nodeByTitle("Import FBX")).toBeVisible();
         await expect
             .poll(
                 async () => {
@@ -636,11 +638,14 @@ test.describe("Node Assets Editor — maintained default pipeline", () => {
         const editor = new NodeAssetsEditorPage(page);
         await editor.goto();
         await editor.waitForNextSuccessfulPreviewBuild();
+        await editor.openLibraryButton.click();
+        await page.getByRole("dialog", { name: "NodeAsset Library" }).getByRole("button", { name: "Clean Up a Model", exact: true }).click();
+        await editor.waitForNextSuccessfulPreviewBuild();
 
-        await editor.deleteWire("Weld Vertices", "Remove Unused Resources");
+        await editor.deleteWire("Deduplicate Resources", "Remove Unused Resources");
         await editor.connectPorts(editor.portOfNode("Import glTF", "out"), editor.portOfNode("Remove Unused Resources", "in"));
         await editor.expectWiredPipeline([
-            ["Import glTF", "Weld Vertices"],
+            ["Import glTF", "Deduplicate Resources"],
             ["Import glTF", "Remove Unused Resources"],
             ["Remove Unused Resources", "Export glTF"],
         ]);
@@ -689,14 +694,14 @@ test.describe("Node Assets Editor — maintained default pipeline", () => {
         await editor.goto();
         await editor.waitForNextSuccessfulPreviewBuild();
 
-        await editor.deleteWire("Remove Unused Resources", "Export glTF");
+        await editor.deleteWire("Compress Geometry (Draco)", "Write glTF");
         await expect(editor.previewErrorOverlay).toBeVisible({ timeout: 30_000 });
 
-        const exportNode = editor.nodeByTitle("Export glTF");
+        const exportNode = editor.nodeByTitle("Write glTF");
         await expect(exportNode).toHaveAttribute("data-node-error", "true");
         await expect(exportNode.getByRole("img", { name: /Error: The .* input .* is not connected/ })).toBeVisible();
 
-        await editor.selectNode("Export glTF");
+        await editor.selectNode("Write glTF");
         await expect(page.getByText("BUILD ERROR", { exact: true })).toBeVisible();
 
         await page.locator('button[value="Validation"]').click();
@@ -715,8 +720,8 @@ test.describe("Node Assets Editor — maintained default pipeline", () => {
         await fileChooser.setFiles({ name: "broken.json", mimeType: "application/json", buffer: Buffer.from("{") });
 
         await expect(page.getByLabel(/Could not load the NodeAsset file:/)).toBeVisible();
-        await expect(editor.nodes).toHaveCount(4);
-        await editor.expectWiredPipeline(DefaultOptimizationPipeline);
+        await expect(editor.nodes).toHaveCount(5);
+        await editor.expectWiredPipeline(DefaultCompressionPipeline);
         await expect(editor.previewCanvas).toBeVisible();
     });
 
@@ -1163,7 +1168,9 @@ test.describe("Node Assets Editor — maintained default pipeline", () => {
 
         await expect.poll(overlaps).toBe(false);
         const pipelineX = await Promise.all(
-            ["Import glTF", "Weld Vertices", "Remove Unused Resources", "Export glTF"].map(async (title) => (await editor.nodeByTitle(title).boundingBox())?.x ?? 0)
+            ["Import glTF", "Universal to glTF", "Compress Textures (KTX2)", "Compress Geometry (Draco)", "Write glTF"].map(
+                async (title) => (await editor.nodeByTitle(title).boundingBox())?.x ?? 0
+            )
         );
         expect(pipelineX).toEqual([...pipelineX].sort((left, right) => left - right));
     });
@@ -1309,7 +1316,7 @@ test.describe("Node Assets Editor — Universal glTF aggregates", () => {
 
         await editor.dropPaletteItem("Deduplicate Resources", { x: 0.55, y: 0.2 });
         await editor.connectPorts(editor.portOfNode("Import glTF", "out"), editor.portOfNode("Deduplicate Resources", "in"));
-        await editor.connectPorts(editor.portOfNode("Deduplicate Resources", "out"), editor.portOfNode("Weld Vertices", "in"));
+        await editor.connectPorts(editor.portOfNode("Deduplicate Resources", "out"), editor.portOfNode("Universal to glTF", "in"));
         await editor.waitForSuccessfulPreviewBuild();
 
         await editor.selectNode("Deduplicate Resources");
@@ -1347,15 +1354,15 @@ test.describe("Node Assets Editor — Universal glTF aggregates", () => {
         await editor.selectNode("Deduplicate Resources");
         await expect(page.getByRole("textbox").nth(1)).toHaveValue("CustomAggregateBlock");
         await editor.saveToLibraryButton.click();
-        await expect(page.getByLabel('Saved "glTF Optimization 2" to the library.')).toBeVisible();
+        await expect(page.getByLabel('Saved "Compress a Model 2" to the library.')).toBeVisible();
         await editor.openLibraryButton.click();
-        await page.getByRole("dialog", { name: "NodeAsset Library" }).getByRole("button", { name: "glTF Optimization 2", exact: true }).click();
+        await page.getByRole("dialog", { name: "NodeAsset Library" }).getByRole("button", { name: "Compress a Model 2", exact: true }).click();
 
         await expect(page.locator('[data-testid="aggregate-frame"]').filter({ hasText: "Deduplicate Resources" })).toBeVisible();
         await editor.expectWiredPipeline([
-            ...DefaultOptimizationPipeline.filter(([from, to]) => !(from === "Import glTF" && to === "Weld Vertices")),
+            ...DefaultCompressionPipeline.filter(([from, to]) => !(from === "Import glTF" && to === "Universal to glTF")),
             ["Import glTF", "Deduplicate Resources"],
-            ["Deduplicate Resources", "Weld Vertices"],
+            ["Deduplicate Resources", "Universal to glTF"],
             ["Deduplicate Materials", "Reuse Identical Meshes"],
             ["Reuse Identical Meshes", "Deduplicate Textures"],
             ["Deduplicate Textures", "Deduplicate Data"],
@@ -1369,6 +1376,9 @@ test.describe("Node Assets Editor — Universal glTF aggregates", () => {
         const editor = new NodeAssetsEditorPage(page);
         await editor.goto();
         await editor.waitForNextSuccessfulPreviewBuild();
+        await editor.openLibraryButton.click();
+        await page.getByRole("dialog", { name: "NodeAsset Library" }).getByRole("button", { name: "Convert a Model", exact: true }).click();
+        await editor.waitForNextSuccessfulPreviewBuild();
 
         await editor.nodeByTitle("Export glTF").getByRole("button", { name: "Expand aggregate" }).click();
         await editor.selectNode("Write glTF");
@@ -1380,9 +1390,9 @@ test.describe("Node Assets Editor — Universal glTF aggregates", () => {
         await editor.waitForSuccessfulPreviewBuild();
 
         await editor.saveToLibraryButton.click();
-        await expect(page.getByLabel('Saved "glTF Optimization 2" to the library.')).toBeVisible();
+        await expect(page.getByLabel('Saved "Convert a Model 2" to the library.')).toBeVisible();
         await editor.openLibraryButton.click();
-        await page.getByRole("dialog", { name: "NodeAsset Library" }).getByRole("button", { name: "glTF Optimization 2", exact: true }).click();
+        await page.getByRole("dialog", { name: "NodeAsset Library" }).getByRole("button", { name: "Convert a Model 2", exact: true }).click();
 
         await expect(page.locator('[data-testid="aggregate-frame"]').filter({ hasText: "Export glTF" })).toBeVisible();
         await editor.selectNode("Export glTF");
@@ -1540,7 +1550,7 @@ test.describe("Node Assets Editor — Universal glTF aggregates", () => {
         await editor.waitForNextSuccessfulPreviewBuild();
         await editor.openLibraryButton.click();
         const dialog = page.getByRole("dialog", { name: "NodeAsset Library" });
-        await dialog.getByRole("button", { name: "OBJ to Optimized glTF", exact: true }).click();
+        await dialog.getByRole("button", { name: "Normalize a Model", exact: true }).click();
         await editor.waitForSuccessfulPreviewBuild();
 
         await editor.selectNode("Import OBJ");
@@ -1589,7 +1599,7 @@ test.describe("Node Assets Editor — Universal glTF aggregates", () => {
         await page.getByRole("textbox").nth(2).blur();
 
         await expect(page.getByText("Source error", { exact: true })).toBeVisible();
-        await expect(page.getByRole("textbox").nth(3)).toHaveValue(RoundedCubeSourceUrl);
+        await expect(page.getByRole("textbox").nth(3)).toHaveValue(DefaultSourceUrl);
         await expect(page.getByRole("textbox").nth(4)).toHaveValue(/404/);
     });
 
@@ -1597,9 +1607,12 @@ test.describe("Node Assets Editor — Universal glTF aggregates", () => {
         const editor = new NodeAssetsEditorPage(page);
         await editor.goto();
         await editor.waitForNextSuccessfulPreviewBuild();
+        await editor.openLibraryButton.click();
+        await page.getByRole("dialog", { name: "NodeAsset Library" }).getByRole("button", { name: "Clean Up a Model", exact: true }).click();
+        await editor.waitForNextSuccessfulPreviewBuild();
 
         await editor.connectPorts(editor.portOfNode("Import glTF", "out"), editor.portOfNode("Export glTF", "in"));
-        for (const title of ["Weld Vertices", "Remove Unused Resources"]) {
+        for (const title of ["Deduplicate Resources", "Remove Unused Resources"]) {
             await editor.selectNode(title);
             await page.keyboard.press("Delete");
             await expect(editor.nodeByTitle(title)).toHaveCount(0);
@@ -1787,8 +1800,11 @@ test.describe("Node Assets Editor — Universal attribute operators", () => {
         const editor = new NodeAssetsEditorPage(page);
         await editor.goto();
         await editor.waitForNextSuccessfulPreviewBuild();
+        await editor.openLibraryButton.click();
+        await page.getByRole("dialog", { name: "NodeAsset Library" }).getByRole("button", { name: "Clean Up a Model", exact: true }).click();
+        await editor.waitForNextSuccessfulPreviewBuild();
 
-        await editor.selectNode("Weld Vertices");
+        await editor.selectNode("Deduplicate Resources");
         await page.keyboard.press("Delete");
         await editor.selectNode("Remove Unused Resources");
         await page.keyboard.press("Delete");
@@ -2020,17 +2036,17 @@ test.describe("Node Assets Editor — Library", () => {
         await editor.goto();
 
         await editor.saveToLibraryButton.click();
-        await expect(page.getByLabel('Saved "glTF Optimization 2" to the library.')).toBeVisible();
+        await expect(page.getByLabel('Saved "Compress a Model 2" to the library.')).toBeVisible();
         await editor.saveToLibraryButton.click();
-        await expect(page.getByLabel('Saved "glTF Optimization 3" to the library.')).toBeVisible();
+        await expect(page.getByLabel('Saved "Compress a Model 3" to the library.')).toBeVisible();
 
         expect(unexpectedDialogs).toEqual([]);
         await page.reload({ waitUntil: "load" });
         await expect(editor.canvas).toBeVisible({ timeout: 30_000 });
         await editor.openLibraryButton.click();
         const dialog = page.getByRole("dialog", { name: "NodeAsset Library" });
-        await expect(dialog.getByRole("button", { name: "glTF Optimization 2", exact: true })).toBeVisible();
-        await expect(dialog.getByRole("button", { name: "glTF Optimization 3", exact: true })).toBeVisible();
+        await expect(dialog.getByRole("button", { name: "Compress a Model 2", exact: true })).toBeVisible();
+        await expect(dialog.getByRole("button", { name: "Compress a Model 3", exact: true })).toBeVisible();
     });
 
     test("loads a selected library graph into the canvas", async ({ page }) => {
@@ -2039,12 +2055,11 @@ test.describe("Node Assets Editor — Library", () => {
 
         await editor.openLibraryButton.click();
         const dialog = page.getByRole("dialog", { name: "NodeAsset Library" });
-        await dialog.getByRole("button", { name: "USD to Optimized glTF", exact: true }).click();
+        await dialog.getByRole("button", { name: "Convert a Model", exact: true }).click();
 
         await expect(dialog).toBeHidden();
-        await expect(editor.nodes).toHaveCount(3);
-        await expect(editor.nodeByTitle("Import USD")).toBeVisible();
-        await expect(editor.nodeByTitle("Remove Unused Resources")).toBeVisible();
+        await expect(editor.nodes).toHaveCount(2);
+        await expect(editor.nodeByTitle("Import FBX")).toBeVisible();
         await expect(editor.nodeByTitle("Export glTF")).toBeVisible();
     });
 
@@ -2054,7 +2069,7 @@ test.describe("Node Assets Editor — Library", () => {
         await editor.goto();
         await editor.waitForNextSuccessfulPreviewBuild();
 
-        for (const name of BuiltInPipelineNames.slice(1)) {
+        for (const name of BuiltInPipelineNames.filter((pipelineName) => pipelineName !== "Compress a Model")) {
             await editor.openLibraryButton.click();
             const dialog = page.getByRole("dialog", { name: "NodeAsset Library" });
             const previewBuildPromise = editor.waitForNextSuccessfulPreviewBuild();
@@ -2071,19 +2086,19 @@ test.describe("Node Assets Editor — Library", () => {
 
         await editor.openLibraryButton.click();
         let dialog = page.getByRole("dialog", { name: "NodeAsset Library" });
-        await dialog.getByRole("button", { name: "Node Geometry to glTF", exact: true }).click();
+        await dialog.getByRole("button", { name: "Convert a Model", exact: true }).click();
         await editor.saveToLibraryButton.click();
 
         await editor.openLibraryButton.click();
         dialog = page.getByRole("dialog", { name: "NodeAsset Library" });
-        await dialog.getByRole("button", { name: "USD to Optimized glTF", exact: true }).click();
-        await expect(editor.nodes).toHaveCount(3);
+        await dialog.getByRole("button", { name: "Normalize a Model", exact: true }).click();
+        await expect(editor.nodes).toHaveCount(4);
 
         await editor.openLibraryButton.click();
         dialog = page.getByRole("dialog", { name: "NodeAsset Library" });
-        await dialog.getByRole("button", { name: "Node Geometry to glTF 2", exact: true }).click();
+        await dialog.getByRole("button", { name: "Convert a Model 2", exact: true }).click();
         await expect(editor.nodes).toHaveCount(2);
-        await expect(editor.nodeByTitle("Import Node Geometry")).toBeVisible();
+        await expect(editor.nodeByTitle("Import FBX")).toBeVisible();
         await expect(editor.nodeByTitle("Export glTF")).toBeVisible();
     });
 
@@ -2103,7 +2118,7 @@ test.describe("Node Assets Editor — Library", () => {
         await editor.openLibraryButton.click();
 
         const dialog = page.getByRole("dialog", { name: "NodeAsset Library" });
-        await expect(dialog.getByRole("button", { name: "glTF Optimization", exact: true })).toBeVisible();
+        await expect(dialog.getByRole("button", { name: "Compress a Model", exact: true })).toBeVisible();
         await expect(dialog.getByText("Storage blocked", { exact: true })).toBeVisible();
     });
 });

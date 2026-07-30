@@ -279,6 +279,16 @@ export class ReadOBJBlock extends NodeAssetBlock {
                 this._companions = Object.freeze([]);
                 return;
             }
+            if (primary === null && typeof source === "string" && source.trim().length > 0 && sourceKind === "url") {
+                if (companions.length !== 0) {
+                    throw new TypeError("an OBJ URL source cannot contain companions.");
+                }
+                this._primary = null;
+                this._source = source;
+                this._sourceKind = "url";
+                this._companions = Object.freeze([]);
+                return;
+            }
             if (
                 typeof primary !== "object" ||
                 primary === null ||

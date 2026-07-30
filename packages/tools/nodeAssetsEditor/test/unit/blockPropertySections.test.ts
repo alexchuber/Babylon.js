@@ -70,7 +70,7 @@ describe("block property sections (unified descriptor path)", () => {
             const section = FindSection(controller, importNode, "READ GLTF");
 
             expect(section.properties.map((property) => property.label)).toEqual(["URL", "Active source", "Upload glTF\u2026"]);
-            expect(FindProperty(controller, importNode, "Active source", "text").value).toBe("https://assets.babylonjs.com/meshes/roundedCube.glb");
+            expect(FindProperty(controller, importNode, "Active source", "text").value).toBe("https://assets.babylonjs.com/meshes/aerobatic_plane.glb");
             expect(FindProperty(controller, importNode, "Upload glTF\u2026", "button")).toBeDefined();
         } finally {
             controller.dispose();
@@ -103,7 +103,8 @@ describe("block property sections (unified descriptor path)", () => {
             const importNode = AddPaletteNode(controller, "import-fbx");
             const section = FindSection(controller, importNode, "READ FBX");
 
-            expect(section.properties.map((property) => property.label)).toEqual(["Active source", "Upload FBX\u2026"]);
+            expect(section.properties.map((property) => property.label)).toEqual(["URL", "Active source", "Upload FBX\u2026"]);
+            expect(FindProperty(controller, importNode, "URL", "text").value).toBe("");
             expect(FindProperty(controller, importNode, "Active source", "text").value).toBe("No source loaded");
             expect(FindProperty(controller, importNode, "Upload FBX\u2026", "button")).toBeDefined();
 
@@ -124,7 +125,7 @@ describe("block property sections (unified descriptor path)", () => {
         });
 
         try {
-            const exportNode = FindNode(controller, "Export glTF");
+            const exportNode = AddPaletteNode(controller, "export-gltf");
             FindSection(controller, exportNode, "WRITE GLTF");
 
             FindProperty(controller, exportNode, "Export .glb", "button").onClick();
@@ -139,7 +140,7 @@ describe("block property sections (unified descriptor path)", () => {
     it("keeps codec decisions off the Export glTF aggregate properties", () => {
         const controller = new NodeAssetGraphController();
         try {
-            const exportNode = FindNode(controller, "Export glTF");
+            const exportNode = AddPaletteNode(controller, "export-gltf");
             const labels = controller.buildPropertySections(exportNode).flatMap((section) => section.properties.map((property) => property.label));
 
             expect(labels).not.toContain("Method");

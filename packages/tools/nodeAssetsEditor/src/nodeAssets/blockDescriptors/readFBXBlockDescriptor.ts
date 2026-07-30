@@ -39,6 +39,39 @@ async function PromptForFBXAsync(block: ReadFBXBlock, context: IPropertySectionC
     }
 }
 
+// eslint-disable-next-line @typescript-eslint/naming-convention
+async function SetFBXUrlAsync(block: ReadFBXBlock, url: string, context: IPropertySectionContext): Promise<void> {
+    const authoredBlock = context.prepareEdit(block);
+    if (!authoredBlock) {
+        return;
+    }
+    const applyResult = { applied: false };
+    const request = authoredBlock.setUrlAsync(
+        url,
+        undefined,
+        () => context.prepareEdit(authoredBlock) === authoredBlock && PendingSourceRequests.get(authoredBlock) === request,
+        applyResult
+    );
+    PendingSourceRequests.set(authoredBlock, request);
+    try {
+        await request;
+        if (context.prepareEdit(authoredBlock) === authoredBlock && PendingSourceRequests.get(authoredBlock) === request && applyResult.applied) {
+            SourceErrors.delete(authoredBlock);
+        }
+    } catch (error) {
+        if (context.prepareEdit(authoredBlock) === authoredBlock && PendingSourceRequests.get(authoredBlock) === request) {
+            SourceErrors.set(authoredBlock, error instanceof Error ? error.message : String(error));
+        }
+    } finally {
+        if (PendingSourceRequests.get(authoredBlock) === request) {
+            PendingSourceRequests.delete(authoredBlock);
+        }
+    }
+    if (context.prepareEdit(authoredBlock) === authoredBlock) {
+        context.refresh();
+    }
+}
+
 /**
  * Builds the source controls shared by Read FBX and Import FBX.
  * @param block The owned Read FBX primitive.
@@ -51,6 +84,26 @@ export function CreateReadFBXPropertySection(block: ReadFBXBlock, context: IProp
     return {
         title,
         properties: [
+            {
+                kind: "text",
+                label: "URL",
+                value: block.sourceKind === "url" ? (block.source ?? "") : "",
+                validateOnlyOnBlur: true,
+                onChange: (value) => {
+                    if (!value) {
+                        const authoredBlock = context.prepareEdit(block);
+                        if (!authoredBlock) {
+                            return;
+                        }
+                        authoredBlock.clearSource();
+                        PendingSourceRequests.delete(authoredBlock);
+                        SourceErrors.delete(authoredBlock);
+                        context.refresh();
+                        return;
+                    }
+                    void SetFBXUrlAsync(block, value, context);
+                },
+            },
             {
                 kind: "text",
                 label: "Active source",
@@ -83,8 +136,8 @@ export function CreateReadFBXPropertySection(block: ReadFBXBlock, context: IProp
 RegisterBlockDescriptor({
     paletteItemId: "read-fbx",
     label: "Read FBX",
-    description: "Read an uploaded .fbx source.",
-    keywords: ["open", "load", "upload", "fbx"],
+    description: "Read a URL or uploaded .fbx source.",
+    keywords: ["open", "load", "url", "upload", "fbx"],
     category: "Inputs",
     headerColor: FBXHeaderColor,
     className: ReadFBXBlock.ClassName,

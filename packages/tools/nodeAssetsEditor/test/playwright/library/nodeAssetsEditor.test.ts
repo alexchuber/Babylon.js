@@ -2,7 +2,7 @@ import { expect, test, type Download } from "@playwright/test";
 import { readFileSync } from "node:fs";
 
 import { CreateBuiltInNodeAssetLibraryEntries } from "../../../src/nodeAssets/builtInLibraryEntries";
-import { NodeAssetsEditorPage, useLocalGltfValidator, useLocalRoundedCubeSource } from "../nae.utils";
+import { NodeAssetsEditorPage, useLocalBuiltInSources, useLocalGltfValidator } from "../nae.utils";
 
 async function AssertValidDownloadedGlb(download: Download): Promise<void> {
     const path = await download.path();
@@ -17,7 +17,7 @@ test.describe("Node Assets Editor built-in pipeline catalog", () => {
     test.describe.configure({ timeout: 420_000 });
     test.beforeEach(async ({ page }) => {
         await useLocalGltfValidator(page);
-        await useLocalRoundedCubeSource(page);
+        await useLocalBuiltInSources(page);
     });
 
     test("lists, previews, and exports every production catalog graph", async ({ page }) => {
@@ -40,7 +40,7 @@ test.describe("Node Assets Editor built-in pipeline catalog", () => {
             await editor.waitForSuccessfulPreviewBuild();
             await expect(editor.previewCanvas).toBeVisible();
 
-            const exportNodeName = entry.name === "Advanced glTF Compression" ? "Write glTF" : "Export glTF";
+            const exportNodeName = entry.name === "Compress a Model" || entry.name === "Build a Production-Ready GLB" ? "Write glTF" : "Export glTF";
             await editor.selectNode(exportNodeName);
             const downloadPromise = page.waitForEvent("download");
             await page.getByRole("button", { name: "Export .glb" }).click();

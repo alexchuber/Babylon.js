@@ -3,8 +3,20 @@ import { getGlobalConfig } from "@tools/test-tools";
 import { resolve } from "node:path";
 
 import { BuiltInLibraryFixtures } from "../../src/nodeAssets/builtInLibraryFixtures";
+import { CreateAsciiFbx74TriangleFixture } from "../../../../dev/node-assets/test/unit/testFbxSource";
 
-export const RoundedCubeSourceUrl = "https://assets.babylonjs.com/meshes/roundedCube.glb";
+export const DefaultSourceUrl = "https://assets.babylonjs.com/meshes/aerobatic_plane.glb";
+
+const CompanionFreeOBJFixture = new TextEncoder().encode(`o CatalogObject
+v 0 0 0
+v 100 0 0
+v 0 100 0
+vt 0 0
+vt 1 0
+vt 0 1
+vn 0 0 1
+f 1/1/1 2/2/1 3/3/1
+`);
 
 /** Narrows a title lookup to a single node when several share the title: an index, or "last" for the most recently added. */
 type NodeOccurrence = number | "last";
@@ -39,20 +51,18 @@ export async function useLocalGltfValidator(page: Page): Promise<void> {
     });
 }
 
-export async function useLocalRoundedCubeSource(page: Page, options: { readonly status?: number; readonly waitFor?: Promise<void> } = {}): Promise<void> {
+export async function useLocalBuiltInSources(page: Page, options: { readonly status?: number; readonly waitFor?: Promise<void> } = {}): Promise<void> {
     await page.route("https://assets.babylonjs.com/**", async (route) => {
-        if (route.request().url() !== RoundedCubeSourceUrl) {
-            await route.abort("blockedbyclient");
-            return;
-        }
         await options.waitFor;
         if (options.status && options.status >= 400) {
             await route.fulfill({ status: options.status, body: "Source unavailable" });
             return;
         }
+        const url = route.request().url();
+        const body = url.endsWith(".fbx") ? CreateAsciiFbx74TriangleFixture() : url.endsWith(".obj") ? CompanionFreeOBJFixture : BuiltInLibraryFixtures.gltf;
         await route.fulfill({
-            body: Buffer.from(BuiltInLibraryFixtures.gltf),
-            contentType: "model/gltf-binary",
+            body: Buffer.from(body),
+            contentType: url.endsWith(".fbx") ? "application/octet-stream" : url.endsWith(".obj") ? "model/obj" : "model/gltf-binary",
             headers: { "access-control-allow-origin": "*" },
         });
     });

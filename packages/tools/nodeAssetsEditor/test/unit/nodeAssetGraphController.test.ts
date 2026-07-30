@@ -11,6 +11,7 @@ import { ReadOBJBlock } from "node-assets/Blocks/readOBJBlock";
 import { ReadUSDBlock } from "node-assets/Blocks/readUSDBlock";
 import { type GLTFSourceFetcher } from "node-assets/Blocks/readGLTFBlock";
 import { StringLiteral } from "node-assets/Blocks/stringLiteral";
+import { WeldVerticesBlock } from "node-assets/Blocks/weldVerticesBlock";
 
 import { NodeAssetBuildError } from "node-assets/nodeAssetBuildError";
 
@@ -37,6 +38,12 @@ function FindNode(controller: NodeAssetGraphController, title: string): IGraphNo
     if (!node) {
         throw new Error(`Could not find node "${title}".`);
     }
+    return node;
+}
+
+function AddPaletteNode(controller: NodeAssetGraphController, paletteItemId: string): IGraphNode {
+    const node = controller.createNodeFromPaletteItem(paletteItemId, { x: 600, y: 600 });
+    controller.state.addNode(node);
     return node;
 }
 
@@ -230,7 +237,7 @@ describe("NodeAssetGraphController", () => {
     it("projects palette preferences without changing existing or expanded aggregate nodes", () => {
         const controller = new NodeAssetGraphController();
         try {
-            const exportNode = FindNode(controller, "Export glTF");
+            const exportNode = AddPaletteNode(controller, "export-gltf");
             controller.setAggregateExpanded(exportNode.id, true);
             const nodeIdsBefore = controller.state.nodes.map((node) => node.id);
             const wireIdsBefore = controller.state.wires.map((wire) => wire.id);
@@ -264,9 +271,8 @@ describe("NodeAssetGraphController", () => {
     it("rejects incompatible NodeAsset port kinds before adding a wire", () => {
         const controller = new NodeAssetGraphController();
         try {
-            const draco = controller.createNodeFromPaletteItem("draco-compression", { x: 1800, y: 320 });
-            controller.state.addNode(draco);
-            const weld = FindNode(controller, "Weld Vertices");
+            const draco = AddPaletteNode(controller, "draco-compression");
+            const weld = AddPaletteNode(controller, "weld-vertices");
             const sceneOutput = weld.ports.find((port) => port.direction === "output");
             const gltfInput = draco.ports.find((port) => port.direction === "input");
             if (!sceneOutput || !gltfInput) {
@@ -292,7 +298,7 @@ describe("NodeAssetGraphController", () => {
     it("detaches and persists a custom aggregate before an internal wire edit", () => {
         const controller = new NodeAssetGraphController();
         try {
-            const exportNode = FindNode(controller, "Export glTF");
+            const exportNode = AddPaletteNode(controller, "export-gltf");
             controller.setAggregateExpanded(exportNode.id, true);
             const internalWire = controller.state.wires.find((wire) => {
                 const from = controller.state.getPortNode(wire.fromPortId);
@@ -402,24 +408,43 @@ describe("NodeAssetGraphController", () => {
 
     it("loads the exact production catalog through the normal graph load path", () => {
         const expectedCatalog = [
-            ["glTF Optimization", ["Import glTF", "Weld Vertices", "Remove Unused Resources", "Export glTF"]],
-            ["OBJ to Optimized glTF", ["Import OBJ", "Remove Unused Resources", "Export glTF"]],
-            ["USD to Optimized glTF", ["Import USD", "Remove Unused Resources", "Export glTF"]],
-            ["Babylon to Optimized glTF", ["Import Babylon", "Weld Vertices", "Export glTF"]],
-            ["Node Geometry to glTF", ["Import Node Geometry", "Export glTF"]],
-            ["Multi-Source Universal Merge", ["Import glTF", "Import Babylon", "Merge Scenes", "Export glTF"]],
-            ["Advanced glTF Compression", ["Import glTF", "Universal to glTF", "Compress Textures (KTX2)", "Compress Geometry (Draco)", "Write glTF"]],
+            ["Convert a Model", ["Import FBX", "Export glTF"]],
+            ["Normalize a Model", ["Import OBJ", "Transform Scene", "Center Scene", "Export glTF"]],
+            ["Clean Up a Model", ["Import glTF", "Deduplicate Resources", "Remove Unused Resources", "Export glTF"]],
+            ["Reduce a Model", ["Import glTF", "Simplify Meshes", "Resize Textures", "Export glTF"]],
+            ["Compress a Model", ["Import glTF", "Universal to glTF", "Compress Textures (KTX2)", "Compress Geometry (Draco)", "Write glTF"]],
             [
-                "Full Universal Optimization",
+                "Combine Many Models",
+                [
+                    "Import Snowman",
+                    "Transform Snowman",
+                    "Place Snowman",
+                    "Import Cornell Box",
+                    "Transform Cornell Box",
+                    "Import Module",
+                    "Transform Module",
+                    "Place Module",
+                    "Merge Scenes",
+                    "Export glTF",
+                ],
+            ],
+            [
+                "Build a Production-Ready GLB",
                 [
                     "Import glTF",
-                    "Generate Tangents",
-                    "Weld Vertices",
+                    "Transform Scene",
+                    "Center Scene",
                     "Deduplicate Resources",
-                    "Fix Face Winding",
+                    "Remove Unused Resources",
+                    "Simplify Meshes",
+                    "Resize Textures",
+                    "Strip Tangents",
+                    "Generate Tangents",
                     "Quantize Attributes",
-                    "Split Meshes by Material",
-                    "Export glTF",
+                    "Universal to glTF",
+                    "Compress Textures (KTX2)",
+                    "Compress Geometry (Draco)",
+                    "Write glTF",
                 ],
             ],
         ] as const;
@@ -477,9 +502,12 @@ describe("NodeAssetGraphController", () => {
     });
 
     it("checks build identity once for a block property edit", () => {
+        const asset = new NodeAsset("property-edit");
+        new WeldVerticesBlock("Weld Vertices", asset);
         const reconcileSpy = vi.spyOn(NodeAssetReconciler.prototype, "reconcile");
         const serializeSpy = vi.spyOn(NodeAsset.prototype, "serialize");
         const controller = new NodeAssetGraphController();
+        controller.load(CreateEditorFile(asset.serialize()));
         const changes = CountBuildRelevantChanges(controller);
         reconcileSpy.mockClear();
         serializeSpy.mockClear();
@@ -490,7 +518,7 @@ describe("NodeAssetGraphController", () => {
 
             expect(changes.count()).toBe(1);
             expect(reconcileSpy).toHaveBeenCalledOnce();
-            expect(serializeSpy).toHaveBeenCalledTimes(3);
+            expect(serializeSpy).toHaveBeenCalledOnce();
         } finally {
             changes.dispose();
             controller.dispose();
@@ -543,7 +571,7 @@ describe("NodeAssetGraphController", () => {
             await controller.loadDefaultImportAsync();
 
             expect(sourceFetcher).toHaveBeenCalledOnce();
-            expect(sourceFetcher).toHaveBeenCalledWith("https://assets.babylonjs.com/meshes/roundedCube.glb");
+            expect(sourceFetcher).toHaveBeenCalledWith("https://assets.babylonjs.com/meshes/aerobatic_plane.glb");
         } finally {
             controller.dispose();
         }
@@ -565,7 +593,7 @@ describe("NodeAssetGraphController", () => {
         const controller = new NodeAssetGraphController(buildClient, sourceFetcher);
         try {
             const build = controller.buildAsync();
-            await vi.waitFor(() => expect(sourceFetcher).toHaveBeenCalledWith("https://assets.babylonjs.com/meshes/roundedCube.glb"));
+            await vi.waitFor(() => expect(sourceFetcher).toHaveBeenCalledWith("https://assets.babylonjs.com/meshes/aerobatic_plane.glb"));
             expect(buildClient.buildAsync).not.toHaveBeenCalled();
 
             resolveResponse?.();
@@ -838,6 +866,8 @@ describe("NodeAssetGraphController", () => {
 
     it("emits build-relevant changes for structural edits and build-affecting properties", () => {
         const controller = new NodeAssetGraphController();
+        AddPaletteNode(controller, "weld-vertices");
+        AddPaletteNode(controller, "remove-unused-resources");
         const changes = CountBuildRelevantChanges(controller);
         try {
             const firstWire = controller.state.wires[0];
@@ -897,7 +927,7 @@ describe("NodeAssetGraphController", () => {
     it("maps a structured build failure to an ephemeral node diagnostic", () => {
         const controller = new NodeAssetGraphController();
         try {
-            const exportNode = FindNode(controller, "Export glTF");
+            const exportNode = FindNode(controller, "Write glTF");
             const blockId = Number(exportNode.id.slice("node-".length));
 
             controller.reportBuildError(new NodeAssetBuildError("The export input is not connected.", blockId, "input"));
@@ -922,7 +952,7 @@ describe("NodeAssetGraphController", () => {
         const controller = new NodeAssetGraphController();
         try {
             const importNode = FindNode(controller, "Import glTF");
-            const exportNode = FindNode(controller, "Export glTF");
+            const exportNode = FindNode(controller, "Write glTF");
             const importBlockId = Number(importNode.id.slice("node-".length));
             const exportBlockId = Number(exportNode.id.slice("node-".length));
 

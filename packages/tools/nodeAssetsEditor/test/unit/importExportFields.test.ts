@@ -64,7 +64,7 @@ describe("Export block file name", () => {
     it('defaults the Export section\'s Name field to "scene"', () => {
         const controller = new NodeAssetGraphController();
         try {
-            const exportNode = FindNode(controller, "Export glTF");
+            const exportNode = AddPaletteNode(controller, "export-gltf");
             expect(FindPropertyInSection(controller, exportNode, "WRITE GLTF", "File name", "text").value).toBe("scene");
         } finally {
             controller.dispose();
@@ -78,7 +78,7 @@ describe("Export block file name", () => {
             requestedName = name;
         });
         try {
-            const exportNode = FindNode(controller, "Export glTF");
+            const exportNode = AddPaletteNode(controller, "export-gltf");
             FindPropertyInSection(controller, exportNode, "WRITE GLTF", "File name", "text").onChange("myScene");
             FindPropertyInSection(controller, exportNode, "WRITE GLTF", "Export .glb", "button").onClick();
             expect(requestedName).toBe("myScene");
@@ -90,12 +90,12 @@ describe("Export block file name", () => {
 
     it("does not treat an export file-name edit as a build-relevant change", () => {
         const controller = new NodeAssetGraphController();
+        const exportNode = AddPaletteNode(controller, "export-gltf");
         let buildRelevantChanges = 0;
         const observer = controller.onBuildRelevantChanged.add(() => {
             buildRelevantChanges++;
         });
         try {
-            const exportNode = FindNode(controller, "Export glTF");
             FindPropertyInSection(controller, exportNode, "WRITE GLTF", "File name", "text").onChange("renamed");
             expect(buildRelevantChanges).toBe(0);
         } finally {
@@ -107,7 +107,7 @@ describe("Export block file name", () => {
     it("roundtrips the export file name through save/load", () => {
         const controller = new NodeAssetGraphController();
         try {
-            const exportNode = FindNode(controller, "Export glTF");
+            const exportNode = AddPaletteNode(controller, "export-gltf");
             FindPropertyInSection(controller, exportNode, "WRITE GLTF", "File name", "text").onChange("myScene");
             const json = controller.serialize();
 
@@ -142,7 +142,7 @@ describe("Import block source label", () => {
         const controller = new NodeAssetGraphController();
         try {
             const importNode = FindNode(controller, "Import glTF");
-            expect(FindPropertyInSection(controller, importNode, "READ GLTF", "Active source", "text").value).toBe("https://assets.babylonjs.com/meshes/roundedCube.glb");
+            expect(FindPropertyInSection(controller, importNode, "READ GLTF", "Active source", "text").value).toBe("https://assets.babylonjs.com/meshes/aerobatic_plane.glb");
 
             vi.mocked(PromptForFileAsync).mockResolvedValue({
                 name: "myModel.glb",
@@ -294,7 +294,10 @@ describe("Import block source label", () => {
             const authoredImport = canceledUpload.graph.blocks.find((block) => block.name === "Import glTF");
             expect(authoredImport?.customType).toBe("ImportGLTFAggregateBlock");
             expect(authoredImport?.subgraph?.blocks).toContainEqual(
-                expect.objectContaining({ customType: "ReadGLTFBlock", source: "https://assets.babylonjs.com/meshes/roundedCube.glb" })
+                expect.objectContaining({
+                    customType: "ReadGLTFBlock",
+                    source: "https://assets.babylonjs.com/meshes/aerobatic_plane.glb",
+                })
             );
         } finally {
             controller.dispose();
@@ -316,7 +319,7 @@ describe("Import block source label", () => {
             await vi.waitFor(() => {
                 expect(FindPropertyInSection(controller, importNode, "READ GLTF", "Source error", "text").value).toBe("Could not read unreadable.glb");
             });
-            expect(FindPropertyInSection(controller, importNode, "READ GLTF", "Active source", "text").value).toBe("https://assets.babylonjs.com/meshes/roundedCube.glb");
+            expect(FindPropertyInSection(controller, importNode, "READ GLTF", "Active source", "text").value).toBe("https://assets.babylonjs.com/meshes/aerobatic_plane.glb");
         } finally {
             controller.dispose();
         }
@@ -984,9 +987,16 @@ describe("Import block source label", () => {
 
             controller.setAggregateExpanded(importNode.id, true);
             const readNode = FindNode(controller, "Read FBX");
+            expect(
+                controller
+                    .buildPropertySections(readNode)
+                    .find((section) => section.title === "SOURCE")
+                    ?.properties.map((property) => property.label)
+            ).toEqual(["URL", "Active source", FBXImportFileButtonLabel]);
             expect(FindPropertyInSection(controller, readNode, "SOURCE", "Active source", "text").value).toBe("triangle.fbx");
             expect(FindPropertyInSection(controller, readNode, "SOURCE", FBXImportFileButtonLabel, "button")).toBeDefined();
- 
+            expect(FindPropertyInSection(controller, readNode, "SOURCE", "URL", "text").value).toBe("");
+
             const reloaded = new NodeAssetGraphController();
             try {
                 reloaded.load(controller.serialize());
@@ -996,6 +1006,389 @@ describe("Import block source label", () => {
                 reloaded.dispose();
             }
         } finally {
+            controller.dispose();
+        }
+    });
+
+    it("loads an FBX URL through compact and expanded source properties", async () => {
+        const controller = new NodeAssetGraphController();
+        const url = "https://example.com/triangle.fbx";
+        const fetchMock = vi.fn(async (requestedUrl: string) => {
+            expect(requestedUrl).toBe(url);
+            return {
+                ok: true,
+                status: 200,
+                statusText: "OK",
+                arrayBuffer: async () => new Uint8Array([1, 2, 3]).buffer,
+            } as Response;
+        });
+        vi.stubGlobal("fetch", fetchMock);
+        try {
+            const importNode = AddPaletteNode(controller, "import-fbx");
+            const urlProperty = FindPropertyInSection(controller, importNode, "READ FBX", "URL", "text");
+            expect(urlProperty.validateOnlyOnBlur).toBe(true);
+
+            urlProperty.onChange(url);
+            await vi.waitFor(() => {
+                expect(FindPropertyInSection(controller, importNode, "READ FBX", "Active source", "text").value).toBe(url);
+            });
+            expect(FindPropertyInSection(controller, importNode, "READ FBX", "URL", "text").value).toBe(url);
+            expect(fetchMock).toHaveBeenCalledTimes(1);
+
+            controller.setAggregateExpanded(importNode.id, true);
+            const readNode = FindNode(controller, "Read FBX");
+            expect(FindPropertyInSection(controller, readNode, "SOURCE", "Active source", "text").value).toBe(url);
+            expect(FindPropertyInSection(controller, readNode, "SOURCE", "URL", "text").value).toBe(url);
+        } finally {
+            vi.unstubAllGlobals();
+            controller.dispose();
+        }
+    });
+
+    it("retains the last successful FBX source after a URL failure", async () => {
+        const controller = new NodeAssetGraphController();
+        vi.mocked(PromptForFileAsync).mockResolvedValueOnce({
+            name: "valid.fbx",
+            arrayBuffer: async () => new Uint8Array([1, 2, 3]).buffer,
+        } as unknown as File);
+        try {
+            const importNode = AddPaletteNode(controller, "import-fbx");
+            FindPropertyInSection(controller, importNode, "READ FBX", FBXImportFileButtonLabel, "button").onClick();
+            await vi.waitFor(() => {
+                expect(FindPropertyInSection(controller, importNode, "READ FBX", "Active source", "text").value).toBe("valid.fbx");
+            });
+
+            vi.stubGlobal(
+                "fetch",
+                vi.fn(async () => ({
+                    ok: false,
+                    status: 404,
+                    statusText: "Not Found",
+                    arrayBuffer: async () => new ArrayBuffer(0),
+                })) as unknown as typeof fetch
+            );
+            FindPropertyInSection(controller, importNode, "READ FBX", "URL", "text").onChange("https://example.com/missing.fbx");
+
+            await vi.waitFor(() => {
+                expect(FindPropertyInSection(controller, importNode, "READ FBX", "Source error", "text").value).toContain("404 Not Found");
+            });
+            expect(FindPropertyInSection(controller, importNode, "READ FBX", "Active source", "text").value).toBe("valid.fbx");
+            expect(FindPropertyInSection(controller, importNode, "READ FBX", "URL", "text").value).toBe("");
+        } finally {
+            vi.unstubAllGlobals();
+            controller.dispose();
+        }
+    });
+
+    it("shows an active FBX upload read failure as a source error", async () => {
+        const controller = new NodeAssetGraphController();
+        vi.mocked(PromptForFileAsync).mockResolvedValueOnce({
+            name: "unreadable.fbx",
+            arrayBuffer: async () => {
+                throw new Error("Could not read unreadable.fbx");
+            },
+        } as unknown as File);
+        try {
+            const importNode = AddPaletteNode(controller, "import-fbx");
+            FindPropertyInSection(controller, importNode, "READ FBX", FBXImportFileButtonLabel, "button").onClick();
+
+            await vi.waitFor(() => {
+                expect(FindPropertyInSection(controller, importNode, "READ FBX", "Source error", "text").value).toBe("Could not read unreadable.fbx");
+            });
+            expect(FindPropertyInSection(controller, importNode, "READ FBX", "Active source", "text").value).toBe("No source loaded");
+        } finally {
+            controller.dispose();
+        }
+    });
+
+    it("clears an FBX URL source and ignores its pending completion", async () => {
+        const controller = new NodeAssetGraphController();
+        let resolveResponse: ((response: Response) => void) | undefined;
+        let resolveCompletionObserved: (() => void) | undefined;
+        const completionObserved = new Promise<void>((resolve) => {
+            resolveCompletionObserved = resolve;
+        });
+        const pendingResponse = new Promise<Response>((resolve) => {
+            resolveResponse = resolve;
+        });
+        const fetchMock = vi.fn(async () => await pendingResponse);
+        vi.stubGlobal("fetch", fetchMock);
+        try {
+            const importNode = AddPaletteNode(controller, "import-fbx");
+            FindPropertyInSection(controller, importNode, "READ FBX", "URL", "text").onChange("https://example.com/pending.fbx");
+            await vi.waitFor(() => {
+                expect(fetchMock).toHaveBeenCalledTimes(1);
+            });
+
+            FindPropertyInSection(controller, importNode, "READ FBX", "URL", "text").onChange("");
+            expect(FindPropertyInSection(controller, importNode, "READ FBX", "Active source", "text").value).toBe("No source loaded");
+
+            resolveResponse?.({
+                ok: true,
+                status: 200,
+                statusText: "OK",
+                arrayBuffer: async () => {
+                    resolveCompletionObserved?.();
+                    return new Uint8Array([4, 5, 6]).buffer;
+                },
+            } as Response);
+            await completionObserved;
+            await Promise.resolve();
+            await Promise.resolve();
+
+            expect(FindPropertyInSection(controller, importNode, "READ FBX", "Active source", "text").value).toBe("No source loaded");
+            expect(
+                controller
+                    .buildPropertySections(importNode)
+                    .flatMap((section) => section.properties)
+                    .find((property) => property.label === "Source error")
+            ).toBeUndefined();
+        } finally {
+            vi.unstubAllGlobals();
+            controller.dispose();
+        }
+    });
+
+    it("keeps the current FBX URL error when an older request later completes", async () => {
+        const controller = new NodeAssetGraphController();
+        let resolveStaleResponse: ((response: Response) => void) | undefined;
+        let resolveStaleCompletion: (() => void) | undefined;
+        const staleCompletion = new Promise<void>((resolve) => {
+            resolveStaleCompletion = resolve;
+        });
+        const staleResponse = new Promise<Response>((resolve) => {
+            resolveStaleResponse = resolve;
+        });
+        const fetchMock = vi
+            .fn()
+            .mockImplementationOnce(async () => await staleResponse)
+            .mockResolvedValueOnce({
+                ok: false,
+                status: 404,
+                statusText: "Not Found",
+                arrayBuffer: async () => new ArrayBuffer(0),
+            } as Response);
+        vi.stubGlobal("fetch", fetchMock);
+        try {
+            const importNode = AddPaletteNode(controller, "import-fbx");
+            FindPropertyInSection(controller, importNode, "READ FBX", "URL", "text").onChange("https://example.com/stale.fbx");
+            await vi.waitFor(() => {
+                expect(fetchMock).toHaveBeenCalledTimes(1);
+            });
+
+            FindPropertyInSection(controller, importNode, "READ FBX", "URL", "text").onChange("https://example.com/current-missing.fbx");
+            await vi.waitFor(() => {
+                expect(FindPropertyInSection(controller, importNode, "READ FBX", "Source error", "text").value).toContain("404 Not Found");
+            });
+
+            resolveStaleResponse?.({
+                ok: true,
+                status: 200,
+                statusText: "OK",
+                arrayBuffer: async () => {
+                    resolveStaleCompletion?.();
+                    return new Uint8Array([7, 8, 9]).buffer;
+                },
+            } as Response);
+            await staleCompletion;
+            await Promise.resolve();
+            await Promise.resolve();
+
+            expect(FindPropertyInSection(controller, importNode, "READ FBX", "Active source", "text").value).toBe("No source loaded");
+            expect(FindPropertyInSection(controller, importNode, "READ FBX", "Source error", "text").value).toContain("404 Not Found");
+        } finally {
+            vi.unstubAllGlobals();
+            controller.dispose();
+        }
+    });
+
+    it("does not apply a delayed FBX URL result after graph replacement", async () => {
+        const controller = new NodeAssetGraphController();
+        let resolveResponse: ((response: Response) => void) | undefined;
+        let resolveCompletionObserved: (() => void) | undefined;
+        const completionObserved = new Promise<void>((resolve) => {
+            resolveCompletionObserved = resolve;
+        });
+        const response = new Promise<Response>((resolve) => {
+            resolveResponse = resolve;
+        });
+        const fetchMock = vi.fn(async () => await response);
+        vi.stubGlobal("fetch", fetchMock);
+        try {
+            const importNode = AddPaletteNode(controller, "import-fbx");
+            controller.setAggregateExpanded(importNode.id, true);
+            const savedBuiltInGraph = controller.serialize();
+            const readNode = FindNode(controller, "Read FBX");
+            FindPropertyInSection(controller, readNode, "SOURCE", "URL", "text").onChange("https://example.com/delayed.fbx");
+            await vi.waitFor(() => {
+                expect(fetchMock).toHaveBeenCalledTimes(1);
+            });
+
+            controller.load(savedBuiltInGraph);
+            resolveResponse?.({
+                ok: true,
+                status: 200,
+                statusText: "OK",
+                arrayBuffer: async () => {
+                    resolveCompletionObserved?.();
+                    return new Uint8Array([1, 2, 3]).buffer;
+                },
+            } as Response);
+            await completionObserved;
+            await Promise.resolve();
+            await Promise.resolve();
+
+            const reloadedImport = FindNode(controller, "Import FBX");
+            expect(FindPropertyInSection(controller, reloadedImport, "READ FBX", "Active source", "text").value).toBe("No source loaded");
+            expect(
+                controller
+                    .buildPropertySections(reloadedImport)
+                    .flatMap((section) => section.properties)
+                    .find((property) => property.label === "Source error")
+            ).toBeUndefined();
+        } finally {
+            vi.unstubAllGlobals();
+            controller.dispose();
+        }
+    });
+
+    it("does not apply delayed FBX upload bytes after graph replacement", async () => {
+        const controller = new NodeAssetGraphController();
+        let resolveData: ((data: ArrayBuffer) => void) | undefined;
+        let resolveCompletionObserved: (() => void) | undefined;
+        const completionObserved = new Promise<void>((resolve) => {
+            resolveCompletionObserved = resolve;
+        });
+        vi.mocked(PromptForFileAsync).mockResolvedValueOnce({
+            name: "delayed.fbx",
+            arrayBuffer: async () =>
+                await new Promise<ArrayBuffer>((resolve) => {
+                    resolveData = resolve;
+                }).then((data) => {
+                    resolveCompletionObserved?.();
+                    return data;
+                }),
+        } as unknown as File);
+        try {
+            const importNode = AddPaletteNode(controller, "import-fbx");
+            controller.setAggregateExpanded(importNode.id, true);
+            const savedBuiltInGraph = controller.serialize();
+            const readNode = FindNode(controller, "Read FBX");
+            FindPropertyInSection(controller, readNode, "SOURCE", FBXImportFileButtonLabel, "button").onClick();
+            await vi.waitFor(() => {
+                expect(resolveData).toBeDefined();
+            });
+
+            controller.load(savedBuiltInGraph);
+            resolveData?.(new Uint8Array([4, 5, 6]).buffer);
+            await completionObserved;
+            await Promise.resolve();
+            await Promise.resolve();
+
+            const reloadedImport = FindNode(controller, "Import FBX");
+            expect(FindPropertyInSection(controller, reloadedImport, "READ FBX", "Active source", "text").value).toBe("No source loaded");
+            expect(
+                controller
+                    .buildPropertySections(reloadedImport)
+                    .flatMap((section) => section.properties)
+                    .find((property) => property.label === "Source error")
+            ).toBeUndefined();
+        } finally {
+            controller.dispose();
+        }
+    });
+
+    it("does not let delayed FBX upload bytes overwrite a newer successful URL", async () => {
+        const controller = new NodeAssetGraphController();
+        let resolveUpload: ((data: ArrayBuffer) => void) | undefined;
+        vi.mocked(PromptForFileAsync).mockResolvedValueOnce({
+            name: "stale.fbx",
+            arrayBuffer: async () =>
+                await new Promise<ArrayBuffer>((resolve) => {
+                    resolveUpload = resolve;
+                }),
+        } as unknown as File);
+        vi.stubGlobal(
+            "fetch",
+            vi.fn(async () => ({
+                ok: true,
+                status: 200,
+                statusText: "OK",
+                arrayBuffer: async () => new Uint8Array([7, 8, 9]).buffer,
+            })) as unknown as typeof fetch
+        );
+        try {
+            const importNode = AddPaletteNode(controller, "import-fbx");
+            FindPropertyInSection(controller, importNode, "READ FBX", FBXImportFileButtonLabel, "button").onClick();
+            await vi.waitFor(() => {
+                expect(resolveUpload).toBeDefined();
+            });
+
+            const currentUrl = "https://example.com/current.fbx";
+            FindPropertyInSection(controller, importNode, "READ FBX", "URL", "text").onChange(currentUrl);
+            await vi.waitFor(() => {
+                expect(FindPropertyInSection(controller, importNode, "READ FBX", "Active source", "text").value).toBe(currentUrl);
+            });
+
+            resolveUpload?.(new Uint8Array([1, 2, 3]).buffer);
+            await Promise.resolve();
+            await Promise.resolve();
+            expect(FindPropertyInSection(controller, importNode, "READ FBX", "Active source", "text").value).toBe(currentUrl);
+        } finally {
+            vi.unstubAllGlobals();
+            controller.dispose();
+        }
+    });
+
+    it("does not apply a delayed FBX URL while a newer upload is pending", async () => {
+        const controller = new NodeAssetGraphController();
+        let resolveResponse: ((response: Response) => void) | undefined;
+        let resolveUpload: ((data: ArrayBuffer) => void) | undefined;
+        let resolveUrlCompletion: (() => void) | undefined;
+        const pendingResponse = new Promise<Response>((resolve) => {
+            resolveResponse = resolve;
+        });
+        const urlCompletion = new Promise<void>((resolve) => {
+            resolveUrlCompletion = resolve;
+        });
+        vi.stubGlobal(
+            "fetch",
+            vi.fn(async () => await pendingResponse)
+        );
+        vi.mocked(PromptForFileAsync).mockResolvedValueOnce({
+            name: "current.fbx",
+            arrayBuffer: async () =>
+                await new Promise<ArrayBuffer>((resolve) => {
+                    resolveUpload = resolve;
+                }),
+        } as unknown as File);
+        try {
+            const importNode = AddPaletteNode(controller, "import-fbx");
+            FindPropertyInSection(controller, importNode, "READ FBX", "URL", "text").onChange("https://example.com/stale.fbx");
+
+            FindPropertyInSection(controller, importNode, "READ FBX", FBXImportFileButtonLabel, "button").onClick();
+            await vi.waitFor(() => {
+                expect(resolveUpload).toBeDefined();
+            });
+
+            resolveResponse?.({
+                ok: true,
+                status: 200,
+                statusText: "OK",
+                arrayBuffer: async () => {
+                    setTimeout(() => resolveUrlCompletion?.(), 0);
+                    return new Uint8Array([7, 8, 9]).buffer;
+                },
+            } as Response);
+            await urlCompletion;
+            expect(FindPropertyInSection(controller, importNode, "READ FBX", "Active source", "text").value).toBe("No source loaded");
+
+            resolveUpload?.(new Uint8Array([1, 2, 3]).buffer);
+            await vi.waitFor(() => {
+                expect(FindPropertyInSection(controller, importNode, "READ FBX", "Active source", "text").value).toBe("current.fbx");
+            });
+        } finally {
+            vi.unstubAllGlobals();
             controller.dispose();
         }
     });
@@ -1123,7 +1516,7 @@ describe("Import block source label", () => {
             await vi.waitFor(() => {
                 expect(fetchMock).toHaveBeenCalledTimes(1);
             });
-            const obsoleteBlock = setUrlSpy.mock.instances[0];
+            const obsoleteBlock = setUrlSpy.mock.instances[0] as ReadOBJBlock | undefined;
             const detachedGraph = JSON.parse(controller.serialize()) as { graph: { blocks: Array<{ name: string; customType: string }> } };
             expect(detachedGraph.graph.blocks.find((block) => block.name === "Import OBJ")?.customType).toBe("CustomAggregateBlock");
 
@@ -1263,7 +1656,7 @@ describe("Import block source label", () => {
             await vi.waitFor(() => {
                 expect(fetchMock).toHaveBeenCalledTimes(1);
             });
-            const obsoleteBlock = setUrlSpy.mock.instances[0];
+            const obsoleteBlock = setUrlSpy.mock.instances[0] as ReadBabylonBlock | undefined;
             const detachedGraph = JSON.parse(controller.serialize()) as { graph: { blocks: Array<{ name: string; customType: string }> } };
             expect(detachedGraph.graph.blocks.find((block) => block.name === "Import Babylon")?.customType).toBe("CustomAggregateBlock");
 
@@ -1316,7 +1709,7 @@ describe("Import block source label", () => {
             await vi.waitFor(() => {
                 expect(fetchMock).toHaveBeenCalledTimes(1);
             });
-            const obsoleteBlock = setSnippetSpy.mock.instances[0];
+            const obsoleteBlock = setSnippetSpy.mock.instances[0] as ReadNodeGeometryBlock | undefined;
             const detachedGraph = JSON.parse(controller.serialize()) as { graph: { blocks: Array<{ name: string; customType: string }> } };
             expect(detachedGraph.graph.blocks.find((block) => block.name === "Import Node Geometry")?.customType).toBe("CustomAggregateBlock");
 
@@ -1414,7 +1807,7 @@ describe("Import block source label", () => {
             expect(descriptor?.isPaletteVisible).toBe(false);
             expect(() => controller.createNodeFromPaletteItem("legacy-import-babylon", { x: 600, y: 600 })).toThrow("load-only");
 
-            const legacyImport = descriptor!.create(new NodeAsset());
+            const legacyImport = descriptor!.create(new NodeAsset("legacy-import"));
             const section = descriptor!.getPropertySection!(legacyImport, {
                 prepareEdit: (block) => block,
                 refresh: vi.fn(),

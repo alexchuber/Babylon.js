@@ -15,6 +15,8 @@ import { OBJToUniversalBlock } from "../../src/Blocks/objToUniversalBlock";
 import { ReadOBJBlock } from "../../src/Blocks/readOBJBlock";
 import { UniversalToGLTFBlock } from "../../src/Blocks/universalToGLTFBlock";
 import { WriteGLTFBlock } from "../../src/Blocks/writeGLTFBlock";
+import { NodeAssetBlock } from "../../src/blockFoundation/nodeAssetBlock";
+import { type NodeAssetConnectionPoint } from "../../src/connection/nodeAssetConnectionPoint";
 import { NodeAssetConnectionPointType } from "../../src/connection/nodeAssetConnectionPointType";
 import { NodeAsset } from "../../src/nodeAsset";
 import { IsOBJSourceAsset, OBJSourceAsset } from "../../src/representations/objSourceAsset";
@@ -51,6 +53,26 @@ class TestFileReader {
 }
 
 vi.stubGlobal("FileReader", TestFileReader);
+
+class CaptureOBJSourceBlock extends NodeAssetBlock {
+    public readonly input: NodeAssetConnectionPoint;
+    public readonly output: NodeAssetConnectionPoint;
+    public source: OBJSourceAsset | undefined;
+
+    public constructor(name: string, nodeAsset: NodeAsset) {
+        super(name, nodeAsset);
+        this.input = this._registerInput("input", NodeAssetConnectionPointType.OBJ_SOURCE);
+        this.output = this._registerOutput("output", NodeAssetConnectionPointType.OBJ_SOURCE);
+    }
+
+    public override async _buildBlockAsync(): Promise<void> {
+        if (!IsOBJSourceAsset(this.input.value)) {
+            throw new Error("The OBJ source capture block did not receive an OBJ source payload.");
+        }
+        this.source = this.input.value;
+        this.output.value = this.input.value;
+    }
+}
 
 const OBJFixture = new TextEncoder().encode(`# Synthetic NodeAssets OBJ fixture
 o FirstObject
@@ -412,6 +434,12 @@ describe("OBJ Universal funnel", () => {
         expect(parsedRead.companions).toEqual([]);
         expect(parsed.serialize()).toEqual(serialized);
 
+        const parsedToUniversal = parsed.attachedBlocks[1] as OBJToUniversalBlock;
+        const capture = new CaptureOBJSourceBlock("Capture OBJ source", parsed);
+        parsedRead.output.disconnect();
+        parsedRead.output.connectTo(capture.input);
+        capture.output.connectTo(parsedToUniversal.input);
+
         const fetcher = vi.fn(async () => ({
             ok: true,
             status: 200,
@@ -425,13 +453,13 @@ describe("OBJ Universal funnel", () => {
         const result = await parsed.buildAsync();
         expect(fetcher).toHaveBeenCalledExactlyOnceWith(source);
         expect(await GetAssetFactsAsync(result)).toMatchObject({ meshCount: 2, primitiveCount: 2 });
-        expect(IsOBJSourceAsset(parsedRead.output.value)).toBe(true);
-        if (!IsOBJSourceAsset(parsedRead.output.value)) {
+        expect(capture.source).toBeDefined();
+        if (!capture.source) {
             throw new Error("Expected the Read OBJ block to emit an OBJ source payload.");
         }
-        expect(parsedRead.output.value.source).toBe(source);
-        expect(parsedRead.output.value.sourceKind).toBe("url");
-        expect(parsedRead.output.value.companions).toEqual([]);
+        expect(capture.source.source).toBe(source);
+        expect(capture.source.sourceKind).toBe("url");
+        expect(capture.source.companions).toEqual([]);
         expect(parsed.serialize().blocks[0]).toMatchObject({
             primary: { path: source, bytes: expect.any(String) },
             source,

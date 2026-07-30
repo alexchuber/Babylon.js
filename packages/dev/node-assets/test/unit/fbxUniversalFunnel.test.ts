@@ -41,6 +41,26 @@ class CaptureUniversalManifestBlock extends NodeAssetBlock {
     }
 }
 
+class CaptureFBXSourceBlock extends NodeAssetBlock {
+    public readonly input: NodeAssetConnectionPoint;
+    public readonly output: NodeAssetConnectionPoint;
+    public source: FBXSource | undefined;
+
+    public constructor(name: string, nodeAsset: NodeAsset) {
+        super(name, nodeAsset);
+        this.input = this._registerInput("input", NodeAssetConnectionPointType.FBX_SOURCE);
+        this.output = this._registerOutput("output", NodeAssetConnectionPointType.FBX_SOURCE);
+    }
+
+    public override async _buildBlockAsync(): Promise<void> {
+        if (!IsFBXSource(this.input.value)) {
+            throw new Error("The FBX source capture block did not receive an FBX source payload.");
+        }
+        this.source = this.input.value;
+        this.output.value = this.input.value;
+    }
+}
+
 async function ReadStableMeshFactsAsync(glb: Uint8Array): Promise<{
     readonly meshCount: number;
     readonly nodeNames: readonly string[];
@@ -85,9 +105,11 @@ describe("FBX Universal funnel", () => {
         const bytes = CreateAsciiFbx74TriangleFixture();
         const asset = new NodeAsset("url-fbx-source");
         const read = new ReadFBXBlock("Read FBX", asset);
+        const capture = new CaptureFBXSourceBlock("Capture FBX source", asset);
         const toUniversal = new FBXToUniversalBlock("FBX \u2192 Universal", asset);
         const exporter = new ExportGLTFAggregateBlock("Export glTF", asset);
-        read.output.connectTo(toUniversal.input);
+        read.output.connectTo(capture.input);
+        capture.output.connectTo(toUniversal.input);
         toUniversal.output.connectTo(exporter.input);
 
         const fetcher = vi.fn(async (requestedUrl: string) => ({
@@ -104,11 +126,11 @@ describe("FBX Universal funnel", () => {
         expect(read.source).toBe(source);
         expect(read.sourceKind).toBe("url");
         expect(result.subarray(0, 4)).toEqual(new TextEncoder().encode("glTF"));
-        expect(IsFBXSource(read.output.value)).toBe(true);
-        if (!IsFBXSource(read.output.value)) {
+        expect(capture.source).toBeDefined();
+        if (!capture.source) {
             throw new Error("Expected the Read FBX block to emit an FBX source payload.");
         }
-        const payload: FBXSource = read.output.value;
+        const payload: FBXSource = capture.source;
         expect(payload.data).toEqual(bytes);
         expect(payload.source).toBe(source);
         expect(payload.rootUrl).toBe("https://cdn.example.com/scenes/");
@@ -198,8 +220,8 @@ describe("FBX Universal funnel", () => {
                 })
         );
 
-        let expectedData: Uint8Array | null = initial;
-        let expectedSource: string | null = "initial.fbx";
+        let expectedData: Uint8Array | null;
+        let expectedSource: string | null;
         let expectedSourceKind: "upload" | "url" | null = "upload";
         if (replacement === "upload") {
             expectedData = newerUrlBytes;
@@ -314,7 +336,7 @@ describe("FBX Universal funnel", () => {
     });
 
     it("accounts uploaded bytes and rejects a missing source before parsing", async () => {
-        await expect(CreateExportingAsset().buildAsync()).rejects.toThrow(/Upload a \.fbx file before building/);
+        await expect(CreateExportingAsset().buildAsync()).rejects.toThrow(/Choose a URL or upload a \.fbx file before building/);
 
         const source = CreateAsciiFbx74TriangleFixture();
         await expect(

@@ -1,13 +1,9 @@
-import { EncodeArrayBufferToBase64 } from "core/Misc/stringTools";
-
 import { DracoCompressionBlock } from "node-assets/Blocks/dracoCompressionBlock";
 import { KTX2CompressionBlock } from "node-assets/Blocks/ktx2CompressionBlock";
 import { type NodeAssetBlock } from "node-assets/blockFoundation/nodeAssetBlock";
 import { type NodeAsset } from "node-assets/nodeAsset";
-import { type IOBJSourceFile } from "node-assets/representations/objSourceAsset";
 
 import { type INodeAssetLibraryEntry } from "./nodeAssetLibrary";
-import { BuiltInLibraryFixtures } from "./builtInLibraryFixtures";
 
 type SerializedBlock = Record<string, unknown> & {
     readonly customType: string;
@@ -62,7 +58,7 @@ class BuiltInPipelineBuilder {
         return { id };
     }
 
-    public addImport(
+    public addUrlImport(
         customType: string,
         name: string,
         x: number,
@@ -71,9 +67,7 @@ class BuiltInPipelineBuilder {
         readName: string,
         transcoderCustomType: string,
         transcoderName: string,
-        data: Uint8Array | null,
-        source: string,
-        sourceKind: "url" | "upload"
+        source: string
     ): BlockReference {
         const readId = this._allocateId();
         const transcoderId = this._allocateId();
@@ -83,7 +77,7 @@ class BuiltInPipelineBuilder {
             x,
             y,
             [
-                { customType: readCustomType, id: readId, name: readName, data: data ? EncodeArrayBufferToBase64(data) : null, source, sourceKind },
+                { customType: readCustomType, id: readId, name: readName, data: null, source, sourceKind: "url" },
                 { customType: transcoderCustomType, id: transcoderId, name: transcoderName },
             ],
             [{ fromBlock: readId, fromPoint: "output", toBlock: transcoderId, toPoint: "input" }],
@@ -92,7 +86,7 @@ class BuiltInPipelineBuilder {
         );
     }
 
-    public addOBJImport(name: string, x: number, y: number, data: Uint8Array, source: string, companions: ReadonlyArray<IOBJSourceFile>): BlockReference {
+    public addOBJUrlImport(name: string, x: number, y: number, source: string): BlockReference {
         const readId = this._allocateId();
         const transcoderId = this._allocateId();
         return this._addAggregate(
@@ -105,10 +99,10 @@ class BuiltInPipelineBuilder {
                     customType: "ReadOBJBlock",
                     id: readId,
                     name: "Read OBJ",
-                    primary: { path: source, bytes: EncodeArrayBufferToBase64(data) },
+                    primary: null,
                     source,
-                    sourceKind: "upload",
-                    companions: companions.map((companion) => ({ path: companion.path, bytes: EncodeArrayBufferToBase64(companion.bytes) })),
+                    sourceKind: "url",
+                    companions: [],
                 },
                 { customType: "OBJToUniversalBlock", id: transcoderId, name: "OBJ to Universal" },
             ],
@@ -118,7 +112,7 @@ class BuiltInPipelineBuilder {
         );
     }
 
-    public addExport(x: number, y: number): BlockReference {
+    public addExport(x: number, y: number, fileName: string): BlockReference {
         const transcoderId = this._allocateId();
         const writeId = this._allocateId();
         return this._addAggregate(
@@ -128,7 +122,7 @@ class BuiltInPipelineBuilder {
             y,
             [
                 { customType: "UniversalToGLTFBlock", id: transcoderId, name: "Universal to glTF" },
-                { customType: "WriteGLTFBlock", id: writeId, name: "Write glTF", fileName: "scene" },
+                { customType: "WriteGLTFBlock", id: writeId, name: "Write glTF", fileName },
             ],
             [{ fromBlock: transcoderId, fromPoint: "output", toBlock: writeId, toPoint: "input" }],
             [{ publicName: "input", blockId: transcoderId, pointName: "input" }],
@@ -147,10 +141,10 @@ class BuiltInPipelineBuilder {
             x,
             y,
             [
-                { customType: "DeduplicateMaterialsBlock", id: materialsId, name: "Deduplicate Materials", keepUniqueNames: true },
-                { customType: "DeduplicateTexturesBlock", id: texturesId, name: "Deduplicate Textures", keepUniqueNames: true },
-                { customType: "ReuseIdenticalMeshesBlock", id: meshesId, name: "Reuse Identical Meshes", keepUniqueNames: true },
-                { customType: "DeduplicateDataBlock", id: dataId, name: "Deduplicate Data", keepUniqueNames: true },
+                { customType: "DeduplicateMaterialsBlock", id: materialsId, name: "Deduplicate Materials", keepUniqueNames: false },
+                { customType: "DeduplicateTexturesBlock", id: texturesId, name: "Deduplicate Textures", keepUniqueNames: false },
+                { customType: "ReuseIdenticalMeshesBlock", id: meshesId, name: "Reuse Identical Meshes", keepUniqueNames: false },
+                { customType: "DeduplicateDataBlock", id: dataId, name: "Deduplicate Data", keepUniqueNames: false },
             ],
             [
                 { fromBlock: materialsId, fromPoint: "output", toBlock: texturesId, toPoint: "input" },
@@ -207,176 +201,121 @@ class BuiltInPipelineBuilder {
     }
 }
 
-function CreateGltfImport(builder: BuiltInPipelineBuilder, name = "Import glTF", x = 40, y = 120, data = BuiltInLibraryFixtures.gltf): BlockReference {
-    return builder.addImport(
-        "ImportGLTFAggregateBlock",
-        name,
-        x,
-        y,
-        "ReadGLTFBlock",
-        "Read glTF",
-        "GLTFToUniversalBlock",
-        "glTF to Universal",
-        data,
-        "catalog-triangle.glb",
-        "upload"
-    );
+const SourceUrls = {
+    convert: "https://assets.babylonjs.com/meshes/fbx/dice_embedded.fbx",
+    normalize: "https://assets.babylonjs.com/meshes/Chair/Chair.obj",
+    cleanup: "https://assets.babylonjs.com/meshes/both_houses_scene.glb",
+    reduce: "https://assets.babylonjs.com/meshes/StandardShaderBall/StandardShaderBall.glb",
+    compress: "https://assets.babylonjs.com/meshes/aerobatic_plane.glb",
+    combineSnowman: "https://assets.babylonjs.com/meshes/Demos/Snow_Man_Scene/snowMan.glb",
+    combineRoom: "https://assets.babylonjs.com/meshes/CornellBox/cornellBox.glb",
+    combineModule: "https://assets.babylonjs.com/meshes/module_600.glb",
+    production: "https://assets.babylonjs.com/meshes/SurfaceTinting/surface_transmission.glb",
+} as const;
+
+const RemoveUnusedResourcesProperties = {
+    keptPropertyTypes: [],
+    keepLeafNodes: false,
+    keepAttributes: false,
+    keepSolidTextures: false,
+    keepExtras: false,
+} as const;
+
+const DefaultQuantizationProperties = {
+    positionBits: 14,
+    normalBits: 10,
+    textureCoordinateBits: 12,
+    colorBits: 8,
+    weightBits: 8,
+    genericBits: 12,
+    normalizeWeights: true,
+    attributePattern: ".*",
+    morphTargetPattern: ".*",
+    quantizationVolume: "mesh",
+    cleanup: true,
+} as const;
+
+function CreateGltfImport(builder: BuiltInPipelineBuilder, source: string, name = "Import glTF", x = 40, y = 120): BlockReference {
+    return builder.addUrlImport("ImportGLTFAggregateBlock", name, x, y, "ReadGLTFBlock", "Read glTF", "GLTFToUniversalBlock", "glTF to Universal", source);
 }
 
-function CreateUsdImport(builder: BuiltInPipelineBuilder, x = 40, y = 120): BlockReference {
-    return builder.addImport(
-        "ImportUSDAggregateBlock",
-        "Import USD",
-        x,
-        y,
-        "ReadUSDBlock",
-        "Read USD",
-        "USDToUniversalBlock",
-        "USD to Universal",
-        BuiltInLibraryFixtures.usd,
-        "catalog-triangle.usda",
-        "upload"
-    );
-}
-
-function CreateOBJImport(builder: BuiltInPipelineBuilder, x = 40, y = 120): BlockReference {
-    return builder.addOBJImport("Import OBJ", x, y, BuiltInLibraryFixtures.obj, "catalog-objects.obj", [
-        { path: "Materials/catalog.mtl", bytes: BuiltInLibraryFixtures.objMtl },
-        { path: "Textures/tiny.png", bytes: BuiltInLibraryFixtures.objTexture },
-    ]);
-}
-
-function CreateBabylonImport(builder: BuiltInPipelineBuilder, x = 40, y = 120): BlockReference {
-    return builder.addImport(
-        "ImportBabylonAggregateBlock",
-        "Import Babylon",
-        x,
-        y,
-        "ReadBabylonBlock",
-        "Read Babylon",
-        "BabylonToUniversalBlock",
-        "Babylon to Universal",
-        BuiltInLibraryFixtures.babylon,
-        "catalog-triangle.babylon",
-        "upload"
-    );
-}
-
-function CreateNodeGeometryImport(builder: BuiltInPipelineBuilder, x = 40, y = 120): BlockReference {
-    return builder.addImport(
-        "ImportNodeGeometryAggregateBlock",
-        "Import Node Geometry",
-        x,
-        y,
-        "ReadNodeGeometryBlock",
-        "Read Node Geometry",
-        "NodeGeometryToUniversalBlock",
-        "Node Geometry to Universal",
-        BuiltInLibraryFixtures.nodeGeometry,
-        "catalog-box.json",
-        "upload"
-    );
-}
-
-function CreateGltfOptimizationEntry(): INodeAssetLibraryEntry {
-    const builder = new BuiltInPipelineBuilder("glTF Optimization");
-    const source = builder.addImport(
-        "ImportGLTFAggregateBlock",
-        "Import glTF",
+function CreateConvertModelEntry(): INodeAssetLibraryEntry {
+    const builder = new BuiltInPipelineBuilder("Convert a Model");
+    const source = builder.addUrlImport(
+        "ImportFBXAggregateBlock",
+        "Import FBX",
         40,
         120,
-        "ReadGLTFBlock",
-        "Read glTF",
-        "GLTFToUniversalBlock",
-        "glTF to Universal",
-        null,
-        "https://assets.babylonjs.com/meshes/roundedCube.glb",
-        "url"
+        "ReadFBXBlock",
+        "Read FBX",
+        "FBXToUniversalBlock",
+        "FBX to Universal",
+        SourceUrls.convert
     );
-    const weld = builder.addBlock("WeldVerticesBlock", "Weld Vertices", 340, 120, { overwrite: true });
-    const prune = builder.addBlock("RemoveUnusedResourcesBlock", "Remove Unused Resources", 640, 120, {
-        keptPropertyTypes: [],
-        keepLeafNodes: false,
-        keepAttributes: false,
-        keepSolidTextures: false,
-        keepExtras: false,
-    });
-    const output = builder.addExport(960, 120);
-    builder.connect(source, weld);
-    builder.connect(weld, prune);
-    builder.connect(prune, output);
-    return builder.createEntry();
-}
-
-function CreateUsdOptimizationEntry(): INodeAssetLibraryEntry {
-    const builder = new BuiltInPipelineBuilder("USD to Optimized glTF");
-    const source = CreateUsdImport(builder);
-    const prune = builder.addBlock("RemoveUnusedResourcesBlock", "Remove Unused Resources", 360, 120, {
-        keptPropertyTypes: [],
-        keepLeafNodes: false,
-        keepAttributes: false,
-        keepSolidTextures: false,
-        keepExtras: false,
-    });
-    const output = builder.addExport(680, 120);
-    builder.connect(source, prune);
-    builder.connect(prune, output);
-    return builder.createEntry();
-}
-
-function CreateOBJOptimizationEntry(): INodeAssetLibraryEntry {
-    const builder = new BuiltInPipelineBuilder("OBJ to Optimized glTF");
-    const source = CreateOBJImport(builder);
-    const prune = builder.addBlock("RemoveUnusedResourcesBlock", "Remove Unused Resources", 360, 120, {
-        keptPropertyTypes: [],
-        keepLeafNodes: false,
-        keepAttributes: false,
-        keepSolidTextures: false,
-        keepExtras: false,
-    });
-    const output = builder.addExport(680, 120);
-    builder.connect(source, prune);
-    builder.connect(prune, output);
-    return builder.createEntry();
-}
-
-function CreateBabylonOptimizationEntry(): INodeAssetLibraryEntry {
-    const builder = new BuiltInPipelineBuilder("Babylon to Optimized glTF");
-    const source = CreateBabylonImport(builder);
-    const weld = builder.addBlock("WeldVerticesBlock", "Weld Vertices", 360, 120, { overwrite: true });
-    const output = builder.addExport(660, 120);
-    builder.connect(source, weld);
-    builder.connect(weld, output);
-    return builder.createEntry();
-}
-
-function CreateNodeGeometryEntry(): INodeAssetLibraryEntry {
-    const builder = new BuiltInPipelineBuilder("Node Geometry to glTF");
-    const source = CreateNodeGeometryImport(builder);
-    const output = builder.addExport(400, 120);
+    const output = builder.addExport(400, 120, "converted-model");
     builder.connect(source, output);
     return builder.createEntry();
 }
 
-function CreateMultiSourceEntry(): INodeAssetLibraryEntry {
-    const builder = new BuiltInPipelineBuilder("Multi-Source Universal Merge");
-    const gltf = CreateGltfImport(builder, "Import glTF", 40, 40);
-    const babylon = CreateBabylonImport(builder, 40, 260);
-    const merge = builder.addBlock("MergeScenesBlock", "Merge Scenes", 380, 140, { inputCount: 2 });
-    const output = builder.addExport(700, 140);
-    builder.connect(gltf, merge, "input0");
-    builder.connect(babylon, merge, "input1");
-    builder.connect(merge, output);
+function CreateNormalizeModelEntry(): INodeAssetLibraryEntry {
+    const builder = new BuiltInPipelineBuilder("Normalize a Model");
+    const source = builder.addOBJUrlImport("Import OBJ", 40, 120, SourceUrls.normalize);
+    const transform = builder.addBlock("TransformSceneBlock", "Transform Scene", 360, 120, {
+        units: "centimeters",
+        scale: [1, 1, 1],
+        rotation: [0, 0, 0],
+        upAxis: "Y",
+    });
+    const center = builder.addBlock("CenterSceneBlock", "Center Scene", 680, 120, {
+        pivot: "below",
+        customPoint: [0, 0, 0],
+    });
+    const output = builder.addExport(1000, 120, "normalized-model");
+    builder.connect(source, transform);
+    builder.connect(transform, center);
+    builder.connect(center, output);
     return builder.createEntry();
 }
 
-function CreateAdvancedCompressionEntry(): INodeAssetLibraryEntry {
-    const builder = new BuiltInPipelineBuilder("Advanced glTF Compression");
-    const source = CreateGltfImport(builder);
+function CreateCleanUpModelEntry(): INodeAssetLibraryEntry {
+    const builder = new BuiltInPipelineBuilder("Clean Up a Model");
+    const source = CreateGltfImport(builder, SourceUrls.cleanup);
+    const deduplicate = builder.addDeduplicateResources(360, 120);
+    const removeUnused = builder.addBlock("RemoveUnusedResourcesBlock", "Remove Unused Resources", 680, 120, RemoveUnusedResourcesProperties);
+    const output = builder.addExport(1000, 120, "clean-model");
+    builder.connect(source, deduplicate);
+    builder.connect(deduplicate, removeUnused);
+    builder.connect(removeUnused, output);
+    return builder.createEntry();
+}
+
+function CreateReduceModelEntry(): INodeAssetLibraryEntry {
+    const builder = new BuiltInPipelineBuilder("Reduce a Model");
+    const source = CreateGltfImport(builder, SourceUrls.reduce);
+    const simplify = builder.addBlock("SimplifyMeshesBlock", "Simplify Meshes", 360, 120, {
+        targetRatio: 0.5,
+        errorLimit: 0.01,
+        lockBorder: false,
+    });
+    const resize = builder.addBlock("ResizeTexturesBlock", "Resize Textures", 680, 120, {
+        maximumWidth: 1024,
+        maximumHeight: 1024,
+        resizeMode: "smooth",
+    });
+    const output = builder.addExport(1000, 120, "reduced-model");
+    builder.connect(source, simplify);
+    builder.connect(simplify, resize);
+    builder.connect(resize, output);
+    return builder.createEntry();
+}
+
+function CreateCompressModelEntry(): INodeAssetLibraryEntry {
+    const builder = new BuiltInPipelineBuilder("Compress a Model");
+    const source = CreateGltfImport(builder, SourceUrls.compress);
     const toGltf = builder.addBlock("UniversalToGLTFBlock", "Universal to glTF", 340, 120);
     const textures = builder.addBlock("KTX2CompressionBlock", "Compress Textures (KTX2)", 640, 120, DefaultKtx2CompressionProperties);
     const geometry = builder.addBlock("DracoCompressionBlock", "Compress Geometry (Draco)", 960, 120, DefaultDracoCompressionProperties);
-    const write = builder.addBlock("WriteGLTFBlock", "Write glTF", 1280, 120, { fileName: "scene" });
+    const write = builder.addBlock("WriteGLTFBlock", "Write glTF", 1280, 120, { fileName: "compressed-model" });
     builder.connect(source, toGltf);
     builder.connect(toGltf, textures);
     builder.connect(textures, geometry);
@@ -384,47 +323,112 @@ function CreateAdvancedCompressionEntry(): INodeAssetLibraryEntry {
     return builder.createEntry();
 }
 
-function CreateFullOptimizationEntry(): INodeAssetLibraryEntry {
-    const builder = new BuiltInPipelineBuilder("Full Universal Optimization");
-    const source = CreateGltfImport(builder, "Import glTF", 40, 120, BuiltInLibraryFixtures.unweldedGltf);
-    const tangents = builder.addBlock("GenerateTangentsBlock", "Generate Tangents", 320, 120);
-    const weld = builder.addBlock("WeldVerticesBlock", "Weld Vertices", 600, 120, { overwrite: true });
-    const deduplicate = builder.addDeduplicateResources(880, 120);
-    const winding = builder.addBlock("FixFaceWindingBlock", "Fix Face Winding", 1180, 120);
-    const quantize = builder.addBlock("QuantizeAttributesBlock", "Quantize Attributes", 1460, 120, {
-        positionBits: 14,
-        normalBits: 10,
-        textureCoordinateBits: 12,
-        colorBits: 8,
-        weightBits: 8,
-        genericBits: 12,
-        normalizeWeights: true,
-        attributePattern: ".*",
-        morphTargetPattern: ".*",
-        quantizationVolume: "mesh",
-        cleanup: true,
+function CreateCombineManyModelsEntry(): INodeAssetLibraryEntry {
+    const builder = new BuiltInPipelineBuilder("Combine Many Models");
+    const snowman = CreateGltfImport(builder, SourceUrls.combineSnowman, "Import Snowman", 40, 40);
+    const transformSnowman = builder.addBlock("TransformSceneBlock", "Transform Snowman", 340, 40, {
+        units: "meters",
+        scale: [0.8, 0.8, 0.8],
+        rotation: [0, 15, 0],
+        upAxis: "Y",
     });
-    const split = builder.addBlock("SplitMeshesByMaterialBlock", "Split Meshes by Material", 1760, 120);
-    const output = builder.addExport(2080, 120);
-    builder.connect(source, tangents);
-    builder.connect(tangents, weld);
-    builder.connect(weld, deduplicate);
-    builder.connect(deduplicate, winding);
-    builder.connect(winding, quantize);
-    builder.connect(quantize, split);
-    builder.connect(split, output);
+    const placeSnowman = builder.addBlock("CenterSceneBlock", "Place Snowman", 640, 40, {
+        pivot: "custom-point",
+        customPoint: [0.6, 0, 0],
+    });
+
+    const room = CreateGltfImport(builder, SourceUrls.combineRoom, "Import Cornell Box", 40, 240);
+    const transformRoom = builder.addBlock("TransformSceneBlock", "Transform Cornell Box", 340, 240, {
+        units: "meters",
+        scale: [1.1, 1.1, 1.1],
+        rotation: [0, -5, 0],
+        upAxis: "Y",
+    });
+
+    const module = CreateGltfImport(builder, SourceUrls.combineModule, "Import Module", 40, 440);
+    const transformModule = builder.addBlock("TransformSceneBlock", "Transform Module", 340, 440, {
+        units: "meters",
+        scale: [1.25, 1.25, 1.25],
+        rotation: [0, -25, 0],
+        upAxis: "Y",
+    });
+    const placeModule = builder.addBlock("CenterSceneBlock", "Place Module", 640, 440, {
+        pivot: "custom-point",
+        customPoint: [-0.9, 0, 0],
+    });
+
+    const merge = builder.addBlock("MergeScenesBlock", "Merge Scenes", 980, 220, { inputCount: 3 });
+    const output = builder.addExport(1300, 220, "combined-model");
+    builder.connect(snowman, transformSnowman);
+    builder.connect(transformSnowman, placeSnowman);
+    builder.connect(placeSnowman, merge, "input0");
+    builder.connect(room, transformRoom);
+    builder.connect(transformRoom, merge, "input1");
+    builder.connect(module, transformModule);
+    builder.connect(transformModule, placeModule);
+    builder.connect(placeModule, merge, "input2");
+    builder.connect(merge, output);
+    return builder.createEntry();
+}
+
+function CreateProductionReadyEntry(): INodeAssetLibraryEntry {
+    const builder = new BuiltInPipelineBuilder("Build a Production-Ready GLB");
+    const source = CreateGltfImport(builder, SourceUrls.production);
+    const transform = builder.addBlock("TransformSceneBlock", "Transform Scene", 320, 120, {
+        units: "meters",
+        scale: [1, 1, 1],
+        rotation: [0, 15, 0],
+        upAxis: "Y",
+    });
+    const center = builder.addBlock("CenterSceneBlock", "Center Scene", 600, 120, {
+        pivot: "center",
+        customPoint: [0, 0, 0],
+    });
+    const deduplicate = builder.addDeduplicateResources(880, 120);
+    const removeUnused = builder.addBlock("RemoveUnusedResourcesBlock", "Remove Unused Resources", 1160, 120, RemoveUnusedResourcesProperties);
+    const simplify = builder.addBlock("SimplifyMeshesBlock", "Simplify Meshes", 1440, 120, {
+        targetRatio: 0.75,
+        errorLimit: 0.01,
+        lockBorder: false,
+    });
+    const resize = builder.addBlock("ResizeTexturesBlock", "Resize Textures", 1720, 120, {
+        maximumWidth: 256,
+        maximumHeight: 256,
+        resizeMode: "smooth",
+    });
+    const stripTangents = builder.addBlock("StripAttributesBlock", "Strip Tangents", 2000, 120, {
+        selectedAttributeKinds: ["TANGENT"],
+    });
+    const generateTangents = builder.addBlock("GenerateTangentsBlock", "Generate Tangents", 2280, 120);
+    const quantize = builder.addBlock("QuantizeAttributesBlock", "Quantize Attributes", 2560, 120, DefaultQuantizationProperties);
+    const toGltf = builder.addBlock("UniversalToGLTFBlock", "Universal to glTF", 2840, 120);
+    const textures = builder.addBlock("KTX2CompressionBlock", "Compress Textures (KTX2)", 3120, 120, DefaultKtx2CompressionProperties);
+    const geometry = builder.addBlock("DracoCompressionBlock", "Compress Geometry (Draco)", 3400, 120, DefaultDracoCompressionProperties);
+    const write = builder.addBlock("WriteGLTFBlock", "Write glTF", 3680, 120, { fileName: "production-ready" });
+    builder.connect(source, transform);
+    builder.connect(transform, center);
+    builder.connect(center, deduplicate);
+    builder.connect(deduplicate, removeUnused);
+    builder.connect(removeUnused, simplify);
+    builder.connect(simplify, resize);
+    builder.connect(resize, stripTangents);
+    builder.connect(stripTangents, generateTangents);
+    builder.connect(generateTangents, quantize);
+    builder.connect(quantize, toGltf);
+    builder.connect(toGltf, textures);
+    builder.connect(textures, geometry);
+    builder.connect(geometry, write);
     return builder.createEntry();
 }
 
 const BuiltInNodeAssetLibraryEntries = Object.freeze([
-    CreateGltfOptimizationEntry(),
-    CreateOBJOptimizationEntry(),
-    CreateUsdOptimizationEntry(),
-    CreateBabylonOptimizationEntry(),
-    CreateNodeGeometryEntry(),
-    CreateMultiSourceEntry(),
-    CreateAdvancedCompressionEntry(),
-    CreateFullOptimizationEntry(),
+    CreateConvertModelEntry(),
+    CreateNormalizeModelEntry(),
+    CreateCleanUpModelEntry(),
+    CreateReduceModelEntry(),
+    CreateCompressModelEntry(),
+    CreateCombineManyModelsEntry(),
+    CreateProductionReadyEntry(),
 ]);
 
 /**
@@ -440,5 +444,9 @@ export function CreateBuiltInNodeAssetLibraryEntries(): readonly INodeAssetLibra
  * @returns The default built-in pipeline.
  */
 export function GetDefaultBuiltInNodeAssetLibraryEntry(): INodeAssetLibraryEntry {
-    return BuiltInNodeAssetLibraryEntries[0];
+    const defaultEntry = BuiltInNodeAssetLibraryEntries.find((entry) => entry.name === "Compress a Model");
+    if (!defaultEntry) {
+        throw new Error('The built-in pipeline catalog is missing "Compress a Model".');
+    }
+    return defaultEntry;
 }

@@ -14,7 +14,10 @@
 import { Observable } from "core/Misc/observable";
 
 import { ExportGLTFBlock } from "node-assets/Blocks/exportGLTFBlock";
+import { ReadFBXBlock } from "node-assets/Blocks/readFBXBlock";
 import { ReadGLTFBlock, type GLTFSourceFetcher } from "node-assets/Blocks/readGLTFBlock";
+import { ReadOBJBlock } from "node-assets/Blocks/readOBJBlock";
+import { ReadUSDBlock } from "node-assets/Blocks/readUSDBlock";
 import { NodeAsset } from "node-assets/nodeAsset";
 import { NodeAssetBuildError } from "node-assets/nodeAssetBuildError";
 import { AggregateBlock } from "node-assets/blockFoundation/aggregateBlock";
@@ -293,7 +296,7 @@ export class NodeAssetGraphController {
     private _nodeAsset: NodeAsset;
     private readonly _reconciler: NodeAssetReconciler;
     private readonly _buildClient: INodeAssetBuildClient;
-    private readonly _gltfSourceFetcher: GLTFSourceFetcher;
+    private readonly _sourceFetcher: GLTFSourceFetcher;
     private _buildRelevantSignature: string;
     private readonly _onChangedObserver;
     private readonly _aggregateRootByChildNodeId = new Map<string, string>();
@@ -313,12 +316,12 @@ export class NodeAssetGraphController {
     /**
      * Creates a controller seeded from the maintained default entry in the production pipeline catalog.
      * @param buildClient - Worker-backed build client.
-     * @param gltfSourceFetcher - Fetch-compatible glTF source loader.
+     * @param sourceFetcher - Fetch-compatible source loader used by URL-backed Read blocks.
      */
-    public constructor(buildClient: INodeAssetBuildClient = new NodeAssetBuildWorkerClient(), gltfSourceFetcher: GLTFSourceFetcher = async (url) => await fetch(url)) {
+    public constructor(buildClient: INodeAssetBuildClient = new NodeAssetBuildWorkerClient(), sourceFetcher: GLTFSourceFetcher = async (url) => await fetch(url)) {
         this._nodeAsset = new NodeAsset("nodeAsset");
         this._buildClient = buildClient;
-        this._gltfSourceFetcher = gltfSourceFetcher;
+        this._sourceFetcher = sourceFetcher;
         this._reconciler = new NodeAssetReconciler(this._nodeAsset);
         this.state = new GraphEditorState(
             { nodes: [], wires: [], frames: [] },
@@ -351,7 +354,7 @@ export class NodeAssetGraphController {
     public async loadDefaultImportAsync(): Promise<void> {
         const nodeAsset = this._nodeAsset;
         const graphRevision = this._graphRevision;
-        await this._hydrateGltfSourcesAsync(nodeAsset, graphRevision);
+        await this._hydrateSourcesAsync(nodeAsset, graphRevision);
         if (this._isActiveGraph(nodeAsset, graphRevision)) {
             this._buildRelevantSignature = this._createBuildRelevantSignature();
         }
@@ -612,7 +615,7 @@ export class NodeAssetGraphController {
         this._reconcileAndNotifyBuildRelevantChange();
         const nodeAsset = this._nodeAsset;
         const graphRevision = this._graphRevision;
-        await this._hydrateGltfSourcesAsync(nodeAsset, graphRevision);
+        await this._hydrateSourcesAsync(nodeAsset, graphRevision);
         if (!this._isActiveGraph(nodeAsset, graphRevision)) {
             throw new Error("The NodeAsset graph changed before its build could be serialized.");
         }
@@ -875,21 +878,64 @@ export class NodeAssetGraphController {
         this._buildClient.dispose();
     }
 
-    private async _hydrateGltfSourcesAsync(nodeAsset: NodeAsset, graphRevision: number, activeNodeAsset = nodeAsset): Promise<void> {
+    private async _hydrateSourcesAsync(nodeAsset: NodeAsset, graphRevision: number, activeNodeAsset = nodeAsset): Promise<void> {
+        if (!this._isActiveGraph(activeNodeAsset, graphRevision)) {
+            return;
+        }
+
         await Promise.all(
             nodeAsset.attachedBlocks.map(async (block) => {
-                if (block instanceof ReadGLTFBlock && block.sourceKind === "url" && block.source && !block.data) {
-                    await block.setUrlAsync(
-                        block.source,
-                        this._gltfSourceFetcher,
-                        () => this._isActiveGraph(activeNodeAsset, graphRevision) && this._ownsBlock(activeNodeAsset, block)
-                    );
+                if (!this._isActiveGraph(activeNodeAsset, graphRevision)) {
+                    return;
                 }
+
+                await this._hydrateSourceBlockAsync(block, graphRevision, activeNodeAsset);
                 if (block instanceof AggregateBlock) {
-                    await this._hydrateGltfSourcesAsync(block.subgraph, graphRevision, activeNodeAsset);
+                    await this._hydrateSourcesAsync(block.subgraph, graphRevision, activeNodeAsset);
                 }
             })
         );
+    }
+
+    private async _hydrateSourceBlockAsync(block: NodeAssetBlock, graphRevision: number, activeNodeAsset: NodeAsset): Promise<void> {
+        const canApplyResult = () => this._isActiveGraph(activeNodeAsset, graphRevision) && this._ownsBlock(activeNodeAsset, block);
+        try {
+            if (block instanceof ReadGLTFBlock) {
+                const url = block.source;
+                if (block.sourceKind === "url" && url && !block.data) {
+                    await block.setUrlAsync(url, this._sourceFetcher, canApplyResult);
+                }
+                return;
+            }
+
+            if (block instanceof ReadUSDBlock) {
+                const url = block.source;
+                if (block.sourceKind === "url" && url && !block.data) {
+                    await block.setUrlAsync(url, this._sourceFetcher, canApplyResult);
+                }
+                return;
+            }
+
+            if (block instanceof ReadOBJBlock) {
+                const url = block.source;
+                if (block.sourceKind === "url" && url && !block.primary) {
+                    await block.setUrlAsync(url, this._sourceFetcher, canApplyResult);
+                }
+                return;
+            }
+
+            if (block instanceof ReadFBXBlock) {
+                const url = block.source;
+                if (block.sourceKind === "url" && url && !block.data) {
+                    await block.setUrlAsync(url, this._sourceFetcher, canApplyResult);
+                }
+            }
+        } catch (error) {
+            if (!this._isActiveGraph(activeNodeAsset, graphRevision)) {
+                return;
+            }
+            throw error;
+        }
     }
 
     private _isActiveGraph(nodeAsset: NodeAsset, graphRevision: number): boolean {

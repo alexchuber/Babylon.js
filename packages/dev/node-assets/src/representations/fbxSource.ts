@@ -1,8 +1,8 @@
-/** Immutable uploaded `.fbx` source carried only from Read FBX to FBX to Universal. */
+/** Immutable resolved `.fbx` source carried only from Read FBX to FBX to Universal. */
 export class FBXSource {
     private readonly _data: Uint8Array;
 
-    /** The uploaded file name. */
+    /** The source URL or uploaded file name. */
     public readonly source: string;
 
     /** The URL base used to resolve external FBX resources. */
@@ -10,8 +10,8 @@ export class FBXSource {
 
     /**
      * Creates an immutable FBX source payload.
-     * @param data The uploaded `.fbx` bytes.
-     * @param source The uploaded file name.
+     * @param data The resolved `.fbx` bytes.
+     * @param source The source URL or uploaded file name.
      * @param rootUrl The URL base used to resolve external resources.
      */
     public constructor(data: Uint8Array, source: string, rootUrl = "") {
@@ -20,7 +20,7 @@ export class FBXSource {
         this.rootUrl = rootUrl;
     }
 
-    /** A defensive copy of the uploaded FBX bytes. */
+    /** A defensive copy of the resolved FBX bytes. */
     public get data(): Uint8Array {
         return this._data.slice();
     }
