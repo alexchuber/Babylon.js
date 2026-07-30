@@ -1,0 +1,21 @@
+#usda 1.0
+(
+    defaultPrim = "Forklift"
+    metersPerUnit = 1
+    upAxis = "Y"
+)
+
+# Forklift geometry in OBJ format.
+def Xform "Forklift"
+{
+    def Xform "Asset" (
+        kind = "reference"
+    )
+    {
+        custom asset assetInfo:source = @./Forklift/Forklift.obj@
+        double3 xformOp:translate = (0, 0, 0)
+        float3 xformOp:rotateXYZ = (0, 0, 0)
+        float3 xformOp:scale = (0.03, 0.03, 0.03)
+        uniform token[] xformOpOrder = ["xformOp:translate", "xformOp:rotateXYZ", "xformOp:scale"]
+    }
+}
