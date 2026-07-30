@@ -418,6 +418,9 @@ describe("USD RuntimeCorpus - Hospital Bed OBJ wrapper", () => {
         ] as const;
         for (const [semantic, texture, fileName] of textures) {
             expect(texture, semantic).toBeInstanceOf(Texture);
+            if (!(texture instanceof Texture)) {
+                throw new Error(`Expected ${semantic} texture to be a Texture instance.`);
+            }
             expect(texture!.name).toBe(`HospitalBed/textures/${fileName}`);
             expect(texture!.url).toBe(`HospitalBed/textures/${fileName}`);
             expect(texture!.isReady()).toBe(true);
@@ -435,7 +438,7 @@ describe("USD RuntimeCorpus - Hospital Bed OBJ wrapper", () => {
             expect(normals).toHaveLength(mesh.getTotalVertices() * 3);
             expect(normals!.every((value) => Number.isFinite(value))).toBe(true);
             mesh.computeWorldMatrix(true);
-            mesh.refreshBoundingInfo();
+            mesh.refreshBoundingInfo(false, false);
         }
 
         const bounds = renderableMeshes.reduce(
@@ -476,7 +479,7 @@ describe("USD RuntimeCorpus - Hospital Bed OBJ wrapper", () => {
         });
 
         try {
-            expect(requests).toEqual(expect.arrayContaining(expectedSidecarRequests));
+            expect(requests).toEqual(expect.arrayContaining([...expectedSidecarRequests]));
             expectSceneBaseline(scene, baseline);
             expect(container.meshes).toHaveLength(10);
             expect(container.transformNodes).toHaveLength(3);

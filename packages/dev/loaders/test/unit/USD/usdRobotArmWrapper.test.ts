@@ -7,6 +7,7 @@ import { NullEngine } from "core/Engines/nullEngine";
 import { Scene } from "core/scene";
 import { VertexBuffer } from "core/Buffers/buffer";
 import { StandardMaterial } from "core/Materials/standardMaterial";
+import { Texture } from "core/Materials/Textures/texture";
 import { type AssetContainer } from "core/assetContainer";
 import { type ISceneLoaderAsyncResult, ImportMeshAsync, LoadAssetContainerAsync } from "core/Loading/sceneLoader";
 import { Logger } from "core/Misc/logger";
@@ -150,8 +151,8 @@ describe("USD RuntimeCorpus - Robot Arm OBJ wrapper", () => {
         RegisterUSDFileLoader();
         RegisterOBJFileLoader();
 
-        vi.spyOn(Logger, "Log").mockImplementation((message: string) => {
-            logMessages.push(message);
+        vi.spyOn(Logger, "Log").mockImplementation((message) => {
+            logMessages.push(typeof message === "string" ? message : message.map(String).join(" "));
         });
         vi.spyOn(Logger, "Warn").mockImplementation(() => {});
         vi.spyOn(Logger, "Error").mockImplementation(() => {});
@@ -276,6 +277,9 @@ describe("USD RuntimeCorpus - Robot Arm OBJ wrapper", () => {
         expect(standardMaterial.getActiveTextures()).toHaveLength(1);
 
         const texture = standardMaterial.diffuseTexture!;
+        if (!(texture instanceof Texture)) {
+            throw new Error("Expected the Robot Arm diffuse texture to be a Texture instance.");
+        }
         expect(texture.name).toBe(expectedTextureName);
         expect(texture.url).toBe(expectedTextureName);
         expect(texture.isReady()).toBe(true);
@@ -295,7 +299,7 @@ describe("USD RuntimeCorpus - Robot Arm OBJ wrapper", () => {
 
         for (const mesh of geometryMeshes) {
             mesh.computeWorldMatrix(true);
-            mesh.refreshBoundingInfo();
+            mesh.refreshBoundingInfo(false, false);
             const bounds = mesh.getBoundingInfo().boundingBox;
             minX = Math.min(minX, bounds.minimumWorld.x);
             minY = Math.min(minY, bounds.minimumWorld.y);

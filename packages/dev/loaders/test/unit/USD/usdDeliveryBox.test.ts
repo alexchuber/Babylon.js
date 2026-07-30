@@ -145,7 +145,7 @@ describe("USD RuntimeCorpus - Delivery Box", () => {
             expect(meshWithGeometry!.getTotalIndices()).toBe(816);
 
             // Exact authored bounds from OBJ vertices (5.504698 × 3.133665 × 3.835611)
-            meshWithGeometry!.refreshBoundingInfo();
+            meshWithGeometry!.refreshBoundingInfo(false, false);
             const bounds = meshWithGeometry!.getBoundingInfo().boundingBox;
             const width = bounds.maximumWorld.x - bounds.minimumWorld.x;
             const height = bounds.maximumWorld.y - bounds.minimumWorld.y;

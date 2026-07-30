@@ -321,7 +321,7 @@ describe("USD RuntimeCorpus - Dialysis Machine", () => {
     it("has exact aggregate min/max world bounds after authored rotation and scale", () => {
         for (const mesh of sharedMeshesWithGeometry) {
             mesh.computeWorldMatrix(true);
-            mesh.refreshBoundingInfo();
+            mesh.refreshBoundingInfo(false, false);
         }
         let minX = Infinity,
             minY = Infinity,
