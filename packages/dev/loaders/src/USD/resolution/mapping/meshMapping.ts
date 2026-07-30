@@ -113,9 +113,8 @@ export function ResolveMesh(prim: ISdfPrimSpec, context: IStageMappingContext, i
         faceVertexResolvedIndices[corner.faceVertexOffset] = vertexIndex;
     }
 
-    const hasFaceVaryingData = normalSource?.interpolation === "faceVarying" || uvSources.some((source) => source.interpolation === "faceVarying");
-    const subdivisionScheme = ResolveSubdivisionScheme(prim, hasFaceVaryingData);
-    EmitSubdivisionDiagnostic(prim, subdivisionScheme, context);
+    const hasFaceVaryingNormals = normalSource?.interpolation === "faceVarying";
+    const subdivisionScheme = ResolveSubdivisionScheme(prim, hasFaceVaryingNormals, context);
 
     return {
         positions: BuildPositionBuffer(vertices, points),
@@ -790,18 +789,33 @@ function BuildSubsetRanges(faceIndices: number[], faceRanges: IFaceIndexRange[])
     return merged;
 }
 
-function ResolveSubdivisionScheme(prim: ISdfPrimSpec, hasFaceVaryingData: boolean): IResolvedMesh["subdivisionScheme"] {
+function ResolveSubdivisionScheme(prim: ISdfPrimSpec, hasFaceVaryingNormals: boolean, context: IStageMappingContext): IResolvedMesh["subdivisionScheme"] {
     const scheme = AsToken(GetAttributeValue(GetAttribute(prim, "subdivisionScheme")));
-    if (scheme === "none" || scheme === "loop" || scheme === "bilinear") {
-        return scheme;
-    }
-    // When subdivisionScheme is not explicitly authored, USD defaults to catmullClark. However,
-    // face-varying normals or UVs are meaningful only on a direct polygon mesh — a subdivision
-    // surface discards face-corner data during limit-surface evaluation. Treat an unset scheme with
-    // face-varying primvars as "none" so the authored per-face-corner data is preserved.
-    if (scheme === undefined && hasFaceVaryingData) {
+    if (scheme === "none") {
         return "none";
     }
+    if (scheme === "loop" || scheme === "bilinear") {
+        EmitSubdivisionDiagnostic(prim, scheme, context);
+        return scheme;
+    }
+    // USD defaults to catmullClark when subdivisionScheme is not authored. Face-varying UVs are
+    // valid on subdivision surfaces (interpolated per faceVaryingLinearInterpolation), so they do
+    // NOT indicate polygon-mesh intent. Face-varying normals, however, are polygon-only: a
+    // subdivision surface computes normals from the limit surface, so authored per-face-corner
+    // normals would be discarded. Recover as "none" only when the scheme is unset AND face-varying
+    // normals are explicitly authored, treating this as an ambiguous/invalid authoring pattern
+    // where the asset was intended as a polygon mesh but omitted subdivisionScheme = "none".
+    if (scheme === undefined && hasFaceVaryingNormals) {
+        context.diagnostics.push({
+            severity: "warning",
+            path: prim.path,
+            message:
+                "Mesh has no authored subdivisionScheme (USD defaults to catmullClark) but authors face-varying normals, " +
+                "which are only meaningful on polygon meshes. Recovered as subdivisionScheme 'none'.",
+        });
+        return "none";
+    }
+    EmitSubdivisionDiagnostic(prim, scheme, context);
     return "catmullClark";
 }
 
@@ -813,11 +827,7 @@ function ResolveSubdivisionScheme(prim: ISdfPrimSpec, hasFaceVaryingData: boolea
 const UnauthoredSubdivisionMessage =
     "Mesh has no authored subdivisionScheme; USD's default 'catmullClark' subdivision is applied as an approximation. Set subdivisionScheme to 'none' to import it as a polygon mesh.";
 
-function EmitSubdivisionDiagnostic(prim: ISdfPrimSpec, scheme: IResolvedMesh["subdivisionScheme"], context: IStageMappingContext): void {
-    if (scheme === "none") {
-        return;
-    }
-    const authored = AsToken(GetAttributeValue(GetAttribute(prim, "subdivisionScheme")));
+function EmitSubdivisionDiagnostic(prim: ISdfPrimSpec, authored: string | undefined, context: IStageMappingContext): void {
     if (authored === undefined) {
         // O(1) once-per-stage guard so a large poly stage that omits subdivisionScheme does not log the
         // same advisory per mesh.

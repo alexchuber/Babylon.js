@@ -4,6 +4,7 @@ import { NullEngine } from "core/Engines/nullEngine";
 import { Scene } from "core/scene";
 import { ImportMeshAsync } from "core/Loading/sceneLoader";
 import { VertexBuffer } from "core/Buffers/buffer";
+import { PBRMaterial } from "core/Materials/PBR/pbrMaterial";
 import "loaders/USD/usdFileLoader";
 
 import { ResolveUsdStageAsync } from "loaders/USD/resolution/usdResolver";
@@ -31,79 +32,37 @@ describe("USD runtime corpus - Hospital Bed", () => {
         engine.dispose();
     });
 
-    it("loads through module-level ImportMeshAsync and produces the expected hierarchy", async () => {
+    // -- Public API assertions through ImportMeshAsync --
+
+    it("loads through ImportMeshAsync with exactly one renderable mesh named Mesh", async () => {
         const result = await importHospitalBedAsync(scene);
 
-        // The defaultPrim is "Mesh" — a USD Mesh prim, so it appears as a renderable Babylon Mesh
-        const renderableMesh = result.meshes.find((m) => m.name === "Mesh");
-        expect(renderableMesh).toBeDefined();
-        expect(renderableMesh!.getTotalVertices()).toBeGreaterThan(0);
+        expect(result.meshes).toHaveLength(1);
+        expect(result.meshes[0].name).toBe("Mesh");
+        expect(result.meshes[0].getTotalVertices()).toBe(47_603);
+        expect(result.meshes[0].getTotalIndices()).toBe(252_948);
     });
 
-    it("resolves face-varying normals and UVs for the large polygon mesh", async () => {
-        const stage = await ResolveUsdStageAsync(readRuntimeCorpusText(HospitalBedAsset.fileName), "", HospitalBedAsset.fileName, {});
-        const mesh = stage.meshes[0];
-
-        expect(mesh).toBeDefined();
-
-        // 42,945 authored points, 42,158 quads (all faceVertexCounts = 4), 168,632 face-vertex indices
-        expect(mesh.positions.length / 3).toBeGreaterThan(40_000);
-        expect(mesh.indices.length / 3).toBeGreaterThan(80_000); // 42,158 quads → 84,316 triangles
-
-        // Face-varying normals must be present
-        expect(mesh.normals).toBeDefined();
-        expect(mesh.normals!.length).toBeGreaterThan(0);
-
-        // Face-varying UVs must be present
-        expect(mesh.uvSets).toBeDefined();
-        expect(mesh.uvSets!.length).toBeGreaterThan(0);
-        expect(mesh.uvSets![0].length).toBeGreaterThan(0);
-    });
-
-    it("produces a topology consistent with 42,158 all-quad faces", async () => {
-        const stage = await ResolveUsdStageAsync(readRuntimeCorpusText(HospitalBedAsset.fileName), "", HospitalBedAsset.fileName, {});
-        const mesh = stage.meshes[0];
-
-        // 42,158 quads triangulated to 84,316 triangles = 252,948 indices
-        // Due to face-varying vertex splitting, vertex count equals corner count (168,632)
-        expect(mesh.indices.length).toBe(252_948);
-    });
-
-    it("binds a PreviewSurface material with a resolved diffuse texture", async () => {
-        const stage = await ResolveUsdStageAsync(readRuntimeCorpusText(HospitalBedAsset.fileName), "", HospitalBedAsset.fileName, {});
-
-        expect(stage.materials.length).toBeGreaterThan(0);
-        const material = stage.materials[0];
-        expect(material.name).toBe("HospitalBed_mtl");
-        expect(material.roughness).toBe(0.5);
-        expect(material.metallic).toBe(0);
-
-        // Diffuse texture should reference the relative path
-        const diffuse = material.textures.baseColor;
-        expect(diffuse).toBeDefined();
-        expect(diffuse!.uri).toContain("HospitalBed_Diffuse.png");
-        expect(diffuse!.wrapU).toBe("repeat");
-        expect(diffuse!.wrapV).toBe("repeat");
-    });
-
-    it("applies the material binding to the mesh prim", async () => {
-        const stage = await ResolveUsdStageAsync(readRuntimeCorpusText(HospitalBedAsset.fileName), "", HospitalBedAsset.fileName, {});
-
-        // The Mesh prim should have a material binding
-        const meshPrim = stage.root.children[0];
-        expect(meshPrim).toBeDefined();
-        expect(meshPrim.materialBinding).toBeDefined();
-        expect(meshPrim.materialBinding!.materialIndex).toBe(0);
-    });
-
-    it("produces bounds covering the authored coordinate range", async () => {
+    it("produces exact vertex buffers with positions, normals, and UVs", async () => {
         const result = await importHospitalBedAsync(scene);
+        const mesh = result.meshes[0];
 
-        const renderableMesh = result.meshes.find((m) => m.getTotalVertices() > 0);
-        expect(renderableMesh).toBeDefined();
-
-        const positions = renderableMesh!.getVerticesData(VertexBuffer.PositionKind);
+        const positions = mesh.getVerticesData(VertexBuffer.PositionKind);
         expect(positions).toBeDefined();
+        expect(positions!.length).toBe(142_809); // 47,603 vertices × 3
+
+        const normals = mesh.getVerticesData(VertexBuffer.NormalKind);
+        expect(normals).toBeDefined();
+        expect(normals!.length).toBe(142_809); // 47,603 vertices × 3
+
+        const uvs = mesh.getVerticesData(VertexBuffer.UVKind);
+        expect(uvs).toBeDefined();
+        expect(uvs!.length).toBe(95_206); // 47,603 vertices × 2
+    });
+
+    it("produces deterministic bounds matching the authored coordinate range", async () => {
+        const result = await importHospitalBedAsync(scene);
+        const positions = result.meshes[0].getVerticesData(VertexBuffer.PositionKind)!;
 
         let minX = Infinity,
             maxX = -Infinity;
@@ -111,30 +70,102 @@ describe("USD runtime corpus - Hospital Bed", () => {
             maxY = -Infinity;
         let minZ = Infinity,
             maxZ = -Infinity;
-
-        for (let v = 0; v < positions!.length; v += 3) {
-            minX = Math.min(minX, positions![v]);
-            maxX = Math.max(maxX, positions![v]);
-            minY = Math.min(minY, positions![v + 1]);
-            maxY = Math.max(maxY, positions![v + 1]);
-            minZ = Math.min(minZ, positions![v + 2]);
-            maxZ = Math.max(maxZ, positions![v + 2]);
+        for (let v = 0; v < positions.length; v += 3) {
+            minX = Math.min(minX, positions[v]);
+            maxX = Math.max(maxX, positions[v]);
+            minY = Math.min(minY, positions[v + 1]);
+            maxY = Math.max(maxY, positions[v + 1]);
+            minZ = Math.min(minZ, positions[v + 2]);
+            maxZ = Math.max(maxZ, positions[v + 2]);
         }
 
-        // The authored points range roughly [-28, 28] x [0, 49] x [-24, 47]
-        // so the bounding box has non-trivial extents in all axes.
-        expect(maxX - minX).toBeGreaterThan(10);
-        expect(maxY - minY).toBeGreaterThan(10);
-        expect(maxZ - minZ).toBeGreaterThan(10);
+        // Authored point extents: X ≈ [-41.56, 41.56], Y ≈ [0, 62.12], Z ≈ [-95.53, 95.53].
+        // The adapter negates Z for right-handed conversion, so Babylon Z ≈ [-95.53, 95.53].
+        expect(minX).toBeCloseTo(-41.559, 1);
+        expect(maxX).toBeCloseTo(41.559, 1);
+        expect(minY).toBeCloseTo(0.0, 0);
+        expect(maxY).toBeCloseTo(62.12, 0);
+        expect(Math.abs(minZ)).toBeCloseTo(95.53, 0);
+        expect(Math.abs(maxZ)).toBeCloseTo(95.53, 0);
     });
 
-    it("treats the mesh as a direct polygon mesh (subdivisionScheme none)", async () => {
+    it("binds a PBRMaterial named HospitalBed_mtl with a relative diffuse texture", async () => {
+        const result = await importHospitalBedAsync(scene);
+        const mesh = result.meshes[0];
+
+        expect(mesh.material).toBeDefined();
+        expect(mesh.material).toBeInstanceOf(PBRMaterial);
+        const material = mesh.material as PBRMaterial;
+        expect(material.name).toBe("HospitalBed_mtl");
+        expect(material.metallic).toBe(0);
+        expect(material.roughness).toBe(0.5);
+
+        // The diffuse texture should be loaded from the relative path
+        expect(material.albedoTexture).toBeDefined();
+        expect(material.albedoTexture!.name).toContain("HospitalBed_Diffuse.png");
+    });
+
+    // -- Supplemental internal resolution assertions --
+
+    it("resolves 252,948 triangle indices from 42,158 all-quad faces", async () => {
         const stage = await ResolveUsdStageAsync(readRuntimeCorpusText(HospitalBedAsset.fileName), "", HospitalBedAsset.fileName, {});
         const mesh = stage.meshes[0];
 
-        // The Hospital Bed is a direct polygon mesh (no subdivision authored),
-        // but it has face-varying normals and UVs which prove it is authored as
-        // a renderable polygon mesh, not a subdivision control cage.
+        // 42,158 quads → 84,316 triangles → 252,948 indices
+        expect(mesh.indices.length).toBe(252_948);
+        expect(mesh.indices.length % 3).toBe(0);
+    });
+
+    it("resolves face-varying normals and one UV set on the resolved mesh", async () => {
+        const stage = await ResolveUsdStageAsync(readRuntimeCorpusText(HospitalBedAsset.fileName), "", HospitalBedAsset.fileName, {});
+        const mesh = stage.meshes[0];
+
+        expect(mesh.normals).toBeDefined();
+        expect(mesh.normals!.length).toBe(mesh.positions.length);
+
+        expect(mesh.uvSets).toBeDefined();
+        expect(mesh.uvSets).toHaveLength(1);
+        expect(mesh.uvSets![0].length).toBe((mesh.positions.length / 3) * 2);
+    });
+
+    it("resolves the PreviewSurface material with diffuse texture URI and wrap modes", async () => {
+        const stage = await ResolveUsdStageAsync(readRuntimeCorpusText(HospitalBedAsset.fileName), "", HospitalBedAsset.fileName, {});
+
+        expect(stage.materials).toHaveLength(1);
+        const material = stage.materials[0];
+        expect(material.name).toBe("HospitalBed_mtl");
+        expect(material.roughness).toBe(0.5);
+        expect(material.metallic).toBe(0);
+
+        const diffuse = material.textures.baseColor;
+        expect(diffuse).toBeDefined();
+        expect(diffuse!.uri).toContain("textures/HospitalBed_Diffuse.png");
+        expect(diffuse!.wrapU).toBe("repeat");
+        expect(diffuse!.wrapV).toBe("repeat");
+        expect(diffuse!.colorSpace).toBe("sRGB");
+    });
+
+    it("binds the material to the root mesh prim at index 0", async () => {
+        const stage = await ResolveUsdStageAsync(readRuntimeCorpusText(HospitalBedAsset.fileName), "", HospitalBedAsset.fileName, {});
+
+        const meshPrim = stage.root.children[0];
+        expect(meshPrim).toBeDefined();
+        expect(meshPrim.kind).toBe("mesh");
+        expect(meshPrim.materialBinding).toBeDefined();
+        expect(meshPrim.materialBinding!.materialIndex).toBe(0);
+    });
+
+    it("recovers as subdivisionScheme none via face-varying normals and emits a diagnostic", async () => {
+        const stage = await ResolveUsdStageAsync(readRuntimeCorpusText(HospitalBedAsset.fileName), "", HospitalBedAsset.fileName, {});
+        const mesh = stage.meshes[0];
+
+        // The Hospital Bed omits subdivisionScheme (USD defaults to catmullClark) but authors
+        // face-varying normals, which are only meaningful on polygon meshes. The loader
+        // recovers this ambiguous authoring as "none".
         expect(mesh.subdivisionScheme).toBe("none");
+
+        const recovery = stage.diagnostics.find((d) => /face-varying normals.*Recovered as.*none/i.test(d.message));
+        expect(recovery).toBeDefined();
+        expect(recovery!.severity).toBe("warning");
     });
 });
