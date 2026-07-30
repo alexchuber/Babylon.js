@@ -43,4 +43,26 @@ export const HospitalBedAsset: IRuntimeCorpusEntry = {
     metersPerUnit: 1,
 } as const;
 
-export const RuntimeCorpusManifest: readonly IRuntimeCorpusEntry[] = [PlaneAsset, BoxAsset, HospitalBedAsset] as const;
+export const RoomAsset: IRuntimeCorpusEntry = {
+    fileName: "Room.usda",
+    description: "Modular room shell with floor, four walls, and a centered door gap — all via implicit UsdGeomCube with display colors and 50% opacity",
+    sha256: "e8f466bbfede76a4e8ac6e78ddb663539a7539f0074e8746fb465faa90dbe163",
+    sizeBytes: 3_301,
+    sidecars: [],
+    defaultPrim: "Room",
+    upAxis: "Y",
+    metersPerUnit: 1,
+} as const;
+
+export const StairsAsset: IRuntimeCorpusEntry = {
+    fileName: "stairs.usda",
+    description: "Eight-step staircase with uniform step dimensions via implicit UsdGeomCube and display colors",
+    sha256: "64a1426fa181ce3342fffaffcfa8c3fe346a75ba73a07127773e3abbd4571fc7",
+    sizeBytes: 3_717,
+    sidecars: [],
+    defaultPrim: "Stairs",
+    upAxis: "Y",
+    metersPerUnit: 1,
+} as const;
+
+export const RuntimeCorpusManifest: readonly IRuntimeCorpusEntry[] = [PlaneAsset, BoxAsset, HospitalBedAsset, RoomAsset, StairsAsset] as const;

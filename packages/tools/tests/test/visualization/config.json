@@ -5517,6 +5517,20 @@
             "dependsOn": ["Loaders", "Materials", "Meshes", "Textures"]
         },
         {
+            "title": "USD loader - Room corpus",
+            "playgroundId": "#5GI1DI#0",
+            "referenceImage": "usd-loader-room-corpus.png",
+            "renderCount": 1,
+            "dependsOn": ["Loaders", "Meshes"]
+        },
+        {
+            "title": "USD loader - stairs corpus",
+            "playgroundId": "#9ZWIUB#0",
+            "referenceImage": "usd-loader-stairs-corpus.png",
+            "renderCount": 1,
+            "dependsOn": ["Loaders", "Meshes"]
+        },
+        {
             "title": "CSG2 Right-Handed glTF winding",
             "playgroundId": "#1HYT9N#0",
             "referenceImage": "csg2-righthanded-gltf-winding.png",

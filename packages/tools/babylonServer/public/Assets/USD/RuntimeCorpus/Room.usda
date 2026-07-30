@@ -1,0 +1,114 @@
+#usda 1.0
+(
+    defaultPrim = "Room"
+    metersPerUnit = 1
+    upAxis = "Y"
+)
+
+# Simple modular room shell:
+# - Footprint: 15 x 15
+# - Wall height: 6
+# - No ceiling
+# - Front wall has a centered door gap
+# - All parts use 50% opacity
+
+def Xform "Room"
+{
+    def Xform "Floor" (
+        kind = "box"
+    )
+    {
+        double3 xformOp:translate = (0, 0.05, 0)
+        float3 xformOp:rotateXYZ = (0, 0, 0)
+        float3 xformOp:scale = (15, 0.1, 15)
+        uniform token[] xformOpOrder = ["xformOp:translate", "xformOp:rotateXYZ", "xformOp:scale"]
+
+        def Cube "geom"
+        {
+            color3f[] primvars:displayColor = [(0.72, 0.74, 0.78)]
+            float[] primvars:displayOpacity = [0.5]
+        }
+    }
+
+    def Xform "BackWall" (
+        kind = "box"
+    )
+    {
+        double3 xformOp:translate = (0, 3, -7.5)
+        float3 xformOp:rotateXYZ = (0, 0, 0)
+        float3 xformOp:scale = (15, 6, 0.25)
+        uniform token[] xformOpOrder = ["xformOp:translate", "xformOp:rotateXYZ", "xformOp:scale"]
+
+        def Cube "geom"
+        {
+            color3f[] primvars:displayColor = [(0.75, 0.77, 0.81)]
+            float[] primvars:displayOpacity = [0.5]
+        }
+    }
+
+    def Xform "LeftWall" (
+        kind = "box"
+    )
+    {
+        double3 xformOp:translate = (-7.5, 3, 0)
+        float3 xformOp:rotateXYZ = (0, 0, 0)
+        float3 xformOp:scale = (0.25, 6, 15)
+        uniform token[] xformOpOrder = ["xformOp:translate", "xformOp:rotateXYZ", "xformOp:scale"]
+
+        def Cube "geom"
+        {
+            color3f[] primvars:displayColor = [(0.75, 0.77, 0.81)]
+            float[] primvars:displayOpacity = [0.5]
+        }
+    }
+
+    def Xform "RightWall" (
+        kind = "box"
+    )
+    {
+        double3 xformOp:translate = (7.5, 3, 0)
+        float3 xformOp:rotateXYZ = (0, 0, 0)
+        float3 xformOp:scale = (0.25, 6, 15)
+        uniform token[] xformOpOrder = ["xformOp:translate", "xformOp:rotateXYZ", "xformOp:scale"]
+
+        def Cube "geom"
+        {
+            color3f[] primvars:displayColor = [(0.75, 0.77, 0.81)]
+            float[] primvars:displayOpacity = [0.5]
+        }
+    }
+
+    # Front wall split into two segments so the center is an open door gap.
+    # Door gap width is 3 units.
+    def Xform "FrontWallLeft" (
+        kind = "box"
+    )
+    {
+        double3 xformOp:translate = (-4.5, 3, 7.5)
+        float3 xformOp:rotateXYZ = (0, 0, 0)
+        float3 xformOp:scale = (6, 6, 0.25)
+        uniform token[] xformOpOrder = ["xformOp:translate", "xformOp:rotateXYZ", "xformOp:scale"]
+
+        def Cube "geom"
+        {
+            color3f[] primvars:displayColor = [(0.75, 0.77, 0.81)]
+            float[] primvars:displayOpacity = [0.5]
+        }
+    }
+
+    def Xform "FrontWallRight" (
+        kind = "box"
+    )
+    {
+        double3 xformOp:translate = (4.5, 3, 7.5)
+        float3 xformOp:rotateXYZ = (0, 0, 0)
+        float3 xformOp:scale = (6, 6, 0.25)
+        uniform token[] xformOpOrder = ["xformOp:translate", "xformOp:rotateXYZ", "xformOp:scale"]
+
+        def Cube "geom"
+        {
+            color3f[] primvars:displayColor = [(0.75, 0.77, 0.81)]
+            float[] primvars:displayOpacity = [0.5]
+        }
+    }
+}
