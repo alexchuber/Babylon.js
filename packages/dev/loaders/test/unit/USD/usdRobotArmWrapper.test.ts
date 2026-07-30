@@ -20,7 +20,7 @@ import { RegisterOBJFileLoader } from "loaders/OBJ/objFileLoader.pure";
 import { RegisterUSDFileLoader } from "loaders/USD/usdFileLoader.pure";
 import { type IUsdExternalAssetRequest, type UsdExternalAssetResult } from "loaders/USD/usdExternalAssetHandler";
 
-import { readRuntimeCorpusBytes, readRuntimeCorpusText, RobotArmWrapperAsset } from "./runtimeCorpus";
+import { RobotArmWrapperAsset } from "./runtimeCorpus/manifest";
 
 const corpusRoot = fileURLToPath(new URL("../../../../../tools/babylonServer/public/Assets/USD/RuntimeCorpus/", import.meta.url));
 const expectedTextureName = "Robot_Arm_Color.png";
@@ -43,6 +43,10 @@ f 1/1/1 2/2/1 3/3/1`;
 
 function readCorpusFile(relativePath: string): string {
     return fs.readFileSync(path.join(corpusRoot, relativePath), "utf8");
+}
+
+function readCorpusBytes(relativePath: string): Buffer {
+    return fs.readFileSync(path.join(corpusRoot, relativePath));
 }
 
 function replaceAuthoredObjPath(usda: string, objPath: string): string {
@@ -131,7 +135,7 @@ describe("USD RuntimeCorpus - Robot Arm OBJ wrapper", () => {
                 assertCondition(textures.length === 1, "Active MTL did not produce exactly one color texture");
                 assertCondition(textures[0].name === expectedTextureName, `Expected color texture ${expectedTextureName}, got ${textures[0].name}`);
                 requestGraph.push(`Texture:${textures[0].name}`);
-                const textureBytes = (options.readTextureBytes ?? ((textureName) => readRuntimeCorpusBytes(`RobotArm/${textureName}`)))(textures[0].name);
+                const textureBytes = (options.readTextureBytes ?? ((textureName) => readCorpusBytes(`RobotArm/${textureName}`)))(textures[0].name);
                 validatePng(textureBytes, textures[0].name);
 
                 return { handled: true, container };
@@ -182,7 +186,7 @@ describe("USD RuntimeCorpus - Robot Arm OBJ wrapper", () => {
 
         engine = new NullEngine();
         scene = new Scene(engine);
-        result = await ImportMeshAsync("data:" + readRuntimeCorpusText(RobotArmWrapperAsset.fileName), scene, {
+        result = await ImportMeshAsync("data:" + readCorpusFile(RobotArmWrapperAsset.fileName), scene, {
             pluginExtension: ".usda",
             name: RobotArmWrapperAsset.fileName,
             pluginOptions: { usd: { externalAssetHandler: createRobotArmHandler() } },
@@ -203,13 +207,17 @@ describe("USD RuntimeCorpus - Robot Arm OBJ wrapper", () => {
     });
 
     it("creates the authored RobotArm -> Asset hierarchy and full identity transform", () => {
+        const stageRoot = result.transformNodes.find((node) => node.name === "__usd_root__");
         const rootNode = result.transformNodes.find((node) => node.name === "RobotArm");
         const assetNode = result.transformNodes.find((node) => node.name === "Asset");
+        expect(stageRoot).toBeDefined();
         expect(rootNode).toBeDefined();
         expect(assetNode).toBeDefined();
+        expect(stageRoot!.parent).toBeNull();
+        expect(rootNode!.parent).toBe(stageRoot);
         expect(assetNode!.parent).toBe(rootNode);
 
-        for (const node of [rootNode!, assetNode!]) {
+        for (const node of [stageRoot!, rootNode!, assetNode!]) {
             expect(node.position.x).toBeCloseTo(0, 6);
             expect(node.position.y).toBeCloseTo(0, 6);
             expect(node.position.z).toBeCloseTo(0, 6);
@@ -319,7 +327,7 @@ describe("USD RuntimeCorpus - Robot Arm OBJ wrapper", () => {
         expect(objData).not.toContain("industrial robot arm.mtl");
         expect(mtlData).toContain("map_Kd Robot_Arm_Color.png");
         expect(mtlData).not.toContain(".glb");
-        validatePng(readRuntimeCorpusBytes("RobotArm/Robot_Arm_Color.png"), expectedTextureName);
+        validatePng(readCorpusBytes("RobotArm/Robot_Arm_Color.png"), expectedTextureName);
     });
 
     it("keeps the USD stage in right-handed mode", () => {
@@ -337,7 +345,7 @@ describe("USD RuntimeCorpus - Robot Arm OBJ wrapper", () => {
         };
 
         try {
-            const container = await LoadAssetContainerAsync("data:" + readRuntimeCorpusText(RobotArmWrapperAsset.fileName), ownershipScene, {
+            const container = await LoadAssetContainerAsync("data:" + readCorpusFile(RobotArmWrapperAsset.fileName), ownershipScene, {
                 pluginExtension: ".usda",
                 name: RobotArmWrapperAsset.fileName,
                 pluginOptions: { usd: { externalAssetHandler: createRobotArmHandler({ objData: minimalObjData, expectedMeshCount: 1 }) } },
@@ -392,7 +400,7 @@ describe("USD RuntimeCorpus - Robot Arm OBJ wrapper", () => {
         const noHandlerScene = new Scene(noHandlerEngine);
 
         try {
-            const noHandlerResult = await ImportMeshAsync("data:" + readRuntimeCorpusText(RobotArmWrapperAsset.fileName), noHandlerScene, {
+            const noHandlerResult = await ImportMeshAsync("data:" + readCorpusFile(RobotArmWrapperAsset.fileName), noHandlerScene, {
                 pluginExtension: ".usda",
                 name: RobotArmWrapperAsset.fileName,
             });
@@ -411,7 +419,7 @@ describe("USD RuntimeCorpus - Robot Arm OBJ wrapper", () => {
         const missingScene = new Scene(missingEngine);
 
         try {
-            const syntheticUsda = replaceAuthoredObjPath(readRuntimeCorpusText(RobotArmWrapperAsset.fileName), "./RobotArm/Missing.obj");
+            const syntheticUsda = replaceAuthoredObjPath(readCorpusFile(RobotArmWrapperAsset.fileName), "./RobotArm/Missing.obj");
             await expect(
                 ImportMeshAsync("data:" + syntheticUsda, missingScene, {
                     pluginExtension: ".usda",
@@ -432,7 +440,7 @@ describe("USD RuntimeCorpus - Robot Arm OBJ wrapper", () => {
 
         try {
             await expect(
-                ImportMeshAsync("data:" + readRuntimeCorpusText(RobotArmWrapperAsset.fileName), malformedScene, {
+                ImportMeshAsync("data:" + readCorpusFile(RobotArmWrapperAsset.fileName), malformedScene, {
                     pluginExtension: ".usda",
                     name: RobotArmWrapperAsset.fileName,
                     pluginOptions: { usd: { externalAssetHandler: createRobotArmHandler({ objData: malformedObj }) } },
@@ -452,7 +460,7 @@ describe("USD RuntimeCorpus - Robot Arm OBJ wrapper", () => {
 
         try {
             await expect(
-                ImportMeshAsync("data:" + readRuntimeCorpusText(RobotArmWrapperAsset.fileName), missingScene, {
+                ImportMeshAsync("data:" + readCorpusFile(RobotArmWrapperAsset.fileName), missingScene, {
                     pluginExtension: ".usda",
                     name: RobotArmWrapperAsset.fileName,
                     pluginOptions: { usd: { externalAssetHandler: createRobotArmHandler({ objData: minimalObjData, expectedMeshCount: 1 }) } },
@@ -472,7 +480,7 @@ describe("USD RuntimeCorpus - Robot Arm OBJ wrapper", () => {
 
         try {
             await expect(
-                ImportMeshAsync("data:" + readRuntimeCorpusText(RobotArmWrapperAsset.fileName), malformedScene, {
+                ImportMeshAsync("data:" + readCorpusFile(RobotArmWrapperAsset.fileName), malformedScene, {
                     pluginExtension: ".usda",
                     name: RobotArmWrapperAsset.fileName,
                     pluginOptions: { usd: { externalAssetHandler: createRobotArmHandler({ objData: minimalObjData, expectedMeshCount: 1 }) } },
@@ -492,7 +500,7 @@ describe("USD RuntimeCorpus - Robot Arm OBJ wrapper", () => {
 
         try {
             await expect(
-                ImportMeshAsync("data:" + readRuntimeCorpusText(RobotArmWrapperAsset.fileName), missingScene, {
+                ImportMeshAsync("data:" + readCorpusFile(RobotArmWrapperAsset.fileName), missingScene, {
                     pluginExtension: ".usda",
                     name: RobotArmWrapperAsset.fileName,
                     pluginOptions: { usd: { externalAssetHandler: createRobotArmHandler({ objData: minimalObjData, expectedMeshCount: 1 }) } },
@@ -511,7 +519,7 @@ describe("USD RuntimeCorpus - Robot Arm OBJ wrapper", () => {
 
         try {
             await expect(
-                ImportMeshAsync("data:" + readRuntimeCorpusText(RobotArmWrapperAsset.fileName), malformedScene, {
+                ImportMeshAsync("data:" + readCorpusFile(RobotArmWrapperAsset.fileName), malformedScene, {
                     pluginExtension: ".usda",
                     name: RobotArmWrapperAsset.fileName,
                     pluginOptions: {
