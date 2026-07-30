@@ -314,7 +314,6 @@ function ApplyUnsupportedSchemaDiagnostics(primSpec: ISdfPrimSpec, context: ISta
 // curves, points, patches and volumes.
 const UnsupportedRenderableSchemas = [
     "Sphere",
-    "Cylinder",
     "Cone",
     "Capsule",
     "Plane",

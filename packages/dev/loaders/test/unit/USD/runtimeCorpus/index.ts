@@ -1,7 +1,7 @@
 import * as fs from "fs";
 import { fileURLToPath } from "url";
 
-export { RuntimeCorpusManifest, BoxAsset, HospitalBedAsset, PlaneAsset, RobotArmAsset, RoomAsset, StairsAsset, type IRuntimeCorpusEntry } from "./manifest";
+export { RuntimeCorpusManifest, BoxAsset, CylinderAsset, HospitalBedAsset, PlaneAsset, RobotArmAsset, RoomAsset, StairsAsset, type IRuntimeCorpusEntry } from "./manifest";
 
 const runtimeCorpusRoot = new URL(
     "../../../../../../../packages/tools/babylonServer/public/Assets/USD/RuntimeCorpus/",

@@ -96,7 +96,6 @@ describe("USD fidelity diagnostics", () => {
         "TetMesh",
         "Volume",
         "Sphere",
-        "Cylinder",
         "Cone",
         "Capsule",
         "PointInstancer",
