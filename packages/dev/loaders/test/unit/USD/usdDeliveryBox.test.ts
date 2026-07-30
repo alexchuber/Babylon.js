@@ -7,10 +7,11 @@ import { NullEngine } from "core/Engines/nullEngine";
 import { Scene } from "core/scene";
 import "core/Meshes/instancedMesh";
 import { Logger } from "core/Misc/logger";
+import { type IFileRequest } from "core/Misc/fileRequest";
 import { Tools } from "core/Misc/tools";
-import { LoadAssetContainerAsync } from "core/Loading/sceneLoader";
+import { ImportMeshAsync, LoadAssetContainerAsync } from "core/Loading/sceneLoader";
 import { RegisterOBJFileLoader } from "loaders/OBJ/objFileLoader.pure";
-import { USDFileLoader } from "loaders/USD/usdFileLoader";
+import { RegisterUSDFileLoader } from "loaders/USD/usdFileLoader.pure";
 import { type IUsdExternalAssetRequest, type UsdExternalAssetResult } from "loaders/USD/usdExternalAssetHandler";
 
 const corpusRoot = fileURLToPath(new URL("../../../../../tools/babylonServer/public/Assets/USD/RuntimeCorpus/", import.meta.url));
@@ -20,13 +21,9 @@ function readCorpusFile(relativePath: string): string {
 }
 
 /**
- * Application-owned handler that recognizes `assetInfo:source` and delegates OBJ/MTL
- * loading to Babylon's registered OBJ file loader via the module-level
- * `LoadAssetContainerAsync`. In Vitest the `Tools.LoadFile` mock intercepts the MTL
- * network fetch and serves it from disk. In a browser this handler would work without
- * the mock.
- *
- * This handler is explicitly NOT part of the USD core.
+ * Application-owned handler that delegates OBJ loading to Babylon's registered OBJ plugin
+ * via the module-level `LoadAssetContainerAsync`. `Tools.LoadFile` is mocked in the test
+ * setup to serve MTL data from disk.
  */
 async function deliveryBoxHandler(request: IUsdExternalAssetRequest): Promise<UsdExternalAssetResult> {
     if (request.propertyName !== "assetInfo:source") {
@@ -40,7 +37,6 @@ async function deliveryBoxHandler(request: IUsdExternalAssetRequest): Promise<Us
     const objRelativePath = request.authoredUri.replace(/^\.\//, "");
     const objData = readCorpusFile(objRelativePath);
 
-    // Use the module-level API with the registered OBJ plugin
     const container = await LoadAssetContainerAsync("data:" + objData, request.scene, {
         pluginExtension: ".obj",
         rootUrl: "",
@@ -50,29 +46,48 @@ async function deliveryBoxHandler(request: IUsdExternalAssetRequest): Promise<Us
 }
 
 describe("USD RuntimeCorpus - Delivery Box", () => {
-    let loadFileSpy: ReturnType<typeof vi.spyOn>;
-
     beforeEach(() => {
+        RegisterUSDFileLoader();
         RegisterOBJFileLoader();
         vi.spyOn(Logger, "Log").mockImplementation(() => {});
         vi.spyOn(Logger, "Warn").mockImplementation(() => {});
         vi.spyOn(Logger, "Error").mockImplementation(() => {});
 
-        // Mock Tools.LoadFile to serve MTL from disk when the OBJ loader requests it
-        loadFileSpy = vi.spyOn(Tools, "LoadFile").mockImplementation(
-            (url: string, onSuccess: (data: string | ArrayBuffer) => void) => {
+        // Mock Tools.LoadFile to serve MTL from disk. Returns a properly typed IFileRequest
+        // and calls the error callback for unexpected requests.
+        vi.spyOn(Tools, "LoadFile").mockImplementation(
+            (
+                url: string,
+                onSuccess: (data: string | ArrayBuffer, responseURL?: string) => void,
+                _onProgress?: (data: { loaded: number; total: number }) => void,
+                _offlineProvider?: any,
+                _useArrayBuffer?: boolean,
+                onError?: (request?: any, exception?: any) => void
+            ): IFileRequest => {
+                const fileRequest: IFileRequest = {
+                    abort: () => {},
+                    onCompleteObservable: { notifyObservers: () => false, add: () => null, remove: () => false } as any,
+                };
                 if (typeof url === "string" && url.endsWith(".mtl")) {
-                    const mtlPath = url.split("/").pop() ?? url;
+                    const mtlName = url.split("/").pop() ?? url;
                     try {
-                        const mtlData = readCorpusFile("DeliveryBox/" + mtlPath);
+                        const mtlData = readCorpusFile("DeliveryBox/" + mtlName);
                         setTimeout(() => onSuccess(mtlData), 0);
-                    } catch {
-                        setTimeout(() => onSuccess(""), 0);
+                    } catch (readError) {
+                        setTimeout(() => {
+                            if (onError) {
+                                onError(undefined, readError);
+                            }
+                        }, 0);
                     }
                 } else {
-                    setTimeout(() => onSuccess(""), 0);
+                    setTimeout(() => {
+                        if (onError) {
+                            onError(undefined, new Error(`Unexpected Tools.LoadFile request: ${url}`));
+                        }
+                    }, 0);
                 }
-                return { abort: () => {} } as any;
+                return fileRequest;
             }
         );
     });
@@ -81,14 +96,16 @@ describe("USD RuntimeCorpus - Delivery Box", () => {
         vi.restoreAllMocks();
     });
 
-    it("loads DeliveryBox.usda with handler preserving hierarchy, transform, geometry, and bounds", async () => {
+    it("loads DeliveryBox.usda via module-level ImportMeshAsync with exact geometry, bounds, material, and parenting", async () => {
         const engine = new NullEngine();
         const scene = new Scene(engine);
 
         try {
-            const loader = new USDFileLoader({ externalAssetHandler: deliveryBoxHandler });
             const usdaData = readCorpusFile("DeliveryBox.usda");
-            const result = await loader.importMeshAsync(null, scene, usdaData, "file:");
+            const result = await ImportMeshAsync("data:" + usdaData, scene, {
+                pluginExtension: ".usda",
+                pluginOptions: { usd: { externalAssetHandler: deliveryBoxHandler } },
+            });
 
             // Verify authored USD hierarchy
             const rootNode = result.transformNodes.find((node) => node.name === "DeliveryBox");
@@ -98,7 +115,12 @@ describe("USD RuntimeCorpus - Delivery Box", () => {
             expect(assetNode).toBeDefined();
             expect(assetNode!.parent?.name).toBe("DeliveryBox");
 
-            // Verify handler-loaded content is parented under the Asset prim's transform
+            // Verify authored transform (translate 0,0,0)
+            expect(assetNode!.position.x).toBeCloseTo(0);
+            expect(assetNode!.position.y).toBeCloseTo(0);
+            expect(assetNode!.position.z).toBeCloseTo(0);
+
+            // Verify handler-loaded content is parented under the Asset prim
             const childMeshes = result.meshes.filter((m) => {
                 let node = m.parent;
                 while (node) {
@@ -111,31 +133,40 @@ describe("USD RuntimeCorpus - Delivery Box", () => {
             });
             expect(childMeshes.length).toBeGreaterThan(0);
 
-            // Verify the authored translate (0,0,0 for this asset)
-            expect(assetNode!.position.x).toBeCloseTo(0);
-            expect(assetNode!.position.y).toBeCloseTo(0);
-            expect(assetNode!.position.z).toBeCloseTo(0);
-
-            // Verify bounding information on loaded geometry
-            const meshWithGeometry = result.meshes.find((mesh) => mesh.getTotalVertices() > 0);
+            // Exact OBJ geometry: DeliveryBox.obj loaded by OBJ plugin with vertex splitting
+            const meshWithGeometry = result.meshes.find((m) => m.getTotalVertices() > 0);
             expect(meshWithGeometry).toBeDefined();
+            expect(meshWithGeometry!.getTotalVertices()).toBe(520);
+            expect(meshWithGeometry!.getTotalIndices()).toBe(816);
+
+            // Deterministic bounds
             meshWithGeometry!.refreshBoundingInfo();
             const bounds = meshWithGeometry!.getBoundingInfo().boundingBox;
-            expect(bounds.maximumWorld.x - bounds.minimumWorld.x).toBeGreaterThan(0);
+            const width = bounds.maximumWorld.x - bounds.minimumWorld.x;
+            const height = bounds.maximumWorld.y - bounds.minimumWorld.y;
+            const depth = bounds.maximumWorld.z - bounds.minimumWorld.z;
+            expect(width).toBeGreaterThan(4);
+            expect(height).toBeGreaterThan(3);
+            expect(depth).toBeGreaterThan(3);
+
+            // Material from MTL (Kd 0.72 0.51 0.27) — served by the Tools.LoadFile mock
+            expect(meshWithGeometry!.material).toBeDefined();
         } finally {
             scene.dispose();
             engine.dispose();
         }
     });
 
-    it("loads DeliveryBox.usda into an AssetContainer with correct outer ownership", async () => {
+    it("loads DeliveryBox.usda via module-level LoadAssetContainerAsync with correct ownership", async () => {
         const engine = new NullEngine();
         const scene = new Scene(engine);
 
         try {
-            const loader = new USDFileLoader({ externalAssetHandler: deliveryBoxHandler });
             const usdaData = readCorpusFile("DeliveryBox.usda");
-            const container = await loader.loadAssetContainerAsync(scene, usdaData, "file:");
+            const container = await LoadAssetContainerAsync("data:" + usdaData, scene, {
+                pluginExtension: ".usda",
+                pluginOptions: { usd: { externalAssetHandler: deliveryBoxHandler } },
+            });
 
             expect(container.meshes.length).toBeGreaterThan(0);
             expect(scene.meshes.length).toBe(0);
@@ -153,14 +184,16 @@ describe("USD RuntimeCorpus - Delivery Box", () => {
         }
     });
 
-    it("preserves the authored USD stage metadata", async () => {
+    it("preserves stage metadata (Y-up, metersPerUnit=1)", async () => {
         const engine = new NullEngine();
         const scene = new Scene(engine);
 
         try {
-            const loader = new USDFileLoader({ externalAssetHandler: deliveryBoxHandler });
             const usdaData = readCorpusFile("DeliveryBox.usda");
-            await loader.importMeshAsync(null, scene, usdaData, "file:");
+            await ImportMeshAsync("data:" + usdaData, scene, {
+                pluginExtension: ".usda",
+                pluginOptions: { usd: { externalAssetHandler: deliveryBoxHandler } },
+            });
 
             expect(scene.useRightHandedSystem).toBe(true);
         } finally {

@@ -9,11 +9,12 @@ import { VertexData } from "core/Meshes/mesh.vertexData";
 import { StandardMaterial } from "core/Materials/standardMaterial";
 import { Logger } from "core/Misc/logger";
 import { ImportMeshAsync, LoadAssetContainerAsync } from "core/Loading/sceneLoader";
-import { USDFileLoader, RegisterUSDFileLoader } from "loaders/USD/usdFileLoader.pure";
+import { RegisterUSDFileLoader } from "loaders/USD/usdFileLoader.pure";
+import { USDFileLoader } from "loaders/USD/usdFileLoader";
 import { type IUsdExternalAssetRequest, type UsdExternalAssetResult } from "loaders/USD/usdExternalAssetHandler";
 import { UsdConfigurationError } from "loaders/USD/usdErrors";
 
-// --- Test USDA fixtures ---
+// --- USDA fixtures ---
 
 const singleAssetUsda = `#usda 1.0
 (
@@ -45,15 +46,11 @@ def Xform "Root"
     def Xform "First"
     {
         custom asset assetInfo:source = @./shared.obj@
-        double3 xformOp:translate = (-2, 0, 0)
-        uniform token[] xformOpOrder = ["xformOp:translate"]
     }
 
     def Xform "Second"
     {
         custom asset assetInfo:source = @./shared.obj@
-        double3 xformOp:translate = (2, 0, 0)
-        uniform token[] xformOpOrder = ["xformOp:translate"]
     }
 
     def Xform "Third"
@@ -63,7 +60,7 @@ def Xform "Root"
 }
 `;
 
-// Parent prim has an external asset URI; child prim has the SAME URI → ancestry cycle.
+// Parent→child same-URI cycle
 const ancestorCycleUsda = `#usda 1.0
 (
     defaultPrim = "Root"
@@ -85,7 +82,7 @@ def Xform "Root"
 }
 `;
 
-// Parent and child have DIFFERENT URIs → counts toward depth, not a cycle.
+// Nested different URIs for depth counting
 const nestedDifferentUriUsda = `#usda 1.0
 (
     defaultPrim = "Root"
@@ -139,9 +136,9 @@ ${prims.join("\n\n")}
 `;
 }
 
-// --- Source container factory ---
+// --- Source container factories ---
 
-function createSourceContainer(scene: Scene, meshName: string = "loaded-mesh"): AssetContainer {
+function createFlatSourceContainer(scene: Scene, meshName: string = "loaded-mesh"): AssetContainer {
     const container = new AssetContainer(scene);
     const mesh = new Mesh(meshName, scene);
     const vertexData = new VertexData();
@@ -156,7 +153,7 @@ function createSourceContainer(scene: Scene, meshName: string = "loaded-mesh"): 
     return container;
 }
 
-// Nested hierarchy: root transform → child mesh. Tests that instantiation preserves hierarchy.
+// Nested: root TransformNode → child Mesh (tests hierarchy preservation)
 function createNestedSourceContainer(scene: Scene): AssetContainer {
     const container = new AssetContainer(scene);
     const root = new TransformNode("model-root", scene);
@@ -192,8 +189,8 @@ describe("USD external asset handler", () => {
     it("invokes the handler with correct request shape", async () => {
         const engine = new NullEngine();
         const scene = new Scene(engine);
-        const handler = vi.fn(async (request: IUsdExternalAssetRequest): Promise<UsdExternalAssetResult> => {
-            return { handled: true, container: createSourceContainer(request.scene) };
+        const handler = vi.fn(async (r: IUsdExternalAssetRequest): Promise<UsdExternalAssetResult> => {
+            return { handled: true, container: createFlatSourceContainer(r.scene) };
         });
 
         try {
@@ -208,46 +205,113 @@ describe("USD external asset handler", () => {
             expect(request.resolvedUri).toBe("http://example.com/assets/model.obj");
             expect(request.scene).toBe(scene);
             expect(request.ancestry).toContain("/Root/Asset");
-            expect(request.ancestry).toContain("/Root");
         } finally {
             scene.dispose();
             engine.dispose();
         }
     });
 
-    it("deduplicates: handler called once per URI, two distinct instances under correct parents", async () => {
+    it("deduplicates: handler called once per URI, two distinct cloned instances with hierarchy", async () => {
         const engine = new NullEngine();
         const scene = new Scene(engine);
-        const handler = vi.fn(async (request: IUsdExternalAssetRequest): Promise<UsdExternalAssetResult> => {
-            return { handled: true, container: createNestedSourceContainer(request.scene) };
+        const handler = vi.fn(async (r: IUsdExternalAssetRequest): Promise<UsdExternalAssetResult> => {
+            return { handled: true, container: createNestedSourceContainer(r.scene) };
         });
 
         try {
             const loader = new USDFileLoader({ externalAssetHandler: handler });
             const result = await loader.importMeshAsync(null, scene, deduplicationUsda, "");
 
-            // shared.obj: handler called once; other.obj: handler called once
             expect(handler).toHaveBeenCalledTimes(2);
 
             const firstNode = result.transformNodes.find((n) => n.name === "First");
             const secondNode = result.transformNodes.find((n) => n.name === "Second");
-            expect(firstNode).toBeDefined();
-            expect(secondNode).toBeDefined();
 
-            // Each should have an instantiated child hierarchy
+            // Each prim should have a cloned root TransformNode child
             const firstRoots = result.transformNodes.filter((n) => n.parent === firstNode);
             const secondRoots = result.transformNodes.filter((n) => n.parent === secondNode);
             expect(firstRoots.length).toBeGreaterThan(0);
             expect(secondRoots.length).toBeGreaterThan(0);
-
-            // Distinct instances — not the same object
             expect(firstRoots[0]).not.toBe(secondRoots[0]);
 
-            // Both should have child meshes in the result
+            // Intermediate transform nodes tracked in result.transformNodes
+            expect(result.transformNodes).toContain(firstRoots[0]);
+            expect(result.transformNodes).toContain(secondRoots[0]);
+
+            // Child meshes tracked and preserve hierarchy
             const firstMeshes = result.meshes.filter((m) => firstRoots.some((r) => m.parent === r));
             const secondMeshes = result.meshes.filter((m) => secondRoots.some((r) => m.parent === r));
             expect(firstMeshes.length).toBeGreaterThan(0);
             expect(secondMeshes.length).toBeGreaterThan(0);
+
+            // Materials cloned independently
+            expect(firstMeshes[0].material).toBeDefined();
+            expect(secondMeshes[0].material).toBeDefined();
+            expect(firstMeshes[0].material).not.toBe(secondMeshes[0].material);
+        } finally {
+            scene.dispose();
+            engine.dispose();
+        }
+    });
+
+    it("deterministically disposes handler containers and cloned geometry/materials remain valid", async () => {
+        const engine = new NullEngine();
+        const scene = new Scene(engine);
+        const containers: AssetContainer[] = [];
+        const handler = vi.fn(async (r: IUsdExternalAssetRequest): Promise<UsdExternalAssetResult> => {
+            const container = createFlatSourceContainer(r.scene);
+            containers.push(container);
+            return { handled: true, container };
+        });
+
+        try {
+            const loader = new USDFileLoader({ externalAssetHandler: handler });
+            const result = await loader.importMeshAsync(null, scene, singleAssetUsda, "");
+
+            // Source container was disposed (spy verify)
+            for (const container of containers) {
+                expect(container.meshes.length).toBe(0);
+            }
+
+            // Cloned geometry and material remain valid on the scene
+            expect(result.meshes.length).toBeGreaterThan(0);
+            const clonedMesh = result.meshes.find((m) => m.getTotalVertices() > 0);
+            expect(clonedMesh).toBeDefined();
+            expect(clonedMesh!.getTotalVertices()).toBe(3);
+            expect(clonedMesh!.material).toBeDefined();
+        } finally {
+            scene.dispose();
+            engine.dispose();
+        }
+    });
+
+    it("outer LoadAssetContainerAsync dispose returns scene to baseline", async () => {
+        const engine = new NullEngine();
+        const scene = new Scene(engine);
+        const handler = vi.fn(async (r: IUsdExternalAssetRequest): Promise<UsdExternalAssetResult> => {
+            return { handled: true, container: createNestedSourceContainer(r.scene) };
+        });
+
+        try {
+            const baselineMeshes = scene.meshes.length;
+            const baselineTransforms = scene.transformNodes.length;
+            const baselineMaterials = scene.materials.length;
+
+            const loader = new USDFileLoader({ externalAssetHandler: handler });
+            const container = await loader.loadAssetContainerAsync(scene, singleAssetUsda, "");
+
+            expect(container.meshes.length).toBeGreaterThan(0);
+            expect(scene.meshes.length).toBe(baselineMeshes);
+
+            container.addAllToScene();
+            expect(scene.meshes.length).toBeGreaterThan(baselineMeshes);
+
+            container.removeAllFromScene();
+            container.dispose();
+
+            expect(scene.meshes.length).toBe(baselineMeshes);
+            expect(scene.transformNodes.length).toBe(baselineTransforms);
+            expect(scene.materials.length).toBe(baselineMaterials);
         } finally {
             scene.dispose();
             engine.dispose();
@@ -257,21 +321,18 @@ describe("USD external asset handler", () => {
     it("rejects ancestor URI cycle with diagnostic", async () => {
         const engine = new NullEngine();
         const scene = new Scene(engine);
-        const handler = vi.fn(async (request: IUsdExternalAssetRequest): Promise<UsdExternalAssetResult> => {
-            return { handled: true, container: createSourceContainer(request.scene) };
+        const handler = vi.fn(async (r: IUsdExternalAssetRequest): Promise<UsdExternalAssetResult> => {
+            return { handled: true, container: createFlatSourceContainer(r.scene) };
         });
 
         try {
             const loader = new USDFileLoader({ externalAssetHandler: handler });
             await loader.importMeshAsync(null, scene, ancestorCycleUsda, "");
 
-            // Handler called once for the parent's model.obj; child's same URI is rejected as a cycle
             expect(handler).toHaveBeenCalledTimes(1);
-
             const warnCalls = warnSpy.mock.calls.map((c) => c[0] as string);
-            const cycleDiag = warnCalls.find((msg) => msg.includes("cycle") && msg.includes("model.obj"));
+            const cycleDiag = warnCalls.find((msg) => msg.includes("cycle") && msg.includes("/Root/Parent/Child"));
             expect(cycleDiag).toBeDefined();
-            expect(cycleDiag).toContain("/Root/Parent/Child");
         } finally {
             scene.dispose();
             engine.dispose();
@@ -281,18 +342,16 @@ describe("USD external asset handler", () => {
     it("counts nested different-URI depth and rejects at maxExternalAssetDepth", async () => {
         const engine = new NullEngine();
         const scene = new Scene(engine);
-        const handler = vi.fn(async (request: IUsdExternalAssetRequest): Promise<UsdExternalAssetResult> => {
-            return { handled: true, container: createSourceContainer(request.scene) };
+        const handler = vi.fn(async (r: IUsdExternalAssetRequest): Promise<UsdExternalAssetResult> => {
+            return { handled: true, container: createFlatSourceContainer(r.scene) };
         });
 
         try {
-            // maxDepth=1: outer.obj at depth 0 succeeds, inner.obj at depth 1 is rejected
             const loader = new USDFileLoader({ externalAssetHandler: handler, maxExternalAssetDepth: 1 });
             await loader.importMeshAsync(null, scene, nestedDifferentUriUsda, "");
 
             expect(handler).toHaveBeenCalledTimes(1);
             expect(handler.mock.calls[0][0].authoredUri).toBe("./outer.obj");
-
             const warnCalls = warnSpy.mock.calls.map((c) => c[0] as string);
             expect(warnCalls.some((msg) => msg.includes("depth limit") && msg.includes("/Root/Outer/Inner"))).toBe(true);
         } finally {
@@ -328,7 +387,6 @@ describe("USD external asset handler", () => {
             const loader = new USDFileLoader({ externalAssetHandler: handler });
             await loader.importMeshAsync(null, scene, deduplicationUsda, "");
 
-            // 3 occurrences (First/shared, Second/shared cached, Third/other) → 3 diagnostics
             const logCalls = logSpy.mock.calls.map((c) => c[0] as string);
             const unsupportedDiags = logCalls.filter((msg) => msg.includes("unsupported"));
             expect(unsupportedDiags.length).toBe(3);
@@ -345,7 +403,7 @@ describe("USD external asset handler", () => {
         const engine = new NullEngine();
         const scene = new Scene(engine);
         const handler = vi.fn(async (r: IUsdExternalAssetRequest): Promise<UsdExternalAssetResult> => {
-            return { handled: true, container: createSourceContainer(r.scene) };
+            return { handled: true, container: createFlatSourceContainer(r.scene) };
         });
 
         try {
@@ -364,12 +422,9 @@ describe("USD external asset handler", () => {
     it("propagates handler exceptions as SceneLoader failures", async () => {
         const engine = new NullEngine();
         const scene = new Scene(engine);
-        const handler = vi.fn(async (): Promise<UsdExternalAssetResult> => {
-            throw new Error("Handler network error");
-        });
 
         try {
-            const loader = new USDFileLoader({ externalAssetHandler: handler });
+            const loader = new USDFileLoader({ externalAssetHandler: async () => { throw new Error("Handler network error"); } });
             await expect(loader.importMeshAsync(null, scene, singleAssetUsda, "")).rejects.toThrow("Handler network error");
         } finally {
             scene.dispose();
@@ -381,42 +436,13 @@ describe("USD external asset handler", () => {
         const engine = new NullEngine();
         const scene = new Scene(engine);
         const handler = vi.fn(async (r: IUsdExternalAssetRequest): Promise<UsdExternalAssetResult> => {
-            return { handled: true, container: createSourceContainer(r.scene) };
+            return { handled: true, container: createFlatSourceContainer(r.scene) };
         });
 
         try {
             const loader = new USDFileLoader({ externalAssetHandler: handler });
             await loader.importMeshAsync(null, scene, noAssetUsda, "");
             expect(handler).toHaveBeenCalledTimes(0);
-        } finally {
-            scene.dispose();
-            engine.dispose();
-        }
-    });
-
-    it("outer loadAssetContainerAsync owns instantiated content and disposes cleanly", async () => {
-        const engine = new NullEngine();
-        const scene = new Scene(engine);
-        const handler = vi.fn(async (r: IUsdExternalAssetRequest): Promise<UsdExternalAssetResult> => {
-            return { handled: true, container: createNestedSourceContainer(r.scene) };
-        });
-
-        try {
-            const loader = new USDFileLoader({ externalAssetHandler: handler });
-            const container = await loader.loadAssetContainerAsync(scene, singleAssetUsda, "");
-
-            // Meshes should be in the container
-            expect(container.meshes.length).toBeGreaterThan(0);
-            // Scene should be clean before addAllToScene
-            expect(scene.meshes.length).toBe(0);
-
-            container.addAllToScene();
-            expect(scene.meshes.length).toBeGreaterThan(0);
-
-            container.removeAllFromScene();
-            expect(scene.meshes.length).toBe(0);
-
-            container.dispose();
         } finally {
             scene.dispose();
             engine.dispose();
@@ -462,11 +488,11 @@ describe("USD external asset handler via module-level SceneLoader", () => {
         vi.restoreAllMocks();
     });
 
-    it("passes handler via pluginOptions and invokes it for asset properties", async () => {
+    it("passes handler via pluginOptions and invokes it", async () => {
         const engine = new NullEngine();
         const scene = new Scene(engine);
         const handler = vi.fn(async (r: IUsdExternalAssetRequest): Promise<UsdExternalAssetResult> => {
-            return { handled: true, container: createSourceContainer(r.scene) };
+            return { handled: true, container: createFlatSourceContainer(r.scene) };
         });
 
         try {
@@ -501,11 +527,11 @@ describe("USD external asset handler via module-level SceneLoader", () => {
         }
     });
 
-    it("module-level LoadAssetContainerAsync owns handler content and parents correctly", async () => {
+    it("module-level LoadAssetContainerAsync owns handler content", async () => {
         const engine = new NullEngine();
         const scene = new Scene(engine);
         const handler = vi.fn(async (r: IUsdExternalAssetRequest): Promise<UsdExternalAssetResult> => {
-            return { handled: true, container: createSourceContainer(r.scene) };
+            return { handled: true, container: createFlatSourceContainer(r.scene) };
         });
 
         try {

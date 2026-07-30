@@ -1,26 +1,25 @@
+import { AbstractMesh } from "core/Meshes/abstractMesh";
 import { type TransformNode } from "core/Meshes/transformNode.pure";
-import { type AbstractMesh } from "core/Meshes/abstractMesh";
 import { type AssetContainer } from "core/assetContainer";
+import { type Node } from "core/node";
 
 import { type IResolvedPrim } from "../resolution/resolvedStage";
 import { type USDLoadingOptions } from "../usdLoadingOptions";
-import { type IUsdExternalAssetRequest, type UsdExternalAssetResult } from "../usdExternalAssetHandler";
+import { type IUsdExternalAssetRequest } from "../usdExternalAssetHandler";
 import { ValidateResourceLimit } from "../usdErrors";
 import { type IUsdAdapterContext } from "./sceneGraphAdapter";
 
-/** Default limits for external asset handler invocations per load operation. */
 const DefaultMaxExternalAssetRequests = 64;
 const DefaultMaxExternalAssetDepth = 32;
 
 /**
  * Mutable state for the external asset handler within a single load operation.
- * Tracks canonical-URI deduplication and request counts.
  */
 export interface IExternalAssetState {
     /**
-     * Canonical URI → off-scene source container template. `null` means the handler reported
-     * unsupported. Every occurrence (including the first) is instantiated from the template via
-     * `instantiateModelsToScene`; the template itself never enters the scene.
+     * Canonical URI → off-scene source container template. `null` means unsupported.
+     * Every occurrence is cloned from the template via `instantiateModelsToScene` (default
+     * clone mode). Templates are deterministically disposed before the adapter returns.
      */
     readonly sourceCache: Map<string, AssetContainer | null>;
     /** Number of handler invocations issued so far. */
@@ -47,9 +46,11 @@ export function CreateExternalAssetState(options: Readonly<USDLoadingOptions>): 
 }
 
 /**
- * Disposes all off-scene source container templates after all external assets have been
- * instantiated. Each template was only used via `instantiateModelsToScene` (with material
- * cloning), so disposing it does not affect scene-owned clones.
+ * Deterministically disposes every off-scene source container template. Safe to call after
+ * all occurrences have been cloned: `instantiateModelsToScene` in clone mode
+ * (`doNotInstantiate: true`) produces full `Mesh.clone` copies with ref-counted shared
+ * geometry, so disposing the source mesh decrements the geometry ref count without
+ * invalidating the clones' buffers.
  * @param state the external asset state to clean up
  */
 export function DisposeSourceContainers(state: IExternalAssetState): void {
@@ -63,10 +64,8 @@ export function DisposeSourceContainers(state: IExternalAssetState): void {
 
 /**
  * Builds the bounded ancestry array for a resolved prim from its path segments.
- * The first element is the prim itself; subsequent elements are its ancestors up to
- * (but not including) the stage root `/`.
  * @param prim the prim to compute ancestry for
- * @returns ordered ancestor paths
+ * @returns ordered ancestor paths (prim first, then parent, grandparent, etc.)
  */
 export function BuildAncestry(prim: IResolvedPrim): readonly string[] {
     const ancestry: string[] = [prim.path];
@@ -78,12 +77,10 @@ export function BuildAncestry(prim: IResolvedPrim): readonly string[] {
 }
 
 /**
- * Processes all unhandled asset properties on a single prim, invoking the handler for each.
+ * Processes all unhandled asset properties on a single prim.
  *
- * URI ancestry cycle protection and depth limiting are driven by `ancestorUris`, which is
- * the set of canonical external-asset URIs from ancestor prims in the current prim-tree
- * recursion. This models external-asset request chains through the resolved prim hierarchy
- * rather than tracking async call depth.
+ * URI ancestry cycle protection and depth limiting are driven by `ancestorUris`: the set
+ * of canonical external-asset URIs from ancestor prims in the prim-tree recursion.
  *
  * @param prim the resolved prim with unhandled asset properties
  * @param node the Babylon transform node representing this prim
@@ -121,8 +118,7 @@ export async function ProcessExternalAssets(
 
         const canonicalUri = property.resolvedPath;
 
-        // Ancestry-based cycle protection: reject if this canonical URI appears in any
-        // ancestor prim's external asset properties (would indicate a recursive chain).
+        // Ancestry-based cycle protection
         if (ancestorUris.has(canonicalUri)) {
             context.diagnostics.push({
                 severity: "warning",
@@ -132,8 +128,7 @@ export async function ProcessExternalAssets(
             continue;
         }
 
-        // URI ancestry depth limit: the number of ancestor external-asset URIs is the
-        // chain depth. This is independent of prim namespace nesting.
+        // URI ancestry depth limit
         if (ancestorUris.size >= state.maxDepth) {
             context.diagnostics.push({
                 severity: "warning",
@@ -153,11 +148,11 @@ export async function ProcessExternalAssets(
             continue;
         }
 
-        // Canonical-URI deduplication: reuse a cached template without re-invoking the handler.
+        // Canonical-URI deduplication
         if (state.sourceCache.has(canonicalUri)) {
             const cachedContainer = state.sourceCache.get(canonicalUri);
             if (cachedContainer) {
-                InstantiateFromTemplate(cachedContainer, node, context);
+                CloneFromTemplate(cachedContainer, node, context);
             } else {
                 context.diagnostics.push({
                     severity: "info",
@@ -180,13 +175,12 @@ export async function ProcessExternalAssets(
 
         state.requestCount++;
 
-        // Handler exceptions propagate as normal SceneLoader failures
         // eslint-disable-next-line no-await-in-loop
         const result = await handler(request);
 
         if (result.handled) {
             state.sourceCache.set(canonicalUri, result.container);
-            InstantiateFromTemplate(result.container, node, context);
+            CloneFromTemplate(result.container, node, context);
         } else {
             state.sourceCache.set(canonicalUri, null);
             context.diagnostics.push({
@@ -199,9 +193,7 @@ export async function ProcessExternalAssets(
 }
 
 /**
- * Returns the set of ancestor URIs extended with any canonical URIs from this prim's own
- * unhandled asset properties. Used to thread URI ancestry through child prim processing
- * so that cycle detection and depth limiting work across the prim-tree recursion.
+ * Returns ancestor URIs extended with this prim's own external asset URIs.
  * @param prim the prim whose external asset URIs should be added
  * @param ancestorUris the current set of ancestor URIs
  * @returns a new set if this prim adds URIs, or the same set if it has none
@@ -218,36 +210,25 @@ export function ExtendAncestorUris(prim: IResolvedPrim, ancestorUris: ReadonlySe
 }
 
 /**
- * Creates a distinct instance from an off-scene source container template and parents its
- * root nodes under the given prim transform node.
+ * Clones a distinct model hierarchy from an off-scene source container template and parents
+ * its root nodes under the given prim transform node.
  *
- * Every occurrence (including the first) goes through `instantiateModelsToScene` with
- * material cloning enabled. The template stays off-scene and is disposed after all prims
- * have been processed.
+ * Uses `instantiateModelsToScene` in clone mode (the default `doNotInstantiate: true`)
+ * with material cloning. Clones share geometry via ref counting so the source template
+ * can be safely disposed after all cloning is complete.
+ *
+ * Tracks ALL instantiated nodes — root transforms, root meshes, descendant transforms,
+ * descendant meshes, skeletons, and animation groups — in the adapter context.
  * @param template the handler-returned source container (kept off-scene)
- * @param parentNode the Babylon transform node to parent instantiated roots under
+ * @param parentNode the Babylon transform node to parent cloned roots under
  * @param context the adapter context for ownership tracking
  */
-function InstantiateFromTemplate(template: AssetContainer, parentNode: TransformNode, context: IUsdAdapterContext): void {
-    const entries = template.instantiateModelsToScene(undefined, true, { doNotInstantiate: false });
+function CloneFromTemplate(template: AssetContainer, parentNode: TransformNode, context: IUsdAdapterContext): void {
+    const entries = template.instantiateModelsToScene(undefined, true);
 
     for (const rootNode of entries.rootNodes) {
         rootNode.parent = parentNode;
-        if (IsAbstractMesh(rootNode)) {
-            if (!context.meshes.includes(rootNode)) {
-                context.meshes.push(rootNode);
-            }
-        } else {
-            const tn = rootNode as TransformNode;
-            if (!context.transformNodes.includes(tn)) {
-                context.transformNodes.push(tn);
-            }
-        }
-        for (const child of rootNode.getChildMeshes(false)) {
-            if (!context.meshes.includes(child)) {
-                context.meshes.push(child);
-            }
-        }
+        CollectNodeAndDescendants(rootNode, context);
     }
     for (const skeleton of entries.skeletons) {
         if (!context.skeletons.includes(skeleton)) {
@@ -261,6 +242,24 @@ function InstantiateFromTemplate(template: AssetContainer, parentNode: Transform
     }
 }
 
-function IsAbstractMesh(node: import("core/node").Node): node is AbstractMesh {
-    return "geometry" in node;
+/**
+ * Collects a node and all its descendants into the adapter context's mesh and transform
+ * node arrays, ensuring every instantiated entity is tracked for outer container ownership.
+ * @param node the node to collect
+ * @param context the adapter context for ownership tracking
+ */
+function CollectNodeAndDescendants(node: Node, context: IUsdAdapterContext): void {
+    if (node instanceof AbstractMesh) {
+        if (!context.meshes.includes(node)) {
+            context.meshes.push(node);
+        }
+    } else {
+        const tn = node as TransformNode;
+        if (!context.transformNodes.includes(tn)) {
+            context.transformNodes.push(tn);
+        }
+    }
+    for (const child of node.getChildren()) {
+        CollectNodeAndDescendants(child, context);
+    }
 }

@@ -16,7 +16,7 @@ import { type USDLoadingOptions } from "../usdLoadingOptions";
 import { CreateStageRoot } from "./transformAdapter";
 import { AdaptPrim, type IUsdAdapterContext } from "./sceneGraphAdapter";
 import { BuildAnimationGroup } from "./animationAdapter";
-import { CreateExternalAssetState, ProcessExternalAssets, ExtendAncestorUris, type IExternalAssetState } from "./externalAssetAdapter";
+import { CreateExternalAssetState, ProcessExternalAssets, DisposeSourceContainers, ExtendAncestorUris, type IExternalAssetState } from "./externalAssetAdapter";
 
 /**
  * Adapts a fully-resolved {@link IResolvedStage} into Babylon objects, returning them as an
@@ -79,10 +79,13 @@ export async function AdaptResolvedStageToScene(
     // Process external asset properties if a handler is configured or if any exist (for diagnostics)
     const externalAssetState = CreateExternalAssetState(options);
     const emptyAncestorUris: ReadonlySet<string> = new Set();
-    await ProcessExternalAssetsForTree(stage.root, context, externalAssetState, stage, emptyAncestorUris);
-    // Source container templates are NOT disposed here: instantiateModelsToScene clones share
-    // the source geometry, so disposing the template would invalidate cloned mesh geometry.
-    // The scene will dispose everything on scene.dispose().
+    try {
+        await ProcessExternalAssetsForTree(stage.root, context, externalAssetState, stage, emptyAncestorUris);
+    } finally {
+        // Deterministically dispose all off-scene source templates. Clone-mode instantiation
+        // uses ref-counted shared geometry, so disposing the source is safe after cloning.
+        DisposeSourceContainers(externalAssetState);
+    }
 
     // Log adapter diagnostics (not stored on the frozen stage, logged directly)
     LogDiagnostics(adapterDiagnostics);
