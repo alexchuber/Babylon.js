@@ -4,6 +4,7 @@ export interface IRuntimeCorpusEntry {
     readonly sha256: string;
     readonly sizeBytes: number;
     readonly sidecars: readonly string[];
+    readonly unreferencedAlternatives?: readonly string[];
     readonly defaultPrim: string;
     readonly upAxis: "Y" | "Z";
     readonly metersPerUnit: number;
@@ -104,6 +105,25 @@ export const HospitalBedAsset: IRuntimeCorpusEntry = {
     metersPerUnit: 1,
 } as const;
 
+export const HospitalBedWrapperAsset: IRuntimeCorpusEntry = {
+    fileName: "HospitalBedWrapper.usda",
+    description:
+        "USDA wrapper that delegates the authored Hospital Bed OBJ, MTL, and diffuse/specular/normal texture sidecars through the application-owned external asset handler with authored 0.0254 scale",
+    sha256: "68355c920d910f7d41560bec10e228cfabf235f4a1909ad2e4d9cb3d34924a02",
+    sizeBytes: 791,
+    sidecars: [
+        "HospitalBed/Hospital_Bed.obj",
+        "HospitalBed/Hospital_Bed.mtl",
+        "HospitalBed/textures/HospitalBed_Diffuse.png",
+        "HospitalBed/textures/HospitalBed_Specular.png",
+        "HospitalBed/textures/HospitalBed_Normal.png",
+    ],
+    unreferencedAlternatives: ["HospitalBed/textures/HospitalBed_Glossiness.png"],
+    defaultPrim: "HospitalBed",
+    upAxis: "Y",
+    metersPerUnit: 1,
+} as const;
+
 export const RobotArmAsset: IRuntimeCorpusEntry = {
     fileName: "RobotArm2/RobotArm.usda",
     description: "Large multi-mesh Z-up centimeter-scale robot arm with MDL-only materials, authored face-varying normals, no UVs",
@@ -191,6 +211,7 @@ export const RuntimeCorpusManifest: readonly IRuntimeCorpusEntry[] = [
     ForkliftAsset,
     ShelvesAsset,
     HospitalBedAsset,
+    HospitalBedWrapperAsset,
     PlaceholderAsset,
     RobotArmAsset,
     RoomAsset,

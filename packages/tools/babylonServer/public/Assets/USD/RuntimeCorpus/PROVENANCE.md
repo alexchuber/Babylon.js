@@ -47,8 +47,13 @@ redactions have been applied — see the Modifications section).
 | `Forklift/textures/Mat01_Roughness.png` | Roughness texture sidecar for Forklift | `e47d5cc0a6e43c5b2d63226bf8f1697cb8395608dbed3db6eaa4db30a84a0763` | 11,012,023 | (sidecar of Forklift.mtl) |
 | `Plane.usda` | Single quad mesh on the XZ plane with constant authored normals | `8ff6aec006b18f5c0a37bc013ade382d87823d935a707ec62f574a641f09e974` | 583 | None |
 | `HospitalBed/Hospital_Bed.usda` | Large polygon mesh with face-varying normals/UVs, PreviewSurface material, and relative diffuse texture | `dd8afae46e2571f3801363e9dc3385ceb075a3122e6ba7f8f3ff66dd2da13e64` | 9,418,448 | `HospitalBed/textures/HospitalBed_Diffuse.png` |
-| `HospitalBed/textures/HospitalBed_Diffuse.png` | Diffuse texture sidecar for Hospital_Bed.usda | `2a765428504204e8c9bc2cc8dc5058996677e528f52c24ccbf21b3c841e353b3` | 2,319,219 | (sidecar of Hospital_Bed.usda) |
-| `RobotArm2/RobotArm.usda` | Large multi-mesh Z-up centimeter-scale robot arm with MDL-only materials, authored face-varying normals, no UVs (redacted derivative — see Modifications) | `63ea1085c87e394e70aecec81d866cc349c0b247617f6d41731ad76f5290f7e4` | 25,766,794 | None |
+| `HospitalBed/textures/HospitalBed_Diffuse.png` | Diffuse texture sidecar for Hospital_Bed.usda and Hospital_Bed.mtl | `2a765428504204e8c9bc2cc8dc5058996677e528f52c24ccbf21b3c841e353b3` | 2,319,219 | (sidecar of Hospital_Bed.usda and Hospital_Bed.mtl) |
+| `HospitalBedWrapper.usda` | USDA wrapper for the authored Hospital Bed OBJ sidecar with authored uniform scale `0.0254` | `68355c920d910f7d41560bec10e228cfabf235f4a1909ad2e4d9cb3d34924a02` | 791 | `HospitalBed/Hospital_Bed.obj` |
+| `HospitalBed/Hospital_Bed.obj` | Hospital Bed geometry sidecar; its `mtllib` statement resolves the MTL beside it | `86d69e91b25777a51f26b8098baf71af45383e29018bc409a444682e9221f3cf` | 5,695,903 | `HospitalBed/Hospital_Bed.mtl` |
+| `HospitalBed/Hospital_Bed.mtl` | Single-material MTL sidecar; references diffuse, specular, and normal maps | `8216690fbaabdc854957449e0802af140270f4be680ae402d74398f0ba9f05e1` | 503 | `HospitalBed/textures/HospitalBed_Diffuse.png`, `HospitalBed/textures/HospitalBed_Specular.png`, `HospitalBed/textures/HospitalBed_Normal.png` |
+| `HospitalBed/textures/HospitalBed_Specular.png` | Specular texture referenced by Hospital_Bed.mtl | `9c7f1a3badda2824b4c341c05a7de3b2a4aaed9e166378a9d6c33e72f6f16838` | 39,062 | (sidecar of Hospital_Bed.mtl) |
+| `HospitalBed/textures/HospitalBed_Normal.png` | Bump/normal texture referenced by Hospital_Bed.mtl | `6fa3af8f0c88ff8ef029ecb6cc5c27a1a3423d731a8a123e707f1cca91148040` | 1,812,528 | (sidecar of Hospital_Bed.mtl) |
+| `RobotArm2/RobotArm.usda` | Large multi-mesh Z-up centimeter-scale robot arm with MDL-only materials, authored face-varying normals, no UVs (redacted derivative — see Modifications) | `63ea1085c87e394e70aecec81d866cc349c0b2476176f41731ad76f5290f7e4` | 25,766,794 | None |
 | `Cylinder.usda` | Implicit UsdGeomCylinder with authored radius, height, and axis | `5a333b133ae1c90088594135de8336eed63e7a55c93a0eae170c5a9d5d6fa95e` | 284 | None |
 | `Room.usda` | Modular room shell via implicit UsdGeomCube (default size=2) with authored display colors and 50% opacity | `e8f466bbfede76a4e8ac6e78ddb663539a7539f0074e8746fb465faa90dbe163` | 3,301 | None |
 | `stairs.usda` | Eight-step staircase via implicit UsdGeomCube (default size=2) with authored display colors; actual step dimensions 2.4 × 0.36 × 0.5 | `64a1426fa181ce3342fffaffcfa8c3fe346a75ba73a07127773e3abbd4571fc7` | 3,717 | None |
@@ -73,6 +78,9 @@ glTF `asset.generator` field). No copyright or additional attribution is embedde
 
 `Forklift/Forklift.obj` and `Forklift/Forklift.mtl` retain their embedded
 Cinema 4D attribution headers.
+
+`HospitalBed/Hospital_Bed.obj` and `HospitalBed/Hospital_Bed.mtl` retain their embedded
+Wavefront exporter attribution header.
 
 ## Modifications
 
@@ -104,6 +112,16 @@ values. Authored USD semantics take precedence.
 
 All other files are unmodified from their provided-source form.
 
+The Hospital Bed wrapper and its five committed sidecars are unmodified byte-for-byte.
+The authored MTL references `HospitalBed_Diffuse.png`, `HospitalBed_Specular.png`, and
+`HospitalBed_Normal.png`; the available `HospitalBed_Glossiness.png` alternative is
+intentionally not copied and is not requested by the test handler. The wrapper graph
+contains no GLB or binary USD reference, and no such file is vendored.
+
+> **TODO — Hospital Bed licensing:** Verify redistribution permission and attribution
+> requirements for the wrapper, OBJ, MTL, and three referenced PNG sidecars before any
+> public release.
+
 ## Sidecars
 
 - `HospitalBed/textures/HospitalBed_Diffuse.png` is the diffuse texture referenced by
@@ -121,3 +139,7 @@ All other files are unmodified from their provided-source form.
   `textures/Mat01_Roughness.png` relative to the OBJ directory. The alternative
   `Forklift.glb` and binary `Forklift.usd` (USDC) from the source are NOT included
   in this corpus; this slice exercises the textual wrapper path only.
+- `HospitalBedWrapper.usda` references `./HospitalBed/Hospital_Bed.obj`.
+- `HospitalBed/Hospital_Bed.obj` references `Hospital_Bed.mtl`; that MTL references the
+  diffuse, specular, and normal PNG files listed above. `HospitalBed_Glossiness.png` is
+  an unreferenced alternative and is intentionally absent.

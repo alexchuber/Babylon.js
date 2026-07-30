@@ -11,6 +11,7 @@ export {
     ForkliftAsset,
     ShelvesAsset,
     HospitalBedAsset,
+    HospitalBedWrapperAsset,
     PlaceholderAsset,
     PlaneAsset,
     RobotArmAsset,
