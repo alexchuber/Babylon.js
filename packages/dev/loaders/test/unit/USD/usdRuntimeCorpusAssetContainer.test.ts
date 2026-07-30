@@ -1,12 +1,19 @@
 import { describe, expect, it } from "vitest";
+import * as fs from "fs";
+import { fileURLToPath } from "url";
 
 import { LoadAssetContainerAsync } from "core/Loading/sceneLoader";
 import { NullEngine } from "core/Engines/nullEngine";
 import { Scene } from "core/scene";
 import "loaders/USD/usdFileLoader";
 
-import { readRuntimeCorpusText } from "./runtimeCorpus";
 import { RuntimeCorpusManifest, type IRuntimeCorpusEntry } from "./runtimeCorpus/manifest";
+
+const runtimeCorpusRoot = new URL("../../../../../tools/babylonServer/public/Assets/USD/RuntimeCorpus/", import.meta.url);
+
+function readRuntimeCorpusText(fileName: string): string {
+    return fs.readFileSync(fileURLToPath(new URL(fileName, runtimeCorpusRoot)), "utf8");
+}
 
 const DIRECT_ASSET_FILE_NAMES = [
     "Plane.usda",
