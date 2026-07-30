@@ -63,7 +63,15 @@ export function ResolveMesh(prim: ISdfPrimSpec, context: IStageMappingContext, i
     const topology = TriangulateTopology(points, faceVertexCounts, faceVertexIndices, prim.path, context);
     const displayColorAttribute = GetAttribute(prim, "primvars:displayColor");
     const displayOpacityAttribute = GetAttribute(prim, "primvars:displayOpacity");
-    const normalSource = ValidatePrimvar(ResolveVec3Primvar(prim, "normals", pointCount, faceCount, cornerCount), prim.path, pointCount, faceCount, cornerCount, context);
+    // USD meshes author normals either as the schema attribute `normals` or as the primvar `primvars:normals`.
+    const normalSource = ValidatePrimvar(
+        ResolveVec3Primvar(prim, "normals", pointCount, faceCount, cornerCount) ?? ResolveVec3Primvar(prim, "primvars:normals", pointCount, faceCount, cornerCount),
+        prim.path,
+        pointCount,
+        faceCount,
+        cornerCount,
+        context
+    );
     const uvSources = ResolveUvSources(prim, pointCount, faceCount, cornerCount, inheritedPrimvars.uvSets).filter(
         (source) => ValidatePrimvar(source, prim.path, pointCount, faceCount, cornerCount, context) !== undefined
     );
