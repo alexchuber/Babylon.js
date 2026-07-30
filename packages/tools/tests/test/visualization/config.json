@@ -5560,7 +5560,7 @@
         },
         {
             "title": "USD loader - Sphere corpus",
-            "playgroundId": "#FOTTK5#0",
+            "playgroundId": "#YHOK44#0",
             "referenceImage": "usd-loader-sphere-corpus.png",
             "renderCount": 1,
             "dependsOn": ["Loaders", "Meshes"]

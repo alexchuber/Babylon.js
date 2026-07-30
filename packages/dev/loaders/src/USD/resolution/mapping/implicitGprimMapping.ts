@@ -169,9 +169,10 @@ function ResolveSphere(prim: ISdfPrimSpec, diagnostics: IResolvedDiagnostic[], i
 
 // Tessellates a UV sphere with no degenerate pole triangles:
 //   - Latitudinal rings from the south pole to the north pole.
-//   - Each pole has a single shared vertex with distinct per-triangle normals.
+//   - Each pole has a single shared vertex; pole cap triangles fan from it.
 //   - Polar caps use triangles (fans); body uses quads split into 2 triangles.
-//   - Seam closure: the last longitude column wraps to the first.
+//   - Seam closure: each body ring has lonSegments + 1 vertices where the
+//     last column (lonI = lonSegments) duplicates the first (lonI = 0).
 //
 // Segment counts: 32 longitudinal × 16 latitudinal (OpenUSD tessellation default).
 // Vertex layout: body = (latSegments - 1) × (lonSegments + 1), plus 2 pole vertices.
