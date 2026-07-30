@@ -5511,7 +5511,7 @@
         },
         {
             "title": "USD loader - Cylinder corpus",
-            "playgroundId": "#CV5PTU#0",
+            "playgroundId": "#ENMUU9#0",
             "referenceImage": "usd-loader-cylinder-corpus.png",
             "renderCount": 1,
             "dependsOn": ["Loaders", "Meshes"]

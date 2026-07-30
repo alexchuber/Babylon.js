@@ -96,7 +96,7 @@ function BuildBoxMesh(halfExtent: number, prim: ISdfPrimSpec, inheritedPrimvars:
     };
 }
 
-// USD default Cylinder has radius 1.0, height 2.0, axis "Y".
+// USD default Cylinder has radius 1.0, height 2.0, axis "Z" (per OpenUSD usdGeom/schema.usda).
 function ResolveCylinder(prim: ISdfPrimSpec, diagnostics: IResolvedDiagnostic[], inheritedPrimvars: IInheritedPrimvars): IResolvedMesh {
     const rawRadius = AsNumber(GetAttributeValue(GetAttribute(prim, "radius")));
     let radius = rawRadius ?? 1.0;
@@ -121,7 +121,7 @@ function ResolveCylinder(prim: ISdfPrimSpec, diagnostics: IResolvedDiagnostic[],
     }
 
     const rawAxis = AsToken(GetAttributeValue(GetAttribute(prim, "axis")));
-    let axis: "X" | "Y" | "Z" = "Y";
+    let axis: "X" | "Y" | "Z" = "Z";
     if (rawAxis !== undefined) {
         if (rawAxis === "X" || rawAxis === "Y" || rawAxis === "Z") {
             axis = rawAxis;
@@ -129,7 +129,7 @@ function ResolveCylinder(prim: ISdfPrimSpec, diagnostics: IResolvedDiagnostic[],
             diagnostics.push({
                 severity: "warning",
                 path: prim.path,
-                message: `Cylinder has invalid axis "${rawAxis}"; falling back to default axis "Y".`,
+                message: `Cylinder has invalid axis "${rawAxis}"; falling back to default axis "Z".`,
             });
         }
     }
@@ -149,16 +149,17 @@ function BuildCylinderMesh(radius: number, height: number, axis: "X" | "Y" | "Z"
 
     // Axis mapping: heightAxis is the cylinder's central axis,
     // radialA and radialB are the two perpendicular axes for the circular cross-section.
-    // Indices into [x, y, z] for position assembly.
+    // The assignment is chosen so that eA × eB = -eH (equivalently eB × eA = +eH),
+    // which makes the standard CCW fan winding produce outward normals for all axes.
     let heightIdx: number, radialAIdx: number, radialBIdx: number;
     if (axis === "X") {
         heightIdx = 0;
-        radialAIdx = 1;
-        radialBIdx = 2;
+        radialAIdx = 2;
+        radialBIdx = 1;
     } else if (axis === "Z") {
         heightIdx = 2;
-        radialAIdx = 0;
-        radialBIdx = 1;
+        radialAIdx = 1;
+        radialBIdx = 0;
     } else {
         heightIdx = 1;
         radialAIdx = 0;
