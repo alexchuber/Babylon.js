@@ -5510,6 +5510,13 @@
             "dependsOn": ["Loaders", "Materials", "Meshes", "Textures"]
         },
         {
+            "title": "USD loader - Robot Arm corpus",
+            "playgroundId": "#16FAVO#0",
+            "referenceImage": "usd-loader-robot-arm-corpus.png",
+            "renderCount": 1,
+            "dependsOn": ["Loaders", "Materials", "Meshes"]
+        },
+        {
             "title": "CSG2 Right-Handed glTF winding",
             "playgroundId": "#1HYT9N#0",
             "referenceImage": "csg2-righthanded-gltf-winding.png",

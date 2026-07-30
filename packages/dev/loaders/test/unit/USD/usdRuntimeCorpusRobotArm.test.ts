@@ -234,10 +234,9 @@ describe("USD runtime corpus - Robot Arm", () => {
     it("emits diagnostics for empty asset paths and absolute nonportable texture paths", async () => {
         const stage = await ResolveUsdStageAsync(readRuntimeCorpusText(RobotArmAsset.fileName), "", RobotArmAsset.fileName, {});
 
-        // The Aluminum_Polished material has:
-        // - an empty normalmap_texture path @@
-        // - an absolute Windows path for ORM_texture @C:/r/drewscenes/usds/...@
-        // These should produce stable diagnostics without suppressing geometry
+        // The Aluminum_Polished material has an empty normalmap texture path and an
+        // absolute nonportable Windows path for ORM_texture. These are within MDL shader
+        // nodes that have no PreviewSurface, so the material falls back to defaults.
         expect(stage.meshes).toHaveLength(7);
 
         // Verify diagnostics mention these issues (from the MDL shader processing path, the
