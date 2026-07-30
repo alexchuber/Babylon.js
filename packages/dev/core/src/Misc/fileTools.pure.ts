@@ -20,6 +20,8 @@ import { GetBlobBufferSource } from "../Buffers/bufferUtils";
 /* eslint-disable @typescript-eslint/no-unsafe-return */
 /* eslint-disable @typescript-eslint/naming-convention */
 
+const Base64DataUrlRegEx = /*#__PURE__*/ new RegExp(/^data:([^,]+\/[^,]+)?;base64,/i);
+
 /** @ignore */
 export class LoadFileError extends RuntimeError {
     public request?: WebRequest;
@@ -832,31 +834,28 @@ export const IsFileURL = (): boolean => {
  * @internal
  */
 export const IsBase64DataUrl = (uri: string): boolean => {
-    if (uri.slice(0, 5).toLowerCase() !== "data:") {
-        return false;
-    }
-
     const headerEnd = uri.indexOf(",");
-    if (headerEnd < 5) {
+    if (headerEnd === -1) {
         return false;
     }
 
-    const header = uri.slice(5, headerEnd);
-    if (!header.toLowerCase().endsWith(";base64")) {
-        return false;
-    }
-
-    const mediaType = header.slice(0, -7);
-    return mediaType.length === 0 || (mediaType.indexOf("/") > 0 && mediaType.indexOf("/") < mediaType.length - 1);
+    return Base64DataUrlRegEx.test(uri.slice(0, headerEnd + 1));
 };
 
 export const TestBase64DataUrl = (uri: string): { match: boolean; type: string } => {
-    if (!IsBase64DataUrl(uri)) {
+    const headerEnd = uri.indexOf(",");
+    if (headerEnd === -1) {
         return { match: false, type: "" };
-    } else {
-        const type = uri.slice(5, uri.indexOf(",") - 7);
-        return { match: true, type };
     }
+
+    const header = uri.slice(0, headerEnd + 1);
+    const results = Base64DataUrlRegEx.exec(header);
+    if (results === null || results.length === 0) {
+        return { match: false, type: "" };
+    }
+
+    const type = results[0].replace("data:", "").replace(";base64,", "");
+    return { match: true, type };
 };
 
 /**
