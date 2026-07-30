@@ -5524,6 +5524,20 @@
             "dependsOn": ["Loaders", "Materials", "Meshes"]
         },
         {
+            "title": "USD loader - Placeholder corpus",
+            "playgroundId": "#01JZK1#0",
+            "referenceImage": "usd-loader-placeholder-corpus.png",
+            "renderCount": 1,
+            "dependsOn": ["Loaders"]
+        },
+        {
+            "title": "USD loader - Seahorse text placeholder corpus",
+            "playgroundId": "#RVOMSM#0",
+            "referenceImage": "usd-loader-seahorse-text-corpus.png",
+            "renderCount": 1,
+            "dependsOn": ["Loaders"]
+        },
+        {
             "title": "CSG2 Right-Handed glTF winding",
             "playgroundId": "#1HYT9N#0",
             "referenceImage": "csg2-righthanded-gltf-winding.png",

@@ -1,0 +1,12 @@
+#usda 1.0
+(
+    defaultPrim = "Placeholder"
+    metersPerUnit = 1
+    upAxis = "Y"
+)
+
+# Empty container asset. Drops into the scene as a single named group prim
+# with no geometry, suitable as a parent for other prims.
+def Xform "Placeholder"
+{
+}

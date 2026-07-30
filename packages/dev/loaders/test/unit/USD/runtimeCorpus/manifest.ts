@@ -54,4 +54,26 @@ export const RobotArmAsset: IRuntimeCorpusEntry = {
     metersPerUnit: 0.01,
 } as const;
 
-export const RuntimeCorpusManifest: readonly IRuntimeCorpusEntry[] = [PlaneAsset, BoxAsset, HospitalBedAsset, RobotArmAsset] as const;
+export const PlaceholderAsset: IRuntimeCorpusEntry = {
+    fileName: "Placeholder.usda",
+    description: "Empty container asset with a single named Xform group and no geometry",
+    sha256: "bb319d84281cb65685220f338e2f700ab8dfe206d9e44e7859955bda7f25c9d7",
+    sizeBytes: 259,
+    sidecars: [],
+    defaultPrim: "Placeholder",
+    upAxis: "Y",
+    metersPerUnit: 1,
+} as const;
+
+export const SeahorseTextAsset: IRuntimeCorpusEntry = {
+    fileName: "seahorse_anim_mtl_variant.usda",
+    description: "Placeholder wrapper with a single named Xform group and no geometry (redacted derivative)",
+    sha256: "4db81909e2487d3d319b5b573a1e41c5487e226ea342f7fe20bf9bc5adea3f0f",
+    sizeBytes: 253,
+    sidecars: [],
+    defaultPrim: "Seahorse",
+    upAxis: "Y",
+    metersPerUnit: 1,
+} as const;
+
+export const RuntimeCorpusManifest: readonly IRuntimeCorpusEntry[] = [PlaneAsset, BoxAsset, HospitalBedAsset, RobotArmAsset, PlaceholderAsset, SeahorseTextAsset] as const;

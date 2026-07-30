@@ -36,6 +36,8 @@ redactions have been applied — see the Modifications section).
 | `HospitalBed/Hospital_Bed.usda` | Large polygon mesh with face-varying normals/UVs, PreviewSurface material, and relative diffuse texture | `dd8afae46e2571f3801363e9dc3385ceb075a3122e6ba7f8f3ff66dd2da13e64` | 9,418,448 | `HospitalBed/textures/HospitalBed_Diffuse.png` |
 | `HospitalBed/textures/HospitalBed_Diffuse.png` | Diffuse texture sidecar for Hospital_Bed.usda | `2a765428504204e8c9bc2cc8dc5058996677e528f52c24ccbf21b3c841e353b3` | 2,319,219 | (sidecar of Hospital_Bed.usda) |
 | `RobotArm2/RobotArm.usda` | Large multi-mesh Z-up centimeter-scale robot arm with MDL-only materials, authored face-varying normals, no UVs (redacted derivative — see Modifications) | `63ea1085c87e394e70aecec81d866cc349c0b247617f6d41731ad76f5290f7e4` | 25,766,794 | None |
+| `Placeholder.usda` | Empty container asset with a single named Xform group and no geometry | `bb319d84281cb65685220f338e2f700ab8dfe206d9e44e7859955bda7f25c9d7` | 259 | None |
+| `seahorse_anim_mtl_variant.usda` | Placeholder wrapper with a single named Xform group and no geometry (redacted derivative — see Modifications) | `4db81909e2487d3d319b5b573a1e41c5487e226ea342f7fe20bf9bc5adea3f0f` | 253 | None |
 
 ## Embedded attribution
 
@@ -51,6 +53,10 @@ preserved verbatim. Retain it.
   property value and one absolute Windows texture path (`inputs:ORM_texture`) were replaced
   with neutral placeholders to remove authoring-environment identifiers. The replacement
   preserves the same USD structure and nonportable-path test behavior.
+- `seahorse_anim_mtl_variant.usda` is a redacted derivative: authoring-environment
+  identifiers and application-specific implementation references in the comment were removed
+  and replaced with a neutral description. The USD structure (defaultPrim, metersPerUnit,
+  upAxis, and single Xform prim) is preserved byte-for-byte from the source.
 
 All other files are unmodified from their provided-source form.
 
