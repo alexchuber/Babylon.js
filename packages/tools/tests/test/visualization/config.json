@@ -5503,6 +5503,13 @@
             "dependsOn": ["Loaders", "Meshes"]
         },
         {
+            "title": "USD loader - Hospital Bed corpus",
+            "playgroundId": "#3SIRFS#0",
+            "referenceImage": "usd-loader-hospital-bed-corpus.png",
+            "renderCount": 1,
+            "dependsOn": ["Loaders", "Materials", "Meshes", "Textures"]
+        },
+        {
             "title": "CSG2 Right-Handed glTF winding",
             "playgroundId": "#1HYT9N#0",
             "referenceImage": "csg2-righthanded-gltf-winding.png",
