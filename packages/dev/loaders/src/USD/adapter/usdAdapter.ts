@@ -84,7 +84,7 @@ export async function AdaptResolvedStageToScene(
     } finally {
         // Deterministically dispose all off-scene source templates. Clone-mode instantiation
         // uses ref-counted shared geometry, so disposing the source is safe after cloning.
-        DisposeSourceContainers(externalAssetState);
+        DisposeSourceContainers(externalAssetState, scene);
     }
 
     // Log adapter diagnostics (not stored on the frozen stage, logged directly)
