@@ -72,6 +72,17 @@ export const ForkliftAsset: IRuntimeCorpusEntry = {
     metersPerUnit: 1,
 } as const;
 
+export const UR10Asset: IRuntimeCorpusEntry = {
+    fileName: "UR10.usda",
+    description: "USDA wrapper that delegates the 21-part UR10 OBJ/MTL sidecar pair through the optional external-asset handler with authored 0.0254 scale",
+    sha256: "697a524db5868d98ab687684ed7d213e285b07a5401608686b9aa5eb2d2da7ae",
+    sizeBytes: 631,
+    sidecars: ["UR10/obj_arm.obj", "UR10/obj_arm.mtl"],
+    defaultPrim: "UR10",
+    upAxis: "Y",
+    metersPerUnit: 1,
+} as const;
+
 export const ShelvesAsset: IRuntimeCorpusEntry = {
     fileName: "shelves_01.usda",
     description: "USDA wrapper that delegates a self-contained shelving-unit GLB through the optional external-asset handler",
@@ -148,7 +159,8 @@ export const CylinderAsset: IRuntimeCorpusEntry = {
 
 export const RoomAsset: IRuntimeCorpusEntry = {
     fileName: "Room.usda",
-    description: "Modular room shell via implicit UsdGeomCube (default size=2) with authored display colors and 50% opacity; source comments describe legacy intent but rendered dimensions are governed by USD default size",
+    description:
+        "Modular room shell via implicit UsdGeomCube (default size=2) with authored display colors and 50% opacity; source comments describe legacy intent but rendered dimensions are governed by USD default size",
     sha256: "e8f466bbfede76a4e8ac6e78ddb663539a7539f0074e8746fb465faa90dbe163",
     sizeBytes: 3_301,
     sidecars: [],
@@ -170,7 +182,8 @@ export const PlaceholderAsset: IRuntimeCorpusEntry = {
 
 export const StairsAsset: IRuntimeCorpusEntry = {
     fileName: "stairs.usda",
-    description: "Eight-step staircase via implicit UsdGeomCube (default size=2) with authored display colors; actual rendered step dimensions are 2.4 × 0.36 × 0.5 and adjacent steps overlap",
+    description:
+        "Eight-step staircase via implicit UsdGeomCube (default size=2) with authored display colors; actual rendered step dimensions are 2.4 × 0.36 × 0.5 and adjacent steps overlap",
     sha256: "64a1426fa181ce3342fffaffcfa8c3fe346a75ba73a07127773e3abbd4571fc7",
     sizeBytes: 3_717,
     sidecars: [],
@@ -209,6 +222,7 @@ export const RuntimeCorpusManifest: readonly IRuntimeCorpusEntry[] = [
     DeliveryBoxAsset,
     DialysisMachineAsset,
     ForkliftAsset,
+    UR10Asset,
     ShelvesAsset,
     HospitalBedAsset,
     HospitalBedWrapperAsset,

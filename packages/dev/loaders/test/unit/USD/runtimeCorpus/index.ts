@@ -9,6 +9,7 @@ export {
     DeliveryBoxAsset,
     DialysisMachineAsset,
     ForkliftAsset,
+    UR10Asset,
     ShelvesAsset,
     HospitalBedAsset,
     HospitalBedWrapperAsset,
@@ -22,10 +23,7 @@ export {
     type IRuntimeCorpusEntry,
 } from "./manifest";
 
-const runtimeCorpusRoot = new URL(
-    "../../../../../../../packages/tools/babylonServer/public/Assets/USD/RuntimeCorpus/",
-    import.meta.url
-);
+const runtimeCorpusRoot = new URL("../../../../../../../packages/tools/babylonServer/public/Assets/USD/RuntimeCorpus/", import.meta.url);
 
 export function readRuntimeCorpusText(fileName: string): string {
     return fs.readFileSync(fileURLToPath(new URL(fileName, runtimeCorpusRoot)), "utf8");

@@ -834,17 +834,28 @@ export const IsFileURL = (): boolean => {
  * @internal
  */
 export const IsBase64DataUrl = (uri: string): boolean => {
-    return Base64DataUrlRegEx.test(uri);
+    const headerEnd = uri.indexOf(",");
+    if (headerEnd === -1) {
+        return false;
+    }
+
+    return Base64DataUrlRegEx.test(uri.slice(0, headerEnd + 1));
 };
 
 export const TestBase64DataUrl = (uri: string): { match: boolean; type: string } => {
-    const results = Base64DataUrlRegEx.exec(uri);
+    const headerEnd = uri.indexOf(",");
+    if (headerEnd === -1) {
+        return { match: false, type: "" };
+    }
+
+    const header = uri.slice(0, headerEnd + 1);
+    const results = Base64DataUrlRegEx.exec(header);
     if (results === null || results.length === 0) {
         return { match: false, type: "" };
-    } else {
-        const type = results[0].replace("data:", "").replace(";base64,", "");
-        return { match: true, type };
     }
+
+    const type = results[0].replace("data:", "").replace(";base64,", "");
+    return { match: true, type };
 };
 
 /**
