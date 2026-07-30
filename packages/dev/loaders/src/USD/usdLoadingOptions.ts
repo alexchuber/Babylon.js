@@ -23,7 +23,7 @@ export type USDLoadingOptions = {
      * Maximum number of lexer tokens a single USDA layer may produce before parsing aborts with a typed
      * {@link UsdResourceLimitError} (kind `"token-count"`). Guards against token-heavy untrusted input.
      * Must be a finite, non-negative safe integer or it throws {@link UsdConfigurationError} before
-     * parsing. Defaults to 5,000,000.
+     * parsing. Defaults to 10,000,000.
      */
     maxTokenCount?: number;
 

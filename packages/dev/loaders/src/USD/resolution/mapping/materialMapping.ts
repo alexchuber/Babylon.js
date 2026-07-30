@@ -113,6 +113,7 @@ function BuildMaterialFromPrim(materialPrim: ISdfPrimSpec, context: IStageMappin
     const surfaceShader = ResolvePreviewSurfaceShader(materialPrim, context);
     if (!surfaceShader) {
         context.diagnostics.push({ severity: "info", path: materialPrim.path, message: "UsdPreviewSurface network was not found; using a default material." });
+        DiagnoseAssetPathIssues(materialPrim, context);
         return BuildDefaultMaterial(materialPrim.name, fallbackBaseColor ?? [1, 1, 1]);
     }
 
@@ -382,6 +383,71 @@ function MapWrapMode(mode: string | undefined): IResolvedTexture["wrapU"] {
 
 function GetShaderId(shaderPrim: ISdfPrimSpec): string {
     return AsToken(GetAttributeValue(GetAttribute(shaderPrim, "info:id"))) ?? "";
+}
+
+/**
+ * Scans a material prim's shader children for asset-valued inputs that are empty or use absolute
+ * nonportable paths. These indicate authoring-tool artifacts (e.g. MDL textures with local paths)
+ * that cannot be resolved at runtime. Produces stable structured diagnostics without echoing the
+ * authored path content. Only called when the material network is unsupported (no PreviewSurface).
+ * @param materialPrim the material prim whose shader children are scanned
+ * @param context mapping context used for diagnostics
+ */
+function DiagnoseAssetPathIssues(materialPrim: ISdfPrimSpec, context: IStageMappingContext): void {
+    for (const child of materialPrim.children) {
+        if (child.typeName !== "Shader") {
+            continue;
+        }
+        for (const [propName, prop] of Object.entries(child.properties)) {
+            if (prop.kind !== "attribute" || !propName.startsWith("inputs:")) {
+                continue;
+            }
+            const assetValue = AsAssetPath(GetAttributeValue(prop));
+            if (assetValue === undefined) {
+                continue;
+            }
+            const cleanPath = assetValue.length >= 2 && assetValue.startsWith("@") && assetValue.endsWith("@") ? assetValue.slice(1, -1) : assetValue;
+            if (cleanPath === "") {
+                context.diagnostics.push({
+                    severity: "warning",
+                    path: `${child.path}.${propName}`,
+                    message: "Asset input has an empty path and cannot be resolved.",
+                });
+            } else if (IsAbsoluteNonportablePath(cleanPath)) {
+                context.diagnostics.push({
+                    severity: "warning",
+                    path: `${child.path}.${propName}`,
+                    message: "Asset input uses an absolute nonportable path that cannot be resolved at runtime.",
+                });
+            }
+        }
+    }
+}
+
+/**
+ * Detects absolute OS-specific paths that are not resolvable in a portable context:
+ * Windows drive letters (C:\, D:/), UNC paths (\\server\share), and Unix absolute paths (/).
+ * HTTPS/HTTP URLs and data URIs are portable and not flagged.
+ * @param path the clean asset path to test
+ * @returns true when the path is an absolute nonportable OS path
+ */
+function IsAbsoluteNonportablePath(path: string): boolean {
+    if (path.startsWith("http://") || path.startsWith("https://") || path.startsWith("data:")) {
+        return false;
+    }
+    // Windows drive letter (e.g. C:/ or C:\)
+    if (/^[A-Za-z]:[/\\]/.test(path)) {
+        return true;
+    }
+    // UNC path
+    if (path.startsWith("\\\\")) {
+        return true;
+    }
+    // Unix absolute path
+    if (path.startsWith("/")) {
+        return true;
+    }
+    return false;
 }
 
 function BuildDefaultMaterial(name: string, baseColor: Vec3): IResolvedMaterial {

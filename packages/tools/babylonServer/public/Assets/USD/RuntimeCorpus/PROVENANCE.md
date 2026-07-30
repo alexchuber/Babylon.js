@@ -14,6 +14,11 @@ The snapshot label is a neutral identifier for the original provided source of
 representative USD shapes; it does not imply a specific public repository or
 release. Re-pin intentionally by updating hashes and the snapshot label.
 
+Some files are committed byte-for-byte from the source; others are redacted
+derivatives with authoring-environment identifiers replaced by neutral
+placeholders (see Modifications). Hashes and sizes below reflect committed
+fixture bytes.
+
 > **TODO — Licensing verification:** Formal redistribution permission for these
 > assets has not yet been verified. Confirm the license terms before including
 > them in any public release or distribution.
@@ -30,6 +35,7 @@ redactions have been applied — see the Modifications section).
 | `Plane.usda` | Single quad mesh on the XZ plane with constant authored normals | `8ff6aec006b18f5c0a37bc013ade382d87823d935a707ec62f574a641f09e974` | 583 | None |
 | `HospitalBed/Hospital_Bed.usda` | Large polygon mesh with face-varying normals/UVs, PreviewSurface material, and relative diffuse texture | `dd8afae46e2571f3801363e9dc3385ceb075a3122e6ba7f8f3ff66dd2da13e64` | 9,418,448 | `HospitalBed/textures/HospitalBed_Diffuse.png` |
 | `HospitalBed/textures/HospitalBed_Diffuse.png` | Diffuse texture sidecar for Hospital_Bed.usda | `2a765428504204e8c9bc2cc8dc5058996677e528f52c24ccbf21b3c841e353b3` | 2,319,219 | (sidecar of Hospital_Bed.usda) |
+| `RobotArm2/RobotArm.usda` | Large multi-mesh Z-up centimeter-scale robot arm with MDL-only materials, authored face-varying normals, no UVs (redacted derivative — see Modifications) | `63ea1085c87e394e70aecec81d866cc349c0b247617f6d41731ad76f5290f7e4` | 25,766,794 | None |
 
 ## Embedded attribution
 
@@ -38,9 +44,13 @@ preserved verbatim. Retain it.
 
 ## Modifications
 
-`Box.usda`: application-specific comments removed for neutral provenance; the
-committed file is a redacted derivative. The original byte-preserved hash is
-stored only in local session artifacts, not in this public document.
+- `Box.usda` is a redacted derivative: application-specific comments were removed
+  for neutral provenance. The original byte-preserved hash is stored only in local
+  session artifacts, not in this public document.
+- `RobotArm2/RobotArm.usda` is a redacted derivative: the original `asset_id` custom
+  property value and one absolute Windows texture path (`inputs:ORM_texture`) were replaced
+  with neutral placeholders to remove authoring-environment identifiers. The replacement
+  preserves the same USD structure and nonportable-path test behavior.
 
 All other files are unmodified from their provided-source form.
 

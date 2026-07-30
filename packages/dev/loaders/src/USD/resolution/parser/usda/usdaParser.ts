@@ -40,7 +40,7 @@ export interface IUsdaParserLimits {
 /** Safe default parser resource limits. Sized so any well-formed in-profile USDA text parses, while adversarial input is rejected with a typed {@link UsdResourceLimitError}. */
 export const DefaultUsdaParserLimits: IUsdaParserLimits = {
     maxInputBytes: 256 * 1024 * 1024,
-    maxTokenCount: 5_000_000,
+    maxTokenCount: 10_000_000,
     maxParserWork: 10_000_000,
 };
 
