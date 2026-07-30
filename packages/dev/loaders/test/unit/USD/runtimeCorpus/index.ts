@@ -7,6 +7,7 @@ export {
     ConeAsset,
     CylinderAsset,
     DeliveryBoxAsset,
+    DialysisMachineAsset,
     HospitalBedAsset,
     PlaceholderAsset,
     PlaneAsset,
