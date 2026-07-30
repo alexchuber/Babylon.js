@@ -5559,6 +5559,13 @@
             "dependsOn": ["Loaders", "Materials", "Meshes"]
         },
         {
+            "title": "USD loader - Dialysis Machine external asset",
+            "playgroundId": "#0K30UX#0",
+            "referenceImage": "usd-loader-dialysis-machine.png",
+            "renderCount": 50,
+            "dependsOn": ["Loaders", "Materials", "Meshes"]
+        },
+        {
             "title": "USD loader - Placeholder corpus",
             "playgroundId": "#01JZK1#0",
             "referenceImage": "usd-loader-placeholder-corpus.png",
