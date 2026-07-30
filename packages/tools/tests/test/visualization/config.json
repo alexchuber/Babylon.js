@@ -5536,6 +5536,7 @@
             "referenceImage": "usd-loader-hospital-bed-wrapper.png",
             "renderCount": 1,
             "dependsOn": ["Loaders", "OBJ", "Materials", "Meshes", "Textures", "Scene"],
+            "replace": "https://cdn.babylonjs.com,http://localhost:1337",
             "excludeFromPerformance": true
         },
         {
