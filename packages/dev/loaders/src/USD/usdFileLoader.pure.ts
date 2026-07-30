@@ -90,6 +90,9 @@ export class USDFileLoader implements ISceneLoaderPluginAsync, ISceneLoaderPlugi
         USDFileLoader._EnforceRawInputByteLimit(data, this._loadingOptions, fileName);
         const stage = await ResolveUsdStageAsync(USDFileLoader._NormalizeData(data), rootUrl, fileName, this._loadingOptions);
 
+        const result = await AdaptResolvedStageToScene(stage, scene, assetContainer, this._loadingOptions);
+
+        // Log all diagnostics after both resolution and adaptation are complete
         for (const diagnostic of stage.diagnostics) {
             const location = diagnostic.sourceLocation ? ` [line ${diagnostic.sourceLocation.line}, column ${diagnostic.sourceLocation.column}]` : "";
             const message = `USD: ${diagnostic.message}${diagnostic.path ? ` (${diagnostic.path})` : ""}${location}`;
@@ -102,7 +105,7 @@ export class USDFileLoader implements ISceneLoaderPluginAsync, ISceneLoaderPlugi
             }
         }
 
-        return AdaptResolvedStageToScene(stage, scene, assetContainer, this._loadingOptions);
+        return result;
     }
 
     /**

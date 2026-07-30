@@ -9,12 +9,14 @@ import { type Skeleton } from "core/Bones/skeleton";
 import { type Animation } from "core/Animations/animation";
 import { type AnimationGroup } from "core/Animations/animationGroup";
 import { type Material } from "core/Materials/material";
+import { Logger } from "core/Misc/logger";
 
-import { type IResolvedStage } from "../resolution/resolvedStage";
+import { type IResolvedStage, type IResolvedDiagnostic } from "../resolution/resolvedStage";
 import { type USDLoadingOptions } from "../usdLoadingOptions";
 import { CreateStageRoot } from "./transformAdapter";
 import { AdaptPrim, type IUsdAdapterContext } from "./sceneGraphAdapter";
 import { BuildAnimationGroup } from "./animationAdapter";
+import { CreateExternalAssetState, ProcessExternalAssets, type IExternalAssetState } from "./externalAssetAdapter";
 
 /**
  * Adapts a fully-resolved {@link IResolvedStage} into Babylon objects, returning them as an
@@ -23,18 +25,22 @@ import { BuildAnimationGroup } from "./animationAdapter";
  *
  * Babylon performs no USD reasoning here — every value consumed has already been resolved.
  *
+ * When an {@link USDLoadingOptions.externalAssetHandler | externalAssetHandler} is configured,
+ * unhandled asset-valued properties are dispatched to it asynchronously; their loaded content is
+ * instantiated under the authored prim transform.
+ *
  * @param stage the resolved stage to adapt
  * @param scene the scene to create objects in
  * @param assetContainer the asset container being populated, if any (cameras are pushed onto it directly)
  * @param options loader options
  * @returns the loaded Babylon objects
  */
-export function AdaptResolvedStageToScene(
+export async function AdaptResolvedStageToScene(
     stage: IResolvedStage,
     scene: Scene,
     assetContainer: Nullable<AssetContainer>,
     options: Readonly<USDLoadingOptions>
-): ISceneLoaderAsyncResult {
+): Promise<ISceneLoaderAsyncResult> {
     const existingGeometries = new Set(scene.geometries);
     const meshes: AbstractMesh[] = [];
     const transformNodes: TransformNode[] = [];
@@ -46,6 +52,8 @@ export function AdaptResolvedStageToScene(
     const root = CreateStageRoot(stage.metadata, scene);
     transformNodes.push(root);
 
+    const adapterDiagnostics: import("../resolution/resolvedStage").IResolvedDiagnostic[] = [];
+    const nodeByPrimPath = new Map<string, TransformNode>();
     const context: IUsdAdapterContext = {
         scene,
         stageRoot: root,
@@ -60,11 +68,20 @@ export function AdaptResolvedStageToScene(
         animationEntries,
         materialCache: new Map<number, Material>(),
         skeletonCache: new Map<number, Skeleton>(),
+        diagnostics: adapterDiagnostics,
+        nodeByPrimPath,
     };
 
     for (const child of stage.root.children) {
         AdaptPrim(child, root, context);
     }
+
+    // Process external asset properties if a handler is configured or if any exist (for diagnostics)
+    const externalAssetState = CreateExternalAssetState(options);
+    await ProcessExternalAssetsForTree(stage.root, context, externalAssetState, stage);
+
+    // Log adapter diagnostics (not stored on the frozen stage, logged directly)
+    LogDiagnostics(adapterDiagnostics);
 
     if (animationEntries.length > 0) {
         animationGroups.push(BuildAnimationGroup("usd-animations", scene, animationEntries));
@@ -92,6 +109,27 @@ export function AdaptResolvedStageToScene(
     };
 }
 
+// Recursively processes external asset properties through the resolved prim tree, using the
+// prim-path → node map built during the AdaptPrim walk to find each prim's Babylon node.
+async function ProcessExternalAssetsForTree(
+    resolvedPrim: import("../resolution/resolvedStage").IResolvedPrim,
+    context: IUsdAdapterContext,
+    state: IExternalAssetState,
+    stage: IResolvedStage
+): Promise<void> {
+    if (resolvedPrim.unhandledAssetProperties && resolvedPrim.unhandledAssetProperties.length > 0) {
+        const node = context.nodeByPrimPath.get(resolvedPrim.path);
+        if (node) {
+            await ProcessExternalAssets(resolvedPrim, node, context, state, stage.layerIdentifier, stage.root);
+        }
+    }
+
+    for (const child of resolvedPrim.children) {
+        // eslint-disable-next-line no-await-in-loop
+        await ProcessExternalAssetsForTree(child, context, state, stage);
+    }
+}
+
 // Resolves the bake fps: an explicit loader override wins, otherwise the stage's time-codes-per-second.
 function ResolveFps(stage: IResolvedStage, options: Readonly<USDLoadingOptions>): number {
     if (options.targetFps !== undefined && Number.isFinite(options.targetFps) && options.targetFps > 0) {
@@ -99,4 +137,17 @@ function ResolveFps(stage: IResolvedStage, options: Readonly<USDLoadingOptions>)
     }
     const timeCodesPerSecond = stage.metadata.timeCodesPerSecond;
     return Number.isFinite(timeCodesPerSecond) && timeCodesPerSecond > 0 ? timeCodesPerSecond : 24;
+}
+
+function LogDiagnostics(diagnostics: readonly IResolvedDiagnostic[]): void {
+    for (const diagnostic of diagnostics) {
+        const message = `USD: ${diagnostic.message}${diagnostic.path ? ` (${diagnostic.path})` : ""}`;
+        if (diagnostic.severity === "error") {
+            Logger.Error(message);
+        } else if (diagnostic.severity === "warning") {
+            Logger.Warn(message);
+        } else {
+            Logger.Log(message);
+        }
+    }
 }

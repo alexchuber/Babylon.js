@@ -42,6 +42,8 @@ export interface IResolvedStage {
     skeletons: IResolvedSkeleton[];
     /** Non-fatal diagnostics collected during parsing, single-layer validation and mapping. */
     diagnostics: IResolvedDiagnostic[];
+    /** Identifier of the root layer (rootUrl + fileName), used for external asset path resolution and diagnostics. */
+    layerIdentifier: string;
 }
 
 /**
@@ -154,6 +156,28 @@ export interface IResolvedPrim {
 
     /** Per-prim animation (animated transform and/or visibility). Joint animation lives on the skeleton. */
     animation?: IResolvedAnimation;
+
+    /**
+     * Asset-valued custom properties on this prim that were not consumed by any standard USD schema
+     * mapping. The Babylon adapter uses this list to invoke an optional external-asset handler so
+     * application-owned code can load the referenced assets without the USD core needing to know
+     * what format they are.
+     */
+    unhandledAssetProperties?: IResolvedUnhandledAssetProperty[];
+}
+
+/**
+ * An asset-valued prim property that was not consumed by any standard USD schema mapping during
+ * resolution. Carried on {@link IResolvedPrim.unhandledAssetProperties} so the adapter can
+ * delegate loading to an application-supplied handler.
+ */
+export interface IResolvedUnhandledAssetProperty {
+    /** The property name as authored (e.g. `assetInfo:source`). */
+    propertyName: string;
+    /** The authored asset path exactly as decoded from the layer, without `@` delimiters. */
+    authoredPath: string;
+    /** The resolved asset path after identifier resolution against the source layer. */
+    resolvedPath: string;
 }
 
 /**
