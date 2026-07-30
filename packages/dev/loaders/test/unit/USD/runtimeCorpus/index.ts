@@ -5,6 +5,7 @@ export {
     RuntimeCorpusManifest,
     BoxAsset,
     ConeAsset,
+    CylinderAsset,
     DeliveryBoxAsset,
     HospitalBedAsset,
     PlaceholderAsset,

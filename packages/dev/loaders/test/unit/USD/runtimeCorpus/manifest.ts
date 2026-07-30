@@ -76,6 +76,17 @@ export const RobotArmAsset: IRuntimeCorpusEntry = {
     metersPerUnit: 0.01,
 } as const;
 
+export const CylinderAsset: IRuntimeCorpusEntry = {
+    fileName: "Cylinder.usda",
+    description: "Implicit UsdGeomCylinder with authored radius, height, and axis",
+    sha256: "5a333b133ae1c90088594135de8336eed63e7a55c93a0eae170c5a9d5d6fa95e",
+    sizeBytes: 284,
+    sidecars: [],
+    defaultPrim: "Cylinder",
+    upAxis: "Y",
+    metersPerUnit: 1,
+} as const;
+
 export const RoomAsset: IRuntimeCorpusEntry = {
     fileName: "Room.usda",
     description: "Modular room shell via implicit UsdGeomCube (default size=2) with authored display colors and 50% opacity; source comments describe legacy intent but rendered dimensions are governed by USD default size",
@@ -124,6 +135,7 @@ export const RuntimeCorpusManifest: readonly IRuntimeCorpusEntry[] = [
     PlaneAsset,
     BoxAsset,
     ConeAsset,
+    CylinderAsset,
     DeliveryBoxAsset,
     HospitalBedAsset,
     PlaceholderAsset,
