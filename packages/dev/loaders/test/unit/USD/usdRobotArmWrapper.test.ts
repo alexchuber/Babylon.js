@@ -318,6 +318,7 @@ describe("USD RuntimeCorpus - Robot Arm OBJ wrapper", () => {
         expect(successfulUnexpectedFileRequests).toEqual([]);
         expect(RobotArmWrapperAsset.sidecars).toEqual(["RobotArm/industrial_robot_arm.obj", "RobotArm/industrial_robot_arm.mtl", "RobotArm/Robot_Arm_Color.png"]);
         expect(RobotArmWrapperAsset.sidecars).not.toContain("RobotArm/industrial robot arm.mtl");
+        expect(RobotArmWrapperAsset.unreferencedAlternatives).toEqual(["RobotArm/industrial robot arm.mtl"]);
         expect(RobotArmWrapperAsset.sidecars.some((sidecar) => /\.(glb|usdc|usd)$/i.test(sidecar))).toBe(false);
         expect(fs.existsSync(path.join(corpusRoot, "RobotArm", "industrial robot arm.mtl"))).toBe(false);
 

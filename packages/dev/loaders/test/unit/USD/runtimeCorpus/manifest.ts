@@ -152,6 +152,7 @@ export const RobotArmWrapperAsset: IRuntimeCorpusEntry = {
     sha256: "2271e7e1d3c56fa4641d72f156c9c13fb6d473296a2f7e4bb54a987c1ed814ce",
     sizeBytes: 611,
     sidecars: ["RobotArm/industrial_robot_arm.obj", "RobotArm/industrial_robot_arm.mtl", "RobotArm/Robot_Arm_Color.png"],
+    unreferencedAlternatives: ["RobotArm/industrial robot arm.mtl"],
     defaultPrim: "RobotArm",
     upAxis: "Y",
     metersPerUnit: 1,
