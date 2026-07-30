@@ -5,12 +5,7 @@ import { fileURLToPath } from "url";
 
 import { NullEngine } from "core/Engines/nullEngine";
 import { Scene } from "core/scene";
-import { AssetContainer } from "core/assetContainer";
-import { Mesh } from "core/Meshes/mesh";
 import "core/Meshes/instancedMesh";
-import { VertexData } from "core/Meshes/mesh.vertexData";
-import { StandardMaterial } from "core/Materials/standardMaterial";
-import { Color3 } from "core/Maths/math.color";
 import { Logger } from "core/Misc/logger";
 import { USDFileLoader } from "loaders/USD/usdFileLoader";
 import { OBJFileLoader } from "loaders/OBJ/objFileLoader";
@@ -24,10 +19,10 @@ function readCorpusFile(relativePath: string): string {
 
 /**
  * Application-owned handler that recognizes `assetInfo:source` and delegates OBJ loading
- * to Babylon's registered OBJ loader. Materials are skipped during the OBJ load (the MTL
- * fetch requires XMLHttpRequest unavailable in Vitest) and applied manually from the MTL
- * data on disk, matching what a browser-based handler would produce through
- * `SceneLoader.LoadAssetContainerAsync`.
+ * to Babylon's registered OBJ file loader via its `loadAssetContainerAsync` method.
+ * Materials are skipped because the MTL fetch requires XMLHttpRequest, which is unavailable
+ * in Vitest; in a browser environment the handler would use
+ * `SceneLoader.LoadAssetContainerAsync` with full MTL support.
  *
  * This handler is explicitly NOT part of the USD core — it demonstrates the external-asset
  * handler interface. The USD core does not hardcode `assetInfo:source` or import OBJ/glTF.
@@ -45,45 +40,11 @@ async function deliveryBoxHandler(request: IUsdExternalAssetRequest): Promise<Us
     const objRelativePath = request.authoredUri.replace(/^\.\//, "");
     const objData = readCorpusFile(objRelativePath);
 
-    // Delegate to Babylon's OBJ loader with skipMaterials (MTL fetch needs browser XMLHttpRequest)
+    // Delegate to Babylon's OBJ loader via loadAssetContainerAsync.
+    // skipMaterials avoids the MTL network fetch that requires XMLHttpRequest.
     const objLoader = new OBJFileLoader({ skipMaterials: true });
-    const container = new AssetContainer(request.scene);
-    const existingMeshes = new Set(request.scene.meshes);
-    const existingMaterials = new Set(request.scene.materials);
-    const existingGeometries = new Set(request.scene.geometries);
+    const container = await objLoader.loadAssetContainerAsync(request.scene, objData, "");
 
-    await objLoader.importMeshAsync(null, request.scene, objData, "");
-
-    for (const mesh of request.scene.meshes) {
-        if (!existingMeshes.has(mesh)) {
-            container.meshes.push(mesh);
-        }
-    }
-    for (const material of request.scene.materials) {
-        if (!existingMaterials.has(material)) {
-            container.materials.push(material);
-        }
-    }
-    for (const geometry of request.scene.geometries) {
-        if (!existingGeometries.has(geometry)) {
-            container.geometries.push(geometry);
-        }
-    }
-
-    // Apply material from MTL (what SceneLoader.LoadAssetContainerAsync would do in a browser)
-    const mtlRelativePath = objRelativePath.replace(/\.obj$/i, ".mtl");
-    const mtlData = readCorpusFile(mtlRelativePath);
-    const kdMatch = mtlData.match(/Kd\s+([\d.]+)\s+([\d.]+)\s+([\d.]+)/);
-    if (kdMatch) {
-        const material = new StandardMaterial("Box", request.scene);
-        material.diffuseColor = new Color3(parseFloat(kdMatch[1]), parseFloat(kdMatch[2]), parseFloat(kdMatch[3]));
-        for (const mesh of container.meshes) {
-            mesh.material = material;
-        }
-        container.materials.push(material);
-    }
-
-    container.removeAllFromScene();
     return { handled: true, container };
 }
 
@@ -98,7 +59,7 @@ describe("USD RuntimeCorpus - Delivery Box", () => {
         vi.restoreAllMocks();
     });
 
-    it("loads DeliveryBox.usda with an application-owned handler through the public loader", async () => {
+    it("loads DeliveryBox.usda with an application-owned handler preserving hierarchy, transform, geometry, and bounds", async () => {
         const engine = new NullEngine();
         const scene = new Scene(engine);
 
@@ -107,7 +68,7 @@ describe("USD RuntimeCorpus - Delivery Box", () => {
             const usdaData = readCorpusFile("DeliveryBox.usda");
             const result = await loader.importMeshAsync(null, scene, usdaData, "file:");
 
-            // Verify USD hierarchy
+            // Verify authored USD hierarchy
             const rootNode = result.transformNodes.find((node) => node.name === "DeliveryBox");
             expect(rootNode).toBeDefined();
 
@@ -115,35 +76,26 @@ describe("USD RuntimeCorpus - Delivery Box", () => {
             expect(assetNode).toBeDefined();
             expect(assetNode!.parent?.name).toBe("DeliveryBox");
 
-            // Verify handler-loaded mesh exists and is parented under the Asset transform
+            // Verify handler-loaded mesh is parented under the Asset prim's transform node
             expect(result.meshes.length).toBeGreaterThan(0);
             const loadedMeshes = result.meshes.filter((mesh) => mesh.parent === assetNode);
             expect(loadedMeshes.length).toBeGreaterThan(0);
 
-            // Verify geometry is present (not empty)
+            // Verify geometry is present with non-zero vertex count
             const meshWithGeometry = result.meshes.find((mesh) => mesh.getTotalVertices() > 0);
             expect(meshWithGeometry).toBeDefined();
             const positions = meshWithGeometry!.getVerticesData("position");
             expect(positions).toBeDefined();
             expect(positions!.length).toBeGreaterThan(0);
 
-            // Verify material color from MTL (Kd 0.72 0.51 0.27)
-            const materialMesh = result.meshes.find((mesh) => mesh.material instanceof StandardMaterial);
-            expect(materialMesh).toBeDefined();
-            const material = materialMesh!.material as StandardMaterial;
-            expect(material.diffuseColor.r).toBeCloseTo(0.72);
-            expect(material.diffuseColor.g).toBeCloseTo(0.51);
-            expect(material.diffuseColor.b).toBeCloseTo(0.27);
-
             // Verify the authored translate (0,0,0 for this asset)
             expect(assetNode!.position.x).toBeCloseTo(0);
             expect(assetNode!.position.y).toBeCloseTo(0);
             expect(assetNode!.position.z).toBeCloseTo(0);
 
-            // Verify bounding information
-            const boundedMesh = result.meshes.find((m) => m.getTotalVertices() > 0);
-            boundedMesh!.refreshBoundingInfo();
-            const bounds = boundedMesh!.getBoundingInfo().boundingBox;
+            // Verify bounding information: the mesh has non-zero spatial extent
+            meshWithGeometry!.refreshBoundingInfo();
+            const bounds = meshWithGeometry!.getBoundingInfo().boundingBox;
             expect(bounds.maximumWorld.x - bounds.minimumWorld.x).toBeGreaterThan(0);
             expect(bounds.maximumWorld.y - bounds.minimumWorld.y).toBeGreaterThan(0);
         } finally {
@@ -152,7 +104,7 @@ describe("USD RuntimeCorpus - Delivery Box", () => {
         }
     });
 
-    it("loads DeliveryBox.usda into an AssetContainer with correct ownership", async () => {
+    it("loads DeliveryBox.usda into an AssetContainer with correct outer ownership", async () => {
         const engine = new NullEngine();
         const scene = new Scene(engine);
 
