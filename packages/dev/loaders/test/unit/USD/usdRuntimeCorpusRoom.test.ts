@@ -4,6 +4,7 @@ import { NullEngine } from "core/Engines/nullEngine";
 import { Scene } from "core/scene";
 import { Logger } from "core/Misc/logger";
 import { ImportMeshAsync } from "core/Loading/sceneLoader";
+import { VertexBuffer } from "core/Buffers/buffer";
 import "loaders/USD/usdFileLoader";
 
 import { ResolveUsdStageAsync } from "loaders/USD/resolution/usdResolver";
@@ -23,6 +24,19 @@ function resolveRoom() {
 
 const ROOM_PARTS = ["Floor", "BackWall", "LeftWall", "RightWall", "FrontWallLeft", "FrontWallRight"] as const;
 
+// Authored transforms from Room.usda. The Cube prims have no authored size, so
+// USD's default size=2 applies (half-extent=1). Scale values are multipliers on
+// [-1,1], making actual rendered dimensions double the scale values. Source
+// comments describe legacy intent but authored USD default size=2 governs.
+const EXPECTED_TRANSFORMS: Record<string, { position: [number, number, number]; scaling: [number, number, number] }> = {
+    Floor: { position: [0, 0.05, 0], scaling: [15, 0.1, 15] },
+    BackWall: { position: [0, 3, -7.5], scaling: [15, 6, 0.25] },
+    LeftWall: { position: [-7.5, 3, 0], scaling: [0.25, 6, 15] },
+    RightWall: { position: [7.5, 3, 0], scaling: [0.25, 6, 15] },
+    FrontWallLeft: { position: [-4.5, 3, 7.5], scaling: [6, 6, 0.25] },
+    FrontWallRight: { position: [4.5, 3, 7.5], scaling: [6, 6, 0.25] },
+};
+
 describe("USD runtime corpus - Room", () => {
     let engine: NullEngine;
     let scene: Scene;
@@ -37,7 +51,7 @@ describe("USD runtime corpus - Room", () => {
         engine.dispose();
     });
 
-    // -- Hierarchy --
+    // -- Public API: hierarchy --
 
     it("loads through ImportMeshAsync with the expected Room hierarchy", async () => {
         const result = await importRoomAsync(scene);
@@ -75,67 +89,136 @@ describe("USD runtime corpus - Room", () => {
         }
     });
 
-    // -- Door gap --
+    // -- Public API: TransformNode position/scaling --
 
-    it("models the front wall as two segments with a centered 3-unit door gap", async () => {
-        const stage = await resolveRoom();
+    it("sets exact Babylon position and scaling on every room-part TransformNode", async () => {
+        const result = await importRoomAsync(scene);
 
-        const roomPrim = stage.root.children[0];
-        expect(roomPrim.name).toBe("Room");
+        for (const [partName, exp] of Object.entries(EXPECTED_TRANSFORMS)) {
+            const tn = result.transformNodes.find((n) => n.name === partName);
+            expect(tn, `expected TransformNode '${partName}'`).toBeDefined();
 
-        const frontLeft = roomPrim.children.find((c) => c.name === "FrontWallLeft");
-        const frontRight = roomPrim.children.find((c) => c.name === "FrontWallRight");
-        expect(frontLeft).toBeDefined();
-        expect(frontRight).toBeDefined();
+            expect(tn!.position.x).toBeCloseTo(exp.position[0], 2);
+            expect(tn!.position.y).toBeCloseTo(exp.position[1], 2);
+            expect(tn!.position.z).toBeCloseTo(exp.position[2], 2);
 
-        // FrontWallLeft: translate (-4.5, 3, 7.5), scale (6, 6, 0.25)
-        expect(frontLeft!.transform.translation[0]).toBeCloseTo(-4.5);
-        expect(frontLeft!.transform.scale[0]).toBeCloseTo(6);
-
-        // FrontWallRight: translate (4.5, 3, 7.5), scale (6, 6, 0.25)
-        expect(frontRight!.transform.translation[0]).toBeCloseTo(4.5);
-        expect(frontRight!.transform.scale[0]).toBeCloseTo(6);
-
-        // Gap: from x = -4.5 + 6/2 = -1.5 to x = 4.5 - 6/2 = 1.5 → width 3
-        // The inner edges of the two segments define the door gap width.
-        // FrontWallLeft occupies from x = -4.5 - 3 = -7.5 to x = -4.5 + 3 = -1.5
-        // FrontWallRight occupies from x = 4.5 - 3 = 1.5 to x = 4.5 + 3 = 7.5
-        // Gap is 3 units wide (from -1.5 to 1.5).
-        const leftInnerEdge = frontLeft!.transform.translation[0] + frontLeft!.transform.scale[0] / 2;
-        const rightInnerEdge = frontRight!.transform.translation[0] - frontRight!.transform.scale[0] / 2;
-        const gapWidth = rightInnerEdge - leftInnerEdge;
-        expect(gapWidth).toBeCloseTo(3.0);
+            expect(tn!.scaling.x).toBeCloseTo(exp.scaling[0], 2);
+            expect(tn!.scaling.y).toBeCloseTo(exp.scaling[1], 2);
+            expect(tn!.scaling.z).toBeCloseTo(exp.scaling[2], 2);
+        }
     });
 
-    // -- Transforms --
+    // -- Public API: front wall overlap (authored USD semantics) --
+
+    it("models the front wall as two overlapping segments with a 3-unit overlap", async () => {
+        // Source comments describe legacy intent of a door gap, but with default
+        // UsdGeomCube size=2 (half-extent=1) the scale values are multipliers on
+        // [-1,1]. FrontWallLeft at X=-4.5 with scale X=6 spans [-10.5, 1.5].
+        // FrontWallRight at X=4.5 with scale X=6 spans [-1.5, 10.5]. They overlap
+        // from X=-1.5 to X=1.5, a 3-unit overlap. Authored USD wins.
+        const result = await importRoomAsync(scene);
+
+        const leftTN = result.transformNodes.find((n) => n.name === "FrontWallLeft");
+        const rightTN = result.transformNodes.find((n) => n.name === "FrontWallRight");
+        expect(leftTN).toBeDefined();
+        expect(rightTN).toBeDefined();
+
+        // Half-extent of the Cube mesh = 1 (default size=2). World X extent =
+        // position.x ± scaling.x * 1.
+        const leftMaxX = leftTN!.position.x + leftTN!.scaling.x; // -4.5 + 6 = 1.5
+        const rightMinX = rightTN!.position.x - rightTN!.scaling.x; // 4.5 - 6 = -1.5
+
+        // Overlap = leftMaxX - rightMinX when leftMaxX > rightMinX
+        const overlap = leftMaxX - rightMinX;
+        expect(overlap).toBeCloseTo(3.0);
+        expect(leftMaxX).toBeGreaterThan(rightMinX);
+    });
+
+    // -- Public API: color buffers and opacity --
+
+    it("exposes Floor vertex colors (0.72, 0.74, 0.78) with alpha 0.5 through the public mesh", async () => {
+        const result = await importRoomAsync(scene);
+
+        const floorMesh = result.meshes.find((m) => m.parent?.name === "Floor" && m.getTotalVertices() > 0);
+        expect(floorMesh).toBeDefined();
+
+        const colors = floorMesh!.getVerticesData(VertexBuffer.ColorKind);
+        expect(colors).toBeDefined();
+        expect(colors![0]).toBeCloseTo(0.72, 1);
+        expect(colors![1]).toBeCloseTo(0.74, 1);
+        expect(colors![2]).toBeCloseTo(0.78, 1);
+        expect(colors![3]).toBeCloseTo(0.5, 1);
+    });
+
+    it("exposes wall vertex colors (0.75, 0.77, 0.81) with alpha 0.5 on all wall meshes", async () => {
+        const result = await importRoomAsync(scene);
+
+        const wallNames = ["BackWall", "LeftWall", "RightWall", "FrontWallLeft", "FrontWallRight"];
+        for (const wallName of wallNames) {
+            const mesh = result.meshes.find((m) => m.parent?.name === wallName && m.getTotalVertices() > 0);
+            expect(mesh, `expected renderable mesh under '${wallName}'`).toBeDefined();
+
+            const colors = mesh!.getVerticesData(VertexBuffer.ColorKind);
+            expect(colors).toBeDefined();
+            expect(colors![0]).toBeCloseTo(0.75, 1);
+            expect(colors![1]).toBeCloseTo(0.77, 1);
+            expect(colors![2]).toBeCloseTo(0.81, 1);
+            expect(colors![3]).toBeCloseTo(0.5, 1);
+        }
+    });
+
+    // -- Public API: aggregate world bounds --
+
+    it("produces aggregate Babylon world bounds X/Z [-15,15], Y [-3,9]", async () => {
+        // With default UsdGeomCube size=2, the scale values are multipliers on
+        // half-extent=1. Floor scale (15,0.1,15) → actual 30×0.2×30.
+        // Aggregate world bounds span the full room.
+        const result = await importRoomAsync(scene);
+
+        let minX = Infinity,
+            maxX = -Infinity;
+        let minY = Infinity,
+            maxY = -Infinity;
+        let minZ = Infinity,
+            maxZ = -Infinity;
+
+        for (const mesh of result.meshes) {
+            mesh.computeWorldMatrix(true);
+            const bb = mesh.getBoundingInfo().boundingBox;
+            minX = Math.min(minX, bb.minimumWorld.x);
+            maxX = Math.max(maxX, bb.maximumWorld.x);
+            minY = Math.min(minY, bb.minimumWorld.y);
+            maxY = Math.max(maxY, bb.maximumWorld.y);
+            minZ = Math.min(minZ, bb.minimumWorld.z);
+            maxZ = Math.max(maxZ, bb.maximumWorld.z);
+        }
+
+        expect(minX).toBeCloseTo(-15, 0);
+        expect(maxX).toBeCloseTo(15, 0);
+        expect(minY).toBeCloseTo(-3, 0);
+        expect(maxY).toBeCloseTo(9, 0);
+        expect(minZ).toBeCloseTo(-15, 0);
+        expect(maxZ).toBeCloseTo(15, 0);
+    });
+
+    // -- Supplemental: resolution-layer assertions --
 
     it("resolves authored transforms on all six room parts", async () => {
         const stage = await resolveRoom();
         const roomPrim = stage.root.children[0];
 
-        const expected: Record<string, { translate: [number, number, number]; scale: [number, number, number] }> = {
-            Floor: { translate: [0, 0.05, 0], scale: [15, 0.1, 15] },
-            BackWall: { translate: [0, 3, -7.5], scale: [15, 6, 0.25] },
-            LeftWall: { translate: [-7.5, 3, 0], scale: [0.25, 6, 15] },
-            RightWall: { translate: [7.5, 3, 0], scale: [0.25, 6, 15] },
-            FrontWallLeft: { translate: [-4.5, 3, 7.5], scale: [6, 6, 0.25] },
-            FrontWallRight: { translate: [4.5, 3, 7.5], scale: [6, 6, 0.25] },
-        };
-
-        for (const [partName, exp] of Object.entries(expected)) {
+        for (const [partName, exp] of Object.entries(EXPECTED_TRANSFORMS)) {
             const part = roomPrim.children.find((c) => c.name === partName);
             expect(part, `expected prim '${partName}'`).toBeDefined();
 
             for (let i = 0; i < 3; i++) {
-                expect(part!.transform.translation[i]).toBeCloseTo(exp.translate[i], 2);
-                expect(part!.transform.scale[i]).toBeCloseTo(exp.scale[i], 2);
+                expect(part!.transform.translation[i]).toBeCloseTo(exp.position[i], 2);
+                expect(part!.transform.scale[i]).toBeCloseTo(exp.scaling[i], 2);
             }
         }
     });
 
-    // -- Display colors and opacity --
-
-    it("resolves Floor display color (0.72, 0.74, 0.78) with 50% opacity", async () => {
+    it("resolves Floor display color (0.72, 0.74, 0.78) with 50% opacity at the resolution layer", async () => {
         const stage = await resolveRoom();
 
         const roomPrim = stage.root.children[0];
@@ -171,23 +254,6 @@ describe("USD runtime corpus - Room", () => {
         }
     });
 
-    // -- Authored dimensions and bounds --
-
-    it("produces a 15×6 footprint with wall height 6 at the resolution layer", async () => {
-        const stage = await resolveRoom();
-
-        const roomPrim = stage.root.children[0];
-
-        // Floor: scale (15, 0.1, 15) → 15×15 footprint
-        const floor = roomPrim.children.find((c) => c.name === "Floor");
-        expect(floor!.transform.scale[0]).toBeCloseTo(15);
-        expect(floor!.transform.scale[2]).toBeCloseTo(15);
-
-        // Walls: scale y = 6 → wall height 6
-        const backWall = roomPrim.children.find((c) => c.name === "BackWall");
-        expect(backWall!.transform.scale[1]).toBeCloseTo(6);
-    });
-
     it("does not emit unsupported-Cube diagnostics for valid Room Cube input", async () => {
         const log = vi.spyOn(Logger, "Log").mockImplementation(() => {});
         const warn = vi.spyOn(Logger, "Warn").mockImplementation(() => {});
@@ -201,8 +267,6 @@ describe("USD runtime corpus - Room", () => {
             warn.mockRestore();
         }
     });
-
-    // -- Cube reuse (no fixture-specific geometry code) --
 
     it("uses subdivisionScheme 'none' on all resolved Cube meshes", async () => {
         const stage = await resolveRoom();

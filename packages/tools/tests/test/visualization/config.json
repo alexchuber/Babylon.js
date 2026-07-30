@@ -5518,14 +5518,14 @@
         },
         {
             "title": "USD loader - Room corpus",
-            "playgroundId": "#5GI1DI#0",
+            "playgroundId": "#5HBC2G#0",
             "referenceImage": "usd-loader-room-corpus.png",
             "renderCount": 1,
             "dependsOn": ["Loaders", "Meshes"]
         },
         {
             "title": "USD loader - stairs corpus",
-            "playgroundId": "#9ZWIUB#0",
+            "playgroundId": "#4WXR1Q#0",
             "referenceImage": "usd-loader-stairs-corpus.png",
             "renderCount": 1,
             "dependsOn": ["Loaders", "Meshes"]

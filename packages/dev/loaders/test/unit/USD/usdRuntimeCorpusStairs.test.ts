@@ -4,6 +4,7 @@ import { NullEngine } from "core/Engines/nullEngine";
 import { Scene } from "core/scene";
 import { Logger } from "core/Misc/logger";
 import { ImportMeshAsync } from "core/Loading/sceneLoader";
+import { VertexBuffer } from "core/Buffers/buffer";
 import "loaders/USD/usdFileLoader";
 
 import { ResolveUsdStageAsync } from "loaders/USD/resolution/usdResolver";
@@ -24,6 +25,23 @@ function resolveStairs() {
 const STEP_COUNT = 8;
 const STEP_NAMES = Array.from({ length: STEP_COUNT }, (_, i) => `Step_${i + 1}`);
 
+// Authored step transforms. Each step's Cube has no authored size, so USD's
+// default size=2 (half-extent=1) applies. Scale values are multipliers on
+// [-1,1], making actual rendered step dimensions 2.4 × 0.36 × 0.5.
+// Adjacent steps overlap because rise/run spacing is smaller than box extents.
+const EXPECTED_STEP_POSITIONS: [number, number, number][] = [
+    [0, 0.09, 0.125],
+    [0, 0.27, 0.375],
+    [0, 0.45, 0.625],
+    [0, 0.63, 0.875],
+    [0, 0.81, 1.125],
+    [0, 0.99, 1.375],
+    [0, 1.17, 1.625],
+    [0, 1.35, 1.875],
+];
+
+const STEP_SCALING: [number, number, number] = [1.2, 0.18, 0.25];
+
 describe("USD runtime corpus - stairs", () => {
     let engine: NullEngine;
     let scene: Scene;
@@ -38,7 +56,7 @@ describe("USD runtime corpus - stairs", () => {
         engine.dispose();
     });
 
-    // -- Hierarchy --
+    // -- Public API: hierarchy --
 
     it("loads through ImportMeshAsync with the expected Stairs hierarchy", async () => {
         const result = await importStairsAsync(scene);
@@ -76,40 +94,102 @@ describe("USD runtime corpus - stairs", () => {
         }
     });
 
-    // -- Transforms --
+    // -- Public API: TransformNode position/scaling --
+
+    it("sets exact Babylon position and scaling on every step TransformNode", async () => {
+        const result = await importStairsAsync(scene);
+
+        for (let i = 0; i < STEP_COUNT; i++) {
+            const tn = result.transformNodes.find((n) => n.name === STEP_NAMES[i]);
+            expect(tn, `expected TransformNode '${STEP_NAMES[i]}'`).toBeDefined();
+
+            expect(tn!.position.x).toBeCloseTo(EXPECTED_STEP_POSITIONS[i][0], 3);
+            expect(tn!.position.y).toBeCloseTo(EXPECTED_STEP_POSITIONS[i][1], 3);
+            expect(tn!.position.z).toBeCloseTo(EXPECTED_STEP_POSITIONS[i][2], 3);
+
+            expect(tn!.scaling.x).toBeCloseTo(STEP_SCALING[0], 2);
+            expect(tn!.scaling.y).toBeCloseTo(STEP_SCALING[1], 2);
+            expect(tn!.scaling.z).toBeCloseTo(STEP_SCALING[2], 2);
+        }
+    });
+
+    // -- Public API: color buffers --
+
+    it("exposes uniform step vertex colors (0.7, 0.65, 0.6) with alpha 1.0 on all step meshes", async () => {
+        const result = await importStairsAsync(scene);
+
+        for (const stepName of STEP_NAMES) {
+            const mesh = result.meshes.find((m) => m.parent?.name === stepName && m.getTotalVertices() > 0);
+            expect(mesh, `expected renderable mesh under '${stepName}'`).toBeDefined();
+
+            const colors = mesh!.getVerticesData(VertexBuffer.ColorKind);
+            expect(colors).toBeDefined();
+            expect(colors![0]).toBeCloseTo(0.7, 1);
+            expect(colors![1]).toBeCloseTo(0.65, 1);
+            expect(colors![2]).toBeCloseTo(0.6, 1);
+            expect(colors![3]).toBeCloseTo(1.0, 1);
+        }
+    });
+
+    // -- Public API: aggregate world bounds --
+
+    it("produces aggregate Babylon world bounds covering all 8 steps", async () => {
+        // With default UsdGeomCube size=2, scale (1.2, 0.18, 0.25) creates actual
+        // step dimensions 2.4 × 0.36 × 0.5. Adjacent steps overlap because
+        // rise/run spacing (0.18/0.25) is smaller than rendered extent (0.36/0.5).
+        const result = await importStairsAsync(scene);
+
+        let minX = Infinity,
+            maxX = -Infinity;
+        let minY = Infinity,
+            maxY = -Infinity;
+        let minZ = Infinity,
+            maxZ = -Infinity;
+
+        for (const mesh of result.meshes) {
+            mesh.computeWorldMatrix(true);
+            const bb = mesh.getBoundingInfo().boundingBox;
+            minX = Math.min(minX, bb.minimumWorld.x);
+            maxX = Math.max(maxX, bb.maximumWorld.x);
+            minY = Math.min(minY, bb.minimumWorld.y);
+            maxY = Math.max(maxY, bb.maximumWorld.y);
+            minZ = Math.min(minZ, bb.minimumWorld.z);
+            maxZ = Math.max(maxZ, bb.maximumWorld.z);
+        }
+
+        // Aggregate X: Step centers at 0, scale 1.2 → [-1.2, 1.2]
+        expect(minX).toBeCloseTo(-1.2, 1);
+        expect(maxX).toBeCloseTo(1.2, 1);
+
+        // Aggregate Y: Step_1 at 0.09-0.18=-0.09, Step_8 at 1.35+0.18=1.53
+        expect(minY).toBeCloseTo(-0.09, 2);
+        expect(maxY).toBeCloseTo(1.53, 2);
+
+        // Aggregate Z: Step_1 at 0.125-0.25=-0.125, Step_8 at 1.875+0.25=2.125
+        expect(minZ).toBeCloseTo(-0.125, 2);
+        expect(maxZ).toBeCloseTo(2.125, 2);
+    });
+
+    // -- Supplemental: resolution-layer assertions --
 
     it("resolves authored step transforms with ascending Y and progressive Z", async () => {
         const stage = await resolveStairs();
         const stairsPrim = stage.root.children[0];
         expect(stairsPrim.name).toBe("Stairs");
 
-        const expectedTranslations: [number, number, number][] = [
-            [0, 0.09, 0.125],
-            [0, 0.27, 0.375],
-            [0, 0.45, 0.625],
-            [0, 0.63, 0.875],
-            [0, 0.81, 1.125],
-            [0, 0.99, 1.375],
-            [0, 1.17, 1.625],
-            [0, 1.35, 1.875],
-        ];
-
         for (let i = 0; i < STEP_COUNT; i++) {
             const stepPrim = stairsPrim.children.find((c) => c.name === STEP_NAMES[i]);
             expect(stepPrim, `expected prim '${STEP_NAMES[i]}'`).toBeDefined();
 
             for (let axis = 0; axis < 3; axis++) {
-                expect(stepPrim!.transform.translation[axis]).toBeCloseTo(expectedTranslations[i][axis], 3);
+                expect(stepPrim!.transform.translation[axis]).toBeCloseTo(EXPECTED_STEP_POSITIONS[i][axis], 3);
             }
 
-            // All steps: scale (1.2, 0.18, 0.25)
-            expect(stepPrim!.transform.scale[0]).toBeCloseTo(1.2, 2);
-            expect(stepPrim!.transform.scale[1]).toBeCloseTo(0.18, 2);
-            expect(stepPrim!.transform.scale[2]).toBeCloseTo(0.25, 2);
+            expect(stepPrim!.transform.scale[0]).toBeCloseTo(STEP_SCALING[0], 2);
+            expect(stepPrim!.transform.scale[1]).toBeCloseTo(STEP_SCALING[1], 2);
+            expect(stepPrim!.transform.scale[2]).toBeCloseTo(STEP_SCALING[2], 2);
         }
     });
-
-    // -- Display colors --
 
     it("resolves uniform display color (0.7, 0.65, 0.6) with full opacity on all steps", async () => {
         const stage = await resolveStairs();
@@ -125,59 +205,9 @@ describe("USD runtime corpus - stairs", () => {
             expect(mesh.colors![0]).toBeCloseTo(0.7);
             expect(mesh.colors![1]).toBeCloseTo(0.65);
             expect(mesh.colors![2]).toBeCloseTo(0.6);
-            // No displayOpacity authored → default 1.0
             expect(mesh.colors![3]).toBeCloseTo(1.0);
         }
     });
-
-    // -- Aggregate bounds --
-
-    it("produces aggregate bounds covering all 8 steps from the resolution layer", async () => {
-        const stage = await resolveStairs();
-        const stairsPrim = stage.root.children[0];
-
-        // Cube default size = 2 → half-extent = 1
-        // Each step's world bounds are derived from the parent Xform's translate ± (scale * halfExtent)
-        // X: all centered at 0, scale 1.2 → [-1.2, 1.2]
-        // Y: Step_1 at 0.09, scale 0.18 → [0, 0.18]; Step_8 at 1.35, scale 0.18 → [1.17, 1.53]
-        // Z: Step_1 at 0.125, scale 0.25 → [0, 0.25]; Step_8 at 1.875, scale 0.25 → [1.75, 2.0]
-
-        let globalMinX = Infinity,
-            globalMaxX = -Infinity;
-        let globalMinY = Infinity,
-            globalMaxY = -Infinity;
-        let globalMinZ = Infinity,
-            globalMaxZ = -Infinity;
-
-        for (const stepName of STEP_NAMES) {
-            const stepPrim = stairsPrim.children.find((c) => c.name === stepName);
-            expect(stepPrim).toBeDefined();
-
-            const t = stepPrim!.transform.translation;
-            const s = stepPrim!.transform.scale;
-            // Half-extent in each axis: scale * 1.0 (default Cube halfExtent)
-            globalMinX = Math.min(globalMinX, t[0] - s[0]);
-            globalMaxX = Math.max(globalMaxX, t[0] + s[0]);
-            globalMinY = Math.min(globalMinY, t[1] - s[1]);
-            globalMaxY = Math.max(globalMaxY, t[1] + s[1]);
-            globalMinZ = Math.min(globalMinZ, t[2] - s[2]);
-            globalMaxZ = Math.max(globalMaxZ, t[2] + s[2]);
-        }
-
-        // Aggregate X: [-1.2, 1.2]
-        expect(globalMinX).toBeCloseTo(-1.2, 1);
-        expect(globalMaxX).toBeCloseTo(1.2, 1);
-
-        // Aggregate Y: [0.09 - 0.18, 1.35 + 0.18] = [-0.09, 1.53]
-        expect(globalMinY).toBeCloseTo(-0.09, 2);
-        expect(globalMaxY).toBeCloseTo(1.53, 2);
-
-        // Aggregate Z: [0.125 - 0.25, 1.875 + 0.25] = [-0.125, 2.125]
-        expect(globalMinZ).toBeCloseTo(-0.125, 2);
-        expect(globalMaxZ).toBeCloseTo(2.125, 2);
-    });
-
-    // -- No unsupported diagnostics --
 
     it("does not emit unsupported-Cube diagnostics for valid stairs Cube input", async () => {
         const log = vi.spyOn(Logger, "Log").mockImplementation(() => {});
@@ -192,8 +222,6 @@ describe("USD runtime corpus - stairs", () => {
             warn.mockRestore();
         }
     });
-
-    // -- Cube reuse (no fixture-specific geometry code) --
 
     it("uses subdivisionScheme 'none' on all resolved Cube meshes", async () => {
         const stage = await resolveStairs();

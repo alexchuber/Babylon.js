@@ -45,7 +45,7 @@ export const HospitalBedAsset: IRuntimeCorpusEntry = {
 
 export const RoomAsset: IRuntimeCorpusEntry = {
     fileName: "Room.usda",
-    description: "Modular room shell with floor, four walls, and a centered door gap — all via implicit UsdGeomCube with display colors and 50% opacity",
+    description: "Modular room shell via implicit UsdGeomCube (default size=2) with authored display colors and 50% opacity; source comments describe legacy intent but rendered dimensions are governed by USD default size",
     sha256: "e8f466bbfede76a4e8ac6e78ddb663539a7539f0074e8746fb465faa90dbe163",
     sizeBytes: 3_301,
     sidecars: [],
@@ -56,7 +56,7 @@ export const RoomAsset: IRuntimeCorpusEntry = {
 
 export const StairsAsset: IRuntimeCorpusEntry = {
     fileName: "stairs.usda",
-    description: "Eight-step staircase with uniform step dimensions via implicit UsdGeomCube and display colors",
+    description: "Eight-step staircase via implicit UsdGeomCube (default size=2) with authored display colors; actual rendered step dimensions are 2.4 × 0.36 × 0.5 and adjacent steps overlap",
     sha256: "64a1426fa181ce3342fffaffcfa8c3fe346a75ba73a07127773e3abbd4571fc7",
     sizeBytes: 3_717,
     sidecars: [],

@@ -30,8 +30,8 @@ redactions have been applied — see the Modifications section).
 | `Plane.usda` | Single quad mesh on the XZ plane with constant authored normals | `8ff6aec006b18f5c0a37bc013ade382d87823d935a707ec62f574a641f09e974` | 583 | None |
 | `HospitalBed/Hospital_Bed.usda` | Large polygon mesh with face-varying normals/UVs, PreviewSurface material, and relative diffuse texture | `dd8afae46e2571f3801363e9dc3385ceb075a3122e6ba7f8f3ff66dd2da13e64` | 9,418,448 | `HospitalBed/textures/HospitalBed_Diffuse.png` |
 | `HospitalBed/textures/HospitalBed_Diffuse.png` | Diffuse texture sidecar for Hospital_Bed.usda | `2a765428504204e8c9bc2cc8dc5058996677e528f52c24ccbf21b3c841e353b3` | 2,319,219 | (sidecar of Hospital_Bed.usda) |
-| `Room.usda` | Modular room shell with floor, four walls, and a centered door gap — all via implicit UsdGeomCube with display colors and 50% opacity | `e8f466bbfede76a4e8ac6e78ddb663539a7539f0074e8746fb465faa90dbe163` | 3,301 | None |
-| `stairs.usda` | Eight-step staircase with uniform step dimensions via implicit UsdGeomCube and display colors | `64a1426fa181ce3342fffaffcfa8c3fe346a75ba73a07127773e3abbd4571fc7` | 3,717 | None |
+| `Room.usda` | Modular room shell via implicit UsdGeomCube (default size=2) with authored display colors and 50% opacity | `e8f466bbfede76a4e8ac6e78ddb663539a7539f0074e8746fb465faa90dbe163` | 3,301 | None |
+| `stairs.usda` | Eight-step staircase via implicit UsdGeomCube (default size=2) with authored display colors; actual step dimensions 2.4 × 0.36 × 0.5 | `64a1426fa181ce3342fffaffcfa8c3fe346a75ba73a07127773e3abbd4571fc7` | 3,717 | None |
 
 ## Embedded attribution
 
@@ -45,6 +45,11 @@ committed file is a redacted derivative. The original byte-preserved hash is
 stored only in local session artifacts, not in this public document.
 
 `Room.usda` and `stairs.usda`: unmodified from their provided-source form.
+Source comments in these files describe legacy intent (e.g. room dimensions,
+door gap width, step dimensions) but the standard UsdGeomCube default `size=2`
+(half-extent 1) governs the rendered output. Scale values are multipliers on
+the Cube's [-1,1] local extent, making rendered dimensions double the scale
+values. Authored USD semantics take precedence.
 
 All other files are unmodified from their provided-source form.
 
