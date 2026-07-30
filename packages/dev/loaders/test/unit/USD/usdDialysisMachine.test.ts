@@ -27,11 +27,12 @@ function readCorpusFile(relativePath: string): string {
 }
 
 /**
- * Application-owned handler that validates the OBJ sidecar exists before delegating
- * to Babylon's registered OBJ plugin via module-level `LoadAssetContainerAsync`.
- * `Tools.LoadFile` is mocked in the test setup to serve MTL data from disk.
+ * Application-owned handler that validates OBJ sidecar existence and post-load material
+ * integrity. Delegates to Babylon's registered OBJ plugin via `LoadAssetContainerAsync`.
+ * After loading, validates that the required 32 authored materials are present—missing or
+ * malformed MTL causes rejection rather than silent geometry-only success.
  */
-function createDialysisMachineHandler(mtlFolder: string = "DialysisMachine/"): (request: IUsdExternalAssetRequest) => Promise<UsdExternalAssetResult> {
+function createDialysisMachineHandler(): (request: IUsdExternalAssetRequest) => Promise<UsdExternalAssetResult> {
     return async (request: IUsdExternalAssetRequest): Promise<UsdExternalAssetResult> => {
         if (request.propertyName !== "assetInfo:source") {
             return { handled: false };
@@ -55,6 +56,34 @@ function createDialysisMachineHandler(mtlFolder: string = "DialysisMachine/"): (
             pluginExtension: ".obj",
             rootUrl: "",
         });
+
+        // Post-load validation: renderable geometry must exist
+        const renderableMeshes = container.meshes.filter((m) => m.getTotalVertices() > 0);
+        if (renderableMeshes.length === 0) {
+            container.dispose();
+            throw new Error("OBJ produced no renderable geometry");
+        }
+
+        // Post-load validation: all 32 authored materials must be present.
+        // Missing or malformed MTL causes the OBJ loader to silently use defaults;
+        // the handler detects this by checking the authored material count.
+        const materialNames = new Set<string>();
+        for (const mesh of container.meshes) {
+            if (mesh.material) {
+                materialNames.add(mesh.material.name);
+            }
+        }
+        if (materialNames.size !== 32) {
+            container.dispose();
+            throw new Error(`Expected 32 authored materials from MTL, got ${materialNames.size}`);
+        }
+
+        // Spot-check a representative material to detect malformed MTL values
+        const chromeMat = container.meshes.find((m) => m.material?.name === "Chrome_metal")?.material as StandardMaterial | undefined;
+        if (!chromeMat || Math.abs(chromeMat.diffuseColor.r - 0.65) > 0.05) {
+            container.dispose();
+            throw new Error("Representative material Chrome_metal has unexpected diffuse values — MTL may be malformed");
+        }
 
         return { handled: true, container };
     };
@@ -338,43 +367,55 @@ describe("USD RuntimeCorpus - Dialysis Machine ownership", () => {
         vi.restoreAllMocks();
     });
 
-    it("LoadAssetContainerAsync owns meshes, materials, and geometries; dispose returns to baseline", async () => {
+    it("LoadAssetContainerAsync owns meshes, materials, and geometries; dispose returns scene to baseline", async () => {
         const engine = new NullEngine();
         const scene = new Scene(engine);
 
         try {
+            // Capture scene baselines before USD load
+            const baselineMeshCount = scene.meshes.length;
+            const baselineMaterialCount = scene.materials.length;
+            const baselineGeometryCount = scene.geometries.length;
+
             const usdaData = readCorpusFile("DialysisMachine.usda");
             const container = await LoadAssetContainerAsync("data:" + usdaData, scene, {
                 pluginExtension: ".usda",
                 pluginOptions: { usd: { externalAssetHandler: createDialysisMachineHandler() } },
             });
 
-            // Container holds content off-scene
+            // Container holds content off-scene; scene unchanged from baseline
             expect(container.meshes.length).toBeGreaterThan(0);
             expect(container.materials.length).toBeGreaterThan(0);
             expect(container.geometries.length).toBeGreaterThan(0);
-            expect(scene.meshes.length).toBe(0);
-            expect(scene.materials.length).toBe(0);
+            expect(scene.meshes.length).toBe(baselineMeshCount);
+            expect(scene.materials.length).toBe(baselineMaterialCount);
+            expect(scene.geometries.length).toBe(baselineGeometryCount);
 
             const containerMeshCount = container.meshes.length;
             const containerMaterialCount = container.materials.length;
-            const containerGeometryCount = container.geometries.length;
 
             // Adding to scene transfers content
             container.addAllToScene();
-            expect(scene.meshes.length).toBe(containerMeshCount);
-            expect(scene.materials.length).toBe(containerMaterialCount);
+            expect(scene.meshes.length).toBe(baselineMeshCount + containerMeshCount);
+            expect(scene.materials.length).toBe(baselineMaterialCount + containerMaterialCount);
+            expect(scene.geometries.length).toBeGreaterThan(baselineGeometryCount);
 
-            // Removing from scene clears scene
+            // Removing from scene returns scene to baseline
             container.removeAllFromScene();
-            expect(scene.meshes.length).toBe(0);
-            expect(scene.materials.length).toBe(0);
+            expect(scene.meshes.length).toBe(baselineMeshCount);
+            expect(scene.materials.length).toBe(baselineMaterialCount);
+            expect(scene.geometries.length).toBe(baselineGeometryCount);
 
-            // Dispose cleans up container
+            // Dispose cleans up container arrays
             container.dispose();
             expect(container.meshes.length).toBe(0);
             expect(container.materials.length).toBe(0);
             expect(container.geometries.length).toBe(0);
+
+            // Scene remains at baseline after container dispose
+            expect(scene.meshes.length).toBe(baselineMeshCount);
+            expect(scene.materials.length).toBe(baselineMaterialCount);
+            expect(scene.geometries.length).toBe(baselineGeometryCount);
         } finally {
             scene.dispose();
             engine.dispose();
@@ -400,24 +441,35 @@ describe("USD RuntimeCorpus - Dialysis Machine error behavior", () => {
         const scene = new Scene(engine);
         mockToolsLoadFile();
 
-        // Use the real USDA but a handler that pre-validates the file path
-        const handler = createDialysisMachineHandler();
-
-        // Temporarily rename the OBJ to simulate a missing file
-        const objPath = path.join(corpusRoot, "DialysisMachine/DialysisMachine.obj");
-        const backupPath = objPath + ".test-backup";
-        fs.renameSync(objPath, backupPath);
+        // Synthetic USDA that references a non-existent OBJ sidecar
+        const syntheticUsda = `#usda 1.0
+(
+    defaultPrim = "DialysisMachine"
+    metersPerUnit = 1
+    upAxis = "Y"
+)
+def Xform "DialysisMachine"
+{
+    def Xform "Asset" (
+        kind = "reference"
+    )
+    {
+        custom asset assetInfo:source = @./DialysisMachine/Missing.obj@
+        double3 xformOp:translate = (0, 0, 0)
+        float3 xformOp:rotateXYZ = (-90, 0, 0)
+        float3 xformOp:scale = (0.02, 0.02, 0.02)
+        uniform token[] xformOpOrder = ["xformOp:translate", "xformOp:rotateXYZ", "xformOp:scale"]
+    }
+}`;
 
         try {
-            const usdaData = readCorpusFile("DialysisMachine.usda");
             await expect(
-                ImportMeshAsync("data:" + usdaData, scene, {
+                ImportMeshAsync("data:" + syntheticUsda, scene, {
                     pluginExtension: ".usda",
-                    pluginOptions: { usd: { externalAssetHandler: handler } },
+                    pluginOptions: { usd: { externalAssetHandler: createDialysisMachineHandler() } },
                 })
             ).rejects.toThrow(/OBJ sidecar not found/);
         } finally {
-            fs.renameSync(backupPath, objPath);
             scene.dispose();
             engine.dispose();
         }
@@ -428,18 +480,16 @@ describe("USD RuntimeCorpus - Dialysis Machine error behavior", () => {
         const scene = new Scene(engine);
         mockToolsLoadFile();
 
-        // Handler that feeds malformed data and validates the result has usable geometry
+        // Handler that feeds malformed data through normal LoadAssetContainerAsync
         async function malformedObjHandler(request: IUsdExternalAssetRequest): Promise<UsdExternalAssetResult> {
             if (request.propertyName !== "assetInfo:source") {
                 return { handled: false };
             }
-            // Feed completely invalid OBJ content
             const container = await LoadAssetContainerAsync("data:this is not valid OBJ data\n!@#$%^&*()", request.scene, {
                 pluginExtension: ".obj",
                 rootUrl: "",
             });
-            // Validate the loaded result has renderable geometry — the handler must reject
-            // unusable OBJ output rather than passing through empty/degenerate containers
+            // Post-load validation: reject if no renderable geometry
             const renderableMeshes = container.meshes.filter((m) => m.getTotalVertices() > 0);
             if (renderableMeshes.length === 0) {
                 container.dispose();
@@ -462,11 +512,11 @@ describe("USD RuntimeCorpus - Dialysis Machine error behavior", () => {
         }
     });
 
-    it("rejects when MTL sidecar is missing", async () => {
+    it("rejects when MTL sidecar is missing — handler detects missing authored materials", async () => {
         const engine = new NullEngine();
         const scene = new Scene(engine);
 
-        // Mock Tools.LoadFile to fail on MTL requests
+        // Mock Tools.LoadFile to fail on MTL requests (simulating missing MTL)
         vi.spyOn(Tools, "LoadFile").mockImplementation(
             (
                 fileOrUrl: File | string,
@@ -500,16 +550,62 @@ describe("USD RuntimeCorpus - Dialysis Machine error behavior", () => {
 
         try {
             const usdaData = readCorpusFile("DialysisMachine.usda");
-            // OBJ loader degrades gracefully with missing MTL (uses default material).
-            // It does NOT throw — this is normal Babylon OBJ loader behavior.
-            // The load should succeed but with no authored materials.
-            const result = await ImportMeshAsync("data:" + usdaData, scene, {
-                pluginExtension: ".usda",
-                pluginOptions: { usd: { externalAssetHandler: createDialysisMachineHandler() } },
-            });
-            // Meshes are still loaded even without MTL
-            const meshesWithGeometry = result.meshes.filter((m) => m.getTotalVertices() > 0);
-            expect(meshesWithGeometry.length).toBeGreaterThan(0);
+            // Handler post-validates that all 32 authored materials are present.
+            // Missing MTL causes OBJ loader to use defaults → handler rejects.
+            await expect(
+                ImportMeshAsync("data:" + usdaData, scene, {
+                    pluginExtension: ".usda",
+                    pluginOptions: { usd: { externalAssetHandler: createDialysisMachineHandler() } },
+                })
+            ).rejects.toThrow(/Expected 32 authored materials from MTL/);
+        } finally {
+            scene.dispose();
+            engine.dispose();
+        }
+    });
+
+    it("rejects when MTL data is malformed — handler detects wrong material values", async () => {
+        const engine = new NullEngine();
+        const scene = new Scene(engine);
+
+        // Mock Tools.LoadFile to return garbage MTL data
+        vi.spyOn(Tools, "LoadFile").mockImplementation(
+            (
+                fileOrUrl: File | string,
+                onSuccess: (data: string | ArrayBuffer, responseURL?: string, contentType?: string | null) => void,
+                _onProgress?: (ev: ProgressEvent) => void,
+                _offlineProvider?: IOfflineProvider | null,
+                _useArrayBuffer?: boolean,
+                _onError?: (request?: WebRequest, exception?: LoadFileError) => void
+            ): IFileRequest => {
+                const fileRequest: IFileRequest = {
+                    abort: () => {},
+                    onCompleteObservable: new Observable<IFileRequest>(),
+                };
+                const url = typeof fileOrUrl === "string" ? fileOrUrl : fileOrUrl.name;
+                if (url.endsWith(".mtl")) {
+                    // Return malformed MTL that defines no valid materials
+                    setTimeout(() => onSuccess("this is not valid MTL data\n!@#$%"), 0);
+                } else {
+                    setTimeout(() => {
+                        if (_onError) {
+                            _onError(undefined, new LoadFileError(`Unexpected request: ${url}`, undefined));
+                        }
+                    }, 0);
+                }
+                return fileRequest;
+            }
+        );
+
+        try {
+            const usdaData = readCorpusFile("DialysisMachine.usda");
+            // Handler post-validates material count; malformed MTL produces wrong count → reject
+            await expect(
+                ImportMeshAsync("data:" + usdaData, scene, {
+                    pluginExtension: ".usda",
+                    pluginOptions: { usd: { externalAssetHandler: createDialysisMachineHandler() } },
+                })
+            ).rejects.toThrow(/Expected 32 authored materials from MTL/);
         } finally {
             scene.dispose();
             engine.dispose();
