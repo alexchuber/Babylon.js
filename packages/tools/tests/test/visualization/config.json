@@ -5496,6 +5496,13 @@
             "dependsOn": ["Loaders", "Materials", "Meshes"]
         },
         {
+            "title": "USD loader - Plane corpus",
+            "playgroundId": "#TEK2UY#0",
+            "referenceImage": "usd-loader-plane-corpus.png",
+            "renderCount": 1,
+            "dependsOn": ["Loaders", "Meshes"]
+        },
+        {
             "title": "CSG2 Right-Handed glTF winding",
             "playgroundId": "#1HYT9N#0",
             "referenceImage": "csg2-righthanded-gltf-winding.png",
