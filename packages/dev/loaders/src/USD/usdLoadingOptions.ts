@@ -1,3 +1,5 @@
+import { type UsdExternalAssetHandler } from "./usdExternalAssetHandler";
+
 /**
  * Options for loading OpenUSD single-layer USDA text (`.usda` and textual `.usd`) assets.
  */
@@ -34,4 +36,33 @@ export type USDLoadingOptions = {
      * {@link UsdConfigurationError} before parsing. Defaults to 10,000,000.
      */
     maxParserWork?: number;
+
+    /**
+     * Optional asynchronous handler invoked for each otherwise-unhandled asset-valued prim property
+     * discovered during USD loading. When set, the handler receives the property identity, resolved URI,
+     * scene context, and bounded ancestry, and can return a loaded {@link AssetContainer} to be
+     * instantiated beneath the authored USD prim transform.
+     *
+     * The handler is application-owned: the USD core does not hardcode any specific custom property
+     * names or asset format knowledge. Handler exceptions propagate through normal SceneLoader
+     * failure paths.
+     *
+     * When unset, unhandled asset-valued properties emit a structured diagnostic and are skipped.
+     */
+    externalAssetHandler?: UsdExternalAssetHandler;
+
+    /**
+     * Maximum number of external asset handler invocations allowed per load operation. Guards against
+     * runaway handler chains. Must be a finite, non-negative safe integer or it throws
+     * {@link UsdConfigurationError} before parsing. Defaults to 64.
+     */
+    maxExternalAssetRequests?: number;
+
+    /**
+     * Maximum ancestor depth at which external asset handler requests are issued. Prims nested
+     * deeper than this limit are diagnosed and skipped. Guards against deeply nested or recursive
+     * asset references. Must be a finite, non-negative safe integer or it throws
+     * {@link UsdConfigurationError} before parsing. Defaults to 32.
+     */
+    maxExternalAssetDepth?: number;
 };

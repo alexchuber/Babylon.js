@@ -32,7 +32,7 @@ describe("USD resolved-stage contract", () => {
         expect(() => stage.root.children.push(stage.root)).toThrow();
     });
 
-    it("adapts into right-handed scene mode without rewriting authored indices or normals", () => {
+    it("adapts into right-handed scene mode without rewriting authored indices or normals", async () => {
         const engine = new NullEngine();
         const scene = new Scene(engine);
         const indices = new Uint32Array([0, 1, 2]);
@@ -42,7 +42,7 @@ describe("USD resolved-stage contract", () => {
         try {
             expect(scene.useRightHandedSystem).toBe(false);
 
-            const result = AdaptResolvedStageToScene(stage, scene, null, {});
+            const result = await AdaptResolvedStageToScene(stage, scene, null, {});
             const mesh = result.meshes[0];
 
             expect(scene.useRightHandedSystem).toBe(true);
@@ -97,5 +97,6 @@ function CreateResolvedTriangle(indices: Uint32Array, normals: Float32Array): IR
         materials: [],
         skeletons: [],
         diagnostics: [],
+        layerIdentifier: "triangle.usda",
     };
 }

@@ -52,6 +52,10 @@ export interface IUsdAdapterContext {
     materialCache: Map<number, Material>;
     /** Skeletons by stage skeleton index. */
     skeletonCache: Map<number, Skeleton>;
+    /** Non-fatal diagnostics collected during adapter processing. */
+    diagnostics: import("../resolution/resolvedStage").IResolvedDiagnostic[];
+    /** Map from resolved prim path to the Babylon node created for it, built during the AdaptPrim walk. */
+    nodeByPrimPath: Map<string, TransformNode>;
 }
 
 /**
@@ -83,6 +87,7 @@ export function AdaptPrim(prim: IResolvedPrim, parent: TransformNode, context: I
     // resolved transform is relative to the stage root, so parent it there while its Babylon children stay
     // under it (they still inherit the reset prim's transform, matching USD).
     node.parent = prim.transform.resetsXformStack ? context.stageRoot : parent;
+    context.nodeByPrimPath.set(prim.path, node);
     if (!prim.visible && node instanceof AbstractMesh && prim.animation?.tracks.some((track) => track.target === "visibility")) {
         node.visibility = 0;
     } else if (!prim.visible) {

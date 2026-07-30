@@ -32,6 +32,9 @@ redactions have been applied — see the Modifications section).
 | File | Description | SHA-256 (committed) | Size (bytes) | Sidecars |
 | ---- | ----------- | ------------------- | ------------ | -------- |
 | `Box.usda` | Unit cube via implicit UsdGeomCube with authored size (redacted derivative) | `d182a886584fd2c4d886cc56852280ac9625911fb6d0ec244fc565b8878798a2` | 205 | None |
+| `DeliveryBox.usda` | USDA wrapper exercising the optional external-asset handler with OBJ/MTL sidecars | `e24af6aa2e1af8f3a500fe3aba8c259ebad025f97a57a800dc8f9645b0cb5994` | 525 | `DeliveryBox/DeliveryBox.obj`, `DeliveryBox/DeliveryBox.mtl` |
+| `DeliveryBox/DeliveryBox.obj` | Delivery Box geometry sidecar | `a807116330157780ea20a3a44ae36bcd8d9806ca18c96dab013e685d3bc1364a` | 13,704 | `DeliveryBox/DeliveryBox.mtl` |
+| `DeliveryBox/DeliveryBox.mtl` | Delivery Box material sidecar | `84fefbdd1c6b4338cbea17ffda4ea6c70142b3af4084e6473b9d1439325a5060` | 208 | (sidecar of DeliveryBox.obj) |
 | `Plane.usda` | Single quad mesh on the XZ plane with constant authored normals | `8ff6aec006b18f5c0a37bc013ade382d87823d935a707ec62f574a641f09e974` | 583 | None |
 | `HospitalBed/Hospital_Bed.usda` | Large polygon mesh with face-varying normals/UVs, PreviewSurface material, and relative diffuse texture | `dd8afae46e2571f3801363e9dc3385ceb075a3122e6ba7f8f3ff66dd2da13e64` | 9,418,448 | `HospitalBed/textures/HospitalBed_Diffuse.png` |
 | `HospitalBed/textures/HospitalBed_Diffuse.png` | Diffuse texture sidecar for Hospital_Bed.usda | `2a765428504204e8c9bc2cc8dc5058996677e528f52c24ccbf21b3c841e353b3` | 2,319,219 | (sidecar of Hospital_Bed.usda) |
@@ -43,6 +46,8 @@ redactions have been applied — see the Modifications section).
 
 Any copyright or attribution text embedded in the original asset files is
 preserved verbatim. Retain it.
+
+`DeliveryBox/DeliveryBox.obj` retains its embedded Blender attribution header.
 
 ## Modifications
 
@@ -68,3 +73,5 @@ All other files are unmodified from their provided-source form.
 - `HospitalBed/textures/HospitalBed_Diffuse.png` is the diffuse texture referenced by
   `HospitalBed/Hospital_Bed.usda` (`asset inputs:file = @./textures/HospitalBed_Diffuse.png@`)
   and is kept beside it so relative asset-path resolution works.
+- `DeliveryBox.usda` references `./DeliveryBox/DeliveryBox.obj`, whose `mtllib`
+  statement resolves `DeliveryBox.mtl` beside the OBJ.

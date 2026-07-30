@@ -21,6 +21,17 @@ export const BoxAsset: IRuntimeCorpusEntry = {
     metersPerUnit: 1,
 } as const;
 
+export const DeliveryBoxAsset: IRuntimeCorpusEntry = {
+    fileName: "DeliveryBox.usda",
+    description: "USDA wrapper that delegates an OBJ/MTL sidecar pair through the optional external-asset handler",
+    sha256: "e24af6aa2e1af8f3a500fe3aba8c259ebad025f97a57a800dc8f9645b0cb5994",
+    sizeBytes: 525,
+    sidecars: ["DeliveryBox/DeliveryBox.obj", "DeliveryBox/DeliveryBox.mtl"],
+    defaultPrim: "DeliveryBox",
+    upAxis: "Y",
+    metersPerUnit: 1,
+} as const;
+
 export const PlaneAsset: IRuntimeCorpusEntry = {
     fileName: "Plane.usda",
     description: "Single quad mesh on the XZ plane with constant authored normals",
@@ -76,4 +87,4 @@ export const StairsAsset: IRuntimeCorpusEntry = {
     metersPerUnit: 1,
 } as const;
 
-export const RuntimeCorpusManifest: readonly IRuntimeCorpusEntry[] = [PlaneAsset, BoxAsset, HospitalBedAsset, RobotArmAsset, RoomAsset, StairsAsset] as const;
+export const RuntimeCorpusManifest: readonly IRuntimeCorpusEntry[] = [PlaneAsset, BoxAsset, DeliveryBoxAsset, HospitalBedAsset, RobotArmAsset, RoomAsset, StairsAsset] as const;

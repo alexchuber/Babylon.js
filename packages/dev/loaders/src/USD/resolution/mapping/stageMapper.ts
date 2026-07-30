@@ -5,6 +5,7 @@ import {
     type IResolvedPrim,
     type IResolvedSkeleton,
     type IResolvedStage,
+    type IResolvedUnhandledAssetProperty,
     type IStageMetadata,
 } from "../resolvedStage";
 import { type ISdfLayer, type ISdfPrimSpec } from "../sdf/index";
@@ -17,6 +18,7 @@ import { BuildMeshPoolKey, CollectInheritablePrimvars, EmptyInheritedPrimvars, R
 import { ResolveSkeletonIndex, ResolveSkinning } from "./skeletonMapping";
 import { IdentityTransform, ResolveTransform } from "./transformMapping";
 import { AsToken, GetAttribute, GetAttributeValue, GetRelationship, GetRelationshipTargets } from "./valueAccess";
+import { ResolveAssetIdentifier } from "../assetPath";
 
 type StageMapperContext = IStageMappingContext & {
     skeletons: IResolvedSkeleton[];
@@ -63,6 +65,7 @@ export function MapLayerToResolvedStage(layer: ISdfLayer): IResolvedStage {
         materials,
         skeletons,
         diagnostics,
+        layerIdentifier: layer.identifier,
     };
 }
 
@@ -136,6 +139,7 @@ function MapPrim(
     const effectiveMaterialPath = GetMaterialBindingPath(primSpec) ?? inheritedMaterialPath;
 
     ApplySchemaPayload(prim, primSpec, metadata, context, effectiveMaterialPath, inheritedPrimvars);
+    CollectUnhandledAssetProperties(prim, primSpec, context);
     const animation = ResolvePrimAnimation(primSpec, context.layer, metadata, context.diagnostics);
     if (animation) {
         const tracks = animation.tracks.filter((track) => track.target !== "visibility" || prim.kind === "mesh");
@@ -335,4 +339,70 @@ function IsUnsupportedRenderableSchema(typeName: string | undefined): boolean {
 // UsdLux lights are out of profile; every light schema is diagnosed and skipped.
 function IsUnsupportedLightSchema(typeName: string | undefined): boolean {
     return typeName?.endsWith("Light") === true || typeName?.startsWith("UsdLux") === true;
+}
+
+// Collects asset-valued custom properties that were not consumed by the standard schema mapping.
+// These are surfaced on the resolved prim so the adapter can invoke an optional external-asset handler.
+function CollectUnhandledAssetProperties(prim: IResolvedPrim, primSpec: ISdfPrimSpec, context: StageMapperContext): void {
+    const properties: IResolvedUnhandledAssetProperty[] = [];
+    for (const [propertyName, propertySpec] of Object.entries(primSpec.properties)) {
+        if (propertySpec.kind !== "attribute" || propertySpec.typeName !== "asset") {
+            continue;
+        }
+        // Skip standard schema properties that are consumed by the mesh/material/camera/skeleton mapping
+        if (IsStandardSchemaProperty(propertyName)) {
+            continue;
+        }
+        const value = GetAttributeValue(propertySpec);
+        if (!value || value.type !== "asset") {
+            continue;
+        }
+        const authoredPath = value.value.authoredPath;
+        if (!authoredPath) {
+            continue;
+        }
+        const resolvedPath = ResolveAssetIdentifier(authoredPath, context.layer.identifier);
+        properties.push({ propertyName, authoredPath, resolvedPath });
+    }
+    if (properties.length > 0) {
+        prim.unhandledAssetProperties = properties;
+    }
+}
+
+// Properties consumed by the standard mesh/material/camera/skeleton/transform schema mapping.
+// Asset-valued custom properties not in this set are surfaced as unhandled for external handler dispatch.
+const StandardSchemaProperties = new Set([
+    "points",
+    "faceVertexCounts",
+    "faceVertexIndices",
+    "normals",
+    "visibility",
+    "purpose",
+    "doubleSided",
+    "orientation",
+    "subdivisionScheme",
+    "extent",
+    "focalLength",
+    "horizontalAperture",
+    "verticalAperture",
+    "clippingRange",
+    "projection",
+    "fStop",
+    "focusDistance",
+]);
+
+function IsStandardSchemaProperty(name: string): boolean {
+    return (
+        StandardSchemaProperties.has(name) ||
+        name.startsWith("xformOp:") ||
+        name === "xformOpOrder" ||
+        name.startsWith("primvars:") ||
+        name.startsWith("material:") ||
+        name.startsWith("skel:") ||
+        name.startsWith("inputs:") ||
+        name.startsWith("outputs:") ||
+        name.startsWith("info:") ||
+        name === "displayColor" ||
+        name === "displayOpacity"
+    );
 }
