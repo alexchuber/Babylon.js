@@ -388,6 +388,8 @@ describe("USD external asset handler", () => {
             const mat = clonedMesh!.material as StandardMaterial;
             expect(mat.diffuseTexture).not.toBeNull();
             expect(mat.diffuseTexture).not.toBe(sourceTextures[0]);
+            // Clone texture is valid (getSize returns non-zero for a 1×1 RawTexture clone)
+            expect(mat.diffuseTexture!.getSize().width).toBeGreaterThan(0);
         } finally {
             scene.dispose();
             engine.dispose();
