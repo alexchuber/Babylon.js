@@ -5566,6 +5566,13 @@
             "dependsOn": ["Loaders"]
         },
         {
+            "title": "USD loader - Shelves external asset GLB",
+            "playgroundId": "#M7EE50#0",
+            "referenceImage": "usd-loader-shelves-glb.png",
+            "renderCount": 50,
+            "dependsOn": ["Loaders", "glTF", "Meshes", "Materials", "Textures"]
+        },
+        {
             "title": "CSG2 Right-Handed glTF winding",
             "playgroundId": "#1HYT9N#0",
             "referenceImage": "csg2-righthanded-gltf-winding.png",
