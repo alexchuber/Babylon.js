@@ -5621,7 +5621,7 @@
         },
         {
             "title": "USD loader - Seahorse USDZ",
-            "playgroundId": "#MLDQWB#0",
+            "playgroundId": "#EXXET5#0",
             "referenceImage": "usd-loader-seahorse-usdz.png",
             "renderCount": 50,
             "dependsOn": ["Loaders", "Materials", "Meshes", "PBR", "Textures", "Animations", "Bones"],
