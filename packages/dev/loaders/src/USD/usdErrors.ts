@@ -91,7 +91,7 @@ export class UsdLayerLoadError extends Error {
     /** The USD prim path whose reference requested the layer, when known. */
     public readonly path?: string;
     /** The original source failure, when one was thrown. */
-    public readonly cause?: unknown;
+    public override readonly cause?: unknown;
 
     /**
      * Creates a UsdLayerLoadError.

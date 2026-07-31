@@ -168,9 +168,9 @@ describe("USD RuntimeCorpus - RobotArm2 reference wrapper", () => {
         expect(worldMinX).toBeCloseTo(-0.179, 2);
         expect(worldMaxX).toBeCloseTo(0.004, 2);
         expect(worldMinY).toBeCloseTo(0, 2);
-        expect(worldMaxY).toBeCloseTo(0.02, 2);
-        expect(worldMinZ).toBeCloseTo(-0.012, 2);
-        expect(worldMaxZ).toBeCloseTo(0.014, 2);
+        expect(worldMaxY).toBeCloseTo(0.023428, 3);
+        expect(worldMinZ).toBeCloseTo(-0.01428, 3);
+        expect(worldMaxZ).toBeCloseTo(0.011818, 3);
     });
 
     it("keeps the composed result owned by AssetContainer until transferred", () => {

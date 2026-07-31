@@ -5,8 +5,8 @@ import { type IResolvedDiagnostic } from "./resolvedStage";
 import { DecodeUsdLayerText, GetUsdLayerByteLength, type IUsdLayerSource, type UsdLayerSourceData } from "./layerSource";
 import { ParseUsdaWithDiagnostics, DefaultUsdaParserLimits, type IUsdaParserLimits } from "./parser/usda/usdaParser";
 import { ReadListOpItems, type ISdfListOp } from "./sdf/sdfListOp";
-import { type ISdfLayer, type ISdfPrimSpec, type ISdfReference } from "./sdf/sdfLayer";
-import { type ISdfPropertySpec } from "./sdf/sdfSpec";
+import { type ISdfLayer, type ISdfReference } from "./sdf/sdfLayer";
+import { type ISdfPrimSpec, type ISdfPropertySpec } from "./sdf/sdfSpec";
 
 const DefaultMaxLayerCount = 64;
 const DefaultMaxLayerDepth = 32;
