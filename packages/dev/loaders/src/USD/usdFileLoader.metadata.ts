@@ -10,9 +10,9 @@ export const USDFileLoaderMetadata = {
 
     extensions: {
         // Both extensions are read as binary so the concrete container is sniffed from magic bytes rather
-        // than trusted from the extension: USDA text and the supported external-reference subset are
-        // handled, and a ".usd" file may be either USDA text or a binary crate. Binary crate (usdc) and
-        // USDZ package bytes are rejected up front by the resolver; ".usdc"/".usdz" are not advertised.
+        // than trusted from the extension: direct-authored USDA text and binary crate bytes are decoded,
+        // optional external references are composed through a configured layer source, and USDZ package
+        // bytes are rejected up front by the resolver. ".usdc"/".usdz" are intentionally not advertised.
         ".usd": { isBinary: true, mimeType: "model/vnd.usd" },
         ".usda": { isBinary: true, mimeType: "model/vnd.usda" },
     } as const satisfies ISceneLoaderPluginExtensions,

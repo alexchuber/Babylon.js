@@ -72,7 +72,7 @@ export function ApplySingleLayerPolicy(layer: ISdfLayer): IApplySingleLayerPolic
             code: "usda-sublayer-unsupported",
             severity: "error",
             path: layer.identifier,
-            message: `Sublayer '${subLayer.assetPath}' requires layer composition, which the single-layer USDA importer does not support. The sublayer was ignored.`,
+            message: `Sublayer '${subLayer.assetPath}' requires layer composition, which the single-layer USD importer does not support. The sublayer was ignored.`,
         });
     }
 
@@ -146,7 +146,7 @@ function NormalizePrim(prim: ISdfPrimSpec, diagnostics: ISingleLayerPolicyDiagno
             code: "usda-class-unsupported",
             severity: "error",
             path: prim.path,
-            message: `Class prim '${prim.path}' is an abstract inherit template and was not instantiated; class composition is not supported by the single-layer USDA importer.`,
+            message: `Class prim '${prim.path}' is an abstract inherit template and was not instantiated; class composition is not supported by the single-layer USD importer.`,
         });
         return undefined;
     }

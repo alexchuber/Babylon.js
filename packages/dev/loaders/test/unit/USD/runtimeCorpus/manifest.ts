@@ -73,6 +73,17 @@ export const ForkliftAsset: IRuntimeCorpusEntry = {
     metersPerUnit: 1,
 } as const;
 
+export const ForkliftUsdcAsset: IRuntimeCorpusEntry = {
+    fileName: "Forklift/Forklift.usd",
+    description: "Standalone USDC crate with selected Color variant, Z-up centimeter metadata, polygonal meshes, and MDL-only material opinions",
+    sha256: "07e5f3b0b931ef2d8609f0cbc140583427a48bd3b408769096db46db8700dcb1",
+    sizeBytes: 70_889_650,
+    sidecars: [],
+    defaultPrim: "World",
+    upAxis: "Z",
+    metersPerUnit: 0.01,
+} as const;
+
 export const UR10Asset: IRuntimeCorpusEntry = {
     fileName: "UR10.usda",
     description: "USDA wrapper that delegates the 21-part UR10 OBJ/MTL sidecar pair through the optional external-asset handler with authored 0.0254 scale",
@@ -247,6 +258,7 @@ export const RuntimeCorpusManifest: readonly IRuntimeCorpusEntry[] = [
     DeliveryBoxAsset,
     DialysisMachineAsset,
     ForkliftAsset,
+    ForkliftUsdcAsset,
     UR10Asset,
     ShelvesAsset,
     HospitalBedAsset,

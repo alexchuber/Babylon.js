@@ -12,6 +12,9 @@ import { type Nullable } from "core/types";
 import { AssetContainer } from "core/assetContainer";
 import { Logger } from "core/Misc/logger";
 import { Tools } from "core/Misc/tools.pure";
+import { type IFileRequest } from "core/Misc/fileRequest";
+import { type LoadFileError } from "core/Misc/fileTools.pure";
+import { type WebRequest } from "core/Misc/webRequest";
 
 import { USDFileLoaderMetadata } from "./usdFileLoader.metadata";
 import { type USDLoadingOptions } from "./usdLoadingOptions";
@@ -23,12 +26,14 @@ import { type IUsdLayerSource } from "./resolution/layerSource";
 
 /**
  * @experimental
- * OpenUSD scene loader plugin for USDA text (`.usda` and textual `.usd`).
+ * OpenUSD scene loader plugin for USDA text and USDC crate (`.usd`/`.usda`).
  *
  * Input is selected by content rather than by extension: USDA text is parsed, while binary crate
- * (`PXR-USDC`) and USDZ package (ZIP) bytes are rejected with a typed {@link UsdUnsupportedFormatError}.
- * The loader is split into a USD *resolution layer* (parsing, reference composition, single-layer validation and stage/time
- * evaluation, producing a fully-resolved {@link IResolvedStage}) and a Babylon *adapter layer*
+ * (`PXR-USDC`) bytes are decoded by the bounded crate reader, optional authored references are composed
+ * through a normalized layer source, and USDZ package (ZIP) bytes are rejected with a typed
+ * {@link UsdUnsupportedFormatError}. The loader is split into a USD *resolution layer* (parsing,
+ * reference composition, single-layer validation and stage/time evaluation, producing a fully-resolved
+ * {@link IResolvedStage}) and a Babylon *adapter layer*
  * (mapping the resolved stage onto Babylon nodes, meshes, materials and animations). Babylon is used
  * only as a rendering backend; it performs no USD reasoning.
  */
@@ -62,10 +67,50 @@ export class USDFileLoader implements ISceneLoaderPluginAsync, ISceneLoaderPlugi
     }
 
     /**
+     * Loads raw binary USD input supplied through the module-level SceneLoader APIs.
+     * @param scene the scene receiving the load request
+     * @param fileOrUrl a URL, File, or in-memory byte view
+     * @param _rootUrl root URL for URL-backed input
+     * @param onSuccess callback receiving the loaded USD data
+     * @param _onProgress progress callback for URL-backed input
+     * @param _useArrayBuffer whether URL-backed input should be returned as bytes
+     * @param onError callback receiving a URL/file load failure
+     * @param _name optional source name
+     * @returns the URL/file request, or `null` when in-memory bytes are delivered synchronously
+     * @internal
+     */
+    public loadFile(
+        scene: Scene,
+        fileOrUrl: File | string | ArrayBufferView,
+        _rootUrl: string,
+        onSuccess: (data: unknown, responseURL?: string) => void,
+        _onProgress?: (event: ISceneLoaderProgressEvent) => void,
+        _useArrayBuffer?: boolean,
+        onError?: (request?: WebRequest, exception?: LoadFileError) => void,
+        _name?: string
+    ): Nullable<IFileRequest> {
+        if (ArrayBuffer.isView(fileOrUrl)) {
+            onSuccess(fileOrUrl, _name);
+            return null;
+        }
+
+        const progress = _onProgress
+            ? (event: ProgressEvent) => {
+                  _onProgress({
+                      lengthComputable: event.lengthComputable,
+                      loaded: event.loaded,
+                      total: event.total,
+                  });
+              }
+            : undefined;
+        return scene._loadFile(fileOrUrl, onSuccess, progress, true, true, onError);
+    }
+
+    /**
      * Imports meshes (and other nodes) from the loaded USD data and adds them to the scene.
      * @param _meshesNames the mesh names to load (unused; the whole stage is imported)
      * @param scene the scene the objects should be added to
-     * @param data the USD data to load (USDA text as a string, or bytes that are sniffed and decoded as USDA text)
+     * @param data the USD data to load (USDA text as a string, or bytes sniffed as USDA or USDC)
      * @param rootUrl root url to resolve external assets against
      * @param _onProgress callback called while the file is loading
      * @param fileName name of the file being loaded, used for format hints and diagnostics

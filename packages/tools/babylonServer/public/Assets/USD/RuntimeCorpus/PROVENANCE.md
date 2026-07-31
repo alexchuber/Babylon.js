@@ -40,6 +40,7 @@ redactions have been applied — see the Modifications section).
 | `DialysisMachine/DialysisMachine.obj`           | Dialysis machine geometry sidecar (392K+ lines, 89K vertices, 32 material groups)                                                                                                         | `2c45313495ef44acad8e5e46a931d078f4d63f480398a004f0cddffe0c8a2796` | 14,301,576   | `DialysisMachine/DialysisMachine.mtl`                                                                                                                                    |
 | `DialysisMachine/DialysisMachine.mtl`           | Dialysis machine material sidecar with 32 materials (redacted derivative — see Modifications)                                                                                             | `2c922fa528c9cd349daa69341e61bf95093e1b3c47a320fe23af67933edad1af` | 2,983        | (sidecar of DialysisMachine.obj)                                                                                                                                         |
 | `Forklift.usda`                                 | USDA wrapper exercising the optional external-asset handler with OBJ/MTL/texture sidecars; authored scale (0.03, 0.03, 0.03)                                                              | `949e532756cce3801520d206c8ff01aaf401472a6764290b614f89fa525dd07c` | 518          | `Forklift/Forklift.obj`, `Forklift/Forklift.mtl`, `Forklift/textures/Mat01_BaseColor.png`, `Forklift/textures/Mat01_Normal.png`, `Forklift/textures/Mat01_Roughness.png` |
+| `Forklift/Forklift.usd`                         | Standalone provided-source USDC crate with a selected Color variant, Z-up centimeter metadata, 48 polygonal meshes, and MDL-only material opinions                                              | `07e5f3b0b931ef2d8609f0cbc140583427a48bd3b408769096db46db8700dcb1` | 70,889,650  | None                                                                                                                                                                     |
 | `Forklift/Forklift.obj`                         | Forklift geometry sidecar (3,746 vertices, 3,496 faces)                                                                                                                                   | `864d89c3856c502061e63b53e75811b1b0ce8a0da177d75dde19df047edfeae5` | 746,597      | `Forklift/Forklift.mtl`, `Forklift/textures/*`                                                                                                                           |
 | `Forklift/Forklift.mtl`                         | Forklift material sidecar with base-color, normal, and roughness texture references                                                                                                       | `973c454143172c61a37e96a23147adc001b4bf557175b12905336ec818fe54f0` | 249          | (sidecar of Forklift.obj)                                                                                                                                                |
 | `Forklift/textures/Mat01_BaseColor.png`         | Base-color texture sidecar for Forklift                                                                                                                                                   | `ceb3461538803d2bea5fe3bfbe470d4b5dd0a7a612f02b099235810c2c16060b` | 11,006,726   | (sidecar of Forklift.mtl)                                                                                                                                                |
@@ -97,6 +98,10 @@ glTF `asset.generator` field). No copyright or additional attribution is embedde
 
 `Forklift/Forklift.obj` and `Forklift/Forklift.mtl` retain their embedded
 Cinema 4D attribution headers.
+
+`Forklift/Forklift.usd` is retained byte-for-byte from the provided-source snapshot. Its
+decoded layer metadata and authored paths were audited for private identifiers;
+the binary contains no added comments or repository-specific metadata.
 
 `HospitalBed/Hospital_Bed.obj` and `HospitalBed/Hospital_Bed.mtl` retain their embedded
 Wavefront exporter attribution header.
@@ -181,9 +186,10 @@ contains no GLB or binary USD reference, and no such file is vendored.
 - `Forklift.usda` references `./Forklift/Forklift.obj` via `assetInfo:source`, whose
   `mtllib` statement resolves `Forklift.mtl` beside the OBJ. The MTL references
   `textures/Mat01_BaseColor.png`, `textures/Mat01_Normal.png`, and
-  `textures/Mat01_Roughness.png` relative to the OBJ directory. The alternative
-  `Forklift.glb` and binary `Forklift.usd` (USDC) from the source are NOT included
-  in this corpus; this slice exercises the textual wrapper path only.
+  `textures/Mat01_Roughness.png` relative to the OBJ directory.
+- `Forklift/Forklift.usd` is a standalone USDC layer. It has no external USD layer or
+  sidecar dependency in this corpus; its MDL material texture asset paths are
+  retained for decoder and unsupported-material diagnostics.
 - `HospitalBedWrapper.usda` references `./HospitalBed/Hospital_Bed.obj`.
 - `HospitalBed/Hospital_Bed.obj` references `Hospital_Bed.mtl`; that MTL references the
   diffuse, specular, and normal PNG files listed above. `HospitalBed_Glossiness.png` is
@@ -195,3 +201,7 @@ contains no GLB or binary USD reference, and no such file is vendored.
   `industrial_robot_arm.mtl`, and the active MTL requests only `Robot_Arm_Color.png`.
   The unused duplicate/orphan `industrial robot arm.mtl` is intentionally not copied or
   requested. No GLB or binary USD sidecar belongs to this wrapper.
+
+> **TODO — Forklift USDC licensing:** Verify redistribution permission and
+> attribution requirements for `Forklift/Forklift.usd` and its embedded authored content
+> before any public release.

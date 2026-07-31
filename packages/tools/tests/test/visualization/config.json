@@ -5583,6 +5583,15 @@
             "dependsOn": ["Loaders", "OBJ", "Materials", "Meshes", "Textures"]
         },
         {
+            "title": "USD loader - Forklift USDC",
+            "playgroundId": "#FU6OM3#2",
+            "referenceImage": "usd-loader-forklift-usdc.png",
+            "renderCount": 1,
+            "dependsOn": ["Loaders", "Materials", "Meshes", "Scene", "Textures"],
+            "replace": "https://cdn.babylonjs.com,http://localhost:1337",
+            "excludeFromPerformance": true
+        },
+        {
             "title": "USD loader - UR10 OBJ wrapper",
             "playgroundId": "#X5K5EK#0",
             "referenceImage": "usd-loader-ur10-obj-wrapper.png",
