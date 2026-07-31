@@ -48,8 +48,8 @@ export interface IUsdAdapterContext {
     animationGroups: AnimationGroup[];
     /** Per-prim transform/visibility animation entries, built into a single group after the walk. */
     animationEntries: { node: TransformNode; animations: Animation[] }[];
-    /** Materials by stage material index. */
-    materialCache: Map<number, Material>;
+    /** Materials by stage material index and effective sidedness. */
+    materialCache: Map<string, Material>;
     /** Skeletons by stage skeleton index. */
     skeletonCache: Map<number, Skeleton>;
     /** Non-fatal diagnostics collected during adapter processing. */
@@ -82,7 +82,8 @@ export function AdaptPrim(prim: IResolvedPrim, parent: TransformNode, context: I
             break;
     }
 
-    ApplyResolvedTransform(node, prim.transform);
+    const hasTransformAnimation = prim.animation?.tracks.some((track) => track.target === "translation" || track.target === "rotation" || track.target === "scale") ?? false;
+    ApplyResolvedTransform(node, hasTransformAnimation && prim.transform.matrix ? { ...prim.transform, matrix: undefined } : prim.transform);
     // A prim that authored `!resetXformStack!` does not inherit its namespace parent's transform. Its
     // resolved transform is relative to the stage root, so parent it there while its Babylon children stay
     // under it (they still inherit the reset prim's transform, matching USD).
@@ -150,21 +151,13 @@ function BindMaterial(mesh: Mesh, materialBinding: IResolvedPrim["materialBindin
         }
         const subMaterials: Nullable<Material>[] = new Array<Nullable<Material>>(maxIndex + 1).fill(null);
         for (const subset of subsets) {
-            subMaterials[subset.materialIndex] = GetOrCreateMaterial(subset.materialIndex, context);
+            subMaterials[subset.materialIndex] = GetOrCreateMaterial(subset.materialIndex, resolvedMesh.doubleSided, context);
         }
         if (materialBinding?.materialIndex !== undefined) {
-            subMaterials[materialBinding.materialIndex] = GetOrCreateMaterial(materialBinding.materialIndex, context);
+            subMaterials[materialBinding.materialIndex] = GetOrCreateMaterial(materialBinding.materialIndex, resolvedMesh.doubleSided, context);
         }
         multiMaterial.subMaterials = subMaterials;
         mesh.material = multiMaterial;
-        if (resolvedMesh.doubleSided) {
-            for (const subMaterial of subMaterials) {
-                if (subMaterial) {
-                    subMaterial.backFaceCulling = false;
-                }
-            }
-        }
-
         function addFallbackSubMeshes(mesh: Mesh, subsets: NonNullable<IResolvedMesh["geomSubsets"]>, fallbackMaterialIndex: number | undefined): void {
             const ranges = subsets.map((subset) => ({ start: subset.indexOffset, end: subset.indexOffset + subset.indexCount })).sort((left, right) => left.start - right.start);
             const materialIndex = fallbackMaterialIndex ?? 0;
@@ -191,18 +184,20 @@ function BindMaterial(mesh: Mesh, materialBinding: IResolvedPrim["materialBindin
 
 // Binds a single resolved material (by stage index) to a mesh, honoring the mesh's double-sided flag.
 function BindMaterialByIndex(mesh: Mesh, resolvedMesh: IResolvedMesh, context: IUsdAdapterContext, materialIndex: number): void {
-    const material = GetOrCreateMaterial(materialIndex, context);
+    const material = GetOrCreateMaterial(materialIndex, resolvedMesh.doubleSided, context);
     mesh.material = material;
-    if (resolvedMesh.doubleSided) {
-        material.backFaceCulling = false;
-    }
 }
 
-function GetOrCreateMaterial(materialIndex: number, context: IUsdAdapterContext): Material {
-    let material = context.materialCache.get(materialIndex);
+function GetOrCreateMaterial(materialIndex: number, doubleSided: boolean, context: IUsdAdapterContext): Material {
+    const cacheKey = `${materialIndex}:${doubleSided ? "double" : "single"}`;
+    let material = context.materialCache.get(cacheKey);
     if (!material) {
-        material = CreateMaterialFromResolved(context.stage.materials[materialIndex], context.scene, context.options);
-        context.materialCache.set(materialIndex, material);
+        material = CreateMaterialFromResolved(context.stage.materials[materialIndex], context.scene, context.options, context.diagnostics);
+        material.backFaceCulling = !doubleSided;
+        if ("twoSidedLighting" in material) {
+            (material as Material & { twoSidedLighting: boolean }).twoSidedLighting = doubleSided;
+        }
+        context.materialCache.set(cacheKey, material);
     }
     return material;
 }

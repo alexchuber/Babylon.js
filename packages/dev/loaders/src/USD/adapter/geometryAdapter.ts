@@ -55,9 +55,9 @@ interface IOutputSpan {
  * like triangulated quads because the resolved contract no longer carries original face counts.
  *
  * The loader keeps raw USD coordinates and winding. USD `rightHanded` orientation maps to Babylon's
- * counter-clockwise front faces; `leftHanded` maps to clockwise front faces. `doubleSided` cannot be
- * fully applied without the material, so the scene walk must disable material back-face culling (and
- * enable two-sided lighting when needed) for meshes whose resolved source is double-sided.
+ * counter-clockwise front faces in a right-handed scene; a left-handed scene reflects the imported
+ * root and therefore uses the opposite effective side orientation. `doubleSided` cannot be fully
+ * applied without the material, so the scene walk disables material back-face culling for those meshes.
  *
  * Geom subsets create Babylon submeshes with `SubMesh.materialIndex` set to the resolved subset
  * `materialIndex`. The walk can bind a `MultiMaterial` whose slots match those resolved material
@@ -89,7 +89,8 @@ export function CreateMeshFromResolved(name: string, resolved: IResolvedMesh, sc
     }
 
     vertexData.applyToMesh(mesh);
-    mesh.sideOrientation = resolved.orientation === "rightHanded" ? Material.CounterClockWiseSideOrientation : Material.ClockWiseSideOrientation;
+    const usdSideOrientation = resolved.orientation === "rightHanded" ? Material.CounterClockWiseSideOrientation : Material.ClockWiseSideOrientation;
+    mesh.sideOrientation = scene.useRightHandedSystem ? usdSideOrientation : 1 - usdSideOrientation;
 
     ApplyGeomSubsets(mesh, geometry.geomSubsets);
 

@@ -29,10 +29,6 @@ const DIRECT_ASSET_FILE_NAMES = [
     "seahorse_anim_mtl_variant.usda",
 ] as const;
 
-function readRuntimeCorpusText(fileName: string): string {
-    return fs.readFileSync(fileURLToPath(new URL(fileName, runtimeCorpusRoot)), "utf8");
-}
-
 const directAssets = DIRECT_ASSET_FILE_NAMES.map((fileName): IRuntimeCorpusEntry => {
     const asset = RuntimeCorpusManifest.find((candidate) => candidate.fileName === fileName);
     if (!asset) {

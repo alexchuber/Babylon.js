@@ -1,5 +1,5 @@
 import { type IResolvedDiagnostic, type IResolvedTransform, type Mat4, type Quat, type Vec3 } from "../resolvedStage";
-import { type ISdfPrimSpec } from "../sdf/index";
+import { type ISdfAttributeSpec, type ISdfPrimSpec } from "../sdf/index";
 import { AsMat4, AsQuat, AsVec3, GetAttribute, GetAttributeValue, GetTokenArrayAttribute } from "./valueAccess";
 
 const DegreesToRadians = Math.PI / 180;
@@ -63,7 +63,14 @@ export function DecomposeMatrix(matrix: Mat4): IResolvedTransform {
     const translation: Vec3 = [matrix[12] ?? 0, matrix[13] ?? 0, matrix[14] ?? 0];
     const sx = VectorLength(matrix[0], matrix[1], matrix[2]) || 1;
     const sy = VectorLength(matrix[4], matrix[5], matrix[6]) || 1;
-    const sz = VectorLength(matrix[8], matrix[9], matrix[10]) || 1;
+    let sz = VectorLength(matrix[8], matrix[9], matrix[10]) || 1;
+    const determinant =
+        matrix[0] * (matrix[5] * matrix[10] - matrix[9] * matrix[6]) -
+        matrix[4] * (matrix[1] * matrix[10] - matrix[9] * matrix[2]) +
+        matrix[8] * (matrix[1] * matrix[6] - matrix[5] * matrix[2]);
+    if (determinant < 0) {
+        sz = -sz;
+    }
     const scale: Vec3 = [sx, sy, sz];
     const rotation = QuaternionFromRotationMatrix([
         matrix[0] / sx,
@@ -151,15 +158,51 @@ function ResolveOrderedTransform(prim: ISdfPrimSpec, orderedOps: string[], diagn
 }
 
 function ResolveFallbackTransform(prim: ISdfPrimSpec): IResolvedTransform {
+    const matrixAttribute = GetAttribute(prim, "xformOp:transform") ?? FindAttributeWithPrefix(prim, "xformOp:transform:");
+    const authoredMatrix = AsMat4(GetAttributeValue(matrixAttribute));
+    if (authoredMatrix) {
+        const matrix = UsdMatrixToResolvedLayout(authoredMatrix);
+        return { ...DecomposeMatrix(matrix), matrix };
+    }
+
     const transform = IdentityTransform();
-    transform.translation = AsVec3(GetAttributeValue(GetAttribute(prim, "xformOp:translate"))) ?? transform.translation;
-    transform.rotation =
-        AsQuat(GetAttributeValue(GetAttribute(prim, "xformOp:orient"))) ??
-        (AsVec3(GetAttributeValue(GetAttribute(prim, "xformOp:rotateXYZ")))
-            ? QuaternionFromEulerXyz(AsVec3(GetAttributeValue(GetAttribute(prim, "xformOp:rotateXYZ")))!)
-            : transform.rotation);
-    transform.scale = AsVec3(GetAttributeValue(GetAttribute(prim, "xformOp:scale"))) ?? transform.scale;
+    const translationAttribute = GetAttribute(prim, "xformOp:translate") ?? FindAttributeWithPrefix(prim, "xformOp:translate:");
+    transform.translation = AsVec3(GetAttributeValue(translationAttribute)) ?? transform.translation;
+
+    const rotationNames = GetFallbackRotationNames(prim);
+    if (rotationNames.length > 0) {
+        transform.rotation = rotationNames.reduce((rotation, name) => MultiplyQuaternions(rotation, ResolveRotationQuaternion(prim, name)), transform.rotation);
+    }
+
+    const scaleAttribute = GetAttribute(prim, "xformOp:scale") ?? FindAttributeWithPrefix(prim, "xformOp:scale:");
+    transform.scale = AsVec3(GetAttributeValue(scaleAttribute)) ?? transform.scale;
     return transform;
+}
+
+function GetFallbackRotationNames(prim: ISdfPrimSpec): string[] {
+    const names = Object.keys(prim.properties).filter((name) => name === "xformOp:orient" || IsSupportedRotationOp(name));
+    return names.sort((left, right) => RotationOpOrder(left) - RotationOpOrder(right));
+}
+
+function RotationOpOrder(name: string): number {
+    if (name === "xformOp:orient") {
+        return 0;
+    }
+    if (name.startsWith("xformOp:rotateXYZ")) {
+        return 1;
+    }
+    if (name.startsWith("xformOp:rotateX")) {
+        return 2;
+    }
+    if (name.startsWith("xformOp:rotateY")) {
+        return 3;
+    }
+    return 4;
+}
+
+function FindAttributeWithPrefix(prim: ISdfPrimSpec, prefix: string): ISdfAttributeSpec | undefined {
+    const name = Object.keys(prim.properties).find((propertyName) => propertyName.startsWith(prefix));
+    return name ? GetAttribute(prim, name) : undefined;
 }
 
 function TryResolveCleanTrs(prim: ISdfPrimSpec, orderedOps: string[]): IResolvedTransform | undefined {
@@ -171,14 +214,14 @@ function TryResolveCleanTrs(prim: ISdfPrimSpec, orderedOps: string[]): IResolved
         if (inverted || opName.includes(":pivot") || opName === "xformOp:transform") {
             return undefined;
         }
-        if (opName === "xformOp:translate") {
+        if (opName.startsWith("xformOp:translate")) {
             if (phase > 0) {
                 return undefined;
             }
             transform.translation = AddVec3(transform.translation, AsVec3(GetAttributeValue(GetAttribute(prim, opName))) ?? [0, 0, 0]);
             continue;
         }
-        if (opName === "xformOp:orient" || opName === "xformOp:rotateXYZ" || opName === "xformOp:rotateX" || opName === "xformOp:rotateY" || opName === "xformOp:rotateZ") {
+        if (opName === "xformOp:orient" || IsSupportedRotationOp(opName)) {
             if (phase > 1) {
                 return undefined;
             }
@@ -186,7 +229,7 @@ function TryResolveCleanTrs(prim: ISdfPrimSpec, orderedOps: string[]): IResolved
             transform.rotation = MultiplyQuaternions(transform.rotation, ResolveRotationQuaternion(prim, opName));
             continue;
         }
-        if (opName === "xformOp:scale") {
+        if (opName.startsWith("xformOp:scale")) {
             phase = 2;
             const scale = AsVec3(GetAttributeValue(GetAttribute(prim, opName))) ?? [1, 1, 1];
             transform.scale = [transform.scale[0] * scale[0], transform.scale[1] * scale[1], transform.scale[2] * scale[2]];
@@ -205,12 +248,12 @@ function ResolveXformOpMatrix(prim: ISdfPrimSpec, orderedOp: string, diagnostics
     if (opName.startsWith("xformOp:translate")) {
         const translation = AsVec3(GetAttributeValue(GetAttribute(prim, opName))) ?? [0, 0, 0];
         matrix = TranslationMatrix(translation);
-    } else if (opName === "xformOp:scale") {
+    } else if (opName.startsWith("xformOp:scale")) {
         const scale = AsVec3(GetAttributeValue(GetAttribute(prim, opName))) ?? [1, 1, 1];
         matrix = ScaleMatrix(scale);
-    } else if (opName === "xformOp:orient" || opName === "xformOp:rotateXYZ" || opName === "xformOp:rotateX" || opName === "xformOp:rotateY" || opName === "xformOp:rotateZ") {
+    } else if (opName === "xformOp:orient" || IsSupportedRotationOp(opName)) {
         matrix = RotationMatrix(ResolveRotationQuaternion(prim, opName));
-    } else if (opName === "xformOp:transform") {
+    } else if (opName.startsWith("xformOp:transform")) {
         const authoredMatrix = AsMat4(GetAttributeValue(GetAttribute(prim, opName)));
         matrix = authoredMatrix ? UsdMatrixToResolvedLayout(authoredMatrix) : IdentityMatrix();
     } else {
@@ -222,21 +265,30 @@ function ResolveXformOpMatrix(prim: ISdfPrimSpec, orderedOp: string, diagnostics
 }
 
 function ResolveRotationQuaternion(prim: ISdfPrimSpec, opName: string): Quat {
-    if (opName === "xformOp:orient") {
+    if (opName === "xformOp:orient" || /^xformOp:orient(?::.*)?$/.test(opName)) {
         return AsQuat(GetAttributeValue(GetAttribute(prim, opName))) ?? [0, 0, 0, 1];
     }
+
     const rotate = AsVec3(GetAttributeValue(GetAttribute(prim, opName)));
-    if (opName === "xformOp:rotateXYZ") {
-        return QuaternionFromEulerXyz(rotate ?? [0, 0, 0]);
+    if (opName.startsWith("xformOp:rotateXYZ")) {
+        return QuaternionFromEulerOrder(rotate ?? [0, 0, 0], "XYZ");
+    }
+    const eulerOrder = opName.match(/^xformOp:rotate([XYZ]{3})(?::.*)?$/)?.[1];
+    if (eulerOrder) {
+        return QuaternionFromEulerOrder(rotate ?? [0, 0, 0], eulerOrder);
     }
     const degrees = AsNumberFromRotationOp(prim, opName);
-    if (opName === "xformOp:rotateX") {
+    if (opName.startsWith("xformOp:rotateX")) {
         return QuaternionFromAxisAngle([1, 0, 0], degrees);
     }
-    if (opName === "xformOp:rotateY") {
+    if (opName.startsWith("xformOp:rotateY")) {
         return QuaternionFromAxisAngle([0, 1, 0], degrees);
     }
     return QuaternionFromAxisAngle([0, 0, 1], degrees);
+}
+
+function IsSupportedRotationOp(opName: string): boolean {
+    return /^xformOp:rotate(?:X|Y|Z|[XYZ]{3})(?::.*)?$/.test(opName);
 }
 
 function AsNumberFromRotationOp(prim: ISdfPrimSpec, opName: string): number {
@@ -322,11 +374,17 @@ function InvertAffineMatrix(matrix: Mat4): Mat4 {
     return [r00, r10, r20, 0, r01, r11, r21, 0, r02, r12, r22, 0, -(r00 * tx + r01 * ty + r02 * tz), -(r10 * tx + r11 * ty + r12 * tz), -(r20 * tx + r21 * ty + r22 * tz), 1];
 }
 
-function QuaternionFromEulerXyz(degrees: Vec3): Quat {
-    return MultiplyQuaternions(
-        MultiplyQuaternions(QuaternionFromAxisAngle([1, 0, 0], degrees[0]), QuaternionFromAxisAngle([0, 1, 0], degrees[1])),
-        QuaternionFromAxisAngle([0, 0, 1], degrees[2])
-    );
+function QuaternionFromEulerOrder(degrees: Vec3, order: string): Quat {
+    const axisQuaternions: Record<string, Quat> = {
+        X: QuaternionFromAxisAngle([1, 0, 0], degrees[0]),
+        Y: QuaternionFromAxisAngle([0, 1, 0], degrees[1]),
+        Z: QuaternionFromAxisAngle([0, 0, 1], degrees[2]),
+    };
+    let result: Quat = [0, 0, 0, 1];
+    for (const axis of order) {
+        result = MultiplyQuaternions(result, axisQuaternions[axis]);
+    }
+    return result;
 }
 
 function QuaternionFromAxisAngle(axis: Vec3, degrees: number): Quat {

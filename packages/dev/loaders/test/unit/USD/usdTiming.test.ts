@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { NullEngine } from "core/Engines/nullEngine";
-import { Vector3 } from "core/Maths/math.vector.pure";
+import { Quaternion, Vector3 } from "core/Maths/math.vector.pure";
 import { TransformNode } from "core/Meshes/transformNode.pure";
 import { Scene } from "core/scene";
 import { CreateAnimationsForPrim } from "loaders/USD/adapter/animationAdapter";
@@ -179,6 +179,187 @@ def Mesh "Animated"
         const stage = mapUsda(animatedTranslateUsda('    timeCodesPerSecond = 24\n    interpolation = "held"', [0, 24]));
 
         expect(trackOf(stage, "translation").interpolation).toBe("held");
+    });
+
+    it("composes multiple ordered animated rotations into one rotation track", () => {
+        const stage = mapUsda(`#usda 1.0
+(
+    timeCodesPerSecond = 24
+)
+def Xform "Animated"
+{
+    float xformOp:rotateX.timeSamples = {
+        0: 0,
+        24: 90,
+    }
+    float xformOp:rotateY.timeSamples = {
+        0: 0,
+        24: 90,
+    }
+    uniform token[] xformOpOrder = ["xformOp:rotateY", "xformOp:rotateX"]
+}
+`);
+        const animation = stage.root.children[0].animation!;
+        const rotationTracks = animation.tracks.filter((track) => track.target === "rotation");
+        expect(rotationTracks).toHaveLength(1);
+        expect(animation.tracks).toHaveLength(3);
+
+        const expected = Quaternion.RotationAxis(new Vector3(0, 1, 0), Math.PI / 2).multiply(Quaternion.RotationAxis(new Vector3(1, 0, 0), Math.PI / 2));
+        const values = rotationTracks[0].values;
+        expect(Math.abs(values[4] - expected.x)).toBeLessThan(1e-5);
+        expect(Math.abs(values[5] - expected.y)).toBeLessThan(1e-5);
+        expect(Math.abs(values[6] - expected.z)).toBeLessThan(1e-5);
+        expect(Math.abs(values[7] - expected.w)).toBeLessThan(1e-5);
+    });
+
+    it("honors omitted ordered xformOps and animated inverse operations", () => {
+        const stage = mapUsda(`#usda 1.0
+(
+    timeCodesPerSecond = 24
+)
+def Xform "Animated"
+{
+    double3 xformOp:translate.timeSamples = {
+        0: (5, 0, 0),
+        24: (10, 0, 0),
+    }
+    double3 xformOp:scale.timeSamples = {
+        0: (2, 2, 2),
+        24: (3, 3, 3),
+    }
+    uniform token[] xformOpOrder = ["!invert!xformOp:translate"]
+}
+`);
+        const animation = stage.root.children[0].animation!;
+        const translation = trackOf(stage, "translation");
+        const scale = trackOf(stage, "scale");
+        expect(animation.tracks).toHaveLength(3);
+        expect(Array.from(translation.values)).toEqual([-5, 0, 0, -10, 0, 0]);
+        expect(Array.from(scale.values)).toEqual([1, 1, 1, 1, 1, 1]);
+    });
+
+    it("does not animate xformOps omitted by an empty authoritative order", () => {
+        const stage = mapUsda(`#usda 1.0
+(
+    timeCodesPerSecond = 24
+)
+def Xform "Animated"
+{
+    double3 xformOp:translate.timeSamples = {
+        0: (5, 0, 0),
+        24: (10, 0, 0),
+    }
+    uniform token[] xformOpOrder = []
+}
+`);
+
+        expect(stage.root.children[0].animation).toBeUndefined();
+    });
+
+    it("unions ordered operation sample times and applies held or linear interpolation to each op", () => {
+        const linear = mapUsda(`#usda 1.0
+(
+    timeCodesPerSecond = 24
+)
+def Xform "Animated"
+{
+    double3 xformOp:translate.timeSamples = {
+        0: (0, 0, 0),
+        24: (10, 0, 0),
+    }
+    float xformOp:rotateX.timeSamples = {
+        0: 0,
+        12: 45,
+        24: 90,
+    }
+    uniform token[] xformOpOrder = ["xformOp:translate", "xformOp:rotateX"]
+}
+`);
+        const linearTranslation = trackOf(linear, "translation");
+        expect(Array.from(linearTranslation.times)).toEqual([0, 0.5, 1]);
+        expect(linearTranslation.values[3]).toBeCloseTo(5);
+
+        const held = mapUsda(`#usda 1.0
+(
+    timeCodesPerSecond = 24
+    interpolation = "held"
+)
+def Xform "Animated"
+{
+    double3 xformOp:translate.timeSamples = {
+        0: (0, 0, 0),
+        24: (10, 0, 0),
+    }
+    float xformOp:rotateX.timeSamples = {
+        0: 0,
+        12: 45,
+        24: 90,
+    }
+    uniform token[] xformOpOrder = ["xformOp:translate", "xformOp:rotateX"]
+}
+`);
+        const heldTranslation = trackOf(held, "translation");
+        expect(heldTranslation.interpolation).toBe("held");
+        expect(heldTranslation.values[3]).toBe(0);
+    });
+
+    it("matches the static ordered transform at the first animation sample", () => {
+        const stage = mapUsda(`#usda 1.0
+(
+    timeCodesPerSecond = 24
+)
+def Xform "Animated"
+{
+    double3 xformOp:translate = (1, 2, 3)
+    double3 xformOp:translate.timeSamples = {
+        0: (1, 2, 3),
+        24: (4, 5, 6),
+    }
+    float xformOp:rotateY = 10
+    float xformOp:rotateY.timeSamples = {
+        0: 10,
+        24: 20,
+    }
+    double3 xformOp:scale = (2, 3, 4)
+    double3 xformOp:scale.timeSamples = {
+        0: (2, 3, 4),
+        24: (3, 4, 5),
+    }
+    uniform token[] xformOpOrder = ["xformOp:translate", "xformOp:rotateY", "xformOp:scale"]
+}
+`);
+        const resolved = stage.root.children[0];
+        const translation = trackOf(stage, "translation");
+        const rotation = trackOf(stage, "rotation");
+        const scale = trackOf(stage, "scale");
+
+        expect(Array.from(translation.values.slice(0, 3))).toEqual(resolved.transform.translation);
+        for (const [index, value] of Array.from(rotation.values.slice(0, 4)).entries()) {
+            expect(value).toBeCloseTo(resolved.transform.rotation[index], 6);
+        }
+        expect(Array.from(scale.values.slice(0, 3))).toEqual(resolved.transform.scale);
+    });
+
+    it("keeps static and animated rotation evaluation aligned without xformOpOrder", () => {
+        const stage = mapUsda(`#usda 1.0
+(
+    timeCodesPerSecond = 24
+)
+def Xform "Animated"
+{
+    float xformOp:rotateZ:anim = 10
+    float xformOp:rotateZ:anim.timeSamples = {
+        0: 10,
+        24: 20,
+    }
+}
+`);
+        const resolved = stage.root.children[0];
+        const rotation = trackOf(stage, "rotation");
+
+        for (const [index, value] of Array.from(rotation.values.slice(0, 4)).entries()) {
+            expect(value).toBeCloseTo(resolved.transform.rotation[index], 6);
+        }
     });
 });
 

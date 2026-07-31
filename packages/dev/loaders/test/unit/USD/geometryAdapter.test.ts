@@ -12,6 +12,7 @@ const quadIndices = new Uint32Array([0, 1, 2, 0, 2, 3]);
 function createScene(): { engine: NullEngine; scene: Scene } {
     const engine = new NullEngine();
     const scene = new Scene(engine);
+    scene.useRightHandedSystem = true;
     return { engine, scene };
 }
 

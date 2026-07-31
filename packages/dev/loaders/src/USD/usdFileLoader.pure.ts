@@ -87,25 +87,36 @@ export class USDFileLoader implements ISceneLoaderPluginAsync, ISceneLoaderPlugi
         fileName: string | undefined,
         assetContainer: Nullable<AssetContainer>
     ): Promise<ISceneLoaderAsyncResult> {
-        USDFileLoader._EnforceRawInputByteLimit(data, this._loadingOptions, fileName);
-        const stage = await ResolveUsdStageAsync(USDFileLoader._NormalizeData(data), rootUrl, fileName, this._loadingOptions);
+        const failureContainer = assetContainer ? null : new AssetContainer(scene);
+        const existingEntities = failureContainer ? CaptureSceneEntities(scene) : null;
+        try {
+            USDFileLoader._EnforceRawInputByteLimit(data, this._loadingOptions, fileName);
+            const stage = await ResolveUsdStageAsync(USDFileLoader._NormalizeData(data), rootUrl, fileName, this._loadingOptions);
 
-        const result = await AdaptResolvedStageToScene(stage, scene, assetContainer, this._loadingOptions);
+            const result = await AdaptResolvedStageToScene(stage, scene, assetContainer, this._loadingOptions);
 
-        // Log all diagnostics after both resolution and adaptation are complete
-        for (const diagnostic of stage.diagnostics) {
-            const location = diagnostic.sourceLocation ? ` [line ${diagnostic.sourceLocation.line}, column ${diagnostic.sourceLocation.column}]` : "";
-            const message = `USD: ${diagnostic.message}${diagnostic.path ? ` (${diagnostic.path})` : ""}${location}`;
-            if (diagnostic.severity === "error") {
-                Logger.Error(message);
-            } else if (diagnostic.severity === "warning") {
-                Logger.Warn(message);
-            } else {
-                Logger.Log(message);
+            // Log all diagnostics after both resolution and adaptation are complete
+            for (const diagnostic of stage.diagnostics) {
+                const location = diagnostic.sourceLocation ? ` [line ${diagnostic.sourceLocation.line}, column ${diagnostic.sourceLocation.column}]` : "";
+                const message = `USD: ${diagnostic.message}${diagnostic.path ? ` (${diagnostic.path})` : ""}${location}`;
+                if (diagnostic.severity === "error") {
+                    Logger.Error(message);
+                } else if (diagnostic.severity === "warning") {
+                    Logger.Warn(message);
+                } else {
+                    Logger.Log(message);
+                }
             }
-        }
 
-        return result;
+            failureContainer?.dispose();
+            return result;
+        } catch (error) {
+            if (failureContainer && existingEntities) {
+                CollectNewEntities(failureContainer, scene, existingEntities);
+                failureContainer.dispose();
+            }
+            throw error;
+        }
     }
 
     /**
@@ -141,36 +152,13 @@ export class USDFileLoader implements ISceneLoaderPluginAsync, ISceneLoaderPlugi
 
     private async _LoadAssetContainerAsync(scene: Scene, data: unknown, rootUrl: string, fileName: string | undefined): Promise<AssetContainer> {
         const container = new AssetContainer(scene);
-        const existingMeshes = new Set(scene.meshes);
-        const existingTransformNodes = new Set(scene.transformNodes);
-        const existingSkeletons = new Set(scene.skeletons);
-        const existingAnimationGroups = new Set(scene.animationGroups);
-        const existingLights = new Set(scene.lights);
-        const existingCameras = new Set(scene.cameras);
-        const existingGeometries = new Set(scene.geometries);
-        const existingMaterials = new Set(scene.materials);
-        const existingMultiMaterials = new Set(scene.multiMaterials);
-        const existingTextures = new Set(scene.textures);
-        // Both the success and failure paths must hand ownership of the newly-created scene entities to
-        // the container (so it can removeAllFromScene or dispose them), so collect them once.
-        const collectNewEntities = () => {
-            AppendNewEntities(container.meshes, scene.meshes, existingMeshes);
-            AppendNewEntities(container.transformNodes, scene.transformNodes, existingTransformNodes);
-            AppendNewEntities(container.skeletons, scene.skeletons, existingSkeletons);
-            AppendNewEntities(container.animationGroups, scene.animationGroups, existingAnimationGroups);
-            AppendNewEntities(container.lights, scene.lights, existingLights);
-            AppendNewEntities(container.cameras, scene.cameras, existingCameras);
-            AppendNewEntities(container.geometries, scene.geometries, existingGeometries);
-            AppendNewEntities(container.materials, scene.materials, existingMaterials);
-            AppendNewEntities(container.multiMaterials, scene.multiMaterials, existingMultiMaterials);
-            AppendNewEntities(container.textures, scene.textures, existingTextures);
-        };
+        const existingEntities = CaptureSceneEntities(scene);
         try {
             await this._ImportMeshAsync(scene, data, rootUrl, fileName, container);
-            collectNewEntities();
+            CollectNewEntities(container, scene, existingEntities);
             container.removeAllFromScene();
         } catch (error) {
-            collectNewEntities();
+            CollectNewEntities(container, scene, existingEntities);
             container.dispose();
             throw error;
         }
@@ -231,6 +219,34 @@ function AppendNewEntities<T>(target: T[], sceneEntities: readonly T[], existing
             target.push(entity);
         }
     }
+}
+
+function CaptureSceneEntities(scene: Scene) {
+    return {
+        meshes: new Set(scene.meshes),
+        transformNodes: new Set(scene.transformNodes),
+        skeletons: new Set(scene.skeletons),
+        animationGroups: new Set(scene.animationGroups),
+        lights: new Set(scene.lights),
+        cameras: new Set(scene.cameras),
+        geometries: new Set(scene.geometries),
+        materials: new Set(scene.materials),
+        multiMaterials: new Set(scene.multiMaterials),
+        textures: new Set(scene.textures),
+    };
+}
+
+function CollectNewEntities(container: AssetContainer, scene: Scene, existing: ReturnType<typeof CaptureSceneEntities>): void {
+    AppendNewEntities(container.meshes, scene.meshes, existing.meshes);
+    AppendNewEntities(container.transformNodes, scene.transformNodes, existing.transformNodes);
+    AppendNewEntities(container.skeletons, scene.skeletons, existing.skeletons);
+    AppendNewEntities(container.animationGroups, scene.animationGroups, existing.animationGroups);
+    AppendNewEntities(container.lights, scene.lights, existing.lights);
+    AppendNewEntities(container.cameras, scene.cameras, existing.cameras);
+    AppendNewEntities(container.geometries, scene.geometries, existing.geometries);
+    AppendNewEntities(container.materials, scene.materials, existing.materials);
+    AppendNewEntities(container.multiMaterials, scene.multiMaterials, existing.multiMaterials);
+    AppendNewEntities(container.textures, scene.textures, existing.textures);
 }
 
 let _Registered = false;

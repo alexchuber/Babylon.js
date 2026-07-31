@@ -1,5 +1,6 @@
 import { AbstractMesh } from "core/Meshes/abstractMesh";
-import { type TransformNode } from "core/Meshes/transformNode.pure";
+import { Mesh } from "core/Meshes/mesh.pure";
+import { TransformNode } from "core/Meshes/transformNode.pure";
 import { type AssetContainer } from "core/assetContainer";
 import { type Node } from "core/node";
 
@@ -26,7 +27,7 @@ export interface IExternalAssetState {
     requestCount: number;
     /** Validated maximum handler invocations. */
     readonly maxRequests: number;
-    /** Validated maximum external asset URI ancestry depth. */
+    /** Validated maximum external-asset-bearing prim ancestry depth. */
     readonly maxDepth: number;
 }
 
@@ -94,8 +95,8 @@ export function BuildAncestry(prim: IResolvedPrim): readonly string[] {
 /**
  * Processes all unhandled asset properties on a single prim.
  *
- * URI ancestry cycle protection and depth limiting are driven by `ancestorUris`: the set
- * of canonical external-asset URIs from ancestor prims in the prim-tree recursion.
+ * URI ancestry cycle protection is driven by `ancestorUris`; depth limiting is driven by the
+ * separate prim-depth counter so multiple properties on one prim do not consume multiple levels.
  *
  * @param prim the resolved prim with unhandled asset properties
  * @param node the Babylon transform node representing this prim
@@ -103,6 +104,7 @@ export function BuildAncestry(prim: IResolvedPrim): readonly string[] {
  * @param state external asset handler state
  * @param layerIdentifier the source layer identifier
  * @param ancestorUris canonical URIs from ancestor prims' external asset properties
+ * @param primDepth number of ancestor prims that authored external asset properties
  * @returns a promise that resolves when all handler invocations are complete
  */
 export async function ProcessExternalAssets(
@@ -111,7 +113,8 @@ export async function ProcessExternalAssets(
     context: IUsdAdapterContext,
     state: IExternalAssetState,
     layerIdentifier: string,
-    ancestorUris: ReadonlySet<string>
+    ancestorUris: ReadonlySet<string>,
+    primDepth: number
 ): Promise<void> {
     const handler = context.options.externalAssetHandler;
     const properties = prim.unhandledAssetProperties;
@@ -143,12 +146,13 @@ export async function ProcessExternalAssets(
             continue;
         }
 
-        // URI ancestry depth limit
-        if (ancestorUris.size >= state.maxDepth) {
+        // Prim ancestry depth limit. URI cardinality is intentionally not used here because a
+        // single prim may author several properties and nested prims may reuse a URI.
+        if (primDepth >= state.maxDepth) {
             context.diagnostics.push({
                 severity: "warning",
                 path: `${prim.path}.${property.propertyName}`,
-                message: `External asset depth limit reached: URI chain depth ${ancestorUris.size} has reached the ${state.maxDepth}-level limit.`,
+                message: `External asset depth limit reached: prim depth ${primDepth} has reached the ${state.maxDepth}-level limit.`,
             });
             continue;
         }
@@ -239,12 +243,23 @@ export function ExtendAncestorUris(prim: IResolvedPrim, ancestorUris: ReadonlySe
  * @param context the adapter context for ownership tracking
  */
 function CloneFromTemplate(template: AssetContainer, parentNode: TransformNode, context: IUsdAdapterContext): void {
+    RepairTemplateHierarchy(template);
     const entries = template.instantiateModelsToScene(undefined, true);
 
     for (const rootNode of entries.rootNodes) {
         rootNode.parent = parentNode;
+        if (!context.scene.useRightHandedSystem) {
+            // Babylon's external loaders author their roots in the caller's scene space. Cancel the
+            // USD wrapper reflection for those already-converted subtrees and allow both reflected
+            // faces to render because the external loader's winding is not part of the USD contract.
+            if (rootNode instanceof AbstractMesh || rootNode instanceof TransformNode) {
+                rootNode.scaling.z *= -1;
+            }
+            DisableExternalMeshCulling(rootNode);
+        }
         CollectNodeAndDescendants(rootNode, context);
     }
+
     for (const skeleton of entries.skeletons) {
         if (!context.skeletons.includes(skeleton)) {
             context.skeletons.push(skeleton);
@@ -257,6 +272,42 @@ function CloneFromTemplate(template: AssetContainer, parentNode: TransformNode, 
     }
 }
 
+function RepairTemplateHierarchy(template: AssetContainer): void {
+    const knownNodes = new Set<Node>([...template.transformNodes, ...template.meshes, ...template.rootNodes]);
+    const missingAncestors: TransformNode[] = [];
+    const missingMeshes: Mesh[] = [];
+
+    for (const node of [...template.transformNodes, ...template.meshes]) {
+        let ancestor = node.parent;
+        while (ancestor && !knownNodes.has(ancestor)) {
+            if (ancestor instanceof TransformNode) {
+                knownNodes.add(ancestor);
+                missingAncestors.push(ancestor);
+            } else if (ancestor instanceof Mesh) {
+                knownNodes.add(ancestor);
+                missingMeshes.push(ancestor);
+            } else {
+                break;
+            }
+            ancestor = ancestor.parent;
+        }
+    }
+
+    if (missingAncestors.length > 0 || missingMeshes.length > 0) {
+        template.transformNodes.push(...missingAncestors);
+        template.meshes.push(...missingMeshes);
+        template.populateRootNodes();
+    }
+}
+
+function DisableExternalMeshCulling(node: Node): void {
+    if (node instanceof AbstractMesh && node.material) {
+        node.material.backFaceCulling = false;
+    }
+    for (const child of node.getChildren()) {
+        DisableExternalMeshCulling(child);
+    }
+}
 /**
  * Collects a node and all its descendants into the adapter context's mesh and transform
  * node arrays, ensuring every instantiated entity is tracked for outer container ownership.

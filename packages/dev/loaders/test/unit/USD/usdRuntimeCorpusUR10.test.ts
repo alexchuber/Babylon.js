@@ -252,6 +252,7 @@ describe("USD RuntimeCorpus - UR10", () => {
 
         sharedEngine = new NullEngine();
         sharedScene = new Scene(sharedEngine);
+        sharedScene.useRightHandedSystem = true;
         const handler = createUr10Handler({
             objData: readRuntimeCorpusText(UR10_OBJ_PATH),
             expectedUri: "./UR10/obj_arm.obj",

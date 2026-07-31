@@ -66,7 +66,7 @@ export async function AdaptResolvedStageToScene(
         skeletons,
         animationGroups,
         animationEntries,
-        materialCache: new Map<number, Material>(),
+        materialCache: new Map<string, Material>(),
         skeletonCache: new Map<number, Skeleton>(),
         diagnostics: adapterDiagnostics,
         nodeByPrimPath,
@@ -80,7 +80,7 @@ export async function AdaptResolvedStageToScene(
     const externalAssetState = CreateExternalAssetState(options);
     const emptyAncestorUris: ReadonlySet<string> = new Set();
     try {
-        await ProcessExternalAssetsForTree(stage.root, context, externalAssetState, stage, emptyAncestorUris);
+        await ProcessExternalAssetsForTree(stage.root, context, externalAssetState, stage, emptyAncestorUris, 0);
     } finally {
         // Deterministically dispose all off-scene source templates. Geometries are preserved
         // (shared with clones); source textures are disposed (cloned materials own distinct copies).
@@ -123,21 +123,23 @@ async function ProcessExternalAssetsForTree(
     context: IUsdAdapterContext,
     state: IExternalAssetState,
     stage: IResolvedStage,
-    ancestorUris: ReadonlySet<string>
+    ancestorUris: ReadonlySet<string>,
+    primDepth: number
 ): Promise<void> {
     if (resolvedPrim.unhandledAssetProperties && resolvedPrim.unhandledAssetProperties.length > 0) {
         const node = context.nodeByPrimPath.get(resolvedPrim.path);
         if (node) {
-            await ProcessExternalAssets(resolvedPrim, node, context, state, stage.layerIdentifier, ancestorUris);
+            await ProcessExternalAssets(resolvedPrim, node, context, state, stage.layerIdentifier, ancestorUris, primDepth);
         }
     }
 
     // Extend ancestor URIs with this prim's own external asset URIs before recursing into children
     const childAncestorUris = ExtendAncestorUris(resolvedPrim, ancestorUris);
+    const childPrimDepth = resolvedPrim.unhandledAssetProperties && resolvedPrim.unhandledAssetProperties.length > 0 ? primDepth + 1 : primDepth;
 
     for (const child of resolvedPrim.children) {
         // eslint-disable-next-line no-await-in-loop
-        await ProcessExternalAssetsForTree(child, context, state, stage, childAncestorUris);
+        await ProcessExternalAssetsForTree(child, context, state, stage, childAncestorUris, childPrimDepth);
     }
 }
 

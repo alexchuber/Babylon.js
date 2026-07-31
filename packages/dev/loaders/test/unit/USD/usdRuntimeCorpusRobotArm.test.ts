@@ -90,6 +90,7 @@ describe("USD runtime corpus - Robot Arm (Babylon adapter)", () => {
     beforeAll(async () => {
         engine = new NullEngine();
         scene = new Scene(engine);
+        scene.useRightHandedSystem = true;
         result = await ImportMeshAsync(`data:${readRuntimeCorpusText(RobotArmAsset.fileName)}`, scene, {
             pluginExtension: ".usda",
             name: RobotArmAsset.fileName,

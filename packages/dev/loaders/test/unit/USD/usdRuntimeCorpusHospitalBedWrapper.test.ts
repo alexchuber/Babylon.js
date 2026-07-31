@@ -314,6 +314,7 @@ describe("USD RuntimeCorpus - Hospital Bed OBJ wrapper", () => {
     beforeAll(async () => {
         engine = new NullEngine();
         scene = new Scene(engine);
+        scene.useRightHandedSystem = true;
         observation = { usdRequests: [], sourceContainers: [] };
         sidecarRequests = installSidecarFileMock();
         result = await importHospitalBedAsync(scene, createHospitalBedHandler(undefined, observation));

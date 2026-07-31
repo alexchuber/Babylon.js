@@ -49,6 +49,7 @@ describe("USD runtime corpus - stairs", () => {
     beforeEach(() => {
         engine = new NullEngine();
         scene = new Scene(engine);
+        scene.useRightHandedSystem = true;
     });
 
     afterEach(() => {
