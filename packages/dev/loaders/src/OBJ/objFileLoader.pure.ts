@@ -309,11 +309,14 @@ export class OBJFileLoader implements ISceneLoaderPluginAsync, ISceneLoaderPlugi
                                             let material = materialsFromMTLFile.materials[n];
 
                                             if (!mesh.getTotalIndices() && mesh.getTotalVertices() > 0) {
-                                                // Vertices with no faces: this mesh has no triangles to draw, so render it as a
-                                                // point cloud instead. Clone the material first so this doesn't also force
-                                                // point-cloud rendering onto sibling meshes that share the same material name
-                                                // but do have face data. A mesh with zero vertices renders nothing either way,
-                                                // so it is left on the shared material unmodified.
+                                                // A mesh with vertices but no faces has nothing to triangulate, so render it as
+                                                // a point cloud (matching the "no o/g keyword" fallback below, which does the
+                                                // same for a whole ungrouped file). Clone the material first so this doesn't
+                                                // also force point-cloud rendering onto sibling meshes that share the same
+                                                // material name but do have face data. A mesh with zero vertices (e.g. an
+                                                // empty placeholder/container object some exporters emit) renders nothing
+                                                // either way, so it is left on the shared material unmodified rather than
+                                                // needlessly cloned.
                                                 material = material.clone(`${material.name}_pointsCloud`);
                                                 material.pointsCloud = true;
                                             }

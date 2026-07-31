@@ -1,7 +1,4 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import * as fs from "fs";
-import { fileURLToPath } from "url";
-
 import { NullEngine } from "core/Engines/nullEngine";
 import { Scene } from "core/scene";
 import { Logger } from "core/Misc/logger";
@@ -12,12 +9,7 @@ import "loaders/USD/usdFileLoader";
 import { ResolveUsdStageAsync } from "loaders/USD/resolution/usdResolver";
 
 import { ConeAsset } from "./runtimeCorpus/manifest";
-
-const runtimeCorpusRoot = new URL("../../../../../tools/babylonServer/public/Assets/USD/RuntimeCorpus/", import.meta.url);
-
-function readRuntimeCorpusText(fileName: string): string {
-    return fs.readFileSync(fileURLToPath(new URL(fileName, runtimeCorpusRoot)), "utf8");
-}
+import { readRuntimeCorpusText } from "./runtimeCorpus/corpusText";
 
 function importConeAsync(scene: Scene) {
     return ImportMeshAsync(`data:${readRuntimeCorpusText(ConeAsset.fileName)}`, scene, {
