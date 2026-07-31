@@ -20,18 +20,18 @@ import { USDFileLoaderMetadata } from "./usdFileLoader.metadata";
 import { type USDLoadingOptions } from "./usdLoadingOptions";
 import { ResolveUsdStageAsync } from "./resolution/usdResolver";
 import { AdaptResolvedStageToScene } from "./adapter/usdAdapter";
-import { UsdResourceLimitError, ValidateResourceLimit } from "./usdErrors";
+import { UsdResourceLimitError, UsdZipArchiveError, ValidateResourceLimit } from "./usdErrors";
 import { DefaultUsdaParserLimits } from "./resolution/parser/usda/usdaParser";
 import { type IUsdLayerSource } from "./resolution/layerSource";
 
 /**
  * @experimental
- * OpenUSD scene loader plugin for USDA text and USDC crate (`.usd`/`.usda`).
+ * OpenUSD scene loader plugin for USDA text, USDC crates, and bounded USDZ packages.
  *
  * Input is selected by content rather than by extension: USDA text is parsed, while binary crate
- * (`PXR-USDC`) bytes are decoded by the bounded crate reader, optional authored references are composed
- * through a normalized layer source, and USDZ package (ZIP) bytes are rejected with a typed
- * {@link UsdUnsupportedFormatError}. The loader is split into a USD *resolution layer* (parsing,
+ * (`PXR-USDC`) bytes are decoded by the bounded crate reader, USDZ packages are validated and their
+ * embedded USDC root plus archive-local assets are resolved, and optional authored references are composed
+ * through a normalized layer source. The loader is split into a USD *resolution layer* (parsing,
  * reference composition, single-layer validation and stage/time evaluation, producing a fully-resolved
  * {@link IResolvedStage}) and a Babylon *adapter layer*
  * (mapping the resolved stage onto Babylon nodes, meshes, materials and animations). Babylon is used
@@ -110,7 +110,7 @@ export class USDFileLoader implements ISceneLoaderPluginAsync, ISceneLoaderPlugi
      * Imports meshes (and other nodes) from the loaded USD data and adds them to the scene.
      * @param _meshesNames the mesh names to load (unused; the whole stage is imported)
      * @param scene the scene the objects should be added to
-     * @param data the USD data to load (USDA text as a string, or bytes sniffed as USDA or USDC)
+     * @param data the USD data to load (USDA text, USDC bytes, or a USDZ package)
      * @param rootUrl root url to resolve external assets against
      * @param _onProgress callback called while the file is loading
      * @param fileName name of the file being loaded, used for format hints and diagnostics
@@ -236,6 +236,15 @@ export class USDFileLoader implements ISceneLoaderPluginAsync, ISceneLoaderPlugi
         if (!(data instanceof ArrayBuffer) && !ArrayBuffer.isView(data)) {
             return;
         }
+        const isZip = IsZipInput(data);
+        const maxZipInputBytes = options.maxZipInputBytes ?? options.maxInputBytes;
+        if (isZip && maxZipInputBytes !== undefined) {
+            const limit = ValidateResourceLimit(maxZipInputBytes, options.maxZipInputBytes !== undefined ? "maxZipInputBytes" : "maxInputBytes");
+            if (data.byteLength > limit) {
+                throw new UsdZipArchiveError("input-bytes", `USDZ archive input exceeds the ${limit}-byte resource cap.`, fileName, undefined, limit, data.byteLength);
+            }
+            return;
+        }
         const maxInputBytes =
             options.maxLayerBytes !== undefined
                 ? ValidateResourceLimit(options.maxLayerBytes, "maxLayerBytes")
@@ -265,6 +274,14 @@ export class USDFileLoader implements ISceneLoaderPluginAsync, ISceneLoaderPlugi
         }
         throw new Error("USD: unsupported data type passed to the loader.");
     }
+}
+
+function IsZipInput(data: ArrayBuffer | ArrayBufferView): boolean {
+    if (data.byteLength < 2) {
+        return false;
+    }
+    const bytes = data instanceof ArrayBuffer ? new Uint8Array(data) : new Uint8Array(data.buffer, data.byteOffset, data.byteLength);
+    return bytes[0] === 0x50 && bytes[1] === 0x4b;
 }
 
 function AppendNewEntities<T>(target: T[], sceneEntities: readonly T[], existing: ReadonlySet<T>): void {

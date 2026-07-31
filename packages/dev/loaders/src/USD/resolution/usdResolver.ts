@@ -4,10 +4,11 @@ import { type ISdfLayer } from "./sdf/index";
 import { ParseUsdaWithDiagnostics, DefaultUsdaParserLimits, type IUsdaParseDiagnostic, type IUsdaParserLimits } from "./parser/usda/usdaParser";
 import { ParseCrate, type ICrateDecoderOptions } from "./parser/crate/crateReader";
 import { MapLayerToResolvedStage } from "./mapping/stageMapper";
-import { UsdResourceLimitError, UsdUnsupportedFormatError, ValidateResourceLimit } from "../usdErrors";
+import { UsdResourceLimitError, UsdZipArchiveError, ValidateResourceLimit } from "../usdErrors";
 import { ApplySingleLayerPolicy, type ISingleLayerPolicyDiagnostic } from "./singleLayerPolicy";
 import { ComposeUsdLayersAsync } from "./composition";
-import { GetUsdLayerByteLength } from "./layerSource";
+import { GetUsdLayerByteLength, type IUsdAssetSource } from "./layerSource";
+import { FindUsdZipRoot, ParseUsdZipArchive, type IUsdZipArchiveLimits } from "./usdZipArchive";
 
 /** The concrete on-disk USD container format, sniffed from magic bytes rather than the file extension. */
 export type UsdFormat = "usda" | "usdc" | "usdz";
@@ -41,17 +42,15 @@ export function DetectUsdFormat(data: ArrayBuffer | string): { format: UsdFormat
  * Resolves raw USD data into a fully-resolved {@link IResolvedStage}.
  *
  * This is the single entry point of the USD resolution layer. It sniffs the container format from the
- * data's magic bytes, parses USDA text or a bounded USDC crate, optionally composes authored external
- * references through the configured layer source, validates and normalizes the resulting layer, and maps
- * it to a resolved stage. USDZ package (ZIP) input is rejected with a typed
- * {@link UsdUnsupportedFormatError} before parsing.
+ * data's magic bytes, parses USDA text or a bounded USDC crate, extracts and validates a USDZ package's
+ * embedded USDC root, optionally composes authored external references through the configured layer
+ * source, validates and normalizes the resulting layer, and maps it to a resolved stage.
  *
- * @param data the raw USD data (USDA text as a string, or bytes sniffed as USDA/USDC/USDZ)
+ * @param data the raw USD data (USDA text, USDC bytes, or USDZ package bytes)
  * @param rootUrl root url to resolve external assets against
  * @param fileName name of the file being loaded, used for diagnostics
  * @param options loader options (composition, crate/parser resource limits and animation baking)
  * @returns a promise resolving to the fully-resolved stage
- * @throws UsdUnsupportedFormatError when the data is a USDZ package
  */
 export async function ResolveUsdStageAsync(
     data: ArrayBuffer | string,
@@ -64,26 +63,45 @@ export async function ResolveUsdStageAsync(
     const crateOptions = ResolveCrateOptions(options);
     const rootIdentifier = `${rootUrl ?? ""}${fileName ?? "stage.usda"}`;
 
-    // Reject oversized root data before DetectUsdFormat/TextDecoder allocates a decoded copy, so the
-    // configured input/layer byte cap actually bounds the expensive allocation it promises to bound.
-    const maxInputBytes = parserLimits.maxInputBytes ?? DefaultUsdaParserLimits.maxInputBytes;
-    if (GetUsdLayerByteLength(data) > maxInputBytes) {
-        const kind = options.maxLayerBytes !== undefined ? "layer-bytes" : "input-bytes";
-        throw new UsdResourceLimitError(kind, maxInputBytes, `USD: input size exceeds the ${maxInputBytes}-byte resource cap.`, {
-            actual: GetUsdLayerByteLength(data),
-            path: rootIdentifier,
-        });
+    const zipInput = IsZipInput(data);
+    if (zipInput) {
+        const zipLimits = ResolveZipLimits(options);
+        if (zipLimits.maxInputBytes !== undefined && data.byteLength > zipLimits.maxInputBytes) {
+            throw new UsdZipArchiveError(
+                "input-bytes",
+                `USDZ archive input exceeds the ${zipLimits.maxInputBytes}-byte resource cap.`,
+                rootIdentifier,
+                undefined,
+                zipLimits.maxInputBytes,
+                data.byteLength
+            );
+        }
+    } else {
+        // Reject oversized root data before DetectUsdFormat/TextDecoder allocates a decoded copy, so the
+        // configured input/layer byte cap actually bounds the expensive allocation it promises to bound.
+        const maxInputBytes = parserLimits.maxInputBytes ?? DefaultUsdaParserLimits.maxInputBytes;
+        if (GetUsdLayerByteLength(data) > maxInputBytes) {
+            const kind = options.maxLayerBytes !== undefined ? "layer-bytes" : "input-bytes";
+            throw new UsdResourceLimitError(kind, maxInputBytes, `USD: input size exceeds the ${maxInputBytes}-byte resource cap.`, {
+                actual: GetUsdLayerByteLength(data),
+                path: rootIdentifier,
+            });
+        }
     }
 
     const detected = DetectUsdFormat(data);
 
-    // Sniffed USDA and USDC input share the same SDF layer seam. USDZ package bytes are rejected before
-    // they can be decoded as text.
+    // Sniffed USDA, USDC, and USDZ input share the same SDF layer seam. Package bytes are extracted
+    // before they can be decoded as text.
     let rootLayer: ISdfLayer;
+    let assetSource: IUsdAssetSource | undefined;
     if (detected.format === "usdc") {
         rootLayer = ParseCrate(data as ArrayBuffer, rootIdentifier, crateOptions);
     } else if (detected.format === "usdz") {
-        throw new UsdUnsupportedFormatError("usdz", "USD: USDZ package data is not supported; only direct-authored USDA text or USDC crate data can be loaded.");
+        const archive = ParseUsdZipArchive(data as ArrayBuffer, rootIdentifier, ResolveZipLimits(options));
+        const rootEntry = FindUsdZipRoot(archive);
+        rootLayer = ParseCrate(archive.readEntry(rootEntry.name), `${rootIdentifier}#${rootEntry.name}`, crateOptions);
+        assetSource = archive.assetSource;
     } else {
         rootLayer = ParseRootUsdaLayer(detected.text ?? "", rootIdentifier, diagnostics, parserLimits);
     }
@@ -94,21 +112,41 @@ export async function ResolveUsdStageAsync(
         normalizedLayer = composed.layer;
         diagnostics.push(...composed.diagnostics);
     }
-    return FreezeResolvedStage(MapSingleLayerToStage(normalizedLayer, diagnostics));
+    return FreezeResolvedStage(MapSingleLayerToStage(normalizedLayer, diagnostics, assetSource));
 }
 
 // Maps one parsed USDA layer to a resolved stage through the single-layer policy seam. The policy
 // validates and normalizes the composed layer (rejecting unsupported composition-bearing and
 // undefined-prim constructs and pruning inactive/duplicate opinions) before the mapper runs.
-function MapSingleLayerToStage(rootLayer: ISdfLayer, diagnostics: IResolvedDiagnostic[]): IResolvedStage {
+function MapSingleLayerToStage(rootLayer: ISdfLayer, diagnostics: IResolvedDiagnostic[], assetSource?: IUsdAssetSource): IResolvedStage {
     const normalized = ApplySingleLayerPolicy(rootLayer);
     for (const policyDiagnostic of normalized.diagnostics) {
         diagnostics.push(ToResolvedDiagnosticFromSingleLayerPolicy(policyDiagnostic));
     }
 
-    const stage = MapLayerToResolvedStage(normalized.layer);
+    const stage = MapLayerToResolvedStage(normalized.layer, assetSource);
     stage.diagnostics.unshift(...diagnostics);
     return stage;
+}
+
+function ResolveZipLimits(options: Readonly<USDLoadingOptions>): IUsdZipArchiveLimits {
+    return {
+        ...(options.maxZipInputBytes !== undefined ? { maxInputBytes: ValidateResourceLimit(options.maxZipInputBytes, "maxZipInputBytes") } : {}),
+        ...(options.maxInputBytes !== undefined && options.maxZipInputBytes === undefined ? { maxInputBytes: ValidateResourceLimit(options.maxInputBytes, "maxInputBytes") } : {}),
+        ...(options.maxZipEntries !== undefined ? { maxEntries: ValidateResourceLimit(options.maxZipEntries, "maxZipEntries") } : {}),
+        ...(options.maxZipCompressedBytes !== undefined ? { maxCompressedBytes: ValidateResourceLimit(options.maxZipCompressedBytes, "maxZipCompressedBytes") } : {}),
+        ...(options.maxZipUncompressedBytes !== undefined ? { maxUncompressedBytes: ValidateResourceLimit(options.maxZipUncompressedBytes, "maxZipUncompressedBytes") } : {}),
+        ...(options.maxZipEntryBytes !== undefined ? { maxEntryBytes: ValidateResourceLimit(options.maxZipEntryBytes, "maxZipEntryBytes") } : {}),
+        ...(options.maxZipDecompressionWork !== undefined ? { maxDecompressionWork: ValidateResourceLimit(options.maxZipDecompressionWork, "maxZipDecompressionWork") } : {}),
+    };
+}
+
+function IsZipInput(data: ArrayBuffer | string): data is ArrayBuffer {
+    if (typeof data === "string" || data.byteLength < 2) {
+        return false;
+    }
+    const bytes = new Uint8Array(data);
+    return bytes[0] === 0x50 && bytes[1] === 0x4b;
 }
 
 // Maps a single-layer policy diagnostic onto the resolved-stage diagnostic shape consumed by the

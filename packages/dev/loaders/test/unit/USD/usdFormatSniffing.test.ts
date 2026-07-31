@@ -3,12 +3,11 @@ import { NullEngine } from "core/Engines/nullEngine";
 import { Scene } from "core/scene";
 import { USDFileLoader } from "loaders/USD/usdFileLoader";
 import { USDFileLoaderMetadata } from "loaders/USD/usdFileLoader.metadata";
-import { UsdCrateDecodeError, UsdUnsupportedFormatError } from "loaders/USD/usdErrors";
+import { UsdCrateDecodeError, UsdUnsupportedFormatError, UsdZipArchiveError } from "loaders/USD/usdErrors";
 import { ResolveUsdStageAsync } from "loaders/USD/resolution/usdResolver";
 
-// The public USD loader selects USDA text or USDC crate data from the *bytes* rather than trusting the
-// extension. USDZ/ZIP packages remain outside the single-layer loader profile and are rejected before
-// the text parser ever runs.
+// The public USD loader selects USDA text, USDC crate data, or USDZ package data from the *bytes* rather
+// than trusting the extension.
 const triangleUsda = `#usda 1.0
 
 def Mesh "Triangle"
@@ -58,19 +57,19 @@ async function captureRejection(promise: Promise<unknown>): Promise<unknown> {
 }
 
 describe("USD loader metadata", () => {
-    it("advertises content-sniffed USD extensions and drops packaged containers", () => {
+    it("advertises content-sniffed USD extensions", () => {
         const extensions = USDFileLoaderMetadata.extensions;
-        expect(Object.keys(extensions).sort()).toEqual([".usd", ".usda"]);
+        expect(Object.keys(extensions).sort()).toEqual([".usd", ".usda", ".usdz"]);
         expect(extensions).not.toHaveProperty(".usdc");
-        expect(extensions).not.toHaveProperty(".usdz");
         // ".usd" stays byte-readable so its bytes can be sniffed: a ".usd" may be USDA text or a crate.
         expect(extensions[".usd"].isBinary).toBe(true);
         expect(extensions[".usda"].isBinary).toBe(true);
+        expect(extensions[".usdz"].isBinary).toBe(true);
     });
 
     it("exposes the same extensions on a loader instance", () => {
         const loader = new USDFileLoader();
-        expect(Object.keys(loader.extensions).sort()).toEqual([".usd", ".usda"]);
+        expect(Object.keys(loader.extensions).sort()).toEqual([".usd", ".usda", ".usdz"]);
     });
 });
 
@@ -104,13 +103,14 @@ describe("USD content sniffing - binary container dispatch", () => {
         }
     });
 
-    it("rejects ZIP/USDZ package bytes from the public loader with a typed error", async () => {
+    it("rejects malformed ZIP/USDZ package bytes from the public loader with a typed error", async () => {
         const loader = new USDFileLoader();
         const engine = new NullEngine();
         const scene = new Scene(engine);
         try {
             const error = await captureRejection(loader.importMeshAsync(null, scene, zipBytes(), "", undefined, "model.usd"));
-            expect(error).toBeInstanceOf(UsdUnsupportedFormatError);
+            expect(error).toBeInstanceOf(UsdZipArchiveError);
+            expect(error).not.toBeInstanceOf(UsdUnsupportedFormatError);
         } finally {
             scene.dispose();
             engine.dispose();
@@ -123,9 +123,9 @@ describe("USD content sniffing - binary container dispatch", () => {
         expect(error).not.toBeInstanceOf(UsdUnsupportedFormatError);
     });
 
-    it("rejects ZIP bytes at the resolution seam, tagging the package format", async () => {
+    it("rejects malformed ZIP bytes at the resolution seam with a typed archive error", async () => {
         const error = await captureRejection(ResolveUsdStageAsync(zipBytes(), "", "model.usd", {}));
-        expect(error).toBeInstanceOf(UsdUnsupportedFormatError);
-        expect((error as UsdUnsupportedFormatError).format).toBe("usdz");
+        expect(error).toBeInstanceOf(UsdZipArchiveError);
+        expect((error as UsdZipArchiveError).kind).toBe("malformed-central-directory");
     });
 });

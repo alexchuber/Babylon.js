@@ -287,7 +287,7 @@ function ResolveConnectedTexture(
     }
 
     return {
-        uri: ResolveAssetUri(file, context.layer.identifier),
+        uri: ResolveAssetUri(file, context.layer.identifier, context.assetSource),
         uvSet: ResolveTextureUvSet(texturePrim, context),
         wrapU: MapWrapMode(AsToken(GetAttributeValue(GetAttribute(texturePrim, "inputs:wrapS")))),
         wrapV: MapWrapMode(AsToken(GetAttributeValue(GetAttribute(texturePrim, "inputs:wrapT")))),
@@ -375,10 +375,14 @@ function ResolveTextureChannel(outputName: string | undefined, defaultChannel: I
     return suffix === "r" || suffix === "g" || suffix === "b" || suffix === "a" ? suffix : defaultChannel;
 }
 
-function ResolveAssetUri(path: string, layerIdentifier: string): string {
+function ResolveAssetUri(path: string, layerIdentifier: string, assetSource?: IStageMappingContext["assetSource"]): string {
     const cleanPath = StripAssetDelimiters(path);
     if (cleanPath.startsWith("data:")) {
         return cleanPath;
+    }
+    const sourceUri = assetSource?.resolveAssetUri(cleanPath, layerIdentifier);
+    if (sourceUri !== undefined) {
+        return sourceUri;
     }
     // Resolve relative texture sidecars against the source layer, including the dropped-file scheme.
     return ResolveAssetIdentifier(cleanPath, layerIdentifier);

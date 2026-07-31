@@ -12,7 +12,7 @@ const SectionRecordSize = 32;
 const SectionNameSize = 16;
 const InvalidIndex = 0xffffffff;
 const MinimumSupportedVersion = { major: 0, minor: 0, patch: 1 };
-const MaximumSupportedVersion = { major: 0, minor: 8, patch: 255 };
+const MaximumSupportedVersion = { major: 0, minor: 9, patch: 255 };
 const DefaultMaxTableEntries = 16 * 1024 * 1024;
 const DefaultMaxValueBytes = 256 * 1024 * 1024;
 const DefaultMaxWork = 100 * 1000 * 1000;
@@ -168,7 +168,7 @@ interface ICrateContext {
  * @param options optional bounded decoder limits
  * @returns decoded SDF layer
  */
-export function ParseCrate(data: ArrayBuffer, identifier: string, options: ICrateDecoderOptions = {}): ISdfLayer {
+export function ParseCrate(data: ArrayBuffer | ArrayBufferView, identifier: string, options: ICrateDecoderOptions = {}): ISdfLayer {
     try {
         return ParseCrateUnchecked(data, identifier, options);
     } catch (error) {
@@ -180,8 +180,8 @@ export function ParseCrate(data: ArrayBuffer, identifier: string, options: ICrat
     }
 }
 
-function ParseCrateUnchecked(data: ArrayBuffer, identifier: string, options: ICrateDecoderOptions): ISdfLayer {
-    const reader = new BinaryReader(new Uint8Array(data));
+function ParseCrateUnchecked(data: ArrayBuffer | ArrayBufferView, identifier: string, options: ICrateDecoderOptions): ISdfLayer {
+    const reader = new BinaryReader(ToUint8Array(data));
     const budget = new CrateBudget(options);
     const bootstrap = ReadBootstrap(reader);
     const sections = ReadTableOfContents(reader, bootstrap.tocOffset, budget);
@@ -459,7 +459,9 @@ function ValidateSpec(pathIndex: number, fieldSetIndex: number, specType: number
 function BuildLayer(identifier: string, context: ICrateContext, fields: ICrateField[], fieldSets: number[], specs: ICrateSpec[]): ISdfLayer {
     const layer: ISdfLayer = { identifier, subLayers: [], rootPrims: [] };
     const primsByPath = new Map<string, ISdfPrimSpec>();
-    const propertySpecs: Array<{ path: string; spec: ISdfAttributeSpec | ISdfRelationshipSpec }> = [];
+    const propertySpecs: Array<{ path: string; spec: ISdfAttributeSpec | ISdfRelationshipSpec; variant?: IVariantPathInfo }> = [];
+    const variantPrimSpecs: Array<{ info: IVariantPathInfo; prim: ISdfPrimSpec }> = [];
+    const variantOpinions: Array<{ info: IVariantPathInfo; specType: CrateSpecType }> = [];
 
     for (const spec of specs) {
         context.budget.work();
@@ -468,6 +470,7 @@ function BuildLayer(identifier: string, context: ICrateContext, fields: ICrateFi
             throw new Error(`USD crate: spec path index ${spec.pathIndex} did not decode to a path.`);
         }
         const fieldReps = GetFieldsForSpec(spec, context, fields, fieldSets);
+        const variantInfo = ParseVariantPath(path);
         if (spec.specType === CrateSpecType.PseudoRoot || path === "/") {
             ApplyLayerFields(layer, fieldReps, context);
         } else if (spec.specType === CrateSpecType.Prim && !IsVariantPath(path)) {
@@ -475,16 +478,22 @@ function BuildLayer(identifier: string, context: ICrateContext, fields: ICrateFi
                 throw new Error(`USD crate: duplicate prim path '${path}'.`);
             }
             primsByPath.set(path, CreatePrim(path, fieldReps, context));
+        } else if (spec.specType === CrateSpecType.Prim && variantInfo) {
+            variantOpinions.push({ info: variantInfo, specType: spec.specType });
+            variantPrimSpecs.push({ info: variantInfo, prim: CreatePrim(variantInfo.basePath, fieldReps, context) });
+        } else if ((spec.specType === CrateSpecType.Attribute || spec.specType === CrateSpecType.Relationship) && variantInfo) {
+            const property = CreateProperty(path, spec.specType, fieldReps, context);
+            if (property) {
+                propertySpecs.push({ path, spec: { ...property, path: variantInfo.basePath }, variant: variantInfo });
+            }
+        } else if (spec.specType === CrateSpecType.Variant || spec.specType === CrateSpecType.VariantSet) {
+            if (variantInfo) {
+                variantOpinions.push({ info: variantInfo, specType: spec.specType });
+            }
         } else if (spec.specType === CrateSpecType.Attribute || spec.specType === CrateSpecType.Relationship) {
             const property = CreateProperty(path, spec.specType, fieldReps, context);
             if (property) {
                 propertySpecs.push({ path, spec: property });
-            }
-        } else if (spec.specType === CrateSpecType.Variant || spec.specType === CrateSpecType.VariantSet) {
-            const ownerPath = GetVariantOwnerPath(path);
-            const owner = primsByPath.get(ownerPath);
-            if (owner) {
-                AddVariantSpec(owner, path, spec.specType);
             }
         }
     }
@@ -498,18 +507,54 @@ function BuildLayer(identifier: string, context: ICrateContext, fields: ICrateFi
             layer.rootPrims.push(prim);
         }
     }
-    if (specs.some((spec) => spec.specType === CrateSpecType.Prim && IsVariantPath(context.paths[spec.pathIndex]))) {
-        ClearMaterializedVariantOpinions(layer.rootPrims);
-    }
 
+    const variantPrimByKey = new Map<string, ISdfPrimSpec>();
+    for (const opinion of variantOpinions) {
+        const owner = primsByPath.get(opinion.info.ownerPath);
+        if (owner) {
+            AddVariantSpec(owner, opinion.info.setName, opinion.info.variantName, opinion.specType);
+        }
+    }
+    for (const record of [...variantPrimSpecs].sort((left, right) => left.prim.path.length - right.prim.path.length)) {
+        const owner = primsByPath.get(record.info.ownerPath);
+        if (!owner) {
+            continue;
+        }
+        const variant = EnsureVariantSpec(owner, record.info.setName, record.info.variantName);
+        const key = GetVariantPrimKey(record.info, record.prim.path);
+        if (variantPrimByKey.has(key)) {
+            throw new Error(`USD crate: duplicate variant prim path '${record.prim.path}'.`);
+        }
+        variantPrimByKey.set(key, record.prim);
+        const parentPath = GetParentPrimPath(record.prim.path);
+        const parent = parentPath ? variantPrimByKey.get(GetVariantPrimKey(record.info, parentPath)) : undefined;
+        if (parent) {
+            parent.children.push(record.prim);
+        } else if (parentPath === record.info.ownerPath) {
+            variant.children.push(record.prim);
+        }
+    }
     for (const property of propertySpecs) {
-        const split = SplitPropertyPath(property.path);
+        const split = SplitPropertyPath(property.variant ? (property.spec.path ?? property.path) : property.path);
         if (split) {
-            const owner = primsByPath.get(split.primPath);
+            const owner = property.variant
+                ? (variantPrimByKey.get(GetVariantPrimKey(property.variant, split.primPath)) ??
+                  (split.primPath === property.variant.ownerPath ? primsByPath.get(property.variant.ownerPath) : undefined))
+                : primsByPath.get(split.primPath);
             if (owner) {
-                owner.properties[split.propertyName] = property.spec;
+                if (property.variant && split.primPath === property.variant.ownerPath) {
+                    const variant = EnsureVariantSpec(owner, property.variant.setName, property.variant.variantName);
+                    variant.properties[split.propertyName] = property.spec;
+                } else {
+                    owner.properties[split.propertyName] = property.spec;
+                }
             }
         }
+    }
+    if (CompareVersion(context.version, { major: 0, minor: 9, patch: 0 }) >= 0) {
+        layer.rootPrims = MaterializeSelectedVariants(layer.rootPrims);
+    } else if (specs.some((spec) => spec.specType === CrateSpecType.Prim && IsVariantPath(context.paths[spec.pathIndex]))) {
+        ClearMaterializedVariantOpinions(layer.rootPrims);
     }
     return layer;
 }
@@ -518,10 +563,6 @@ function IsVariantPath(path: string | undefined): boolean {
     return path?.includes("/{") === true;
 }
 
-// OpenUSD crates can store the selected variant's materialized namespace alongside the variant
-// opinions. The selected namespace is already represented by ordinary paths in this layer; discard
-// only the redundant variant-path specs and their composition opinions so the existing single-layer
-// policy can map the selected scene without becoming a general composition engine.
 function ClearMaterializedVariantOpinions(prims: ISdfPrimSpec[]): void {
     for (const prim of prims) {
         if (prim.variantSets !== undefined && prim.variantSelections !== undefined) {
@@ -530,6 +571,100 @@ function ClearMaterializedVariantOpinions(prims: ISdfPrimSpec[]): void {
         }
         ClearMaterializedVariantOpinions(prim.children);
     }
+}
+
+interface IVariantPathInfo {
+    readonly ownerPath: string;
+    readonly setName: string;
+    readonly variantName: string;
+    readonly basePath: string;
+}
+
+function ParseVariantPath(path: string): IVariantPathInfo | undefined {
+    const brace = path.indexOf("/{");
+    const close = path.indexOf("}", brace + 2);
+    if (brace < 0 || close < 0) {
+        return undefined;
+    }
+    const selection = path.slice(brace + 2, close);
+    const equals = selection.indexOf("=");
+    if (equals < 0) {
+        return undefined;
+    }
+    return {
+        ownerPath: path.slice(0, brace),
+        setName: selection.slice(0, equals),
+        variantName: selection.slice(equals + 1),
+        basePath: `${path.slice(0, brace)}${path.slice(close + 1)}`,
+    };
+}
+
+function GetVariantPrimKey(info: IVariantPathInfo, path: string): string {
+    return `${info.ownerPath}|${info.setName}|${info.variantName}|${path}`;
+}
+
+function MaterializeSelectedVariants(prims: ISdfPrimSpec[]): ISdfPrimSpec[] {
+    return prims.map((prim) => MaterializeSelectedVariantsForPrim(prim));
+}
+
+function MaterializeSelectedVariantsForPrim(prim: ISdfPrimSpec): ISdfPrimSpec {
+    let materialized: ISdfPrimSpec = { ...prim, children: prim.children.map(MaterializeSelectedVariantsForPrim) };
+    let allSelectionsResolved = materialized.variantSelections !== undefined;
+    for (const [setName, variantName] of Object.entries(materialized.variantSelections ?? {})) {
+        const variantSet = materialized.variantSets?.find((candidate) => candidate.name === setName);
+        const variant = variantSet?.variants[variantName];
+        if (!variant) {
+            allSelectionsResolved = false;
+            continue;
+        }
+        materialized = MergeVariantPrim(materialized, variant);
+    }
+
+    if (allSelectionsResolved && materialized.variantSets !== undefined) {
+        materialized.variantSets = undefined;
+        materialized.variantSelections = undefined;
+    }
+    return materialized;
+}
+
+function MergeVariantPrim(base: ISdfPrimSpec, variant: import("../../sdf/sdfSpec").ISdfVariantSpec): ISdfPrimSpec {
+    const variantChildrenByName = new Map(variant.children.map((child) => [child.name, MaterializeSelectedVariantsForPrim(child)]));
+    const children = base.children.map((child) => {
+        const variantChild = variantChildrenByName.get(child.name);
+        if (!variantChild) {
+            return child;
+        }
+        variantChildrenByName.delete(child.name);
+        return MergePrim(child, variantChild);
+    });
+    children.push(...variantChildrenByName.values());
+    return {
+        ...base,
+        properties: { ...base.properties, ...variant.properties },
+        children,
+    };
+}
+
+function MergePrim(base: ISdfPrimSpec, variant: ISdfPrimSpec): ISdfPrimSpec {
+    const variantChildrenByName = new Map(variant.children.map((child) => [child.name, child]));
+    const children = base.children.map((child) => {
+        const variantChild = variantChildrenByName.get(child.name);
+        if (!variantChild) {
+            return child;
+        }
+        variantChildrenByName.delete(child.name);
+        return MergePrim(child, variantChild);
+    });
+    children.push(...variantChildrenByName.values());
+    return {
+        ...base,
+        typeName: variant.typeName ?? base.typeName,
+        active: variant.active ?? base.active,
+        instanceable: variant.instanceable ?? base.instanceable,
+        kind: variant.kind ?? base.kind,
+        properties: { ...base.properties, ...variant.properties },
+        children,
+    };
 }
 
 function GetFieldsForSpec(spec: ICrateSpec, context: ICrateContext, fields: ICrateField[], fieldSets: number[]): Map<string, bigint> {
@@ -1002,7 +1137,11 @@ function DecodeTimeSamples(context: ICrateContext, valueRep: bigint | undefined)
         return undefined;
     }
     const source = ReadValueReader(context, rep.payload, 16);
+    const timesOffset = source.offset;
+    source.seek(timesOffset + source.readSafeInt64("time sample times offset"));
     const timesRep = source.readBigUint64();
+    const valuesOffset = source.offset;
+    source.seek(valuesOffset + source.readSafeInt64("time sample values offset"));
     const sampleCount = source.readSafeUint64("time sample");
     context.budget.table(sampleCount, "time sample");
     const valueReps: bigint[] = [];
@@ -1061,6 +1200,13 @@ function ReadValueReader(context: ICrateContext, offset: number, minimumBytes: n
 
 function GetValueEnd(sections: Map<string, ICrateSection>, tocOffset: number): number {
     return Math.min(tocOffset, ...[...sections.values()].map((section) => section.start));
+}
+
+function ToUint8Array(data: ArrayBuffer | ArrayBufferView): Uint8Array {
+    if (data instanceof ArrayBuffer) {
+        return new Uint8Array(data);
+    }
+    return new Uint8Array(data.buffer, data.byteOffset, data.byteLength);
 }
 
 function ReadArrayCount(reader: BinaryReader, version: ICrateVersion): number {
@@ -1352,32 +1498,26 @@ function SplitPropertyPath(path: string): { primPath: string; propertyName: stri
     return dot < 0 ? undefined : { primPath: path.slice(0, dot), propertyName: path.slice(dot + 1) };
 }
 
-function GetVariantOwnerPath(path: string): string {
-    const brace = path.indexOf("/{");
-    return brace >= 0 ? path.slice(0, brace) : path;
-}
-
-function AddVariantSpec(prim: ISdfPrimSpec, path: string, specType: CrateSpecType): void {
-    const brace = path.indexOf("/{");
-    const close = path.indexOf("}", brace + 2);
-    if (brace < 0 || close < 0) {
+function AddVariantSpec(prim: ISdfPrimSpec, setName: string, variantName: string, specType: CrateSpecType): void {
+    if (!setName) {
         prim.variantSets = [];
         return;
     }
-    const selection = path.slice(brace + 2, close);
-    const equals = selection.indexOf("=");
-    const name = equals < 0 ? selection : selection.slice(0, equals);
-    const variantName = equals < 0 ? "" : selection.slice(equals + 1);
+    EnsureVariantSpec(prim, setName, variantName, specType);
+}
+
+function EnsureVariantSpec(prim: ISdfPrimSpec, setName: string, variantName: string, specType = CrateSpecType.Variant): import("../../sdf/sdfSpec").ISdfVariantSpec {
     const variantSets = prim.variantSets ?? [];
-    let variantSet = variantSets.find((candidate) => candidate.name === name);
+    let variantSet = variantSets.find((candidate) => candidate.name === setName);
     if (!variantSet) {
-        variantSet = { name, variants: {} };
+        variantSet = { name: setName, variants: {} };
         variantSets.push(variantSet);
     }
-    if (specType === CrateSpecType.Variant && variantName !== "") {
-        variantSet.variants[variantName] = { name: variantName, properties: {}, children: [] };
+    if (variantName !== "" && specType !== CrateSpecType.VariantSet) {
+        variantSet.variants[variantName] ??= { name: variantName, properties: {}, children: [] };
     }
     prim.variantSets = variantSets;
+    return variantSet.variants[variantName] ?? { name: variantName, properties: {}, children: [] };
 }
 
 function AsSdfValue(type: SdfValueType, value: unknown): SdfValue {
