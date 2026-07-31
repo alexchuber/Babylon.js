@@ -4,11 +4,21 @@ export interface IRuntimeCorpusEntry {
     readonly sha256: string;
     readonly sizeBytes: number;
     readonly sidecars: readonly string[];
+    readonly embeddedEntries?: readonly IRuntimeCorpusEmbeddedEntry[];
     readonly unreferencedAlternatives?: readonly string[];
     readonly references?: readonly string[];
     readonly defaultPrim: string;
     readonly upAxis: "Y" | "Z";
     readonly metersPerUnit: number;
+}
+
+export interface IRuntimeCorpusEmbeddedEntry {
+    readonly fileName: string;
+    readonly format: "usdc" | "jpeg";
+    readonly sha256: string;
+    readonly sizeBytes: number;
+    readonly width?: number;
+    readonly height?: number;
 }
 
 // Source snapshot: provided-source-runtime-corpus-v1 (2026-07-30)
@@ -239,15 +249,87 @@ export const SphereAsset: IRuntimeCorpusEntry = {
     metersPerUnit: 1,
 } as const;
 
-export const SeahorseTextAsset: IRuntimeCorpusEntry = {
-    fileName: "seahorse_anim_mtl_variant.usda",
-    description: "Placeholder wrapper with a single named Xform group and no geometry (redacted derivative)",
-    sha256: "4db81909e2487d3d319b5b573a1e41c5487e226ea342f7fe20bf9bc5adea3f0f",
-    sizeBytes: 253,
+export const SeahorseUsdzAsset: IRuntimeCorpusEntry = {
+    fileName: "seahorse_anim_mtl_variant.usdz",
+    description: "Neutral USDZ package with one USDC root layer, eight archive-local JPEG textures, authored variants, and UsdSkel animation",
+    sha256: "520e344f0568d442ea7d3b60347d3eff961c1afb101b3e3cd3a61a504d10b285",
+    sizeBytes: 19_466_069,
     sidecars: [],
-    defaultPrim: "Seahorse",
+    embeddedEntries: [
+        {
+            fileName: "seahorse_anim_mtl_variant.usdc",
+            format: "usdc",
+            sha256: "c15bb309e74c4b9bbf484dc771eb5fc5f34792e7bd2090958d232147066020a1",
+            sizeBytes: 13_022_933,
+        },
+        {
+            fileName: "seahorseeye_n.jpg",
+            format: "jpeg",
+            sha256: "21f9d41d79d212f823859e60da9e5a5ef1c6079960447c840be11cc2d41d9c8e",
+            sizeBytes: 17_013,
+            width: 1_024,
+            height: 1_024,
+        },
+        {
+            fileName: "seahorse_n.jpg",
+            format: "jpeg",
+            sha256: "cdf9a6090a6da1996226d3903fa22e8472eaaf9e802ba063b0e84616eb13e1e4",
+            sizeBytes: 1_590_807,
+            width: 4_096,
+            height: 4_096,
+        },
+        {
+            fileName: "seahorse_o.jpg",
+            format: "jpeg",
+            sha256: "74433a318ba097e7f5627eea85ba01aeb5ec3cab8470f1ea4cd6ab1cb9778e9e",
+            sizeBytes: 573_478,
+            width: 4_096,
+            height: 4_096,
+        },
+        {
+            fileName: "seahorseeye_bc.jpg",
+            format: "jpeg",
+            sha256: "e564b2ac1a0381eb21d8b7714ad3217ed9df514a7f48cb920bc295d2bf1dffc8",
+            sizeBytes: 133_304,
+            width: 1_024,
+            height: 1_024,
+        },
+        {
+            fileName: "seahorseeye_r.jpg",
+            format: "jpeg",
+            sha256: "6490a73433957bc11596f82ffb8bc395bd38a9deb399d17b46ea60be424dfe88",
+            sizeBytes: 12_620,
+            width: 1_024,
+            height: 1_024,
+        },
+        {
+            fileName: "seahorse_r.jpg",
+            format: "jpeg",
+            sha256: "96fcd25d6c1f9c420ca38cec82326926f4b57353277747825772a359343ef1d4",
+            sizeBytes: 1_459_321,
+            width: 4_096,
+            height: 4_096,
+        },
+        {
+            fileName: "seahorse_bc.jpg",
+            format: "jpeg",
+            sha256: "a75bd5d76c28cb8c16889e8cb38de8e698c15871b17114189683eaf29025aa0c",
+            sizeBytes: 929_786,
+            width: 4_096,
+            height: 4_096,
+        },
+        {
+            fileName: "seahorse_purple_bc.jpg",
+            format: "jpeg",
+            sha256: "5a4389f7e1e0cf819f4aba8bcc285e1859511c7c0a56df36ab8c0cdb3e635cc0",
+            sizeBytes: 1_725_779,
+            width: 4_096,
+            height: 4_096,
+        },
+    ],
+    defaultPrim: "seahorse_bind",
     upAxis: "Y",
-    metersPerUnit: 1,
+    metersPerUnit: 0.01,
 } as const;
 
 export const RuntimeCorpusManifest: readonly IRuntimeCorpusEntry[] = [
@@ -268,7 +350,7 @@ export const RuntimeCorpusManifest: readonly IRuntimeCorpusEntry[] = [
     RobotArm2WrapperAsset,
     RobotArmWrapperAsset,
     RoomAsset,
-    SeahorseTextAsset,
+    SeahorseUsdzAsset,
     SphereAsset,
     StairsAsset,
 ] as const;
