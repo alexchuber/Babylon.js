@@ -513,6 +513,40 @@ ${QuadMesh}
         expect(blueMaterial!.baseColor).toEqual([0, 0, 1]);
     });
 
+    it("does not bleed fallback displayColor when the bound material path resolves to no prim at all", async () => {
+        // Distinct from the previous test: here </World/Mat> is never authored as a prim, so
+        // ResolveMaterialIndex's `!prim` branch (not BuildMaterialFromPrim's `!surfaceShader`
+        // branch) is what falls back to a default material for each mesh.
+        const usda = `#usda 1.0
+def Xform "World"
+{
+    def Mesh "Red"
+    {
+${QuadMesh}
+        color3f[] primvars:displayColor = [(1, 0, 0)] (interpolation = "constant")
+        rel material:binding = </World/Mat>
+    }
+
+    def Mesh "Blue"
+    {
+${QuadMesh}
+        color3f[] primvars:displayColor = [(0, 0, 1)] (interpolation = "constant")
+        rel material:binding = </World/Mat>
+    }
+}
+`;
+        const stage = await ResolveStageAsync(usda);
+        const redMaterial = MaterialForMesh(stage, "Red");
+        const blueMaterial = MaterialForMesh(stage, "Blue");
+        expect(redMaterial).toBeDefined();
+        expect(blueMaterial).toBeDefined();
+        expect(redMaterial!.baseColor).toEqual([1, 0, 0]);
+        expect(blueMaterial!.baseColor).toEqual([0, 0, 1]);
+
+        const notices = stage.diagnostics.filter((d) => d.message.includes("Material binding target was not found"));
+        expect(notices.length).toBe(2);
+    });
+
     it("still pools two meshes sharing an unsupported material when their fallback displayColor matches", async () => {
         const usda = `#usda 1.0
 def Xform "World"
