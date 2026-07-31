@@ -5534,7 +5534,7 @@
         },
         {
             "title": "USD loader - Robot Arm corpus",
-            "playgroundId": "#16FAVO#0",
+            "playgroundId": "#8Y2WB1#0",
             "referenceImage": "usd-loader-robot-arm-corpus.png",
             "renderCount": 1,
             "dependsOn": ["Loaders", "Materials", "Meshes"]
@@ -5548,7 +5548,7 @@
         },
         {
             "title": "USD loader - stairs corpus",
-            "playgroundId": "#GLFKBM#0",
+            "playgroundId": "#IJZECW#0",
             "referenceImage": "usd-loader-stairs-corpus.png",
             "renderCount": 1,
             "dependsOn": ["Loaders", "Meshes"]
@@ -5562,28 +5562,28 @@
         },
         {
             "title": "USD loader - Dialysis Machine external asset",
-            "playgroundId": "#5GLS6Z#0",
+            "playgroundId": "#9UASEP#0",
             "referenceImage": "usd-loader-dialysis-machine.png",
             "renderCount": 50,
             "dependsOn": ["Loaders", "OBJ", "Materials", "Meshes"]
         },
         {
             "title": "USD loader - Forklift wrapper",
-            "playgroundId": "#N7ZEX5#0",
+            "playgroundId": "#UVZ23C#0",
             "referenceImage": "usd-loader-forklift-wrapper.png",
             "renderCount": 50,
             "dependsOn": ["Loaders", "OBJ", "Materials", "Meshes", "Textures"]
         },
         {
             "title": "USD loader - UR10 OBJ wrapper",
-            "playgroundId": "#3SY6FL#0",
+            "playgroundId": "#7RNOEE#0",
             "referenceImage": "usd-loader-ur10-obj-wrapper.png",
             "renderCount": 1,
             "dependsOn": ["Loaders", "OBJ", "Materials", "Meshes"]
         },
         {
             "title": "USD loader - Robot Arm external OBJ and texture",
-            "playgroundId": "#QT6JLS#0",
+            "playgroundId": "#9B6QAU#0",
             "referenceImage": "usd-loader-robot-arm-obj-texture.png",
             "renderCount": 50,
             "dependsOn": ["Loaders", "OBJ", "Materials", "Meshes", "Textures", "Scene"]
