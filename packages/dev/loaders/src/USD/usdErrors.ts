@@ -1,7 +1,17 @@
 /**
  * The kind of USD resource limit that was exceeded. Doubles as a stable programmatic code.
  */
-export type UsdResourceLimitKind = "value-nesting" | "prim-nesting" | "input-bytes" | "token-count" | "parser-work";
+export type UsdResourceLimitKind =
+    | "value-nesting"
+    | "prim-nesting"
+    | "input-bytes"
+    | "layer-bytes"
+    | "layer-count"
+    | "layer-depth"
+    | "layer-nodes"
+    | "composition-work"
+    | "token-count"
+    | "parser-work";
 
 /**
  * Error thrown when parsing an untrusted USD asset exceeds a configured resource limit.
@@ -64,14 +74,81 @@ export class UsdConfigurationError extends Error {
     }
 }
 
+/** The failure kind for a referenced layer source. */
+export type UsdLayerLoadErrorKind = "missing-layer" | "fetch-failed";
+
+/**
+ * Error thrown when an authored USD reference cannot provide its referenced layer.
+ *
+ * `missing-layer` means the source explicitly reported that the identifier does not exist.
+ * `fetch-failed` means the source threw while trying to retrieve it.
+ */
+export class UsdLayerLoadError extends Error {
+    /** The layer-source failure kind. */
+    public readonly kind: UsdLayerLoadErrorKind;
+    /** The normalized layer identifier that was requested. */
+    public readonly identifier: string;
+    /** The USD prim path whose reference requested the layer, when known. */
+    public readonly path?: string;
+    /** The original source failure, when one was thrown. */
+    public readonly cause?: unknown;
+
+    /**
+     * Creates a UsdLayerLoadError.
+     * @param kind layer-source failure kind
+     * @param identifier normalized referenced-layer identifier
+     * @param message human-readable failure details
+     * @param details optional reference path and source cause
+     */
+    public constructor(kind: UsdLayerLoadErrorKind, identifier: string, message: string, details?: { path?: string; cause?: unknown }) {
+        super(message);
+        this.name = "UsdLayerLoadError";
+        this.kind = kind;
+        this.identifier = identifier;
+        this.path = details?.path;
+        this.cause = details?.cause;
+        Object.setPrototypeOf(this, UsdLayerLoadError.prototype);
+    }
+}
+
+/** The failure kind for a composition graph or reference opinion. */
+export type UsdCompositionErrorKind = "cycle" | "invalid-reference" | "invalid-layer";
+
+/**
+ * Error thrown for a composition graph failure that cannot produce a deterministic stage.
+ */
+export class UsdCompositionError extends Error {
+    /** The composition failure kind. */
+    public readonly kind: UsdCompositionErrorKind;
+    /** The normalized layer identifier involved in the failure, when known. */
+    public readonly identifier?: string;
+    /** The USD prim path involved in the failure, when known. */
+    public readonly path?: string;
+
+    /**
+     * Creates a UsdCompositionError.
+     * @param kind composition failure kind
+     * @param message human-readable failure details
+     * @param details optional layer identifier and prim path
+     */
+    public constructor(kind: UsdCompositionErrorKind, message: string, details?: { identifier?: string; path?: string }) {
+        super(message);
+        this.name = "UsdCompositionError";
+        this.kind = kind;
+        this.identifier = details?.identifier;
+        this.path = details?.path;
+        Object.setPrototypeOf(this, UsdCompositionError.prototype);
+    }
+}
+
 /** The kind of unsupported binary USD container rejected at the loader's front door. Doubles as a stable programmatic code. */
 export type UsdUnsupportedFormatKind = "usdc" | "usdz";
 
 /**
  * Error thrown when the loader is handed a binary USD container it deliberately does not support: a
- * binary crate (`PXR-USDC`) file or a USDZ/ZIP package. The loader accepts only single-layer USDA text,
- * so these formats are detected from their magic bytes and rejected up front rather than being partially
- * or misleadingly decoded.
+ * binary crate (`PXR-USDC`) file or a USDZ/ZIP package. The loader accepts USDA text layers, with supported
+ * external references resolved through a layer source, so these formats are detected from their magic bytes
+ * and rejected up front rather than being partially or misleadingly decoded.
  *
  * Carries the detected {@link format} so callers can tell crate and package input apart programmatically.
  */
