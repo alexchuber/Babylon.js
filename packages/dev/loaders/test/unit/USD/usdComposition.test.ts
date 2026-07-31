@@ -102,6 +102,22 @@ describe("USD authored reference composition", () => {
         });
     });
 
+    it("classifies HTTP not-found source failures as missing layers", async () => {
+        const layerSource: IUsdLayerSource = {
+            loadLayerAsync: async () => {
+                const notFound = new Error("not found");
+                Object.defineProperty(notFound, "request", { value: { status: 404 } });
+                throw notFound;
+            },
+        };
+
+        await expect(ResolveUsdStageAsync(wrapperUsda, "https://example.test/Assets/", "Wrapper.usda", { layerSource })).rejects.toMatchObject({
+            name: "UsdLayerLoadError",
+            kind: "missing-layer",
+            identifier: "https://example.test/Assets/nested/child.usda",
+        });
+    });
+
     it("reports reference cycles as a typed failure", async () => {
         const first = `#usda 1.0
 def Xform "First" (

@@ -258,7 +258,12 @@ async function ResolveLayer(identifier: string, depth: number, referencePath: st
     try {
         data = await state.source.loadLayerAsync(identifier);
     } catch (cause) {
-        throw new UsdLayerLoadError("fetch-failed", identifier, `USD: failed to fetch referenced layer '${identifier}'.`, { path: referencePath, cause });
+        if (cause instanceof UsdLayerLoadError) {
+            throw cause;
+        }
+        const kind = IsMissingLayerSourceError(cause) ? "missing-layer" : "fetch-failed";
+        const message = kind === "missing-layer" ? `USD: referenced layer '${identifier}' was not found.` : `USD: failed to fetch referenced layer '${identifier}'.`;
+        throw new UsdLayerLoadError(kind, identifier, message, { path: referencePath, cause });
     }
     if (data === undefined) {
         throw new UsdLayerLoadError("missing-layer", identifier, `USD: referenced layer '${identifier}' was not found.`, { path: referencePath });
@@ -340,6 +345,17 @@ function AddCompositionWork(state: ICompositionState, path: string): void {
 
 function AddCompositionDiagnostic(state: ICompositionState, severity: IResolvedDiagnostic["severity"], path: string, message: string): void {
     state.diagnostics.push({ severity, path, message });
+}
+
+function IsMissingLayerSourceError(error: unknown): boolean {
+    if (!IsRecord(error) || !IsRecord(error.request)) {
+        return false;
+    }
+    return error.request.status === 404 || error.request.status === 410;
+}
+
+function IsRecord(value: unknown): value is Record<string, unknown> {
+    return typeof value === "object" && value !== null;
 }
 
 function FindPrimByPath(prims: readonly ISdfPrimSpec[], path: string): ISdfPrimSpec | undefined {
