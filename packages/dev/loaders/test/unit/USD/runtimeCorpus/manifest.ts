@@ -73,7 +73,7 @@ export const ForkliftAsset: IRuntimeCorpusEntry = {
 } as const;
 
 export const ForkliftUsdcAsset: IRuntimeCorpusEntry = {
-    fileName: "Forklift.usd",
+    fileName: "Forklift/Forklift.usd",
     description: "Standalone USDC crate with selected Color variant, Z-up centimeter metadata, polygonal meshes, and MDL-only material opinions",
     sha256: "07e5f3b0b931ef2d8609f0cbc140583427a48bd3b408769096db46db8700dcb1",
     sizeBytes: 70_889_650,

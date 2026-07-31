@@ -5576,7 +5576,7 @@
         },
         {
             "title": "USD loader - Forklift USDC",
-            "playgroundId": "#FU6OM3#0",
+            "playgroundId": "#FU6OM3#1",
             "referenceImage": "usd-loader-forklift-usdc.png",
             "renderCount": 1,
             "dependsOn": ["Loaders", "Materials", "Meshes", "Scene", "Textures"]
