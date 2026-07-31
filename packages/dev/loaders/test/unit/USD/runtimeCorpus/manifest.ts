@@ -249,6 +249,17 @@ export const SphereAsset: IRuntimeCorpusEntry = {
     metersPerUnit: 1,
 } as const;
 
+export const SeahorseTextAsset: IRuntimeCorpusEntry = {
+    fileName: "seahorse_anim_mtl_variant.usda",
+    description: "Placeholder wrapper with a single named Xform group and no geometry (redacted derivative)",
+    sha256: "4db81909e2487d3d319b5b573a1e41c5487e226ea342f7fe20bf9bc5adea3f0f",
+    sizeBytes: 253,
+    sidecars: [],
+    defaultPrim: "Seahorse",
+    upAxis: "Y",
+    metersPerUnit: 1,
+} as const;
+
 export const SeahorseUsdzAsset: IRuntimeCorpusEntry = {
     fileName: "seahorse_anim_mtl_variant.usdz",
     description: "Neutral USDZ package with one USDC root layer, eight archive-local JPEG textures, authored variants, and UsdSkel animation",
@@ -350,6 +361,7 @@ export const RuntimeCorpusManifest: readonly IRuntimeCorpusEntry[] = [
     RobotArm2WrapperAsset,
     RobotArmWrapperAsset,
     RoomAsset,
+    SeahorseTextAsset,
     SeahorseUsdzAsset,
     SphereAsset,
     StairsAsset,

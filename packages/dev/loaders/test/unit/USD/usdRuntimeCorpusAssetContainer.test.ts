@@ -18,6 +18,7 @@ const DIRECT_ASSET_FILE_NAMES = [
     "stairs.usda",
     "Placeholder.usda",
     "Sphere.usda",
+    "seahorse_anim_mtl_variant.usda",
     "seahorse_anim_mtl_variant.usdz",
 ] as const;
 

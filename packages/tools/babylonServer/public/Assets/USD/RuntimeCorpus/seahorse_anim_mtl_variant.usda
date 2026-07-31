@@ -1,0 +1,12 @@
+#usda 1.0
+(
+    defaultPrim = "Seahorse"
+    metersPerUnit = 1
+    upAxis = "Y"
+)
+
+# Placeholder wrapper. Real geometry lives in a sibling archive; this layer
+# exists only as a named group. Babylon loads just this empty group.
+def Xform "Seahorse"
+{
+}
