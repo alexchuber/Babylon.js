@@ -3,6 +3,7 @@ import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 import { NullEngine } from "core/Engines/nullEngine";
 import { VertexBuffer } from "core/Buffers/buffer";
 import { LoadAssetContainerAsync } from "core/Loading/sceneLoader";
+import { Material } from "core/Materials/material.pure";
 import { PBRMaterial } from "core/Materials/PBR/pbrMaterial.pure";
 import { type AssetContainer } from "core/assetContainer";
 import { Logger } from "core/Misc/logger";
@@ -66,12 +67,22 @@ const ExpectedMeshNames = [
     "SM_Forkliftt_C01_Forcer_01",
 ];
 
+interface ILoadedForklift {
+    engine: NullEngine;
+    scene: Scene;
+    container: AssetContainer;
+}
+
+interface IWorldBounds {
+    minimum: { x: number; y: number; z: number };
+    maximum: { x: number; y: number; z: number };
+}
+
 describe("USD RuntimeCorpus - Forklift USDC", () => {
-    let engine: NullEngine;
-    let scene: Scene;
     let bytes: Uint8Array;
     let stage: IResolvedStage;
-    let container: AssetContainer;
+    let rightHanded: ILoadedForklift;
+    let leftHanded: ILoadedForklift;
 
     beforeAll(async () => {
         vi.spyOn(Logger, "Log").mockImplementation(() => {});
@@ -81,19 +92,17 @@ describe("USD RuntimeCorpus - Forklift USDC", () => {
         bytes = readRuntimeCorpusBytes(ForkliftUsdcAsset.fileName);
         stage = await ResolveUsdStageAsync(bytes, "", ForkliftUsdcAsset.fileName, {});
 
-        engine = new NullEngine();
-        scene = new Scene(engine);
-        scene.useRightHandedSystem = true;
-        container = await LoadAssetContainerAsync(bytes, scene, {
-            pluginExtension: ".usd",
-            name: ForkliftUsdcAsset.fileName,
-        });
-    }, 30_000);
+        rightHanded = await LoadForkliftAsync(bytes, true);
+        leftHanded = await LoadForkliftAsync(bytes, false);
+    }, 60_000);
 
     afterAll(() => {
-        container?.dispose();
-        scene?.dispose();
-        engine?.dispose();
+        rightHanded?.container.dispose();
+        rightHanded?.scene.dispose();
+        rightHanded?.engine.dispose();
+        leftHanded?.container.dispose();
+        leftHanded?.scene.dispose();
+        leftHanded?.engine.dispose();
         vi.restoreAllMocks();
     });
 
@@ -122,6 +131,7 @@ describe("USD RuntimeCorpus - Forklift USDC", () => {
     });
 
     it("loads the real crate through the public SceneLoader API with exact hierarchy and geometry", () => {
+        const container = rightHanded.container;
         expect(container.transformNodes.map((node) => node.name)).toEqual([
             "__usd_root__",
             "World",
@@ -154,7 +164,8 @@ describe("USD RuntimeCorpus - Forklift USDC", () => {
         expect(firstMesh.getVerticesData(VertexBuffer.ColorKind)?.length).toBe(808_500);
     });
 
-    it("preserves Z-up conversion, authored transforms, deterministic bounds, and fallback materials", () => {
+    it("preserves Z-up conversion, authored transforms, deterministic right-handed bounds, and solid fallback materials", () => {
+        const container = rightHanded.container;
         const root = container.transformNodes[0];
         expect(root.scaling.asArray()).toEqual([0.01, 0.01, 0.01]);
         expect(root.rotationQuaternion?.x).toBeCloseTo(-Math.SQRT1_2, 6);
@@ -172,52 +183,66 @@ describe("USD RuntimeCorpus - Forklift USDC", () => {
         expect(body.position.y).toBeCloseTo(71.81918335, 5);
         expect(body.position.z).toBeCloseTo(-0.0000019073, 7);
 
-        const minimum = { x: Infinity, y: Infinity, z: Infinity };
-        const maximum = { x: -Infinity, y: -Infinity, z: -Infinity };
-        for (const mesh of container.meshes) {
-            mesh.computeWorldMatrix(true);
-            const bounds = mesh.getBoundingInfo().boundingBox;
-            minimum.x = Math.min(minimum.x, bounds.minimumWorld.x);
-            minimum.y = Math.min(minimum.y, bounds.minimumWorld.y);
-            minimum.z = Math.min(minimum.z, bounds.minimumWorld.z);
-            maximum.x = Math.max(maximum.x, bounds.maximumWorld.x);
-            maximum.y = Math.max(maximum.y, bounds.maximumWorld.y);
-            maximum.z = Math.max(maximum.z, bounds.maximumWorld.z);
-        }
-        expect(minimum.x).toBeCloseTo(-0.6816533, 4);
-        expect(minimum.y).toBeCloseTo(0, 5);
-        expect(minimum.z).toBeCloseTo(-1.8667016, 4);
-        expect(maximum.x).toBeCloseTo(0.6816535, 4);
-        expect(maximum.y).toBeCloseTo(2.1742911, 4);
-        expect(maximum.z).toBeCloseTo(1.8667021, 4);
-
-        expect(container.materials).toHaveLength(11);
-        expect(container.materials.every((material) => material instanceof PBRMaterial)).toBe(true);
-        expect(
-            container.materials.every((material) => {
-                const pbr = material as PBRMaterial;
-                return pbr.albedoTexture === null && pbr.bumpTexture === null && pbr.emissiveTexture === null;
-            })
-        ).toBe(true);
+        const bounds = GetWorldBounds(container);
+        expect(bounds.minimum.x).toBeCloseTo(-0.6816533, 4);
+        expect(bounds.minimum.y).toBeCloseTo(0, 5);
+        expect(bounds.minimum.z).toBeCloseTo(-1.8667016, 4);
+        expect(bounds.maximum.x).toBeCloseTo(0.6816535, 4);
+        expect(bounds.maximum.y).toBeCloseTo(2.1742911, 4);
+        expect(bounds.maximum.z).toBeCloseTo(1.8667021, 4);
+        ExpectSolidFallbackMaterials(container);
     });
 
-    it("keeps loaded entities owned by the container until explicitly added to the scene", () => {
-        expect(scene.meshes).toHaveLength(0);
-        expect(scene.transformNodes).toHaveLength(0);
-        expect(scene.materials).toHaveLength(0);
-        expect(scene.geometries).toHaveLength(0);
+    it("preserves the default left-handed caller mode with reflected root, winding, normals, bounds, and solid materials", () => {
+        const container = leftHanded.container;
+        expect(leftHanded.scene.useRightHandedSystem).toBe(false);
 
-        container.addAllToScene();
-        expect(scene.meshes).toHaveLength(container.meshes.length);
-        expect(scene.transformNodes).toHaveLength(container.transformNodes.length);
-        expect(scene.materials).toHaveLength(container.materials.length);
-        expect(scene.geometries).toHaveLength(container.geometries.length);
+        const root = container.transformNodes[0];
+        expect(root.scaling.asArray()).toEqual([0.01, 0.01, -0.01]);
+        expect(root.rotationQuaternion?.x).toBeCloseTo(Math.SQRT1_2, 6);
+        expect(root.rotationQuaternion?.y).toBeCloseTo(0, 6);
+        expect(root.rotationQuaternion?.z).toBeCloseTo(0, 6);
+        expect(root.rotationQuaternion?.w).toBeCloseTo(Math.SQRT1_2, 6);
 
-        container.removeAllFromScene();
-        expect(scene.meshes).toHaveLength(0);
-        expect(scene.transformNodes).toHaveLength(0);
-        expect(scene.materials).toHaveLength(0);
-        expect(scene.geometries).toHaveLength(0);
+        const body = container.meshes.find((mesh) => mesh.name === "SM_Forklift_C01_Body01_01")!;
+        const rightBody = rightHanded.container.meshes.find((mesh) => mesh.name === body.name)!;
+        expect(body.sideOrientation).toBe(Material.ClockWiseSideOrientation);
+        expect(rightBody.sideOrientation).toBe(Material.CounterClockWiseSideOrientation);
+        expect(body.getTotalVertices()).toBe(rightBody.getTotalVertices());
+        expect(body.getTotalIndices()).toBe(rightBody.getTotalIndices());
+        expect(body.getVerticesData(VertexBuffer.NormalKind)?.length).toBe(606_375);
+        expect(body.getVerticesData(VertexBuffer.UVKind)?.length).toBe(404_250);
+        expect(body.getVerticesData(VertexBuffer.ColorKind)?.length).toBe(808_500);
+
+        const bounds = GetWorldBounds(container);
+        expect(bounds.minimum.x).toBeCloseTo(-0.6816533, 4);
+        expect(bounds.minimum.y).toBeCloseTo(0, 5);
+        expect(bounds.minimum.z).toBeCloseTo(-1.8667021, 4);
+        expect(bounds.maximum.x).toBeCloseTo(0.6816535, 4);
+        expect(bounds.maximum.y).toBeCloseTo(2.1742911, 4);
+        expect(bounds.maximum.z).toBeCloseTo(1.8667016, 4);
+        ExpectSolidFallbackMaterials(container);
+    });
+
+    it("keeps both handedness loads owned by their containers until explicitly added to each scene", () => {
+        for (const loaded of [rightHanded, leftHanded]) {
+            expect(loaded.scene.meshes).toHaveLength(0);
+            expect(loaded.scene.transformNodes).toHaveLength(0);
+            expect(loaded.scene.materials).toHaveLength(0);
+            expect(loaded.scene.geometries).toHaveLength(0);
+
+            loaded.container.addAllToScene();
+            expect(loaded.scene.meshes).toHaveLength(loaded.container.meshes.length);
+            expect(loaded.scene.transformNodes).toHaveLength(loaded.container.transformNodes.length);
+            expect(loaded.scene.materials).toHaveLength(loaded.container.materials.length);
+            expect(loaded.scene.geometries).toHaveLength(loaded.container.geometries.length);
+
+            loaded.container.removeAllFromScene();
+            expect(loaded.scene.meshes).toHaveLength(0);
+            expect(loaded.scene.transformNodes).toHaveLength(0);
+            expect(loaded.scene.materials).toHaveLength(0);
+            expect(loaded.scene.geometries).toHaveLength(0);
+        }
     });
 
     it("rejects the real bytes deterministically when the input cap is too small", async () => {
@@ -227,4 +252,72 @@ describe("USD RuntimeCorpus - Forklift USDC", () => {
             actual: bytes.byteLength,
         } satisfies Partial<UsdResourceLimitError>);
     });
+
+    it("cleans up both handedness scenes when public loading fails before adaptation", async () => {
+        for (const useRightHandedSystem of [false, true]) {
+            const engine = new NullEngine();
+            const scene = new Scene(engine);
+            scene.useRightHandedSystem = useRightHandedSystem;
+            await expect(
+                LoadAssetContainerAsync(bytes, scene, {
+                    pluginExtension: ".usd",
+                    name: ForkliftUsdcAsset.fileName,
+                    pluginOptions: { usd: { maxCrateValueBytes: 1 } },
+                })
+            ).rejects.toMatchObject({ innerError: { kind: "crate-value" } });
+            expect(scene.meshes).toHaveLength(0);
+            expect(scene.transformNodes).toHaveLength(0);
+            expect(scene.materials).toHaveLength(0);
+            expect(scene.geometries).toHaveLength(0);
+            scene.dispose();
+            engine.dispose();
+        }
+    });
 });
+
+async function LoadForkliftAsync(bytes: Uint8Array, useRightHandedSystem: boolean): Promise<ILoadedForklift> {
+    const engine = new NullEngine();
+    const scene = new Scene(engine);
+    scene.useRightHandedSystem = useRightHandedSystem;
+    try {
+        const container = await LoadAssetContainerAsync(bytes, scene, {
+            pluginExtension: ".usd",
+            name: ForkliftUsdcAsset.fileName,
+        });
+        return { engine, scene, container };
+    } catch (error) {
+        scene.dispose();
+        engine.dispose();
+        throw error;
+    }
+}
+
+function GetWorldBounds(container: AssetContainer): IWorldBounds {
+    const minimum = { x: Infinity, y: Infinity, z: Infinity };
+    const maximum = { x: -Infinity, y: -Infinity, z: -Infinity };
+    for (const mesh of container.meshes) {
+        mesh.computeWorldMatrix(true);
+        const bounds = mesh.getBoundingInfo().boundingBox;
+        minimum.x = Math.min(minimum.x, bounds.minimumWorld.x);
+        minimum.y = Math.min(minimum.y, bounds.minimumWorld.y);
+        minimum.z = Math.min(minimum.z, bounds.minimumWorld.z);
+        maximum.x = Math.max(maximum.x, bounds.maximumWorld.x);
+        maximum.y = Math.max(maximum.y, bounds.maximumWorld.y);
+        maximum.z = Math.max(maximum.z, bounds.maximumWorld.z);
+    }
+    return { minimum, maximum };
+}
+
+function ExpectSolidFallbackMaterials(container: AssetContainer): void {
+    expect(container.materials).toHaveLength(11);
+    expect(container.materials.every((material) => material instanceof PBRMaterial)).toBe(true);
+    for (const material of container.materials) {
+        const pbr = material as PBRMaterial;
+        expect(pbr.pointsCloud).toBe(false);
+        expect(pbr.wireframe).toBe(false);
+        expect(pbr.fillMode).toBe(Material.TriangleFillMode);
+        expect(pbr.albedoTexture).toBeNull();
+        expect(pbr.bumpTexture).toBeNull();
+        expect(pbr.emissiveTexture).toBeNull();
+    }
+}
