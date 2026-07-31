@@ -1,5 +1,4 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-
 import { NullEngine } from "core/Engines/nullEngine";
 import { Scene } from "core/scene";
 import { Logger } from "core/Misc/logger";
@@ -9,7 +8,8 @@ import "loaders/USD/usdFileLoader";
 
 import { ResolveUsdStageAsync } from "loaders/USD/resolution/usdResolver";
 
-import { readRuntimeCorpusText, StairsAsset } from "./runtimeCorpus";
+import { StairsAsset } from "./runtimeCorpus/manifest";
+import { readRuntimeCorpusText } from "./runtimeCorpus/corpusText";
 
 function importStairsAsync(scene: Scene) {
     return ImportMeshAsync(`data:${readRuntimeCorpusText(StairsAsset.fileName)}`, scene, {
@@ -49,6 +49,7 @@ describe("USD runtime corpus - stairs", () => {
     beforeEach(() => {
         engine = new NullEngine();
         scene = new Scene(engine);
+        scene.useRightHandedSystem = true;
     });
 
     afterEach(() => {

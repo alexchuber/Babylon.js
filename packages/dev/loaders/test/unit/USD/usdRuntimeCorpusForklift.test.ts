@@ -192,6 +192,7 @@ describe("USD RuntimeCorpus - Forklift", () => {
 
         sharedEngine = new NullEngine();
         sharedScene = new Scene(sharedEngine);
+        sharedScene.useRightHandedSystem = true;
 
         const usdaData = readCorpusFile("Forklift.usda");
         sharedResult = await ImportMeshAsync("data:" + usdaData, sharedScene, {

@@ -306,13 +306,22 @@ export class OBJFileLoader implements ISceneLoaderPluginAsync, ISceneLoaderPlugi
                                         for (let o = 0; o < _indices.length; o++) {
                                             //Apply the material to the Mesh for each mesh with the material
                                             const mesh = babylonMeshesArray[_indices[o]];
-                                            const material = materialsFromMTLFile.materials[n];
-                                            mesh.material = material;
+                                            let material = materialsFromMTLFile.materials[n];
 
-                                            if (!mesh.getTotalIndices()) {
-                                                // No indices, we need to turn on point cloud
+                                            if (!mesh.getTotalIndices() && mesh.getTotalVertices() > 0) {
+                                                // A mesh with vertices but no faces has nothing to triangulate, so render it as
+                                                // a point cloud (matching the "no o/g keyword" fallback below, which does the
+                                                // same for a whole ungrouped file). Clone the material first so this doesn't
+                                                // also force point-cloud rendering onto sibling meshes that share the same
+                                                // material name but do have face data. A mesh with zero vertices (e.g. an
+                                                // empty placeholder/container object some exporters emit) renders nothing
+                                                // either way, so it is left on the shared material unmodified rather than
+                                                // needlessly cloned.
+                                                material = material.clone(`${material.name}_pointsCloud`);
                                                 material.pointsCloud = true;
                                             }
+
+                                            mesh.material = material;
                                         }
                                     }
                                 }

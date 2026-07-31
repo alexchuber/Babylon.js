@@ -32,7 +32,7 @@ describe("USD resolved-stage contract", () => {
         expect(() => stage.root.children.push(stage.root)).toThrow();
     });
 
-    it("adapts into right-handed scene mode without rewriting authored indices or normals", async () => {
+    it("preserves a right-handed scene without rewriting authored indices or normals", async () => {
         const engine = new NullEngine();
         const scene = new Scene(engine);
         const indices = new Uint32Array([0, 1, 2]);
@@ -40,7 +40,7 @@ describe("USD resolved-stage contract", () => {
         const stage = CreateResolvedTriangle(indices, normals);
 
         try {
-            expect(scene.useRightHandedSystem).toBe(false);
+            scene.useRightHandedSystem = true;
 
             const result = await AdaptResolvedStageToScene(stage, scene, null, {});
             const mesh = result.meshes[0];

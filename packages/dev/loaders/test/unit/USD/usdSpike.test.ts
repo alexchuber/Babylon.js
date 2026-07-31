@@ -28,6 +28,7 @@ describe("USD loader (Phase 0 spike)", () => {
     it("loads a trivial USDA mesh into the scene", async () => {
         const engine = new NullEngine();
         const scene = new Scene(engine);
+        scene.useRightHandedSystem = true;
         const loader = new USDFileLoader();
 
         const result = await loader.importMeshAsync(null, scene, quadUsda, "");
@@ -44,6 +45,7 @@ describe("USD loader (Phase 0 spike)", () => {
     it("bakes the parent xform translate into the mesh world position", async () => {
         const engine = new NullEngine();
         const scene = new Scene(engine);
+        scene.useRightHandedSystem = true;
         const loader = new USDFileLoader();
 
         await loader.importMeshAsync(null, scene, quadUsda, "");

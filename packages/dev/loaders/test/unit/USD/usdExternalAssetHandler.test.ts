@@ -7,6 +7,7 @@ import "core/Meshes/instancedMesh";
 import { TransformNode } from "core/Meshes/transformNode";
 import { VertexData } from "core/Meshes/mesh.vertexData";
 import { StandardMaterial } from "core/Materials/standardMaterial";
+import { MultiMaterial } from "core/Materials/multiMaterial.pure";
 import { RawTexture } from "core/Materials/Textures/rawTexture";
 import { Logger } from "core/Misc/logger";
 import { ImportMeshAsync, LoadAssetContainerAsync } from "core/Loading/sceneLoader";
@@ -105,6 +106,82 @@ def Xform "Root"
 }
 `;
 
+const multiplePropertiesPerPrimUsda = `#usda 1.0
+(
+    defaultPrim = "Root"
+    upAxis = "Y"
+    metersPerUnit = 1
+)
+
+def Xform "Root"
+{
+    def Xform "Parent"
+    {
+        custom asset assetInfo:source = @./a.obj@
+        custom asset assetInfo:thumbnail = @./b.obj@
+        custom asset assetInfo:preview = @./c.obj@
+
+        def Xform "Child"
+        {
+            custom asset assetInfo:source = @./d.obj@
+        }
+    }
+}
+`;
+
+const repeatedAncestorUriUsda = `#usda 1.0
+(
+    defaultPrim = "Root"
+    upAxis = "Y"
+    metersPerUnit = 1
+)
+
+def Xform "Root"
+{
+    def Xform "A"
+    {
+        custom asset assetInfo:source = @./model.obj@
+
+        def Xform "B"
+        {
+            custom asset assetInfo:source = @./model.obj@
+
+            def Xform "C"
+            {
+                custom asset assetInfo:source = @./model.obj@
+            }
+        }
+    }
+}
+`;
+
+function generateNestedAssetChain(count: number): string {
+    let result = `#usda 1.0
+(
+    defaultPrim = "Root"
+    upAxis = "Y"
+    metersPerUnit = 1
+)
+
+def Xform "Root"
+{
+`;
+    let indent = "    ";
+    for (let index = 0; index < count; index++) {
+        result += `${indent}def Xform "Level${index}"
+${indent}{
+${indent}    custom asset assetInfo:source = @./model${index}.obj@
+`;
+        indent += "    ";
+    }
+    for (let index = 0; index < count; index++) {
+        indent = indent.slice(4);
+        result += `${indent}}
+`;
+    }
+    return result + "}\n";
+}
+
 const noAssetUsda = `#usda 1.0
 def Mesh "Quad"
 {
@@ -169,6 +246,37 @@ function createNestedSourceContainer(scene: Scene): AssetContainer {
     container.transformNodes.push(root);
     container.meshes.push(child);
     container.materials.push(material);
+    container.removeAllFromScene();
+    return container;
+}
+
+function createRootlessSourceContainer(scene: Scene): AssetContainer {
+    const container = createFlatSourceContainer(scene, "rootless-mesh");
+    // Mirrors a glTF-style "__root__" group node, which is itself a Mesh (0 vertices) rather than a
+    // plain TransformNode. Mesh extends TransformNode, so an `instanceof TransformNode` check that
+    // runs before an `instanceof Mesh` check would misclassify this ancestor.
+    const root = new Mesh("untracked-root", scene);
+    container.meshes[0].parent = root;
+    return container;
+}
+
+// Mesh bound to a MultiMaterial with two submaterials, used to verify that reflected-subtree culling
+// changes propagate to every submaterial rather than only the inert MultiMaterial wrapper.
+function createMultiMaterialSourceContainer(scene: Scene): AssetContainer {
+    const container = new AssetContainer(scene);
+    const mesh = new Mesh("multi-material-mesh", scene);
+    const vertexData = new VertexData();
+    vertexData.positions = [0, 0, 0, 1, 0, 0, 0, 1, 0];
+    vertexData.indices = [0, 1, 2];
+    vertexData.applyToMesh(mesh);
+    const subMaterialA = new StandardMaterial("sub-a", scene);
+    const subMaterialB = new StandardMaterial("sub-b", scene);
+    const multiMaterial = new MultiMaterial("multi", scene);
+    multiMaterial.subMaterials = [subMaterialA, subMaterialB];
+    mesh.material = multiMaterial;
+    container.meshes.push(mesh);
+    container.multiMaterials.push(multiMaterial);
+    container.materials.push(subMaterialA, subMaterialB);
     container.removeAllFromScene();
     return container;
 }
@@ -309,6 +417,54 @@ describe("USD external asset handler", () => {
             // Cloned material remains valid and usable
             expect(clonedMesh!.material).toBeDefined();
             expect(clonedMesh!.material).toBeInstanceOf(StandardMaterial);
+        } finally {
+            scene.dispose();
+            engine.dispose();
+        }
+    });
+
+    it("repairs a source container whose mesh parent was omitted from its root-node list", async () => {
+        const engine = new NullEngine();
+        const scene = new Scene(engine);
+        const handler = vi.fn(async (r: IUsdExternalAssetRequest): Promise<UsdExternalAssetResult> => {
+            return { handled: true, container: createRootlessSourceContainer(r.scene) };
+        });
+
+        try {
+            const result = await new USDFileLoader({ externalAssetHandler: handler }).importMeshAsync(null, scene, singleAssetUsda, "");
+
+            const renderableMeshes = result.meshes.filter((mesh) => mesh.getTotalVertices() > 0);
+            expect(renderableMeshes).toHaveLength(1);
+            // The untracked "__root__"-style ancestor is itself a Mesh (0 vertices); it must be
+            // recovered and cloned too, or the renderable child would be missing its transform parent.
+            const clonedRoot = scene.getMeshByName("Clone of untracked-root");
+            expect(clonedRoot).not.toBeNull();
+            expect(renderableMeshes[0].parent).toBe(clonedRoot);
+        } finally {
+            scene.dispose();
+            engine.dispose();
+        }
+    });
+
+    it("disables back-face culling on every MultiMaterial submaterial of a reflected external subtree", async () => {
+        const engine = new NullEngine();
+        const scene = new Scene(engine);
+        const handler = vi.fn(async (r: IUsdExternalAssetRequest): Promise<UsdExternalAssetResult> => {
+            return { handled: true, container: createMultiMaterialSourceContainer(r.scene) };
+        });
+
+        try {
+            const result = await new USDFileLoader({ externalAssetHandler: handler }).importMeshAsync(null, scene, singleAssetUsda, "");
+
+            const clonedMesh = result.meshes.find((mesh) => mesh.getTotalVertices() > 0)!;
+            expect(clonedMesh.material).toBeInstanceOf(MultiMaterial);
+            const subMaterials = (clonedMesh.material as MultiMaterial).subMaterials;
+            expect(subMaterials).toHaveLength(2);
+            // Setting backFaceCulling on the MultiMaterial wrapper itself has no rendering effect; every
+            // submaterial must be updated individually or the reflected external subtree renders wrong.
+            for (const subMaterial of subMaterials) {
+                expect(subMaterial!.backFaceCulling).toBe(false);
+            }
         } finally {
             scene.dispose();
             engine.dispose();
@@ -484,6 +640,82 @@ describe("USD external asset handler", () => {
             expect(handler.mock.calls[0][0].authoredUri).toBe("./outer.obj");
             const warnCalls = warnSpy.mock.calls.map((c) => c[0] as string);
             expect(warnCalls.some((msg) => msg.includes("depth limit") && msg.includes("/Root/Outer/Inner"))).toBe(true);
+        } finally {
+            scene.dispose();
+            engine.dispose();
+        }
+    });
+
+    it("does not count multiple asset properties on one prim as multiple depth levels", async () => {
+        const engine = new NullEngine();
+        const scene = new Scene(engine);
+        const handler = vi.fn(async (r: IUsdExternalAssetRequest): Promise<UsdExternalAssetResult> => {
+            return { handled: true, container: createFlatSourceContainer(r.scene) };
+        });
+
+        try {
+            const loader = new USDFileLoader({ externalAssetHandler: handler, maxExternalAssetDepth: 2 });
+            await loader.importMeshAsync(null, scene, multiplePropertiesPerPrimUsda, "");
+
+            expect(handler).toHaveBeenCalledTimes(4);
+            expect(warnSpy.mock.calls.some(([message]) => String(message).includes("depth limit"))).toBe(false);
+        } finally {
+            scene.dispose();
+            engine.dispose();
+        }
+    });
+
+    it("keeps URI cycle detection independent from prim depth accounting", async () => {
+        const engine = new NullEngine();
+        const scene = new Scene(engine);
+        const handler = vi.fn(async (r: IUsdExternalAssetRequest): Promise<UsdExternalAssetResult> => {
+            return { handled: true, container: createFlatSourceContainer(r.scene) };
+        });
+
+        try {
+            const loader = new USDFileLoader({ externalAssetHandler: handler });
+            await loader.importMeshAsync(null, scene, repeatedAncestorUriUsda, "");
+
+            expect(handler).toHaveBeenCalledTimes(1);
+            expect(warnSpy.mock.calls.filter(([message]) => String(message).includes("cycle")).length).toBe(2);
+        } finally {
+            scene.dispose();
+            engine.dispose();
+        }
+    });
+
+    it("caps distinct nested asset prims at the configured depth", async () => {
+        const engine = new NullEngine();
+        const scene = new Scene(engine);
+        const handler = vi.fn(async (r: IUsdExternalAssetRequest): Promise<UsdExternalAssetResult> => {
+            return { handled: true, container: createFlatSourceContainer(r.scene) };
+        });
+
+        try {
+            const loader = new USDFileLoader({ externalAssetHandler: handler, maxExternalAssetDepth: 3 });
+            await loader.importMeshAsync(null, scene, generateNestedAssetChain(5), "");
+
+            expect(handler).toHaveBeenCalledTimes(3);
+            expect(warnSpy.mock.calls.filter(([message]) => String(message).includes("depth limit")).length).toBe(2);
+        } finally {
+            scene.dispose();
+            engine.dispose();
+        }
+    });
+
+    it("blocks external asset processing when maxExternalAssetDepth is zero", async () => {
+        const engine = new NullEngine();
+        const scene = new Scene(engine);
+        const handler = vi.fn(async (r: IUsdExternalAssetRequest): Promise<UsdExternalAssetResult> => {
+            return { handled: true, container: createFlatSourceContainer(r.scene) };
+        });
+
+        try {
+            const loader = new USDFileLoader({ externalAssetHandler: handler, maxExternalAssetDepth: 0 });
+            await loader.importMeshAsync(null, scene, singleAssetUsda, "");
+
+            expect(handler).not.toHaveBeenCalled();
+            expect(warnSpy.mock.calls.some(([message]) => String(message).includes("depth limit"))).toBe(true);
         } finally {
             scene.dispose();
             engine.dispose();

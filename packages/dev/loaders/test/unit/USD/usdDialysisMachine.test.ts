@@ -182,6 +182,7 @@ describe("USD RuntimeCorpus - Dialysis Machine", () => {
 
         sharedEngine = new NullEngine();
         sharedScene = new Scene(sharedEngine);
+        sharedScene.useRightHandedSystem = true;
 
         const usdaData = readCorpusFile("DialysisMachine.usda");
         sharedResult = await ImportMeshAsync("data:" + usdaData, sharedScene, {

@@ -1,5 +1,4 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-
 import { NullEngine } from "core/Engines/nullEngine";
 import { Scene } from "core/scene";
 import { Vector3 } from "core/Maths/math.vector";
@@ -10,7 +9,8 @@ import "loaders/USD/usdFileLoader";
 
 import { ResolveUsdStageAsync } from "loaders/USD/resolution/usdResolver";
 
-import { readRuntimeCorpusText, SphereAsset } from "./runtimeCorpus";
+import { SphereAsset } from "./runtimeCorpus/manifest";
+import { readRuntimeCorpusText } from "./runtimeCorpus/corpusText";
 
 function importSphereAsync(scene: Scene) {
     return ImportMeshAsync(`data:${readRuntimeCorpusText(SphereAsset.fileName)}`, scene, {

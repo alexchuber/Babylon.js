@@ -72,6 +72,7 @@ describe("USD RuntimeCorpus - Shelves", () => {
 
         engine = new NullEngine();
         scene = new Scene(engine);
+        scene.useRightHandedSystem = true;
 
         vi.spyOn(Logger, "Log").mockImplementation(() => {});
         vi.spyOn(Logger, "Warn").mockImplementation(() => {});

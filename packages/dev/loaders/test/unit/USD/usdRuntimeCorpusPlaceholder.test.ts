@@ -1,5 +1,4 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-
 import { NullEngine } from "core/Engines/nullEngine";
 import { Scene } from "core/scene";
 import { Logger } from "core/Misc/logger";
@@ -8,7 +7,8 @@ import "loaders/USD/usdFileLoader";
 
 import { ResolveUsdStageAsync } from "loaders/USD/resolution/usdResolver";
 
-import { readRuntimeCorpusText, PlaceholderAsset } from "./runtimeCorpus";
+import { PlaceholderAsset } from "./runtimeCorpus/manifest";
+import { readRuntimeCorpusText } from "./runtimeCorpus/corpusText";
 
 function importPlaceholderAsync(scene: Scene) {
     return ImportMeshAsync(`data:${readRuntimeCorpusText(PlaceholderAsset.fileName)}`, scene, {

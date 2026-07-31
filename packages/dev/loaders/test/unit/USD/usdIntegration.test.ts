@@ -1,6 +1,8 @@
 import { describe, expect, it } from "vitest";
 import { NullEngine } from "core/Engines/nullEngine";
 import { Scene } from "core/scene";
+import { LoadAssetContainerAsync } from "core/Loading/sceneLoader";
+import { MultiMaterial } from "core/Materials/multiMaterial.pure";
 import { PBRMaterial } from "core/Materials/PBR/pbrMaterial.pure";
 import { USDFileLoader } from "loaders/USD/usdFileLoader";
 import { ResolveUsdStageAsync } from "loaders/USD/resolution/usdResolver";
@@ -55,6 +57,102 @@ def Xform "World"
     }
 
     def Material "Mat"
+    {
+        def Shader "Preview"
+        {
+            uniform token info:id = "UsdPreviewSurface"
+        }
+    }
+}
+`;
+
+const mixedSidednessUsda = `#usda 1.0
+(
+    upAxis = "Y"
+    metersPerUnit = 1
+)
+
+def Xform "World"
+{
+    def Mesh "Single"
+    {
+        bool doubleSided = false
+        int[] faceVertexCounts = [3]
+        int[] faceVertexIndices = [0, 1, 2]
+        point3f[] points = [(0, 0, 0), (1, 0, 0), (0, 1, 0)]
+        rel material:binding = </World/Mat>
+    }
+
+    def Mesh "Double"
+    {
+        bool doubleSided = true
+        int[] faceVertexCounts = [3]
+        int[] faceVertexIndices = [0, 1, 2]
+        point3f[] points = [(0, 0, 0), (1, 0, 0), (0, 1, 0)]
+        rel material:binding = </World/Mat>
+    }
+
+    def Material "Mat"
+    {
+        def Shader "Preview"
+        {
+            uniform token info:id = "UsdPreviewSurface"
+        }
+    }
+}
+`;
+
+const mixedSidednessSubsetsUsda = `#usda 1.0
+(
+    upAxis = "Y"
+    metersPerUnit = 1
+)
+
+def Xform "World"
+{
+    def Mesh "Single"
+    {
+        bool doubleSided = false
+        int[] faceVertexCounts = [3, 3]
+        int[] faceVertexIndices = [0, 1, 2, 0, 2, 3]
+        point3f[] points = [(0, 0, 0), (1, 0, 0), (0, 1, 0), (1, 1, 0)]
+
+        def GeomSubset "First"
+        {
+            uniform token elementType = "face"
+            int[] indices = [0]
+            rel material:binding = </World/Mat>
+        }
+        def GeomSubset "Second"
+        {
+            uniform token elementType = "face"
+            int[] indices = [1]
+            rel material:binding = </World/MatB>
+        }
+    }
+
+    def Mesh "Double"
+    {
+        bool doubleSided = true
+        int[] faceVertexCounts = [3]
+        int[] faceVertexIndices = [0, 1, 2]
+        point3f[] points = [(0, 0, 0), (1, 0, 0), (0, 1, 0)]
+        def GeomSubset "First"
+        {
+            uniform token elementType = "face"
+            int[] indices = [0]
+            rel material:binding = </World/Mat>
+        }
+    }
+
+    def Material "Mat"
+    {
+        def Shader "Preview"
+        {
+            uniform token info:id = "UsdPreviewSurface"
+        }
+    }
+    def Material "MatB"
     {
         def Shader "Preview"
         {
@@ -434,5 +532,58 @@ def Camera "${name}"
         second.dispose();
         scene.dispose();
         engine.dispose();
+    });
+
+    it("isolates shared material instances by mesh sidedness", async () => {
+        const engine = new NullEngine();
+        const scene = new Scene(engine);
+        try {
+            const result = await new USDFileLoader().importMeshAsync(null, scene, mixedSidednessUsda, "");
+            const single = result.meshes.find((mesh) => mesh.name === "Single")!;
+            const double = result.meshes.find((mesh) => mesh.name === "Double")!;
+
+            expect(single.material).toBeDefined();
+            expect(double.material).toBeDefined();
+            expect(single.material).not.toBe(double.material);
+            expect(single.material!.backFaceCulling).toBe(true);
+            expect(double.material!.backFaceCulling).toBe(false);
+            expect((double.material as PBRMaterial).twoSidedLighting).toBe(true);
+        } finally {
+            scene.dispose();
+            engine.dispose();
+        }
+    });
+
+    it("isolates sidedness variants inside MultiMaterial subset bindings and owns both variants", async () => {
+        const engine = new NullEngine();
+        const scene = new Scene(engine);
+        try {
+            const container = await LoadAssetContainerAsync("data:" + mixedSidednessSubsetsUsda, scene, {
+                pluginExtension: ".usda",
+            });
+            const single = container.meshes.find((mesh) => mesh.name === "Single")!;
+            const double = container.meshes.find((mesh) => mesh.name === "Double")!;
+
+            expect(single.material).toBeInstanceOf(MultiMaterial);
+            expect(double.material).toBeInstanceOf(MultiMaterial);
+            const singleMaterials = (single.material as MultiMaterial).subMaterials;
+            const doubleMaterials = (double.material as MultiMaterial).subMaterials;
+            expect(singleMaterials[0]).toBeDefined();
+            expect(singleMaterials[1]).toBeDefined();
+            expect(doubleMaterials[0]).toBeDefined();
+            expect(singleMaterials[0]).not.toBe(doubleMaterials[0]);
+            expect(singleMaterials[0]!.backFaceCulling).toBe(true);
+            expect(singleMaterials[1]!.backFaceCulling).toBe(true);
+            expect(doubleMaterials[0]!.backFaceCulling).toBe(false);
+            expect((doubleMaterials[0] as PBRMaterial).twoSidedLighting).toBe(true);
+            expect(container.materials).toHaveLength(3);
+
+            container.dispose();
+            expect(container.materials).toHaveLength(0);
+            expect(scene.materials).toHaveLength(0);
+        } finally {
+            scene.dispose();
+            engine.dispose();
+        }
     });
 });

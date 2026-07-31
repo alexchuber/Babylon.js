@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { MapLayerToResolvedStage } from "loaders/USD/resolution/mapping/stageMapper";
+import { DecomposeMatrix } from "loaders/USD/resolution/mapping/transformMapping";
 import { type ISdfLayer } from "loaders/USD/resolution/sdf";
 
 const flattenedLayer: ISdfLayer = {
@@ -205,11 +206,11 @@ describe("USD stage mapper", () => {
             colorSpace: "sRGB",
         });
 
-        expect(world.animation?.tracks).toHaveLength(1);
-        expect(world.animation?.tracks[0].target).toBe("translation");
-        expect(world.animation?.tracks[0].interpolation).toBe("linear");
-        expect(Array.from(world.animation!.tracks[0].times)).toEqual([0, 1]);
-        expect(Array.from(world.animation!.tracks[0].values)).toEqual([1, 2, 3, 4, 5, 6]);
+        expect(world.animation?.tracks).toHaveLength(3);
+        const translationTrack = world.animation!.tracks.find((track) => track.target === "translation")!;
+        expect(translationTrack.interpolation).toBe("linear");
+        expect(Array.from(translationTrack.times)).toEqual([0, 1]);
+        expect(Array.from(translationTrack.values)).toEqual([1, 2, 3, 4, 5, 6]);
     });
 
     it("preserves the USD row-major layout of an xformOp:transform matrix", () => {
@@ -256,6 +257,14 @@ describe("USD stage mapper", () => {
         const world = stage.root.children[0];
 
         expect(world.transform.matrix).toEqual(rotateZTranslate);
+    });
+
+    it("preserves a reflection sign when decomposing a matrix animation sample", () => {
+        const transform = DecomposeMatrix([-1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1]);
+
+        expect(transform.scale).toEqual([1, 1, -1]);
+        expect(transform.rotation[1]).toBeCloseTo(1);
+        expect(transform.rotation[3]).toBeCloseTo(0);
     });
 
     it("inherits a material binding authored on an ancestor prim", () => {
@@ -441,7 +450,6 @@ describe("USD stage mapper", () => {
 
         expect(messages).toEqual(
             expect.arrayContaining([
-                expect.stringContaining("Animation for 'xformOp:rotateZYX' is deferred"),
                 expect.stringContaining("Schema PortalLight mapping is not supported"),
                 expect.stringContaining("depth-of-field"),
                 expect.stringContaining("PointInstancer prims are not supported"),

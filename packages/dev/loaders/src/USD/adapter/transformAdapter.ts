@@ -6,28 +6,24 @@ import { type IResolvedTransform, type IStageMetadata } from "../resolution/reso
 const DegToRad = Math.PI / 180;
 
 /**
- * Creates the root node that converts USD stage space into Babylon space. This POC intentionally
- * enables `scene.useRightHandedSystem` globally because USD is right-handed; keeping Babylon in
- * right-handed mode preserves USD-authored positions, cameras, normals, and triangle winding
- * without per-vertex/index conversion. This affects the whole scene, not only the imported USD
- * subtree, and a future refinement could bake right/left-handed conversion into the imported root
- * instead.
+ * Creates the root node that converts USD stage space into Babylon space without changing the
+ * caller's scene handedness. USD stages use right-handed coordinates; a left-handed Babylon scene
+ * receives a subtree-local reflection on the root and the corresponding up-axis rotation.
  *
  * The whole imported prim tree is parented under this node, so up-axis (Z-up → Y-up) and
- * `metersPerUnit` scaling happen once at the root. Because handedness is preserved by scene mode,
- * geometry adapters should keep USD winding as authored and should not flip indices.
+ * `metersPerUnit` scaling happen once at the root. Geometry adapters invert the effective side
+ * orientation for the reflected left-handed subtree.
  *
  * @param metadata the stage metadata describing axes and units
  * @param scene the scene to create the node in
  * @returns the configured root transform node
  */
 export function CreateStageRoot(metadata: IStageMetadata, scene: Scene): TransformNode {
-    scene.useRightHandedSystem = true;
-
     const root = new TransformNode("__usd_root__", scene);
-    root.rotationQuaternion = metadata.upAxis === "Z" ? Quaternion.RotationAxis(new Vector3(1, 0, 0), -90 * DegToRad) : Quaternion.Identity();
     const unit = metadata.metersPerUnit > 0 ? metadata.metersPerUnit : 1;
-    root.scaling = new Vector3(unit, unit, unit);
+    const isRightHandedScene = scene.useRightHandedSystem;
+    root.rotationQuaternion = metadata.upAxis === "Z" ? Quaternion.RotationAxis(new Vector3(1, 0, 0), (isRightHandedScene ? -90 : 90) * DegToRad) : Quaternion.Identity();
+    root.scaling = new Vector3(unit, unit, isRightHandedScene ? unit : -unit);
     return root;
 }
 

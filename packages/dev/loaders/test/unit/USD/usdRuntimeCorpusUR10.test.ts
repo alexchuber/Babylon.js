@@ -1,7 +1,4 @@
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
-import * as fs from "fs";
-import { fileURLToPath } from "url";
-
 import { NullEngine } from "core/Engines/nullEngine";
 import { VertexBuffer } from "core/Buffers/buffer";
 import { Scene } from "core/scene";
@@ -22,6 +19,7 @@ import { RegisterUSDFileLoader } from "loaders/USD/usdFileLoader.pure";
 import { type IUsdExternalAssetRequest, type UsdExternalAssetResult } from "loaders/USD/usdExternalAssetHandler";
 
 import { UR10Asset } from "./runtimeCorpus/manifest";
+import { readRuntimeCorpusText } from "./runtimeCorpus/corpusText";
 
 const LOAD_TIMEOUT = 1_200_000;
 const EXPECTED_MATERIAL_NAME = "wire_166229229";
@@ -29,7 +27,6 @@ const EXPECTED_CLONED_MATERIAL_NAME = `Clone of ${EXPECTED_MATERIAL_NAME}`;
 const EXPECTED_DIFFUSE = [0.651, 0.898, 0.898] as const;
 const UR10_OBJ_PATH = "UR10/obj_arm.obj";
 const UR10_MTL_PATH = "UR10/obj_arm.mtl";
-const runtimeCorpusRoot = new URL("../../../../../tools/babylonServer/public/Assets/USD/RuntimeCorpus/", import.meta.url);
 const EXPECTED_RENDERABLE_MESH_NAMES = [
     "Clone of Arm_01",
     "Clone of Arm_02",
@@ -53,10 +50,6 @@ const EXPECTED_RENDERABLE_MESH_NAMES = [
     "Clone of Arm_19",
     "Clone of Arm_20",
 ] as const;
-
-function readRuntimeCorpusText(fileName: string): string {
-    return fs.readFileSync(fileURLToPath(new URL(fileName, runtimeCorpusRoot)), "utf8");
-}
 
 const MINIMAL_OBJ = `mtllib obj_arm.mtl
 o Arm
@@ -252,6 +245,7 @@ describe("USD RuntimeCorpus - UR10", () => {
 
         sharedEngine = new NullEngine();
         sharedScene = new Scene(sharedEngine);
+        sharedScene.useRightHandedSystem = true;
         const handler = createUr10Handler({
             objData: readRuntimeCorpusText(UR10_OBJ_PATH),
             expectedUri: "./UR10/obj_arm.obj",

@@ -477,6 +477,187 @@ ${QuadMesh}
     });
 });
 
+describe("USD material fallback pooling", () => {
+    it("does not bleed one mesh's fallback displayColor into another mesh sharing an unsupported material", async () => {
+        // Neither Material prim has a Shader child, so both fall back to a default material
+        // built from each mesh's own displayColor. Before the fix, the second mesh resolved to
+        // fall back to the first mesh's (fallback-color-independent) cache entry.
+        const usda = `#usda 1.0
+def Xform "World"
+{
+    def Mesh "Red"
+    {
+${QuadMesh}
+        color3f[] primvars:displayColor = [(1, 0, 0)] (interpolation = "constant")
+        rel material:binding = </World/Mat>
+    }
+
+    def Mesh "Blue"
+    {
+${QuadMesh}
+        color3f[] primvars:displayColor = [(0, 0, 1)] (interpolation = "constant")
+        rel material:binding = </World/Mat>
+    }
+
+    def Material "Mat"
+    {
+    }
+}
+`;
+        const stage = await ResolveStageAsync(usda);
+        const redMaterial = MaterialForMesh(stage, "Red");
+        const blueMaterial = MaterialForMesh(stage, "Blue");
+        expect(redMaterial).toBeDefined();
+        expect(blueMaterial).toBeDefined();
+        expect(redMaterial!.baseColor).toEqual([1, 0, 0]);
+        expect(blueMaterial!.baseColor).toEqual([0, 0, 1]);
+    });
+
+    it("does not bleed fallback displayColor when the bound material path resolves to no prim at all", async () => {
+        // Distinct from the previous test: here </World/Mat> is never authored as a prim, so
+        // ResolveMaterialIndex's `!prim` branch (not BuildMaterialFromPrim's `!surfaceShader`
+        // branch) is what falls back to a default material for each mesh.
+        const usda = `#usda 1.0
+def Xform "World"
+{
+    def Mesh "Red"
+    {
+${QuadMesh}
+        color3f[] primvars:displayColor = [(1, 0, 0)] (interpolation = "constant")
+        rel material:binding = </World/Mat>
+    }
+
+    def Mesh "Blue"
+    {
+${QuadMesh}
+        color3f[] primvars:displayColor = [(0, 0, 1)] (interpolation = "constant")
+        rel material:binding = </World/Mat>
+    }
+}
+`;
+        const stage = await ResolveStageAsync(usda);
+        const redMaterial = MaterialForMesh(stage, "Red");
+        const blueMaterial = MaterialForMesh(stage, "Blue");
+        expect(redMaterial).toBeDefined();
+        expect(blueMaterial).toBeDefined();
+        expect(redMaterial!.baseColor).toEqual([1, 0, 0]);
+        expect(blueMaterial!.baseColor).toEqual([0, 0, 1]);
+
+        const notices = stage.diagnostics.filter((d) => d.message.includes("Material binding target was not found"));
+        expect(notices.length).toBe(2);
+    });
+
+    it("still pools two meshes sharing an unsupported material when their fallback displayColor matches", async () => {
+        const usda = `#usda 1.0
+def Xform "World"
+{
+    def Mesh "A"
+    {
+${QuadMesh}
+        color3f[] primvars:displayColor = [(0.5, 0.25, 0.75)] (interpolation = "constant")
+        rel material:binding = </World/Mat>
+    }
+
+    def Mesh "B"
+    {
+${QuadMesh}
+        color3f[] primvars:displayColor = [(0.5, 0.25, 0.75)] (interpolation = "constant")
+        rel material:binding = </World/Mat>
+    }
+
+    def Material "Mat"
+    {
+    }
+}
+`;
+        const stage = await ResolveStageAsync(usda);
+        const primA = FindPrim(stage.root, "A");
+        const primB = FindPrim(stage.root, "B");
+        expect(primA?.materialBinding?.materialIndex).toBeDefined();
+        expect(primA?.materialBinding?.materialIndex).toBe(primB?.materialBinding?.materialIndex);
+        expect(stage.materials.length).toBe(1);
+    });
+
+    it("still pools two meshes with different displayColor sharing one real, supported material", async () => {
+        // The fallback color is irrelevant once a PreviewSurface network resolves, so this must
+        // keep pooling by path alone -- the fix must not needlessly duplicate materials for the
+        // common case of many meshes sharing one authored material.
+        const usda = `#usda 1.0
+def Xform "World"
+{
+    def Mesh "Red"
+    {
+${QuadMesh}
+        color3f[] primvars:displayColor = [(1, 0, 0)] (interpolation = "constant")
+        rel material:binding = </World/Mat>
+    }
+
+    def Mesh "Blue"
+    {
+${QuadMesh}
+        color3f[] primvars:displayColor = [(0, 0, 1)] (interpolation = "constant")
+        rel material:binding = </World/Mat>
+    }
+
+    def Material "Mat"
+    {
+        def Shader "Preview"
+        {
+            uniform token info:id = "UsdPreviewSurface"
+            color3f inputs:diffuseColor = (0.2, 0.4, 0.6)
+        }
+    }
+}
+`;
+        const stage = await ResolveStageAsync(usda);
+        const primRed = FindPrim(stage.root, "Red");
+        const primBlue = FindPrim(stage.root, "Blue");
+        expect(primRed?.materialBinding?.materialIndex).toBeDefined();
+        expect(primRed?.materialBinding?.materialIndex).toBe(primBlue?.materialBinding?.materialIndex);
+        expect(stage.materials.length).toBe(1);
+        expect(stage.materials[0].baseColor).toEqual([0.2, 0.4, 0.6]);
+    });
+
+    it("resolves the shader connection graph only once per material path, even with multiple distinct fallback colors", async () => {
+        // The material's surface output connection is broken, which makes ResolvePreviewSurfaceShader
+        // report a "could not be resolved to a prim" diagnostic as a side effect of resolving the
+        // connection graph. That resolution must run at most once per material path -- caching by
+        // (path, fallback color) for pooling must not reintroduce it once per distinct color.
+        const usda = `#usda 1.0
+def Xform "World"
+{
+    def Mesh "Red"
+    {
+${QuadMesh}
+        color3f[] primvars:displayColor = [(1, 0, 0)] (interpolation = "constant")
+        rel material:binding = </World/Mat>
+    }
+
+    def Mesh "Blue"
+    {
+${QuadMesh}
+        color3f[] primvars:displayColor = [(0, 0, 1)] (interpolation = "constant")
+        rel material:binding = </World/Mat>
+    }
+
+    def Material "Mat"
+    {
+        token outputs:surface.connect = </World/Mat/Missing.outputs:surface>
+    }
+}
+`;
+        const stage = await ResolveStageAsync(usda);
+        const notices = stage.diagnostics.filter((d) => d.message.includes("could not be resolved to a prim"));
+        expect(notices.length).toBe(1);
+
+        // The two meshes still resolve to two distinct, correctly-colored fallback materials.
+        const redMaterial = MaterialForMesh(stage, "Red");
+        const blueMaterial = MaterialForMesh(stage, "Blue");
+        expect(redMaterial!.baseColor).toEqual([1, 0, 0]);
+        expect(blueMaterial!.baseColor).toEqual([0, 0, 1]);
+    });
+});
+
 describe("USD inheritance and connection edge cases", () => {
     it("blocks inheritance of a scalar primvar authored with a non-constant interpolation", async () => {
         // displayColor is a valid inheritable constant, but displayOpacity is a bare scalar authored

@@ -106,6 +106,7 @@ describe("USD RuntimeCorpus - Delivery Box", () => {
     it("loads DeliveryBox.usda via module-level ImportMeshAsync with exact geometry, bounds, material, and parenting", async () => {
         const engine = new NullEngine();
         const scene = new Scene(engine);
+        scene.useRightHandedSystem = true;
 
         try {
             const usdaData = readCorpusFile("DeliveryBox.usda");
@@ -200,6 +201,7 @@ describe("USD RuntimeCorpus - Delivery Box", () => {
     it("preserves stage metadata (Y-up, metersPerUnit=1)", async () => {
         const engine = new NullEngine();
         const scene = new Scene(engine);
+        scene.useRightHandedSystem = true;
 
         try {
             const usdaData = readCorpusFile("DeliveryBox.usda");

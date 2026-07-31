@@ -1,5 +1,4 @@
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-
 import { NullEngine } from "core/Engines/nullEngine";
 import { Scene } from "core/scene";
 import { ImportMeshAsync } from "core/Loading/sceneLoader";
@@ -9,7 +8,8 @@ import "loaders/USD/usdFileLoader";
 
 import { ResolveUsdStageAsync } from "loaders/USD/resolution/usdResolver";
 
-import { readRuntimeCorpusText, HospitalBedAsset } from "./runtimeCorpus";
+import { HospitalBedAsset } from "./runtimeCorpus/manifest";
+import { readRuntimeCorpusText } from "./runtimeCorpus/corpusText";
 
 function importHospitalBedAsync(scene: Scene) {
     return ImportMeshAsync(`data:${readRuntimeCorpusText(HospitalBedAsset.fileName)}`, scene, {

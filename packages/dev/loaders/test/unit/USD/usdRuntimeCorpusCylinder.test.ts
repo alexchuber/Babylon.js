@@ -1,5 +1,4 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-
 import { NullEngine } from "core/Engines/nullEngine";
 import { Scene } from "core/scene";
 import { Logger } from "core/Misc/logger";
@@ -9,7 +8,8 @@ import "loaders/USD/usdFileLoader";
 
 import { ResolveUsdStageAsync } from "loaders/USD/resolution/usdResolver";
 
-import { readRuntimeCorpusText, CylinderAsset } from "./runtimeCorpus";
+import { CylinderAsset } from "./runtimeCorpus/manifest";
+import { readRuntimeCorpusText } from "./runtimeCorpus/corpusText";
 
 function importCylinderAsync(scene: Scene) {
     return ImportMeshAsync(`data:${readRuntimeCorpusText(CylinderAsset.fileName)}`, scene, {
@@ -139,18 +139,21 @@ describe("USD runtime corpus - Cylinder", () => {
     it("produces outward winding for axis=Y (real corpus fixture)", async () => {
         const stage = await ResolveUsdStageAsync(readRuntimeCorpusText(CylinderAsset.fileName), "", CylinderAsset.fileName, {});
         const mesh = stage.meshes[0];
+        expect(mesh.indices.length).toBeGreaterThan(0);
         assertOutwardWinding(mesh.positions, mesh.indices, mesh.normals!);
     });
 
     it("produces outward winding for axis=X", async () => {
         const stage = await resolveUsda(`#usda 1.0\ndef Cylinder "C" { uniform token axis = "X" }`);
         const mesh = stage.meshes[0];
+        expect(mesh.indices.length).toBeGreaterThan(0);
         assertOutwardWinding(mesh.positions, mesh.indices, mesh.normals!);
     });
 
     it("produces outward winding for axis=Z", async () => {
         const stage = await resolveUsda(`#usda 1.0\ndef Cylinder "C" { uniform token axis = "Z" }`);
         const mesh = stage.meshes[0];
+        expect(mesh.indices.length).toBeGreaterThan(0);
         assertOutwardWinding(mesh.positions, mesh.indices, mesh.normals!);
     });
 

@@ -187,6 +187,7 @@ describe("USD RuntimeCorpus - Robot Arm OBJ wrapper", () => {
 
         engine = new NullEngine();
         scene = new Scene(engine);
+        scene.useRightHandedSystem = true;
         result = await ImportMeshAsync("data:" + readCorpusFile(RobotArmWrapperAsset.fileName), scene, {
             pluginExtension: ".usda",
             name: RobotArmWrapperAsset.fileName,

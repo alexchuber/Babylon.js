@@ -44,6 +44,7 @@ export function MapLayerToResolvedStage(layer: ISdfLayer): IResolvedStage {
         skeletons,
         meshIndexByKey: new Map(),
         materialIndexByPath: new Map(),
+        materialSurfaceShaderByPath: new Map(),
         skeletonIndexByPath: new Map(),
         pointInstancerPrototypePaths: CollectPointInstancerPrototypePaths(layer.rootPrims),
         diagnostics,

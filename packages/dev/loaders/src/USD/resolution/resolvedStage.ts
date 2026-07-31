@@ -8,7 +8,7 @@
  *   semantics such as xformOp stacks, primvar interpolation and time samples are resolved before
  *   objects of these types are produced. The adapter performs zero USD reasoning.
  * - Coordinates are expressed in USD's native space (right-handed, units = `metersPerUnit`,
- *   up = `upAxis`). The adapter enables Babylon's right-handed scene mode and applies only
+ *   up = `upAxis`). The adapter preserves the caller's scene handedness and applies stage-local
  *   up-axis / unit conversion; authored geometry buffers are not rewritten.
  *
  * Resource pooling: meshes, materials and skeletons live in flat arrays on `IResolvedStage`
@@ -184,7 +184,9 @@ export interface IResolvedUnhandledAssetProperty {
  * Resolved local transform. The resolution layer collapses the ordered USD `xformOpOrder`
  * stack (translate/orient/scale/pivot/transform) into a single TRS triple.
  * When the resolved transform contains shear or otherwise cannot be represented losslessly by
- * TRS, `matrix` is also provided and the adapter should prefer it.
+ * TRS, `matrix` is also provided and the adapter should prefer it for static transforms. Animated
+ * matrix stacks use their decomposed per-sample TRS tracks because Babylon cannot animate a
+ * pre-transform and local TRS channels as one composed matrix.
  */
 export interface IResolvedTransform {
     /** Local translation. */

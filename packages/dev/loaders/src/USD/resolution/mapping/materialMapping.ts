@@ -69,26 +69,57 @@ export function GetMaterialBindingPath(prim: ISdfPrimSpec): string | undefined {
 
 /**
  * Resolves and pools a Material prim by path.
+ *
+ * Materials that resolve to a real, supported PreviewSurface network are pooled by path alone,
+ * since their appearance is fully determined by the authored network regardless of which mesh
+ * bound them. Materials that fall back to a default (missing prim, or no supported network) are
+ * pooled by path *and* fallbackBaseColor: the fallback color is part of the resulting material's
+ * appearance, so two meshes bound to the same unsupported material but authoring different
+ * displayColor fallbacks must not silently share one (incorrectly colored, for one of them)
+ * material instance.
  * @param materialPath absolute path to the Material prim
  * @param context mapping context with material pool and prim lookup
  * @param fallbackBaseColor fallback color used when the material network is unsupported
  * @returns material pool index
  */
 export function ResolveMaterialIndex(materialPath: string, context: IStageMappingContext, fallbackBaseColor?: Vec3): number {
-    const existing = context.materialIndexByPath.get(materialPath);
+    const prim = context.primByPath.get(materialPath);
+    const surfaceShader = prim ? GetCachedSurfaceShader(materialPath, prim, context) : undefined;
+    const usesFallback = !prim || !surfaceShader;
+    const cacheKey = usesFallback ? `${materialPath}\u0000${FallbackColorCacheKey(fallbackBaseColor)}` : materialPath;
+
+    const existing = context.materialIndexByPath.get(cacheKey);
     if (existing !== undefined) {
         return existing;
     }
 
-    const prim = context.primByPath.get(materialPath);
-    const material = prim ? BuildMaterialFromPrim(prim, context, fallbackBaseColor) : BuildDefaultMaterial(materialPath, fallbackBaseColor ?? [1, 1, 1]);
+    const material = prim ? BuildMaterialFromPrim(prim, surfaceShader, context, fallbackBaseColor) : BuildDefaultMaterial(materialPath, fallbackBaseColor ?? [1, 1, 1]);
     const index = context.materials.length;
     context.materials.push(material);
-    context.materialIndexByPath.set(materialPath, index);
+    context.materialIndexByPath.set(cacheKey, index);
     if (!prim) {
         context.diagnostics.push({ severity: "warning", path: materialPath, message: "Material binding target was not found; using a default material." });
     }
     return index;
+}
+
+// Resolves and caches the UsdPreviewSurface shader for a Material prim, once per materialPath.
+// Reused for both the fallback/pooling decision and the actual material build so
+// ResolvePreviewSurfaceShader (which reports diagnostics as a side effect for unresolvable shader
+// connections) never runs more than once for the same material, regardless of how many meshes or
+// distinct fallback colors bind to it.
+function GetCachedSurfaceShader(materialPath: string, materialPrim: ISdfPrimSpec, context: IStageMappingContext): ISdfPrimSpec | undefined {
+    const cached = context.materialSurfaceShaderByPath.get(materialPath);
+    if (cached !== undefined) {
+        return cached ?? undefined;
+    }
+    const surfaceShader = ResolvePreviewSurfaceShader(materialPrim, context);
+    context.materialSurfaceShaderByPath.set(materialPath, surfaceShader ?? null);
+    return surfaceShader;
+}
+
+function FallbackColorCacheKey(fallbackBaseColor: Vec3 | undefined): string {
+    return fallbackBaseColor ? fallbackBaseColor.join(",") : "default";
 }
 
 /**
@@ -109,8 +140,7 @@ export function GetDisplayColorFallback(prim: ISdfPrimSpec): Vec3 | undefined {
     return undefined;
 }
 
-function BuildMaterialFromPrim(materialPrim: ISdfPrimSpec, context: IStageMappingContext, fallbackBaseColor?: Vec3): IResolvedMaterial {
-    const surfaceShader = ResolvePreviewSurfaceShader(materialPrim, context);
+function BuildMaterialFromPrim(materialPrim: ISdfPrimSpec, surfaceShader: ISdfPrimSpec | undefined, context: IStageMappingContext, fallbackBaseColor?: Vec3): IResolvedMaterial {
     if (!surfaceShader) {
         context.diagnostics.push({ severity: "info", path: materialPrim.path, message: "UsdPreviewSurface network was not found; using a default material." });
         DiagnoseAssetPathIssues(materialPrim, context);
@@ -426,8 +456,8 @@ function DiagnoseAssetPathIssues(materialPrim: ISdfPrimSpec, context: IStageMapp
 
 /**
  * Detects absolute OS-specific paths that are not resolvable in a portable context:
- * Windows drive letters (C:\, D:/), UNC paths (\\server\share), and Unix absolute paths (/).
- * HTTPS/HTTP URLs and data URIs are portable and not flagged.
+ * Windows drive letters (e.g. `C:` or `D:/`), UNC paths (e.g. `\\server\share`), and Unix
+ * absolute paths (e.g. `/`). HTTPS/HTTP URLs and data URIs are portable and not flagged.
  * @param path the clean asset path to test
  * @returns true when the path is an absolute nonportable OS path
  */
