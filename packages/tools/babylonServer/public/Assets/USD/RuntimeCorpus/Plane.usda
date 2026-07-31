@@ -14,7 +14,7 @@ def Xform "Plane"
     )
     {
         int[] faceVertexCounts = [4]
-        int[] faceVertexIndices = [0, 1, 2, 3]
+        int[] faceVertexIndices = [0, 3, 2, 1]
         point3f[] points = [(-0.5, 0, -0.5), (0.5, 0, -0.5), (0.5, 0, 0.5), (-0.5, 0, 0.5)]
         normal3f[] primvars:normals = [(0, 1, 0)] (
             interpolation = "constant"

@@ -306,13 +306,19 @@ export class OBJFileLoader implements ISceneLoaderPluginAsync, ISceneLoaderPlugi
                                         for (let o = 0; o < _indices.length; o++) {
                                             //Apply the material to the Mesh for each mesh with the material
                                             const mesh = babylonMeshesArray[_indices[o]];
-                                            const material = materialsFromMTLFile.materials[n];
-                                            mesh.material = material;
+                                            let material = materialsFromMTLFile.materials[n];
 
-                                            if (!mesh.getTotalIndices()) {
-                                                // No indices, we need to turn on point cloud
+                                            if (!mesh.getTotalIndices() && mesh.getTotalVertices() > 0) {
+                                                // Vertices with no faces: this mesh has no triangles to draw, so render it as a
+                                                // point cloud instead. Clone the material first so this doesn't also force
+                                                // point-cloud rendering onto sibling meshes that share the same material name
+                                                // but do have face data. A mesh with zero vertices renders nothing either way,
+                                                // so it is left on the shared material unmodified.
+                                                material = material.clone(`${material.name}_pointsCloud`);
                                                 material.pointsCloud = true;
                                             }
+
+                                            mesh.material = material;
                                         }
                                     }
                                 }

@@ -1,4 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import * as fs from "fs";
+import { fileURLToPath } from "url";
 
 import { NullEngine } from "core/Engines/nullEngine";
 import { Scene } from "core/scene";
@@ -9,7 +11,13 @@ import "loaders/USD/usdFileLoader";
 
 import { ResolveUsdStageAsync } from "loaders/USD/resolution/usdResolver";
 
-import { readRuntimeCorpusText, PlaneAsset } from "./runtimeCorpus";
+import { PlaneAsset } from "./runtimeCorpus/manifest";
+
+const runtimeCorpusRoot = new URL("../../../../../tools/babylonServer/public/Assets/USD/RuntimeCorpus/", import.meta.url);
+
+function readRuntimeCorpusText(fileName: string): string {
+    return fs.readFileSync(fileURLToPath(new URL(fileName, runtimeCorpusRoot)), "utf8");
+}
 
 function importPlaneAsync(scene: Scene) {
     return ImportMeshAsync(`data:${readRuntimeCorpusText(PlaneAsset.fileName)}`, scene, {
@@ -54,9 +62,10 @@ describe("USD runtime corpus - Plane", () => {
         expect(geomMesh!.getTotalIndices()).toBe(24);
     });
 
-    it("produces normals pointing (0, -1, 0) after adapter coordinate conversion", async () => {
-        // The authored constant normal is (0, 1, 0). The adapter enables right-handed scene mode
-        // and recomputes normals for the subdivided mesh; the resulting winding yields (0, -1, 0).
+    it("produces normals pointing (0, 1, 0), matching the authored value, after tessellation", async () => {
+        // The authored constant normal is (0, 1, 0). Catmull-Clark subdivision discards the
+        // authored constant normal and recomputes it from the tessellated triangles' winding; the
+        // fixture's faceVertexIndices are wound so that recomputation agrees with the authored value.
         const result = await importPlaneAsync(scene);
 
         const geomMesh = result.meshes.find((m) => m.getTotalVertices() > 0);
@@ -67,7 +76,7 @@ describe("USD runtime corpus - Plane", () => {
         expect(normals!.length).toBe(9 * 3);
         for (let offset = 0; offset < normals!.length; offset += 3) {
             expect(normals![offset]).toBeCloseTo(0);
-            expect(normals![offset + 1]).toBeCloseTo(-1);
+            expect(normals![offset + 1]).toBeCloseTo(1);
             expect(normals![offset + 2]).toBeCloseTo(0);
         }
     });

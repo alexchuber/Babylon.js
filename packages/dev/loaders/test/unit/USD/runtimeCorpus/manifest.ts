@@ -97,7 +97,7 @@ export const ShelvesAsset: IRuntimeCorpusEntry = {
 export const PlaneAsset: IRuntimeCorpusEntry = {
     fileName: "Plane.usda",
     description: "Single quad mesh on the XZ plane with constant authored normals",
-    sha256: "8ff6aec006b18f5c0a37bc013ade382d87823d935a707ec62f574a641f09e974",
+    sha256: "522122b8bfe845b4fa80bdefb9b2bf108291a5e432879739ce915371bc830923",
     sizeBytes: 583,
     sidecars: [],
     defaultPrim: "Plane",
