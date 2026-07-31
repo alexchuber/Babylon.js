@@ -237,15 +237,15 @@ async function ResolveLayer(identifier: string, depth: number, referencePath: st
             path: referencePath,
         });
     }
-    const cached = state.composedLayers.get(identifier);
-    if (cached) {
-        return cached;
-    }
     if (depth > state.limits.maxLayerDepth) {
         throw new UsdResourceLimitError("layer-depth", state.limits.maxLayerDepth, `USD: reference depth exceeds the ${state.limits.maxLayerDepth}-layer depth cap.`, {
             actual: depth,
             path: referencePath,
         });
+    }
+    const cached = state.composedLayers.get(identifier);
+    if (cached) {
+        return cached;
     }
     if (state.layerCount >= state.limits.maxLayerCount) {
         throw new UsdResourceLimitError("layer-count", state.limits.maxLayerCount, `USD: layer count exceeds the ${state.limits.maxLayerCount}-layer resource cap.`, {
