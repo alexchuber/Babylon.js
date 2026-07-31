@@ -2,6 +2,7 @@ import { type USDLoadingOptions } from "../usdLoadingOptions";
 import { FreezeResolvedStage, type IResolvedStage, type IResolvedDiagnostic } from "./resolvedStage";
 import { type ISdfLayer } from "./sdf/index";
 import { ParseUsdaWithDiagnostics, DefaultUsdaParserLimits, type IUsdaParseDiagnostic, type IUsdaParserLimits } from "./parser/usda/usdaParser";
+import { ParseCrate, type ICrateDecoderOptions } from "./parser/crate/crateReader";
 import { MapLayerToResolvedStage } from "./mapping/stageMapper";
 import { UsdResourceLimitError, UsdUnsupportedFormatError, ValidateResourceLimit } from "../usdErrors";
 import { ApplySingleLayerPolicy, type ISingleLayerPolicyDiagnostic } from "./singleLayerPolicy";
@@ -38,16 +39,16 @@ export function DetectUsdFormat(data: ArrayBuffer | string): { format: UsdFormat
  * Resolves raw USD data into a fully-resolved {@link IResolvedStage}.
  *
  * This is the single entry point of the USD resolution layer. It sniffs the container format from the
- * data's magic bytes, parses USDA text, validates and normalizes its single layer without composition
- * or external-layer fetches, and maps it to a resolved stage. Binary crate (`PXR-USDC`) and USDZ package
+ * data's magic bytes, parses USDA text or a bounded USDC crate, validates and normalizes its single
+ * layer without composition or external-layer fetches, and maps it to a resolved stage. USDZ package
  * (ZIP) input is rejected with a typed {@link UsdUnsupportedFormatError} before parsing.
  *
- * @param data the raw USD data (USDA text as a string, or bytes that are sniffed and decoded as USDA text)
+ * @param data the raw USD data (USDA text as a string, or bytes sniffed as USDA/USDC/USDZ)
  * @param rootUrl root url to resolve external assets against
  * @param fileName name of the file being loaded, used for diagnostics
  * @param options loader options (parser resource limits and animation baking)
  * @returns a promise resolving to the fully-resolved stage
- * @throws UsdUnsupportedFormatError when the data is binary crate (USDC) or a USDZ package
+ * @throws UsdUnsupportedFormatError when the data is a USDZ package
  */
 export async function ResolveUsdStageAsync(
     data: ArrayBuffer | string,
@@ -57,6 +58,7 @@ export async function ResolveUsdStageAsync(
 ): Promise<IResolvedStage> {
     const diagnostics: IResolvedDiagnostic[] = [];
     const parserLimits = ResolveParserLimits(options);
+    const crateOptions = ResolveCrateOptions(options);
     const rootIdentifier = `${rootUrl ?? ""}${fileName ?? "stage.usda"}`;
 
     // Reject an oversized raw buffer by byteLength before DetectUsdFormat/TextDecoder allocates a decoded
@@ -73,13 +75,14 @@ export async function ResolveUsdStageAsync(
 
     const detected = DetectUsdFormat(data);
 
-    // Only single-layer USDA text is supported. Binary crate and USDZ package bytes are sniffed from
-    // their magic bytes and rejected here, before the text parser, so they can never be decoded as text.
+    // Binary crate bytes are decoded into the same SDF layer seam as USDA. USDZ remains outside this
+    // single-layer loader profile and is rejected before it can be decoded as text.
     if (detected.format === "usdc") {
-        throw new UsdUnsupportedFormatError("usdc", "USD: binary crate (USDC) data is not supported; only single-layer USDA text can be loaded.");
+        const rootLayer = ParseCrate(data as ArrayBuffer, rootIdentifier, crateOptions);
+        return FreezeResolvedStage(MapSingleLayerToStage(rootLayer, diagnostics));
     }
     if (detected.format === "usdz") {
-        throw new UsdUnsupportedFormatError("usdz", "USD: USDZ package data is not supported; only single-layer USDA text can be loaded.");
+        throw new UsdUnsupportedFormatError("usdz", "USD: USDZ package data is not supported; only direct-authored USDA text or USDC crate data can be loaded.");
     }
 
     const rootLayer = ParseRootUsdaLayer(detected.text ?? "", rootIdentifier, diagnostics, parserLimits);
@@ -119,6 +122,23 @@ function ResolveParserLimits(options: Readonly<USDLoadingOptions>): Partial<IUsd
     }
     if (options.maxParserWork !== undefined) {
         limits.maxParserWork = ValidateResourceLimit(options.maxParserWork, "maxParserWork");
+    }
+    return limits;
+}
+
+function ResolveCrateOptions(options: Readonly<USDLoadingOptions>): ICrateDecoderOptions {
+    const limits: ICrateDecoderOptions = {};
+    if (options.maxCrateTableEntries !== undefined) {
+        limits.maxTableEntries = ValidateResourceLimit(options.maxCrateTableEntries, "maxCrateTableEntries");
+    }
+    if (options.maxCrateValueBytes !== undefined) {
+        limits.maxValueBytes = ValidateResourceLimit(options.maxCrateValueBytes, "maxCrateValueBytes");
+    }
+    if (options.maxCrateWork !== undefined) {
+        limits.maxWork = ValidateResourceLimit(options.maxCrateWork, "maxCrateWork");
+    }
+    if (options.maxCrateDepth !== undefined) {
+        limits.maxDepth = ValidateResourceLimit(options.maxCrateDepth, "maxCrateDepth");
     }
     return limits;
 }

@@ -1,7 +1,7 @@
 import { type UsdExternalAssetHandler } from "./usdExternalAssetHandler";
 
 /**
- * Options for loading OpenUSD single-layer USDA text (`.usda` and textual `.usd`) assets.
+ * Options for loading OpenUSD single-layer USDA text and binary USDC crate (`.usd`) assets.
  */
 // "USD" is not in the central eslint abbreviations allowlist; disable locally to avoid editing
 // pre-existing Babylon config and keep this POC's footprint additive.
@@ -14,10 +14,10 @@ export type USDLoadingOptions = {
     targetFps?: number;
 
     /**
-     * Maximum size of a single USDA layer's text, measured in UTF-8 bytes, before parsing aborts with a typed
-     * {@link UsdResourceLimitError} (kind `"input-bytes"`). Guards against oversized untrusted input.
-     * Must be a finite, non-negative safe integer or it throws {@link UsdConfigurationError} before
-     * parsing. Defaults to 256 MiB (268,435,456).
+     * Maximum size of one USD input, measured in raw bytes (USDA text is measured as UTF-8), before
+     * parsing aborts with a typed {@link UsdResourceLimitError} (kind `"input-bytes"`). Guards against
+     * oversized untrusted input. Must be a finite, non-negative safe integer or it throws
+     * {@link UsdConfigurationError} before parsing. Defaults to 256 MiB (268,435,456).
      */
     maxInputBytes?: number;
 
@@ -36,6 +36,33 @@ export type USDLoadingOptions = {
      * {@link UsdConfigurationError} before parsing. Defaults to 10,000,000.
      */
     maxParserWork?: number;
+
+    /**
+     * Maximum number of entries in any USDC structural table or decoded array. Guards against
+     * count-driven allocations in untrusted crate input. Must be a finite, non-negative safe integer
+     * or it throws {@link UsdConfigurationError}. Defaults to 16,777,216.
+     */
+    maxCrateTableEntries?: number;
+
+    /**
+     * Maximum bytes decoded for crate token/value payloads during one load. Guards against compressed
+     * data expanding into an unexpectedly large allocation. Must be a finite, non-negative safe integer
+     * or it throws {@link UsdConfigurationError}. Defaults to 268,435,456.
+     */
+    maxCrateValueBytes?: number;
+
+    /**
+     * Maximum bounded work units spent reading crate tables, paths, fields, and values. Must be a
+     * finite, non-negative safe integer or it throws {@link UsdConfigurationError}. Defaults to
+     * 100,000,000.
+     */
+    maxCrateWork?: number;
+
+    /**
+     * Maximum authored path/prim nesting traversed while rebuilding crate paths. Must be a finite,
+     * non-negative safe integer or it throws {@link UsdConfigurationError}. Defaults to 1,024.
+     */
+    maxCrateDepth?: number;
 
     /**
      * Optional asynchronous handler invoked for each otherwise-unhandled asset-valued prim property

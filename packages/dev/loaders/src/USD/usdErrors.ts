@@ -1,14 +1,14 @@
 /**
  * The kind of USD resource limit that was exceeded. Doubles as a stable programmatic code.
  */
-export type UsdResourceLimitKind = "value-nesting" | "prim-nesting" | "input-bytes" | "token-count" | "parser-work";
+export type UsdResourceLimitKind = "value-nesting" | "prim-nesting" | "input-bytes" | "token-count" | "parser-work" | "crate-table" | "crate-value" | "crate-work" | "crate-depth";
 
 /**
  * Error thrown when parsing an untrusted USD asset exceeds a configured resource limit.
  *
  * Carries structured fields ({@link kind}, {@link limit}, {@link actual}, {@link path}) so callers can
  * branch on the failure programmatically without parsing the message string. It is intentionally
- * distinct from malformed-syntax errors (which remain plain `Error`) so the two can be told apart.
+ * distinct from malformed-syntax and malformed-crate errors so the two can be told apart.
  */
 export class UsdResourceLimitError extends Error {
     /** Which resource limit was exceeded. */
@@ -64,14 +64,42 @@ export class UsdConfigurationError extends Error {
     }
 }
 
+/**
+ * The stable kind of a malformed binary USDC crate.
+ */
+export type UsdCrateDecodeKind = "malformed";
+
+/**
+ * Error thrown when a binary USDC crate cannot be decoded safely.
+ *
+ * Malformed headers, sections, offsets, indexes, compression streams, and value payloads are
+ * normalized to this typed error at the crate boundary. Resource and configuration failures retain
+ * their more specific error classes.
+ */
+export class UsdCrateDecodeError extends Error {
+    /** Which class of crate decoding failure occurred. */
+    public readonly kind: UsdCrateDecodeKind;
+
+    /**
+     * Creates a UsdCrateDecodeError.
+     * @param message a deterministic human-readable description of the malformed crate
+     * @param kind the stable crate failure kind
+     */
+    public constructor(message: string, kind: UsdCrateDecodeKind = "malformed") {
+        super(message);
+        this.name = "UsdCrateDecodeError";
+        this.kind = kind;
+        Object.setPrototypeOf(this, UsdCrateDecodeError.prototype);
+    }
+}
+
 /** The kind of unsupported binary USD container rejected at the loader's front door. Doubles as a stable programmatic code. */
 export type UsdUnsupportedFormatKind = "usdc" | "usdz";
 
 /**
- * Error thrown when the loader is handed a binary USD container it deliberately does not support: a
- * binary crate (`PXR-USDC`) file or a USDZ/ZIP package. The loader accepts only single-layer USDA text,
- * so these formats are detected from their magic bytes and rejected up front rather than being partially
- * or misleadingly decoded.
+ * Error thrown when the loader is handed a binary USD container it deliberately does not support,
+ * currently a USDZ/ZIP package. The `usdc` discriminant remains for source compatibility with the
+ * earlier USDA-only profile; current USDC bytes are decoded by the bounded crate reader.
  *
  * Carries the detected {@link format} so callers can tell crate and package input apart programmatically.
  */

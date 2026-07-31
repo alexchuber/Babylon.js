@@ -6,7 +6,7 @@ import { type SdfMetadata } from "./sdfValue";
  *
  * Design rules:
  * - Pure, plain data only. NO Babylon imports, NO parser state, NO functions, NO classes.
- * - The USDA parser populates one `ISdfLayer`; the single-layer policy then rejects composition
+ * - The USDA or USDC parser populates one `ISdfLayer`; the single-layer policy then rejects composition
  *   opinions and normalizes the supported authored content before stage mapping.
  * - Prim data is represented as a hierarchy of `ISdfPrimSpec` objects with absolute `path`
  *   strings. This matches USDA's nested authoring form.

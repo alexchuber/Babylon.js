@@ -3,12 +3,12 @@ import { NullEngine } from "core/Engines/nullEngine";
 import { Scene } from "core/scene";
 import { USDFileLoader } from "loaders/USD/usdFileLoader";
 import { USDFileLoaderMetadata } from "loaders/USD/usdFileLoader.metadata";
-import { UsdUnsupportedFormatError } from "loaders/USD/usdErrors";
+import { UsdCrateDecodeError, UsdUnsupportedFormatError } from "loaders/USD/usdErrors";
 import { ResolveUsdStageAsync } from "loaders/USD/resolution/usdResolver";
 
-// The public USD loader is a single-layer USDA text importer. It selects USDA text from the *bytes*
-// (content sniffing) rather than trusting the extension, and rejects binary crate (PXR-USDC) and
-// USDZ/ZIP packages with a typed error before the text parser ever runs.
+// The public USD loader selects USDA text or USDC crate data from the *bytes* rather than trusting the
+// extension. USDZ/ZIP packages remain outside the single-layer loader profile and are rejected before
+// the text parser ever runs.
 const triangleUsda = `#usda 1.0
 
 def Mesh "Triangle"
@@ -58,7 +58,7 @@ async function captureRejection(promise: Promise<unknown>): Promise<unknown> {
 }
 
 describe("USD loader metadata", () => {
-    it("advertises only USDA text extensions and drops binary containers", () => {
+    it("advertises content-sniffed USD extensions and drops packaged containers", () => {
         const extensions = USDFileLoaderMetadata.extensions;
         expect(Object.keys(extensions).sort()).toEqual([".usd", ".usda"]);
         expect(extensions).not.toHaveProperty(".usdc");
@@ -89,14 +89,15 @@ describe("USD content sniffing - accepted USDA text", () => {
     });
 });
 
-describe("USD content sniffing - rejected binary containers", () => {
-    it("rejects PXR-USDC crate bytes from the public loader with a typed error", async () => {
+describe("USD content sniffing - binary container dispatch", () => {
+    it("does not treat malformed PXR-USDC bytes as USDA text", async () => {
         const loader = new USDFileLoader();
         const engine = new NullEngine();
         const scene = new Scene(engine);
         try {
             const error = await captureRejection(loader.importMeshAsync(null, scene, crateBytes(), "", undefined, "model.usd"));
-            expect(error).toBeInstanceOf(UsdUnsupportedFormatError);
+            expect(error).toBeInstanceOf(UsdCrateDecodeError);
+            expect(error).not.toBeInstanceOf(UsdUnsupportedFormatError);
         } finally {
             scene.dispose();
             engine.dispose();
@@ -116,10 +117,10 @@ describe("USD content sniffing - rejected binary containers", () => {
         }
     });
 
-    it("rejects crate bytes at the resolution seam before the text parser, tagging the format", async () => {
+    it("dispatches crate bytes at the resolution seam before the text parser", async () => {
         const error = await captureRejection(ResolveUsdStageAsync(crateBytes(), "", "model.usd", {}));
-        expect(error).toBeInstanceOf(UsdUnsupportedFormatError);
-        expect((error as UsdUnsupportedFormatError).format).toBe("usdc");
+        expect(error).toBeInstanceOf(UsdCrateDecodeError);
+        expect(error).not.toBeInstanceOf(UsdUnsupportedFormatError);
     });
 
     it("rejects ZIP bytes at the resolution seam, tagging the package format", async () => {
