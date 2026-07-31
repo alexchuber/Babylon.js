@@ -86,25 +86,17 @@ describe("USD fidelity diagnostics", () => {
         }
     });
 
-    it.each([
-        "Plane",
-        "BasisCurves",
-        "NurbsCurves",
-        "HermiteCurves",
-        "Points",
-        "NurbsPatch",
-        "TetMesh",
-        "Volume",
-        "Capsule",
-        "PointInstancer",
-    ])("emits exactly one diagnostic naming an unsupported %s prim and creates no mesh", (typeName) => {
-        const prim: ISdfPrimSpec = { name: typeName, path: `/${typeName}`, specifier: "def", typeName, properties: {}, children: [] };
-        const stage = MapLayerToResolvedStage(layerOf([prim]));
-        const diagnostics = stage.diagnostics.filter((entry) => entry.path === `/${typeName}`);
-        expect(diagnostics).toHaveLength(1);
-        expect(diagnostics[0].message).toContain(typeName);
-        expect(stage.meshes).toHaveLength(0);
-    });
+    it.each(["Plane", "BasisCurves", "NurbsCurves", "HermiteCurves", "Points", "NurbsPatch", "TetMesh", "Volume", "Capsule", "PointInstancer"])(
+        "emits exactly one diagnostic naming an unsupported %s prim and creates no mesh",
+        (typeName) => {
+            const prim: ISdfPrimSpec = { name: typeName, path: `/${typeName}`, specifier: "def", typeName, properties: {}, children: [] };
+            const stage = MapLayerToResolvedStage(layerOf([prim]));
+            const diagnostics = stage.diagnostics.filter((entry) => entry.path === `/${typeName}`);
+            expect(diagnostics).toHaveLength(1);
+            expect(diagnostics[0].message).toContain(typeName);
+            expect(stage.meshes).toHaveLength(0);
+        }
+    );
 
     it("skips PointInstancer prototype targets instead of rendering them once at their authored pose", () => {
         const prototype = meshPrim("Prototype");

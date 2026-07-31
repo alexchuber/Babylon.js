@@ -1,4 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import * as fs from "fs";
+import { fileURLToPath } from "url";
 
 import { NullEngine } from "core/Engines/nullEngine";
 import { Scene } from "core/scene";
@@ -9,7 +11,13 @@ import "loaders/USD/usdFileLoader";
 
 import { ResolveUsdStageAsync } from "loaders/USD/resolution/usdResolver";
 
-import { readRuntimeCorpusText, CylinderAsset } from "./runtimeCorpus";
+import { CylinderAsset } from "./runtimeCorpus/manifest";
+
+const runtimeCorpusRoot = new URL("../../../../../tools/babylonServer/public/Assets/USD/RuntimeCorpus/", import.meta.url);
+
+function readRuntimeCorpusText(fileName: string): string {
+    return fs.readFileSync(fileURLToPath(new URL(fileName, runtimeCorpusRoot)), "utf8");
+}
 
 function importCylinderAsync(scene: Scene) {
     return ImportMeshAsync(`data:${readRuntimeCorpusText(CylinderAsset.fileName)}`, scene, {
@@ -139,18 +147,21 @@ describe("USD runtime corpus - Cylinder", () => {
     it("produces outward winding for axis=Y (real corpus fixture)", async () => {
         const stage = await ResolveUsdStageAsync(readRuntimeCorpusText(CylinderAsset.fileName), "", CylinderAsset.fileName, {});
         const mesh = stage.meshes[0];
+        expect(mesh.indices.length).toBeGreaterThan(0);
         assertOutwardWinding(mesh.positions, mesh.indices, mesh.normals!);
     });
 
     it("produces outward winding for axis=X", async () => {
         const stage = await resolveUsda(`#usda 1.0\ndef Cylinder "C" { uniform token axis = "X" }`);
         const mesh = stage.meshes[0];
+        expect(mesh.indices.length).toBeGreaterThan(0);
         assertOutwardWinding(mesh.positions, mesh.indices, mesh.normals!);
     });
 
     it("produces outward winding for axis=Z", async () => {
         const stage = await resolveUsda(`#usda 1.0\ndef Cylinder "C" { uniform token axis = "Z" }`);
         const mesh = stage.meshes[0];
+        expect(mesh.indices.length).toBeGreaterThan(0);
         assertOutwardWinding(mesh.positions, mesh.indices, mesh.normals!);
     });
 

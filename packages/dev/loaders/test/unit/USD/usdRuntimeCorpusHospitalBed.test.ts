@@ -1,4 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import * as fs from "fs";
+import { fileURLToPath } from "url";
 
 import { NullEngine } from "core/Engines/nullEngine";
 import { Scene } from "core/scene";
@@ -9,7 +11,13 @@ import "loaders/USD/usdFileLoader";
 
 import { ResolveUsdStageAsync } from "loaders/USD/resolution/usdResolver";
 
-import { readRuntimeCorpusText, HospitalBedAsset } from "./runtimeCorpus";
+import { HospitalBedAsset } from "./runtimeCorpus/manifest";
+
+const runtimeCorpusRoot = new URL("../../../../../tools/babylonServer/public/Assets/USD/RuntimeCorpus/", import.meta.url);
+
+function readRuntimeCorpusText(fileName: string): string {
+    return fs.readFileSync(fileURLToPath(new URL(fileName, runtimeCorpusRoot)), "utf8");
+}
 
 function importHospitalBedAsync(scene: Scene) {
     return ImportMeshAsync(`data:${readRuntimeCorpusText(HospitalBedAsset.fileName)}`, scene, {
