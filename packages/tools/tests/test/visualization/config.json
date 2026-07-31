@@ -5490,7 +5490,7 @@
         },
         {
             "title": "USD loader - Plane corpus",
-            "playgroundId": "#TEK2UY#0",
+            "playgroundId": "#BE8SW8#0",
             "referenceImage": "usd-loader-plane-corpus.png",
             "renderCount": 1,
             "dependsOn": ["Loaders", "Meshes"]
@@ -5525,7 +5525,7 @@
         },
         {
             "title": "USD loader - Hospital Bed OBJ wrapper",
-            "playgroundId": "#W5H6QV#2",
+            "playgroundId": "#3XJMZ7#0",
             "referenceImage": "usd-loader-hospital-bed-wrapper.png",
             "renderCount": 1,
             "dependsOn": ["Loaders", "OBJ", "Materials", "Meshes", "Textures", "Scene"],
@@ -5576,7 +5576,7 @@
         },
         {
             "title": "USD loader - UR10 OBJ wrapper",
-            "playgroundId": "#7RNOEE#0",
+            "playgroundId": "#X5K5EK#0",
             "referenceImage": "usd-loader-ur10-obj-wrapper.png",
             "renderCount": 1,
             "dependsOn": ["Loaders", "OBJ", "Materials", "Meshes"]
