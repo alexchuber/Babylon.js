@@ -418,7 +418,7 @@ function ReadSpecs(reader: BinaryReader, section: ICrateSection, version: ICrate
 
     const pathIndexes = ReadCompressedInt32Stream(source, count, budget, "spec path").map((value) => value >>> 0);
     const fieldSetIndexes = ReadCompressedInt32Stream(source, count, budget, "spec field set").map((value) => value >>> 0);
-    const specTypes = ReadCompressedInt32Stream(source, count, budget);
+    const specTypes = ReadCompressedInt32Stream(source, count, budget, "spec type");
     const seenPaths = new Set<number>();
     const specs = pathIndexes.map((pathIndex, index) => {
         const spec = ValidateSpec(pathIndex, fieldSetIndexes[index], specTypes[index], pathCount, fieldSetCount);
@@ -504,9 +504,11 @@ function BuildLayer(identifier: string, context: ICrateContext, fields: ICrateFi
 
     for (const property of propertySpecs) {
         const split = SplitPropertyPath(property.path);
-        const owner = split ? primsByPath.get(split.primPath) : undefined;
-        if (owner) {
-            owner.properties[split.propertyName] = property.spec;
+        if (split) {
+            const owner = primsByPath.get(split.primPath);
+            if (owner) {
+                owner.properties[split.propertyName] = property.spec;
+            }
         }
     }
     return layer;
