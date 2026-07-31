@@ -5,7 +5,7 @@ import { Scene } from "core/scene";
 import "loaders/USD/usdFileLoader";
 
 import { RuntimeCorpusManifest, type IRuntimeCorpusEntry } from "./runtimeCorpus/manifest";
-import { readRuntimeCorpusText } from "./runtimeCorpus/corpusText";
+import { readRuntimeCorpusBytes, readRuntimeCorpusText } from "./runtimeCorpus/corpusText";
 
 const DIRECT_ASSET_FILE_NAMES = [
     "Plane.usda",
@@ -19,6 +19,7 @@ const DIRECT_ASSET_FILE_NAMES = [
     "Placeholder.usda",
     "Sphere.usda",
     "seahorse_anim_mtl_variant.usda",
+    "seahorse_anim_mtl_variant.usdz",
 ] as const;
 
 const directAssets = DIRECT_ASSET_FILE_NAMES.map((fileName): IRuntimeCorpusEntry => {
@@ -59,8 +60,10 @@ for (const asset of directAssets) {
             const baseline = captureSceneAssetCounts(scene);
 
             try {
-                const container = await LoadAssetContainerAsync(`data:${readRuntimeCorpusText(asset.fileName)}`, scene, {
-                    pluginExtension: ".usda",
+                const isUsdZip = asset.fileName.endsWith(".usdz");
+                const data = isUsdZip ? readRuntimeCorpusBytes(asset.fileName) : `data:${readRuntimeCorpusText(asset.fileName)}`;
+                const container = await LoadAssetContainerAsync(data, scene, {
+                    pluginExtension: isUsdZip ? ".usdz" : ".usda",
                     name: asset.fileName,
                 });
 

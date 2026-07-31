@@ -59,6 +59,38 @@ export type USDLoadingOptions = {
     maxInputBytes?: number;
 
     /**
+     * Maximum raw USDZ/ZIP package bytes accepted before archive parsing. When unset, `maxInputBytes`
+     * applies to the package and the archive default is 256 MiB.
+     */
+    maxZipInputBytes?: number;
+
+    /**
+     * Maximum number of entries in one USDZ/ZIP package. Defaults to 4,096.
+     */
+    maxZipEntries?: number;
+
+    /**
+     * Maximum sum of compressed entry bytes declared by one USDZ/ZIP central directory. Defaults to 256 MiB.
+     */
+    maxZipCompressedBytes?: number;
+
+    /**
+     * Maximum sum of uncompressed entry bytes declared by one USDZ/ZIP central directory. Defaults to 512 MiB.
+     */
+    maxZipUncompressedBytes?: number;
+
+    /**
+     * Maximum uncompressed size of one USDZ/ZIP entry. Defaults to 256 MiB.
+     */
+    maxZipEntryBytes?: number;
+
+    /**
+     * Maximum estimated decompression work for one USDZ/ZIP package, measured as compressed plus
+     * declared uncompressed bytes. Defaults to 768 MiB.
+     */
+    maxZipDecompressionWork?: number;
+
+    /**
      * Maximum number of lexer tokens a single USDA layer may produce before parsing aborts with a typed
      * {@link UsdResourceLimitError} (kind `"token-count"`). Guards against token-heavy untrusted input.
      * Must be a finite, non-negative safe integer or it throws {@link UsdConfigurationError} before

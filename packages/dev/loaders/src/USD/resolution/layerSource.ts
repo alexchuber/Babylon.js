@@ -23,6 +23,22 @@ export interface IUsdLayerSource {
     loadLayerAsync(identifier: string): Promise<UsdLayerSourceData | undefined>;
 }
 
+/**
+ * Optional resolver for asset-valued paths owned by a layer source.
+ *
+ * The resolver returns a browser-loadable URI when it owns the asset, or `undefined` to let the
+ * standard URL/file path resolver handle the path.
+ */
+export interface IUsdAssetSource {
+    /**
+     * Resolves one authored asset path against its source layer.
+     * @param assetPath delimiter-free authored asset path
+     * @param layerIdentifier identifier of the layer that authored the path
+     * @returns a loadable URI, or `undefined` when the source does not own the path
+     */
+    resolveAssetUri(assetPath: string, layerIdentifier: string): string | undefined;
+}
+
 /** The concrete on-disk USD container format, sniffed from magic bytes. */
 export type UsdLayerFormat = "usda" | "usdc" | "usdz";
 

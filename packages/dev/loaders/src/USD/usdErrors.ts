@@ -174,14 +174,76 @@ export class UsdCrateDecodeError extends Error {
     }
 }
 
-/** The kind of unsupported binary USD container rejected at the loader's front door. Doubles as a stable programmatic code. */
+/** Stable failure kinds for malformed or resource-bounded USDZ/ZIP archives. */
+export type UsdZipArchiveErrorKind =
+    | "input-bytes"
+    | "entry-count"
+    | "compressed-bytes"
+    | "uncompressed-bytes"
+    | "entry-bytes"
+    | "decompression-work"
+    | "path-traversal"
+    | "absolute-path"
+    | "duplicate-entry"
+    | "path-collision"
+    | "malformed-central-directory"
+    | "malformed-local-header"
+    | "unsupported-zip64"
+    | "crc-mismatch"
+    | "size-mismatch"
+    | "unsupported-method"
+    | "unsupported-flags"
+    | "decompression-error"
+    | "root-layer-missing"
+    | "root-layer-ambiguous"
+    | "missing-entry";
+
+/**
+ * Error thrown when a USDZ/ZIP archive is malformed, uses an unsupported feature, or exceeds a
+ * configured archive resource limit.
+ *
+ * The stable {@link kind} discriminant lets callers handle archive failures without parsing messages.
+ */
+export class UsdZipArchiveError extends Error {
+    /** Stable archive failure kind. */
+    public readonly kind: UsdZipArchiveErrorKind;
+    /** Archive-local entry path associated with the failure, when known. */
+    public readonly path?: string;
+    /** Configured limit associated with a bounded failure, when known. */
+    public readonly limit?: number;
+    /** Observed value associated with a bounded failure, when known. */
+    public readonly actual?: number;
+    /** Original decompressor or decoder failure, when one was thrown. */
+    public override readonly cause?: unknown;
+
+    /**
+     * Creates a typed USDZ archive error.
+     * @param kind stable archive failure kind
+     * @param message human-readable failure details
+     * @param path archive-local path, when known
+     * @param cause original failure, when known
+     * @param limit configured resource limit, when known
+     * @param actual observed value, when known
+     */
+    public constructor(kind: UsdZipArchiveErrorKind, message: string, path?: string, cause?: unknown, limit?: number, actual?: number) {
+        super(message);
+        this.name = "UsdZipArchiveError";
+        this.kind = kind;
+        this.path = path;
+        this.cause = cause;
+        this.limit = limit;
+        this.actual = actual;
+        Object.setPrototypeOf(this, UsdZipArchiveError.prototype);
+    }
+}
+
+/** The kind of unsupported binary USD container rejected at the referenced-layer composition seam. */
 export type UsdUnsupportedFormatKind = "usdc" | "usdz";
 
 /**
- * Error thrown when the loader is handed a binary USD container it deliberately does not support,
- * currently a USDZ/ZIP package. The `usdc` discriminant remains for source compatibility with the
- * earlier USDA-only profile; current USDC bytes are decoded by the bounded crate reader. USDA references
- * can be composed through a configured layer source.
+ * Error thrown when a referenced layer source hands a binary USD container that the composition seam
+ * does not support. Root USDC and USDZ input are handled by the public loader; the `usdc` discriminant
+ * remains for source compatibility with the earlier USDA-only profile.
  *
  * Carries the detected {@link format} so callers can tell crate and package input apart programmatically.
  */

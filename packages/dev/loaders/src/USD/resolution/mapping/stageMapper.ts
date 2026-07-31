@@ -19,6 +19,7 @@ import { ResolveSkeletonIndex, ResolveSkinning } from "./skeletonMapping";
 import { IdentityTransform, ResolveTransform } from "./transformMapping";
 import { AsToken, GetAttribute, GetAttributeValue, GetRelationship, GetRelationshipTargets } from "./valueAccess";
 import { ResolveAssetIdentifier } from "../assetPath";
+import { type IUsdAssetSource } from "../layerSource";
 
 type StageMapperContext = IStageMappingContext & {
     skeletons: IResolvedSkeleton[];
@@ -29,15 +30,17 @@ type StageMapperContext = IStageMappingContext & {
 /**
  * Maps one validated and normalized USDA layer into the read-only resolved stage contract.
  * @param layer single Sdf layer to map
+ * @param assetSource optional source-owned resolver for archive-local asset paths
  * @returns resolved stage consumed by the Babylon USD adapter
  */
-export function MapLayerToResolvedStage(layer: ISdfLayer): IResolvedStage {
+export function MapLayerToResolvedStage(layer: ISdfLayer, assetSource?: IUsdAssetSource): IResolvedStage {
     const diagnostics: IResolvedDiagnostic[] = [];
     const meshes: IResolvedMesh[] = [];
     const materials: IResolvedMaterial[] = [];
     const skeletons: IResolvedSkeleton[] = [];
     const context: StageMapperContext = {
         layer,
+        assetSource,
         primByPath: BuildPrimIndex(layer.rootPrims),
         meshes,
         materials,

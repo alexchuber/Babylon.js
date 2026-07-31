@@ -1,10 +1,13 @@
 import { type ISdfLayer, type ISdfPrimSpec } from "../sdf/index";
 import { type IResolvedDiagnostic, type IResolvedMaterial, type IResolvedMesh } from "../resolvedStage";
+import { type IUsdAssetSource } from "../layerSource";
 
 /** Shared state used while mapping one validated single Sdf layer into a resolved stage. */
 export interface IStageMappingContext {
     /** Source layer being mapped. */
     layer: ISdfLayer;
+    /** Optional source-owned resolver for archive-local asset paths. */
+    assetSource?: IUsdAssetSource;
     /** Absolute prim-path lookup for relationship and shader-network resolution. */
     primByPath: ReadonlyMap<string, ISdfPrimSpec>;
     /** Shared mesh pool owned by the resolved stage under construction. */

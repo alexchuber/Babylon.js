@@ -27,6 +27,9 @@
         "@babylonjs/core": "^9.0.0",
         "babylonjs-gltf2interface": "^9.0.0"
     },
+    "dependencies": {
+        "fflate": "^0.8.2"
+    },
     "keywords": [
         "3D",
         "javascript",
