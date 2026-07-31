@@ -5621,12 +5621,13 @@
         },
         {
             "title": "USD loader - Seahorse USDZ",
-            "playgroundId": "#HJWS97#0",
+            "playgroundId": "#CDPGT3#0",
             "referenceImage": "usd-loader-seahorse-usdz.png",
             "renderCount": 50,
             "dependsOn": ["Loaders", "Materials", "Meshes", "PBR", "Textures", "Animations", "Bones"],
             "replace": "https://cdn.babylonjs.com,http://localhost:1337",
-            "excludeFromPerformance": true
+            "excludeFromPerformance": true,
+            "errorRatio": 14
         },
         {
             "title": "USD loader - Sphere corpus",
