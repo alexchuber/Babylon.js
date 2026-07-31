@@ -1,0 +1,17 @@
+#usda 1.0
+(
+    defaultPrim = "RobotArm2"
+    metersPerUnit = 1
+    upAxis = "Y"
+)
+
+# Thin wrapper around the palletizer-style robot arm geometry inlined in
+# ./RobotArm2/RobotArm.usda. The inner USDA is authored with Z-up +
+# metersPerUnit=0.01, so USD's composition layer handles the up-axis
+# and unit conversion when this wrapper is composed in.
+def Xform "RobotArm2" (
+    kind = "reference"
+    prepend references = @./RobotArm2/RobotArm.usda@</RobotArm>
+)
+{
+}

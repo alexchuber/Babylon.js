@@ -5540,6 +5540,13 @@
             "dependsOn": ["Loaders", "Materials", "Meshes"]
         },
         {
+            "title": "USD loader - RobotArm2 reference",
+            "playgroundId": "#V85N7N#0",
+            "referenceImage": "usd-loader-robot-arm2-reference.png",
+            "renderCount": 1,
+            "dependsOn": ["Cameras", "Lights", "Loaders", "Materials", "Meshes", "Scene"]
+        },
+        {
             "title": "USD loader - Room corpus",
             "playgroundId": "#ZYHYVP#0",
             "referenceImage": "usd-loader-room-corpus.png",
