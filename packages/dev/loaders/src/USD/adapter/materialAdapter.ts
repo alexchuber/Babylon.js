@@ -158,8 +158,7 @@ function ApplyClearCoatTextures(
     clearcoatRoughnessTexture: IResolvedTexture | undefined,
     scene: Scene,
     diagnostics?: IResolvedDiagnostic[],
-    materialName = "material",
-    packed = false
+    materialName = "material"
 ): void {
     const supportedClearcoatTexture = clearcoatTexture ? NormalizeScalarTexture(clearcoatTexture, "clearcoat", diagnostics, materialName) : undefined;
     if (clearcoatTexture) {

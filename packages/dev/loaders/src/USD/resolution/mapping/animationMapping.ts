@@ -10,7 +10,7 @@ import {
 } from "../resolvedStage";
 import { type ISdfAttributeSpec, type ISdfLayer, type ISdfPrimSpec, type SdfValue } from "../sdf/index";
 import { AsMat4, AsQuat, AsToken, AsVec3, GetAttribute, GetMetadataToken, GetTokenArrayAttribute } from "./valueAccess";
-import { DecomposeMatrix, ResolveTransform, UsdMatrixToResolvedLayout } from "./transformMapping";
+import { DecomposeMatrix, MatchesXformOpFamily, ResolveTransform, UsdMatrixToResolvedLayout } from "./transformMapping";
 
 /**
  * Bakes supported prim time samples into resolved animation tracks.
@@ -37,15 +37,15 @@ export function ResolvePrimAnimation(prim: ISdfPrimSpec, layer: ISdfLayer, metad
             tracks.push(BuildVisibilityTrack(property, metadata.timeCodesPerSecond));
         } else if (orderedXformOrder !== undefined && name.startsWith("xformOp:")) {
             continue;
-        } else if (name.startsWith("xformOp:translate")) {
+        } else if (MatchesXformOpFamily(name, "xformOp:translate")) {
             tracks.push(BuildVec3Track("translation", property, metadata.timeCodesPerSecond, interpolation));
-        } else if (name.startsWith("xformOp:scale")) {
+        } else if (MatchesXformOpFamily(name, "xformOp:scale")) {
             tracks.push(BuildVec3Track("scale", property, metadata.timeCodesPerSecond, interpolation));
         } else if (/^xformOp:orient(?::.*)?$/.test(name)) {
             tracks.push(BuildQuatTrack(property, metadata.timeCodesPerSecond, interpolation));
         } else if (IsAnimationRotationOp(name)) {
             tracks.push(BuildRotationTrack(name, property, metadata.timeCodesPerSecond, interpolation));
-        } else if (name.startsWith("xformOp:transform")) {
+        } else if (MatchesXformOpFamily(name, "xformOp:transform")) {
             tracks.push(...BuildMatrixTracks(property, metadata.timeCodesPerSecond, interpolation, diagnostics, property.path ?? prim.path));
         } else if (name.startsWith("xformOp:")) {
             diagnostics.push({ severity: "info", path: property.path ?? prim.path, message: `Animation for '${name}' is deferred.` });

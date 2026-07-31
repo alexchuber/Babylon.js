@@ -7,6 +7,7 @@ import "core/Meshes/instancedMesh";
 import { TransformNode } from "core/Meshes/transformNode";
 import { VertexData } from "core/Meshes/mesh.vertexData";
 import { StandardMaterial } from "core/Materials/standardMaterial";
+import { MultiMaterial } from "core/Materials/multiMaterial.pure";
 import { RawTexture } from "core/Materials/Textures/rawTexture";
 import { Logger } from "core/Misc/logger";
 import { ImportMeshAsync, LoadAssetContainerAsync } from "core/Loading/sceneLoader";
@@ -251,8 +252,32 @@ function createNestedSourceContainer(scene: Scene): AssetContainer {
 
 function createRootlessSourceContainer(scene: Scene): AssetContainer {
     const container = createFlatSourceContainer(scene, "rootless-mesh");
-    const root = new TransformNode("untracked-root", scene);
+    // Mirrors a glTF-style "__root__" group node, which is itself a Mesh (0 vertices) rather than a
+    // plain TransformNode. Mesh extends TransformNode, so an `instanceof TransformNode` check that
+    // runs before an `instanceof Mesh` check would misclassify this ancestor.
+    const root = new Mesh("untracked-root", scene);
     container.meshes[0].parent = root;
+    return container;
+}
+
+// Mesh bound to a MultiMaterial with two submaterials, used to verify that reflected-subtree culling
+// changes propagate to every submaterial rather than only the inert MultiMaterial wrapper.
+function createMultiMaterialSourceContainer(scene: Scene): AssetContainer {
+    const container = new AssetContainer(scene);
+    const mesh = new Mesh("multi-material-mesh", scene);
+    const vertexData = new VertexData();
+    vertexData.positions = [0, 0, 0, 1, 0, 0, 0, 1, 0];
+    vertexData.indices = [0, 1, 2];
+    vertexData.applyToMesh(mesh);
+    const subMaterialA = new StandardMaterial("sub-a", scene);
+    const subMaterialB = new StandardMaterial("sub-b", scene);
+    const multiMaterial = new MultiMaterial("multi", scene);
+    multiMaterial.subMaterials = [subMaterialA, subMaterialB];
+    mesh.material = multiMaterial;
+    container.meshes.push(mesh);
+    container.multiMaterials.push(multiMaterial);
+    container.materials.push(subMaterialA, subMaterialB);
+    container.removeAllFromScene();
     return container;
 }
 
@@ -408,8 +433,38 @@ describe("USD external asset handler", () => {
         try {
             const result = await new USDFileLoader({ externalAssetHandler: handler }).importMeshAsync(null, scene, singleAssetUsda, "");
 
-            expect(result.meshes.filter((mesh) => mesh.getTotalVertices() > 0)).toHaveLength(1);
-            expect(scene.getTransformNodeByName("untracked-root")).toBeNull();
+            const renderableMeshes = result.meshes.filter((mesh) => mesh.getTotalVertices() > 0);
+            expect(renderableMeshes).toHaveLength(1);
+            // The untracked "__root__"-style ancestor is itself a Mesh (0 vertices); it must be
+            // recovered and cloned too, or the renderable child would be missing its transform parent.
+            const clonedRoot = scene.getMeshByName("Clone of untracked-root");
+            expect(clonedRoot).not.toBeNull();
+            expect(renderableMeshes[0].parent).toBe(clonedRoot);
+        } finally {
+            scene.dispose();
+            engine.dispose();
+        }
+    });
+
+    it("disables back-face culling on every MultiMaterial submaterial of a reflected external subtree", async () => {
+        const engine = new NullEngine();
+        const scene = new Scene(engine);
+        const handler = vi.fn(async (r: IUsdExternalAssetRequest): Promise<UsdExternalAssetResult> => {
+            return { handled: true, container: createMultiMaterialSourceContainer(r.scene) };
+        });
+
+        try {
+            const result = await new USDFileLoader({ externalAssetHandler: handler }).importMeshAsync(null, scene, singleAssetUsda, "");
+
+            const clonedMesh = result.meshes.find((mesh) => mesh.getTotalVertices() > 0)!;
+            expect(clonedMesh.material).toBeInstanceOf(MultiMaterial);
+            const subMaterials = (clonedMesh.material as MultiMaterial).subMaterials;
+            expect(subMaterials).toHaveLength(2);
+            // Setting backFaceCulling on the MultiMaterial wrapper itself has no rendering effect; every
+            // submaterial must be updated individually or the reflected external subtree renders wrong.
+            for (const subMaterial of subMaterials) {
+                expect(subMaterial!.backFaceCulling).toBe(false);
+            }
         } finally {
             scene.dispose();
             engine.dispose();

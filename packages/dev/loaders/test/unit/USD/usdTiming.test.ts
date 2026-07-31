@@ -363,6 +363,80 @@ def Xform "Animated"
     });
 });
 
+describe("USD static xformOp resolution edge cases", () => {
+    it("resolves a suffixed xformOp:orient without an authoritative xformOpOrder", () => {
+        const stage = mapUsda(`#usda 1.0
+def Xform "World"
+{
+    quatf xformOp:orient:variant = (0.7071068, 0, 0.7071068, 0)
+}
+`);
+        const rotation = stage.root.children[0].transform.rotation;
+        // A 90-degree rotation about Y: (x=0, y=sin(45), z=0, w=cos(45)) authored as (w, x, y, z) in USDA.
+        expect(rotation[1]).toBeCloseTo(0.7071068, 5);
+        expect(rotation[3]).toBeCloseTo(0.7071068, 5);
+    });
+
+    it("resolves a suffixed xformOp:orient inside an authoritative xformOpOrder", () => {
+        const stage = mapUsda(`#usda 1.0
+def Xform "World"
+{
+    quatf xformOp:orient:variant = (0.7071068, 0, 0.7071068, 0)
+    uniform token[] xformOpOrder = ["xformOp:orient:variant"]
+}
+`);
+        const rotation = stage.root.children[0].transform.rotation;
+        expect(rotation[1]).toBeCloseTo(0.7071068, 5);
+        expect(rotation[3]).toBeCloseTo(0.7071068, 5);
+    });
+
+    it("does not misread a non-namespaced xformOp:translate-prefixed token as the vector translate op", () => {
+        // "xformOp:translateExtra" is not a real USD op (translate has no bare-suffix variant like
+        // rotateX/rotateY); a naive prefix match would silently treat it as the double3 translate and
+        // read a zero vector. It must instead be diagnosed as unsupported and left out of the transform.
+        const stage = mapUsda(`#usda 1.0
+def Xform "World"
+{
+    double3 xformOp:translate = (5, 6, 7)
+    double xformOp:translateExtra = 9
+    uniform token[] xformOpOrder = ["xformOp:translate", "xformOp:translateExtra"]
+}
+`);
+        const world = stage.root.children[0];
+        expect(world.transform.translation).toEqual([5, 6, 7]);
+        expect(stage.diagnostics.some((diagnostic) => /translateExtra/.test(diagnostic.message) && /[Uu]nsupported/.test(diagnostic.message))).toBe(true);
+    });
+
+    it("does not misread a non-namespaced xformOp:scale-prefixed token as the vector scale op", () => {
+        const stage = mapUsda(`#usda 1.0
+def Xform "World"
+{
+    double3 xformOp:scale = (2, 2, 2)
+    double xformOp:scaleExtra = 9
+    uniform token[] xformOpOrder = ["xformOp:scale", "xformOp:scaleExtra"]
+}
+`);
+        const world = stage.root.children[0];
+        expect(world.transform.scale).toEqual([2, 2, 2]);
+        expect(stage.diagnostics.some((diagnostic) => /scaleExtra/.test(diagnostic.message) && /[Uu]nsupported/.test(diagnostic.message))).toBe(true);
+    });
+
+    it("diagnoses and substitutes identity for an inverse of a singular (zero-scale) xformOp", () => {
+        const stage = mapUsda(`#usda 1.0
+def Xform "World"
+{
+    double3 xformOp:scale = (0, 1, 1)
+    uniform token[] xformOpOrder = ["!invert!xformOp:scale"]
+}
+`);
+        const world = stage.root.children[0];
+        // Identity was substituted because (0, 1, 1) has no inverse.
+        expect(world.transform.translation).toEqual([0, 0, 0]);
+        expect(world.transform.scale[0]).toBeCloseTo(1);
+        expect(stage.diagnostics.some((diagnostic) => /singular/.test(diagnostic.message) && diagnostic.severity === "warning")).toBe(true);
+    });
+});
+
 describe("USD animation adapter timing", () => {
     it("bakes sample seconds to Babylon frames and holds the nearest endpoint outside the range", () => {
         const engine = new NullEngine();

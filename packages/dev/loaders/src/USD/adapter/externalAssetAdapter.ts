@@ -1,6 +1,7 @@
 import { AbstractMesh } from "core/Meshes/abstractMesh";
 import { Mesh } from "core/Meshes/mesh.pure";
 import { TransformNode } from "core/Meshes/transformNode.pure";
+import { type MultiMaterial } from "core/Materials/multiMaterial.pure";
 import { type AssetContainer } from "core/assetContainer";
 import { type Node } from "core/node";
 
@@ -280,12 +281,14 @@ function RepairTemplateHierarchy(template: AssetContainer): void {
     for (const node of [...template.transformNodes, ...template.meshes]) {
         let ancestor = node.parent;
         while (ancestor && !knownNodes.has(ancestor)) {
-            if (ancestor instanceof TransformNode) {
-                knownNodes.add(ancestor);
-                missingAncestors.push(ancestor);
-            } else if (ancestor instanceof Mesh) {
+            // Mesh extends TransformNode, so the Mesh check must come first or every Mesh ancestor
+            // would be misclassified as a plain TransformNode and stored in the wrong container array.
+            if (ancestor instanceof Mesh) {
                 knownNodes.add(ancestor);
                 missingMeshes.push(ancestor);
+            } else if (ancestor instanceof TransformNode) {
+                knownNodes.add(ancestor);
+                missingAncestors.push(ancestor);
             } else {
                 break;
             }
@@ -302,7 +305,17 @@ function RepairTemplateHierarchy(template: AssetContainer): void {
 
 function DisableExternalMeshCulling(node: Node): void {
     if (node instanceof AbstractMesh && node.material) {
-        node.material.backFaceCulling = false;
+        // MultiMaterial has no rendering behavior of its own; each submesh is drawn with its own
+        // submaterial's settings, so the wrapper's backFaceCulling must be propagated to every submaterial.
+        if (node.material.getClassName() === "MultiMaterial") {
+            for (const subMaterial of (node.material as MultiMaterial).subMaterials) {
+                if (subMaterial) {
+                    subMaterial.backFaceCulling = false;
+                }
+            }
+        } else {
+            node.material.backFaceCulling = false;
+        }
     }
     for (const child of node.getChildren()) {
         DisableExternalMeshCulling(child);
