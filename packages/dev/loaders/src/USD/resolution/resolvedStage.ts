@@ -4,9 +4,10 @@
  *
  * Design rules:
  * - Pure, plain data only. NO Babylon imports, NO USD-runtime objects, NO functions.
- * - Unsupported composition-bearing opinions are rejected before mapping. Supported single-layer
- *   semantics such as xformOp stacks, primvar interpolation and time samples are resolved before
- *   objects of these types are produced. The adapter performs zero USD reasoning.
+ * - Supported reference composition and remaining unsupported composition-bearing opinions are resolved
+ *   or rejected before mapping. Supported authored semantics such as xformOp stacks, primvar
+ *   interpolation and time samples are resolved before objects of these types are produced. The adapter
+ *   performs zero USD reasoning.
  * - Coordinates are expressed in USD's native space (right-handed, units = `metersPerUnit`,
  *   up = `upAxis`). The adapter preserves the caller's scene handedness and applies stage-local
  *   up-axis / unit conversion; authored geometry buffers are not rewritten.

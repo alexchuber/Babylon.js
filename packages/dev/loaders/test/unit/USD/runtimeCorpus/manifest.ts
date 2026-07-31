@@ -5,6 +5,7 @@ export interface IRuntimeCorpusEntry {
     readonly sizeBytes: number;
     readonly sidecars: readonly string[];
     readonly unreferencedAlternatives?: readonly string[];
+    readonly references?: readonly string[];
     readonly defaultPrim: string;
     readonly upAxis: "Y" | "Z";
     readonly metersPerUnit: number;
@@ -146,6 +147,18 @@ export const RobotArmAsset: IRuntimeCorpusEntry = {
     metersPerUnit: 0.01,
 } as const;
 
+export const RobotArm2WrapperAsset: IRuntimeCorpusEntry = {
+    fileName: "RobotArm2.usda",
+    description: "USDA wrapper with an authored relative prepend reference to the Robot Arm layer",
+    sha256: "76e5ffceb2d6eeab82685a4edac57867f4d11bdb77ff9f36528d9c06e6932ad5",
+    sizeBytes: 484,
+    sidecars: ["RobotArm2/RobotArm.usda"],
+    references: ["./RobotArm2/RobotArm.usda</RobotArm>"],
+    defaultPrim: "RobotArm2",
+    upAxis: "Y",
+    metersPerUnit: 1,
+} as const;
+
 export const RobotArmWrapperAsset: IRuntimeCorpusEntry = {
     fileName: "RobotArm.usda",
     description: "USDA wrapper that delegates the authored Robot Arm OBJ, active MTL, and color texture through the optional external-asset handler",
@@ -240,6 +253,7 @@ export const RuntimeCorpusManifest: readonly IRuntimeCorpusEntry[] = [
     HospitalBedWrapperAsset,
     PlaceholderAsset,
     RobotArmAsset,
+    RobotArm2WrapperAsset,
     RobotArmWrapperAsset,
     RoomAsset,
     SeahorseTextAsset,

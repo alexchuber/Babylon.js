@@ -5,6 +5,8 @@ import { ParseUsdaWithDiagnostics, DefaultUsdaParserLimits, type IUsdaParseDiagn
 import { MapLayerToResolvedStage } from "./mapping/stageMapper";
 import { UsdResourceLimitError, UsdUnsupportedFormatError, ValidateResourceLimit } from "../usdErrors";
 import { ApplySingleLayerPolicy, type ISingleLayerPolicyDiagnostic } from "./singleLayerPolicy";
+import { ComposeUsdLayersAsync } from "./composition";
+import { GetUsdLayerByteLength } from "./layerSource";
 
 /** The concrete on-disk USD container format, sniffed from magic bytes rather than the file extension. */
 export type UsdFormat = "usda" | "usdc" | "usdz";
@@ -38,14 +40,15 @@ export function DetectUsdFormat(data: ArrayBuffer | string): { format: UsdFormat
  * Resolves raw USD data into a fully-resolved {@link IResolvedStage}.
  *
  * This is the single entry point of the USD resolution layer. It sniffs the container format from the
- * data's magic bytes, parses USDA text, validates and normalizes its single layer without composition
- * or external-layer fetches, and maps it to a resolved stage. Binary crate (`PXR-USDC`) and USDZ package
- * (ZIP) input is rejected with a typed {@link UsdUnsupportedFormatError} before parsing.
+ * data's magic bytes, parses USDA text, optionally composes authored external references through the
+ * configured layer source, validates and normalizes the resulting layer, and maps it to a resolved stage.
+ * Binary crate (`PXR-USDC`) and USDZ package (ZIP) input is rejected with a typed
+ * {@link UsdUnsupportedFormatError} before parsing.
  *
  * @param data the raw USD data (USDA text as a string, or bytes that are sniffed and decoded as USDA text)
  * @param rootUrl root url to resolve external assets against
  * @param fileName name of the file being loaded, used for diagnostics
- * @param options loader options (parser resource limits and animation baking)
+ * @param options loader options (composition, parser resource limits and animation baking)
  * @returns a promise resolving to the fully-resolved stage
  * @throws UsdUnsupportedFormatError when the data is binary crate (USDC) or a USDZ package
  */
@@ -59,36 +62,41 @@ export async function ResolveUsdStageAsync(
     const parserLimits = ResolveParserLimits(options);
     const rootIdentifier = `${rootUrl ?? ""}${fileName ?? "stage.usda"}`;
 
-    // Reject an oversized raw buffer by byteLength before DetectUsdFormat/TextDecoder allocates a decoded
-    // copy, so the input-bytes cap actually bounds the expensive allocation it promises to bound.
-    if (typeof data !== "string") {
-        const maxInputBytes = parserLimits.maxInputBytes ?? DefaultUsdaParserLimits.maxInputBytes;
-        if (data.byteLength > maxInputBytes) {
-            throw new UsdResourceLimitError("input-bytes", maxInputBytes, `USD: input size exceeds the ${maxInputBytes}-byte resource cap.`, {
-                actual: data.byteLength,
-                path: rootIdentifier,
-            });
-        }
+    // Reject oversized root data before DetectUsdFormat/TextDecoder allocates a decoded copy, so the
+    // configured input/layer byte cap actually bounds the expensive allocation it promises to bound.
+    const maxInputBytes = parserLimits.maxInputBytes ?? DefaultUsdaParserLimits.maxInputBytes;
+    if (GetUsdLayerByteLength(data) > maxInputBytes) {
+        const kind = options.maxLayerBytes !== undefined ? "layer-bytes" : "input-bytes";
+        throw new UsdResourceLimitError(kind, maxInputBytes, `USD: input size exceeds the ${maxInputBytes}-byte resource cap.`, {
+            actual: GetUsdLayerByteLength(data),
+            path: rootIdentifier,
+        });
     }
 
     const detected = DetectUsdFormat(data);
 
-    // Only single-layer USDA text is supported. Binary crate and USDZ package bytes are sniffed from
-    // their magic bytes and rejected here, before the text parser, so they can never be decoded as text.
+    // USDA text is supported at the root. Binary crate and USDZ package bytes are sniffed from their
+    // magic bytes and rejected here, before the text parser, so they can never be decoded as text.
     if (detected.format === "usdc") {
-        throw new UsdUnsupportedFormatError("usdc", "USD: binary crate (USDC) data is not supported; only single-layer USDA text can be loaded.");
+        throw new UsdUnsupportedFormatError("usdc", "USD: binary crate (USDC) data is not supported; only USDA text can be loaded.");
     }
     if (detected.format === "usdz") {
-        throw new UsdUnsupportedFormatError("usdz", "USD: USDZ package data is not supported; only single-layer USDA text can be loaded.");
+        throw new UsdUnsupportedFormatError("usdz", "USD: USDZ package data is not supported; only USDA text can be loaded.");
     }
 
     const rootLayer = ParseRootUsdaLayer(detected.text ?? "", rootIdentifier, diagnostics, parserLimits);
-    return FreezeResolvedStage(MapSingleLayerToStage(rootLayer, diagnostics));
+    let normalizedLayer = rootLayer;
+    if (options.layerSource) {
+        const composed = await ComposeUsdLayersAsync(rootLayer, options.layerSource, options);
+        normalizedLayer = composed.layer;
+        diagnostics.push(...composed.diagnostics);
+    }
+    return FreezeResolvedStage(MapSingleLayerToStage(normalizedLayer, diagnostics));
 }
 
 // Maps one parsed USDA layer to a resolved stage through the single-layer policy seam. The policy
-// validates and normalizes the layer (rejecting composition-bearing and undefined-prim constructs and
-// pruning inactive/duplicate opinions) before the mapper runs, so no external layer is ever fetched.
+// validates and normalizes the composed layer (rejecting unsupported composition-bearing and
+// undefined-prim constructs and pruning inactive/duplicate opinions) before the mapper runs.
 function MapSingleLayerToStage(rootLayer: ISdfLayer, diagnostics: IResolvedDiagnostic[]): IResolvedStage {
     const normalized = ApplySingleLayerPolicy(rootLayer);
     for (const policyDiagnostic of normalized.diagnostics) {
@@ -111,7 +119,9 @@ function ToResolvedDiagnosticFromSingleLayerPolicy(diagnostic: ISingleLayerPolic
 // validates again defensively at its own entry point.
 function ResolveParserLimits(options: Readonly<USDLoadingOptions>): Partial<IUsdaParserLimits> {
     const limits: Partial<IUsdaParserLimits> = {};
-    if (options.maxInputBytes !== undefined) {
+    if (options.maxLayerBytes !== undefined) {
+        limits.maxInputBytes = ValidateResourceLimit(options.maxLayerBytes, "maxLayerBytes");
+    } else if (options.maxInputBytes !== undefined) {
         limits.maxInputBytes = ValidateResourceLimit(options.maxInputBytes, "maxInputBytes");
     }
     if (options.maxTokenCount !== undefined) {

@@ -11,6 +11,7 @@ import { type Scene } from "core/scene";
 import { type Nullable } from "core/types";
 import { AssetContainer } from "core/assetContainer";
 import { Logger } from "core/Misc/logger";
+import { Tools } from "core/Misc/tools.pure";
 
 import { USDFileLoaderMetadata } from "./usdFileLoader.metadata";
 import { type USDLoadingOptions } from "./usdLoadingOptions";
@@ -18,14 +19,15 @@ import { ResolveUsdStageAsync } from "./resolution/usdResolver";
 import { AdaptResolvedStageToScene } from "./adapter/usdAdapter";
 import { UsdResourceLimitError, ValidateResourceLimit } from "./usdErrors";
 import { DefaultUsdaParserLimits } from "./resolution/parser/usda/usdaParser";
+import { type IUsdLayerSource } from "./resolution/layerSource";
 
 /**
  * @experimental
- * OpenUSD scene loader plugin for single-layer USDA text (`.usda` and textual `.usd`).
+ * OpenUSD scene loader plugin for USDA text (`.usda` and textual `.usd`).
  *
  * Input is selected by content rather than by extension: USDA text is parsed, while binary crate
  * (`PXR-USDC`) and USDZ package (ZIP) bytes are rejected with a typed {@link UsdUnsupportedFormatError}.
- * The loader is split into a USD *resolution layer* (parsing, single-layer validation and stage/time
+ * The loader is split into a USD *resolution layer* (parsing, reference composition, single-layer validation and stage/time
  * evaluation, producing a fully-resolved {@link IResolvedStage}) and a Babylon *adapter layer*
  * (mapping the resolved stage onto Babylon nodes, meshes, materials and animations). Babylon is used
  * only as a rendering backend; it performs no USD reasoning.
@@ -91,7 +93,8 @@ export class USDFileLoader implements ISceneLoaderPluginAsync, ISceneLoaderPlugi
         const existingEntities = failureContainer ? CaptureSceneEntities(scene) : null;
         try {
             USDFileLoader._EnforceRawInputByteLimit(data, this._loadingOptions, fileName);
-            const stage = await ResolveUsdStageAsync(USDFileLoader._NormalizeData(data), rootUrl, fileName, this._loadingOptions);
+            const resolutionOptions = this._loadingOptions.layerSource ? this._loadingOptions : { ...this._loadingOptions, layerSource: DefaultUsdLayerSource };
+            const stage = await ResolveUsdStageAsync(USDFileLoader._NormalizeData(data), rootUrl, fileName, resolutionOptions);
 
             const result = await AdaptResolvedStageToScene(stage, scene, assetContainer, this._loadingOptions);
 
@@ -181,16 +184,22 @@ export class USDFileLoader implements ISceneLoaderPluginAsync, ISceneLoaderPlugi
 
     // Rejects oversized raw binary input (ArrayBuffer or ArrayBufferView) by byteLength at the public
     // loader boundary, before _NormalizeData copies a view or the resolver decodes the bytes, so the
-    // input-bytes cap bounds the allocation it promises to bound for every input kind. String input is
-    // covered by the parser's UTF-8 byte guard. The option is validated here too so an invalid
+    // layer/input byte cap bounds the allocation it promises to bound for every input kind. String input
+    // is covered by the parser's UTF-8 byte guard. The option is validated here too so an invalid
     // configuration fails fast with a typed UsdConfigurationError.
     private static _EnforceRawInputByteLimit(data: unknown, options: Readonly<USDLoadingOptions>, fileName: string | undefined): void {
         if (!(data instanceof ArrayBuffer) && !ArrayBuffer.isView(data)) {
             return;
         }
-        const maxInputBytes = options.maxInputBytes !== undefined ? ValidateResourceLimit(options.maxInputBytes, "maxInputBytes") : DefaultUsdaParserLimits.maxInputBytes;
+        const maxInputBytes =
+            options.maxLayerBytes !== undefined
+                ? ValidateResourceLimit(options.maxLayerBytes, "maxLayerBytes")
+                : options.maxInputBytes !== undefined
+                  ? ValidateResourceLimit(options.maxInputBytes, "maxInputBytes")
+                  : DefaultUsdaParserLimits.maxInputBytes;
         if (data.byteLength > maxInputBytes) {
-            throw new UsdResourceLimitError("input-bytes", maxInputBytes, `USD: input size exceeds the ${maxInputBytes}-byte resource cap.`, {
+            const kind = options.maxLayerBytes !== undefined ? "layer-bytes" : "input-bytes";
+            throw new UsdResourceLimitError(kind, maxInputBytes, `USD: input size exceeds the ${maxInputBytes}-byte resource cap.`, {
                 actual: data.byteLength,
                 path: fileName ?? "stage.usda",
             });
@@ -248,6 +257,10 @@ function CollectNewEntities(container: AssetContainer, scene: Scene, existing: R
     AppendNewEntities(container.multiMaterials, scene.multiMaterials, existing.multiMaterials);
     AppendNewEntities(container.textures, scene.textures, existing.textures);
 }
+
+const DefaultUsdLayerSource: IUsdLayerSource = {
+    loadLayerAsync: async (identifier) => await Tools.LoadFileAsync(identifier, false),
+};
 
 let _Registered = false;
 /**

@@ -5540,6 +5540,14 @@
             "dependsOn": ["Loaders", "Materials", "Meshes"]
         },
         {
+            "title": "USD loader - RobotArm2 reference",
+            "playgroundId": "#V85N7N#3",
+            "referenceImage": "usd-loader-robot-arm2-reference.png",
+            "renderCount": 1,
+            "dependsOn": ["Cameras", "Lights", "Loaders", "Materials", "Meshes", "Scene"],
+            "replace": "https://cdn.babylonjs.com,http://localhost:1337"
+        },
+        {
             "title": "USD loader - Room corpus",
             "playgroundId": "#ZYHYVP#0",
             "referenceImage": "usd-loader-room-corpus.png",

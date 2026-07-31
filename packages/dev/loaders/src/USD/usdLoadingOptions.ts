@@ -1,12 +1,48 @@
 import { type UsdExternalAssetHandler } from "./usdExternalAssetHandler";
+import { type IUsdLayerSource } from "./resolution/layerSource";
 
 /**
- * Options for loading OpenUSD single-layer USDA text (`.usda` and textual `.usd`) assets.
+ * Options for loading OpenUSD USDA text (`.usda` and textual `.usd`) assets.
  */
 // "USD" is not in the central eslint abbreviations allowlist; disable locally to avoid editing
 // pre-existing Babylon config and keep this POC's footprint additive.
 // eslint-disable-next-line @typescript-eslint/naming-convention
 export type USDLoadingOptions = {
+    /**
+     * Optional normalized source used to resolve authored external USD references. When omitted, the
+     * public SceneLoader plugin uses its URL root and Babylon's file loader as the source. Direct
+     * resolver callers without a source retain the no-composition safety policy.
+     * @see https://playground.babylonjs.com/#V85N7N#0
+     */
+    layerSource?: IUsdLayerSource;
+
+    /**
+     * Maximum UTF-8 byte size of every layer in a composed stage. Defaults to the single-layer parser
+     * input cap (256 MiB). Exceeding it throws a typed {@link UsdResourceLimitError} with kind
+     * `"layer-bytes"`.
+     */
+    maxLayerBytes?: number;
+
+    /**
+     * Maximum number of parsed layers in one composed stage, including the root layer. Defaults to 64.
+     */
+    maxLayerCount?: number;
+
+    /**
+     * Maximum external-reference depth below the root layer. The root layer is depth 0. Defaults to 32.
+     */
+    maxLayerDepth?: number;
+
+    /**
+     * Maximum number of authored prim specs across all unique parsed layers. Defaults to 1,000,000.
+     */
+    maxLayerNodes?: number;
+
+    /**
+     * Maximum composition work units spent traversing prims and reference opinions. Defaults to 10,000,000.
+     */
+    maxCompositionWork?: number;
+
     /**
      * Frames per second used when baking USD time samples into Babylon animations. Defaults to the
      * stage's `timeCodesPerSecond` when unset.
