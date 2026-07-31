@@ -5544,7 +5544,8 @@
             "playgroundId": "#V85N7N#0",
             "referenceImage": "usd-loader-robot-arm2-reference.png",
             "renderCount": 1,
-            "dependsOn": ["Cameras", "Lights", "Loaders", "Materials", "Meshes", "Scene"]
+            "dependsOn": ["Cameras", "Lights", "Loaders", "Materials", "Meshes", "Scene"],
+            "replace": "https://cdn.babylonjs.com,http://localhost:1337"
         },
         {
             "title": "USD loader - Room corpus",
