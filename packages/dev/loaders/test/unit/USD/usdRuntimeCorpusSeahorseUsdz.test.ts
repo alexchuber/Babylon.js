@@ -2,10 +2,12 @@ import { createHash } from "crypto";
 import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 
 import { VertexBuffer } from "core/Buffers/buffer";
+import { FreeCamera } from "core/Cameras/freeCamera";
 import { LoadAssetContainerAsync, ImportMeshAsync, type ISceneLoaderAsyncResult } from "core/Loading/sceneLoader";
 import { Material } from "core/Materials/material.pure";
 import { MultiMaterial } from "core/Materials/multiMaterial.pure";
 import { PBRMaterial } from "core/Materials/PBR/pbrMaterial.pure";
+import { Vector3 } from "core/Maths/math.vector";
 import { NullEngine } from "core/Engines/nullEngine";
 import { Logger } from "core/Misc/logger";
 import { type AbstractMesh } from "core/Meshes/abstractMesh";
@@ -176,6 +178,68 @@ describe("USD RuntimeCorpus - Seahorse USDZ", () => {
         expect(errors).toHaveLength(0);
         expect(warnings).toHaveLength(4);
     });
+
+    it("applies rootAnimation frame 750 and produces a deterministic non-root bone pose distinct from frame 0", () => {
+        // Use a dedicated scene with a camera so scene.render() can evaluate animation
+        const poseEngine = new NullEngine();
+        const poseScene = new Scene(poseEngine);
+        new FreeCamera("cam", Vector3.Zero(), poseScene);
+
+        // Re-import into a fresh scene to isolate state
+        const posePromise = ImportMeshAsync(bytes, poseScene, {
+            pluginExtension: ".usdz",
+            name: SeahorseUsdzAsset.fileName,
+        }).then((poseResult) => {
+            const skeleton = poseResult.skeletons[0];
+            expect(skeleton.bones).toHaveLength(198);
+
+            const rootAnim = poseResult.animationGroups.find((g) => g.name === "rootAnimation")!;
+            expect(rootAnim).toBeDefined();
+            expect(rootAnim.targetedAnimations).toHaveLength(198);
+            expect(rootAnim.to).toBeGreaterThanOrEqual(1500);
+
+            // Representative non-root bone: neck3 (index 10)
+            const neck3 = skeleton.bones.find((b) => b.name === "neck3")!;
+            expect(neck3).toBeDefined();
+
+            // Frame 0: capture rest-pose rotation
+            rootAnim.start(false, 1.0, 0, rootAnim.to);
+            rootAnim.goToFrame(0);
+            poseScene.render();
+
+            const frame0Pos = neck3.getPosition().asArray();
+            const frame0Rot = neck3.getRotationQuaternion()!.asArray();
+            expect(frame0Pos[0]).toBeCloseTo(0.57033521, 4);
+            expect(frame0Pos[1]).toBeCloseTo(-0.00189456, 4);
+            expect(frame0Rot[2]).toBeCloseTo(0.1828132, 4);
+            expect(frame0Rot[3]).toBeCloseTo(0.98314767, 4);
+
+            // Frame 750: capture animated pose — must differ from frame 0
+            rootAnim.goToFrame(750);
+            poseScene.render();
+
+            const frame750Pos = neck3.getPosition().asArray();
+            const frame750Rot = neck3.getRotationQuaternion()!.asArray();
+            expect(frame750Pos[0]).toBeCloseTo(0.58274376, 4);
+            expect(frame750Pos[1]).toBeCloseTo(-0.00337725, 4);
+            expect(frame750Pos[2]).toBeCloseTo(0.00466297, 4);
+            expect(frame750Rot[0]).toBeCloseTo(0.00064371, 4);
+            expect(frame750Rot[1]).toBeCloseTo(-0.00793926, 4);
+            expect(frame750Rot[2]).toBeCloseTo(0.19539243, 4);
+            expect(frame750Rot[3]).toBeCloseTo(0.98069279, 4);
+
+            // Prove frame 750 != frame 0 (regression guard against goToFrame no-op)
+            expect(Math.abs(frame750Rot[2] - frame0Rot[2])).toBeGreaterThan(0.01);
+            expect(Math.abs(frame750Pos[0] - frame0Pos[0])).toBeGreaterThan(0.005);
+
+            // Restore deterministic state
+            rootAnim.stop();
+            poseScene.dispose();
+            poseEngine.dispose();
+        });
+
+        return posePromise;
+    }, 120_000);
 
     it("keeps successful asset-container ownership off-scene and cleans failed loads", async () => {
         const containerEngine = new NullEngine();
