@@ -5541,7 +5541,7 @@
         },
         {
             "title": "USD loader - RobotArm2 reference",
-            "playgroundId": "#V85N7N#0",
+            "playgroundId": "#V85N7N#1",
             "referenceImage": "usd-loader-robot-arm2-reference.png",
             "renderCount": 1,
             "dependsOn": ["Cameras", "Lights", "Loaders", "Materials", "Meshes", "Scene"],

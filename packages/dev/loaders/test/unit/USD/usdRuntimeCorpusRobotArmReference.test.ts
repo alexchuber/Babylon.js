@@ -26,7 +26,6 @@ describe("USD RuntimeCorpus - RobotArm2 reference wrapper", () => {
     beforeAll(async () => {
         engine = new NullEngine();
         scene = new Scene(engine);
-        scene.useRightHandedSystem = true;
         requestedLayers = [];
 
         vi.spyOn(Tools, "LoadFileAsync").mockImplementation(async (identifier) => {
@@ -82,13 +81,14 @@ describe("USD RuntimeCorpus - RobotArm2 reference wrapper", () => {
         const stageRoot = container.transformNodes.find((node) => node.name === "__usd_root__")!;
         const wrapper = container.transformNodes.find((node) => node.name === "RobotArm2")!;
 
+        expect(scene.useRightHandedSystem).toBe(false);
         expect(wrapper.position.asArray()).toEqual([0, 0, 0]);
         expect(wrapper.scaling.asArray()).toEqual([1, 1, 1]);
         expect(stageRoot.scaling.x).toBeCloseTo(0.01, 5);
         expect(stageRoot.scaling.y).toBeCloseTo(0.01, 5);
-        expect(stageRoot.scaling.z).toBeCloseTo(0.01, 5);
+        expect(stageRoot.scaling.z).toBeCloseTo(-0.01, 5);
         expect(stageRoot.rotationQuaternion).toBeDefined();
-        expect(stageRoot.rotationQuaternion!.x).toBeCloseTo(-Math.sin(Math.PI / 4), 3);
+        expect(stageRoot.rotationQuaternion!.x).toBeCloseTo(Math.sin(Math.PI / 4), 3);
         expect(stageRoot.rotationQuaternion!.y).toBeCloseTo(0, 5);
         expect(stageRoot.rotationQuaternion!.z).toBeCloseTo(0, 5);
         expect(stageRoot.rotationQuaternion!.w).toBeCloseTo(Math.cos(Math.PI / 4), 3);
