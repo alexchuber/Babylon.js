@@ -45,6 +45,32 @@ function computeBounds(pos: Float32Array) {
     return { minX, maxX, minY, maxY, minZ, maxZ };
 }
 
+// Returns the maximum radius (perpendicular distance from the given axis) of vertices sitting
+// at the extreme (min or max) coordinate along that axis. A symmetric bounding box can't tell
+// "apex at +axis" from "apex at -axis" apart (both give the same min/max), but the apex is a
+// single point (radius ~0, no wider vertex at that extreme) while the base is a full circle
+// (radius ~authored radius), so this distinguishes which physical end is which regardless of
+// which axis they were rotated onto. Uses the max (not average) because the base disk also has
+// a center vertex at the same extreme coordinate with radius 0, which would otherwise dilute an
+// average down from the ring's true radius.
+function radiusAtAxisExtreme(pos: Float32Array, axisComponent: 0 | 1 | 2, extreme: "min" | "max"): number {
+    const others = ([0, 1, 2] as const).filter((c) => c !== axisComponent) as [number, number];
+    let extremeValue = extreme === "max" ? -Infinity : Infinity;
+    for (let v = 0; v < pos.length; v += 3) {
+        const value = pos[v + axisComponent];
+        extremeValue = extreme === "max" ? Math.max(extremeValue, value) : Math.min(extremeValue, value);
+    }
+    let maxRadius = 0;
+    for (let v = 0; v < pos.length; v += 3) {
+        if (Math.abs(pos[v + axisComponent] - extremeValue) < 1e-4) {
+            const a = pos[v + others[0]];
+            const b = pos[v + others[1]];
+            maxRadius = Math.max(maxRadius, Math.sqrt(a * a + b * b));
+        }
+    }
+    return maxRadius;
+}
+
 function assertWindingMatchesNormals(pos: Float32Array, idx: Uint32Array, nrm: Float32Array) {
     for (let t = 0; t < idx.length; t += 3) {
         const i0 = idx[t],
@@ -369,6 +395,52 @@ def Cone "C"
         expect(b.maxY).toBeCloseTo(1.0, 4);
         expect(b.minZ).toBeCloseTo(-1.0);
         expect(b.maxZ).toBeCloseTo(1.0);
+    });
+
+    // --- Apex placement (base at -axis/2, apex at +axis/2) ---
+    // A symmetric bounding box can't distinguish "apex at +axis" from "apex at -axis" (both
+    // produce the same min/max), so these tests check which extreme is a single point (the
+    // apex, radius ~0) versus a full circle (the base, radius ~authored radius) directly.
+
+    it("places the apex at +Z, not -Z, for the default unauthored axis (regression)", async () => {
+        const stage = await resolveUsda(`#usda 1.0
+def Cone "C"
+{
+    double radius = 1
+    double height = 2
+}
+`);
+        const pos = stage.meshes[0].positions;
+        expect(radiusAtAxisExtreme(pos, 2, "max")).toBeCloseTo(0, 3);
+        expect(radiusAtAxisExtreme(pos, 2, "min")).toBeCloseTo(1, 3);
+    });
+
+    it("places the apex at +X for authored axis=X", async () => {
+        const stage = await resolveUsda(`#usda 1.0
+def Cone "C"
+{
+    double radius = 1
+    double height = 2
+    uniform token axis = "X"
+}
+`);
+        const pos = stage.meshes[0].positions;
+        expect(radiusAtAxisExtreme(pos, 0, "max")).toBeCloseTo(0, 3);
+        expect(radiusAtAxisExtreme(pos, 0, "min")).toBeCloseTo(1, 3);
+    });
+
+    it("places the apex at +Y for authored axis=Y (canonical, no rotation)", async () => {
+        const stage = await resolveUsda(`#usda 1.0
+def Cone "C"
+{
+    double radius = 1
+    double height = 2
+    uniform token axis = "Y"
+}
+`);
+        const pos = stage.meshes[0].positions;
+        expect(radiusAtAxisExtreme(pos, 1, "max")).toBeCloseTo(0, 3);
+        expect(radiusAtAxisExtreme(pos, 1, "min")).toBeCloseTo(1, 3);
     });
 
     // --- doubleSided & display color ---

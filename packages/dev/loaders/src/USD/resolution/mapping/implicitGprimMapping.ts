@@ -637,9 +637,13 @@ function BuildSphereMesh(radius: number, prim: ISdfPrimSpec, inheritedPrimvars: 
     };
 }
 
-// Rotates a flat xyz buffer from canonical Y-up to the target axis.
-// Y→X: (x,y,z) → (y,-x,z), i.e. 90° rotation around Z
-// Y→Z: (x,y,z) → (x,z,-y), i.e. -90° rotation around X
+// Rotates a flat xyz buffer from canonical Y-up to the target axis. Must satisfy the same
+// "base at -height/2, apex at +height/2 along the chosen axis" contract as the canonical
+// construction (canonical +Y is the apex), so canonical +Y must land on the target axis's
+// +half. Both rotations below are proper (determinant +1, no reflection), so triangle winding
+// and normal orientation carry over unchanged; only the rotation *direction* differs.
+// Y→X: (x,y,z) → (y,-x,z), i.e. 90° rotation around Z. Canonical +Y (apex) → +X. Correct.
+// Y→Z: (x,y,z) → (x,-z,y), i.e. 90° rotation around X. Canonical +Y (apex) → +Z.
 function RotateBufferToAxis(buf: Float32Array, axis: Axis): void {
     for (let i = 0; i < buf.length; i += 3) {
         const x = buf[i];
@@ -652,8 +656,8 @@ function RotateBufferToAxis(buf: Float32Array, axis: Axis): void {
         } else {
             // Z
             buf[i] = x;
-            buf[i + 1] = z;
-            buf[i + 2] = -y;
+            buf[i + 1] = -z;
+            buf[i + 2] = y;
         }
     }
 }
