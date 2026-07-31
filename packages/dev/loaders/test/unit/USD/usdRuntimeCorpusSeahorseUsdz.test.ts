@@ -67,16 +67,20 @@ describe("USD RuntimeCorpus - Seahorse USDZ", () => {
             const entryBytes = archive.readEntry(entry.name);
             expect(entryBytes.byteLength).toBe(expected.sizeBytes);
             expect(createHash("sha256").update(entryBytes).digest("hex")).toBe(expected.sha256);
-            if (expected.format === "jpeg") {
-                expect(ReadJpegDimensions(entryBytes)).toEqual({ width: expected.width, height: expected.height });
-                const uri = archive.assetSource.resolveAssetUri(entry.name, stage.layerIdentifier)!;
-                expect(uri).toMatch(/^data:image\/jpeg;base64,/);
-                expect(
-                    createHash("sha256")
-                        .update(Buffer.from(uri.slice("data:image/jpeg;base64,".length), "base64"))
-                        .digest("hex")
-                ).toBe(expected.sha256);
-            }
+        }
+
+        const jpegEntries = SeahorseUsdzAsset.embeddedEntries!.filter((e) => e.format === "jpeg");
+        expect(jpegEntries).toHaveLength(8);
+        for (const expected of jpegEntries) {
+            const entryBytes = archive.readEntry(expected.fileName);
+            expect(ReadJpegDimensions(entryBytes)).toEqual({ width: expected.width, height: expected.height });
+            const uri = archive.assetSource.resolveAssetUri(expected.fileName, stage.layerIdentifier)!;
+            expect(uri).toMatch(/^data:image\/jpeg;base64,/);
+            expect(
+                createHash("sha256")
+                    .update(Buffer.from(uri.slice("data:image/jpeg;base64,".length), "base64"))
+                    .digest("hex")
+            ).toBe(expected.sha256);
         }
     });
 

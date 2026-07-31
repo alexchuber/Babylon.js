@@ -5620,6 +5620,15 @@
             "dependsOn": ["Loaders"]
         },
         {
+            "title": "USD loader - Seahorse USDZ",
+            "playgroundId": "#MLDQWB#0",
+            "referenceImage": "usd-loader-seahorse-usdz.png",
+            "renderCount": 50,
+            "dependsOn": ["Loaders", "Materials", "Meshes", "PBR", "Textures", "Animations", "Bones"],
+            "replace": "https://cdn.babylonjs.com,http://localhost:1337",
+            "excludeFromPerformance": true
+        },
+        {
             "title": "USD loader - Sphere corpus",
             "playgroundId": "#3HOT5B#0",
             "referenceImage": "usd-loader-sphere-corpus.png",
