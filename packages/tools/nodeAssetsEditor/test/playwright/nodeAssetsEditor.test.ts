@@ -778,7 +778,6 @@ test.describe("Node Assets Editor — maintained default pipeline", () => {
 
         const palette = page.getByTestId("node-palette");
         const categories = palette.getByTestId("palette-category");
-        const families = palette.getByTestId("palette-family");
         const items = palette.getByTestId("palette-item-label");
         const showPrimitives = page.getByRole("checkbox", { name: "Show primitives" });
         const search = page.getByPlaceholder("Search palette");
@@ -816,7 +815,6 @@ test.describe("Node Assets Editor — maintained default pipeline", () => {
         await expect(showPrimitives).not.toBeChecked();
         await expect(nodeGeometryCategory).toHaveCount(0);
         await expect(categories).toHaveText(["Inputs (6)", "Universal (17)", "glTF (3)"]);
-        await expect(families).toHaveText(["Aggregate imports", "Cleanup", "Reduction", "Structure", "Attributes", "Textures", "Encoding/output"]);
         await expect(items).toHaveText(defaultItems);
         await search.fill("Write glTF");
         await expect(items).toHaveCount(0);
@@ -828,7 +826,6 @@ test.describe("Node Assets Editor — maintained default pipeline", () => {
         await expect(items).toHaveText(["Write glTF"]);
         await search.clear();
         await expect(categories).toHaveText(["Inputs (12)", "Universal (22)", "glTF (5)", "OBJ (1)", "USD (1)", "Babylon (1)", "FBX (1)", "Node Geometry (1)"]);
-        await expect(families).toHaveText(["Aggregate imports", "Cleanup", "Reduction", "Structure", "Attributes", "Textures", "Encoding/output"]);
         await expect(items).toHaveText([
             ...defaultItems.slice(0, 6),
             "Read glTF",

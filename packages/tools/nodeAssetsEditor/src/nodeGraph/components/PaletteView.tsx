@@ -35,11 +35,6 @@ const useStyles = makeStyles({
         gap: tokens.spacingVerticalXS,
         paddingBottom: tokens.spacingVerticalS,
     },
-    family: {
-        color: tokens.colorNeutralForeground2,
-        fontWeight: tokens.fontWeightSemibold,
-        marginTop: tokens.spacingVerticalXS,
-    },
     row: {
         alignItems: "flex-start",
         backgroundColor: tokens.colorNeutralBackground1,
@@ -188,11 +183,6 @@ export const PaletteView: FunctionComponent<{ context: EditorContextValue; prefe
                                             const labelId = `palette-item-label-${item.id}`;
                                             return (
                                                 <Fragment key={item.id}>
-                                                    {item.family !== undefined && item.family !== category.items[itemIndex - 1]?.family && (
-                                                        <Caption1 className={classes.family} data-testid="palette-family">
-                                                            {item.family}
-                                                        </Caption1>
-                                                    )}
                                                     <PaletteItemTooltip content={tooltipContent}>
                                                         <div
                                                             aria-labelledby={labelId}
