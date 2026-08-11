@@ -10,7 +10,6 @@ import {
     OptionsRegular,
     SaveRegular,
     ScaleFitRegular,
-    TextExpandRegular,
 } from "@fluentui/react-icons";
 
 import { type ServiceDefinition } from "shared-ui-components/modularTool/modularity/serviceDefinition";
@@ -21,40 +20,32 @@ import { useObservableState } from "shared-ui-components/modularTool/hooks/obser
 
 import { Logger } from "core/Misc/logger";
 
-import { type GraphEditorState } from "../nodeGraph/editorState";
-import { CanvasViewController, type EditorContextValue } from "../nodeGraph/editorContext";
-import { PaletteView } from "../nodeGraph/components/PaletteView";
-import { PropertiesView } from "../nodeGraph/components/PropertiesView";
+import { GlobalState } from "../globalState";
+import { GraphEditor } from "../graphEditor";
+import { NodeListComponent } from "../components/nodeList/nodeListComponent";
+import { PropertyTabComponent } from "../components/propertyTab/propertyTabComponent";
 
 import { BuildOrchestrator } from "../nodeAssets/buildOrchestrator";
 import { NodeAssetGraphController } from "../nodeAssets/nodeAssetGraphController";
+import { SharedGraphBridge } from "../nodeAssets/sharedGraphBridge";
 import { PreviewController } from "../nodeAssets/previewController";
-import { CreateBuiltInNodeAssetLibraryEntries } from "../nodeAssets/builtInLibraryEntries";
-import { LibraryControls } from "../nodeAssets/components/LibraryControls";
 import { PreviewPane } from "../nodeAssets/components/PreviewPane";
 import { GLTFValidationController } from "../nodeAssets/gltfValidationController";
 import { GLTFValidationPane } from "../nodeAssets/components/GLTFValidationPane";
 import { DownloadBlob, PromptForFileAsync } from "../nodeAssets/browserFiles";
-import { type INodeAssetLibraryEntry, type INodeAssetLibraryStorage, NodeAssetLibrary } from "../nodeAssets/nodeAssetLibrary";
-import { type IPalettePreferenceStorage, PalettePreferences } from "../nodeAssets/palettePreferences";
 
-const BrowserNodeAssetStorage: INodeAssetLibraryStorage & IPalettePreferenceStorage = {
-    getItem: (key) => window.localStorage.getItem(key),
-    setItem: (key, value) => window.localStorage.setItem(key, value),
-};
-
-// Toolbar button that reflects the store's undo availability.
-const UndoButton: FunctionComponent<{ state: GraphEditorState }> = (props) => {
-    const { state } = props;
-    const canUndo = useObservableState(() => state.canUndo, state.onChanged);
-    return <Button appearance="transparent" icon={ArrowUndoRegular} title="Undo" ariaLabel="Undo" disabled={!canUndo} onClick={() => state.undo()} />;
+// Toolbar button that reflects the store's undo availability (uses controller's state).
+const UndoButton: FunctionComponent<{ controller: NodeAssetGraphController }> = (props) => {
+    const { controller } = props;
+    const canUndo = useObservableState(() => controller.state.canUndo, controller.state.onChanged);
+    return <Button appearance="transparent" icon={ArrowUndoRegular} title="Undo" ariaLabel="Undo" disabled={!canUndo} onClick={() => controller.state.undo()} />;
 };
 
 // Toolbar button that reflects the store's redo availability.
-const RedoButton: FunctionComponent<{ state: GraphEditorState }> = (props) => {
-    const { state } = props;
-    const canRedo = useObservableState(() => state.canRedo, state.onChanged);
-    return <Button appearance="transparent" icon={ArrowRedoRegular} title="Redo" ariaLabel="Redo" disabled={!canRedo} onClick={() => state.redo()} />;
+const RedoButton: FunctionComponent<{ controller: NodeAssetGraphController }> = (props) => {
+    const { controller } = props;
+    const canRedo = useObservableState(() => controller.state.canRedo, controller.state.onChanged);
+    return <Button appearance="transparent" icon={ArrowRedoRegular} title="Redo" ariaLabel="Redo" disabled={!canRedo} onClick={() => controller.state.redo()} />;
 };
 
 interface INodeAssetEditorTextFile {
@@ -89,27 +80,11 @@ export const NodeAssetsEditorServiceDefinition: ServiceDefinition<[], [IShellSer
     friendlyName: "Node Assets Editor Service",
     consumes: [ShellServiceIdentity, ToastServiceIdentity],
     factory: (shellService, toastService) => {
+        const globalState = new GlobalState();
         const controller = new NodeAssetGraphController();
+        const bridge = new SharedGraphBridge(controller, globalState);
         const preview = new PreviewController();
-        const library = new NodeAssetLibrary({ builtInEntries: CreateBuiltInNodeAssetLibraryEntries(), storage: BrowserNodeAssetStorage });
-        const palettePreferences = new PalettePreferences(BrowserNodeAssetStorage);
         const validation = new GLTFValidationController();
-        const state = controller.state;
-        const view = new CanvasViewController();
-        let currentLibraryBaseName: string | undefined;
-
-        const context: EditorContextValue = {
-            state,
-            diagnostics: controller.diagnostics,
-            getPaletteCategories: (options) => controller.getPaletteCategories(options),
-            buildPropertySections: (node) => controller.buildPropertySections(node),
-            view,
-            createNodeFromPaletteItem: (paletteItemId, position) => controller.createNodeFromPaletteItem(paletteItemId, position),
-            aggregatePresentation: {
-                isAggregateNode: (nodeId) => controller.isAggregateNode(nodeId),
-                setExpanded: (nodeId, expanded) => controller.setAggregateExpanded(nodeId, expanded),
-            },
-        };
 
         const orchestrator = new BuildOrchestrator({ controller, preview, validation });
         orchestrator.start();
@@ -119,30 +94,13 @@ export const NodeAssetsEditorServiceDefinition: ServiceDefinition<[], [IShellSer
             DownloadBlob(controller.serialize(), "nodeAsset.json", "application/json");
         };
 
-        const load = (json: string, libraryBaseName?: string): void => {
-            controller.load(json);
-            currentLibraryBaseName = libraryBaseName;
-        };
-
-        const saveToLibrary = (): INodeAssetLibraryEntry => {
-            const entry = library.save(controller.serialize(), currentLibraryBaseName);
-            toastService.showToast(`Saved "${entry.name}" to the library.`, { intent: "success" });
-            return entry;
-        };
-
-        const loadFromLibrary = (entry: INodeAssetLibraryEntry): void => {
-            load(entry.serializedGraph, entry.baseName);
-        };
-
         // Prompts for a saved JSON file and loads it into the editor.
         const loadAsync = async (): Promise<void> => {
             const file = await PromptForFileAsync("application/json,.json");
             if (!file) {
                 return;
             }
-            if (await LoadNodeAssetEditorFileAsync(controller, file, (message) => toastService.showToast(message, { intent: "error" }))) {
-                currentLibraryBaseName = undefined;
-            }
+            await LoadNodeAssetEditorFileAsync(controller, file, (message) => toastService.showToast(message, { intent: "error" }));
         };
 
         const exportObserver = controller.onExportRequested.add((fileName) => orchestrator.exportLastSuccessfulBuild(fileName));
@@ -150,7 +108,7 @@ export const NodeAssetsEditorServiceDefinition: ServiceDefinition<[], [IShellSer
         const registrations = [
             shellService.addCentralContent({
                 key: "Graph Canvas",
-                component: () => <LibraryControls context={context} library={library} onSave={saveToLibrary} onLoad={loadFromLibrary} />,
+                component: () => <GraphEditor globalState={globalState} bridge={bridge} />,
             }),
             shellService.addSidePane({
                 key: "Palette",
@@ -159,7 +117,7 @@ export const NodeAssetsEditorServiceDefinition: ServiceDefinition<[], [IShellSer
                 horizontalLocation: "left",
                 verticalLocation: "top",
                 teachingMoment: false,
-                content: () => <PaletteView context={context} preferences={palettePreferences} />,
+                content: () => <NodeListComponent globalState={globalState} />,
             }),
             shellService.addSidePane({
                 key: "Preview",
@@ -188,7 +146,7 @@ export const NodeAssetsEditorServiceDefinition: ServiceDefinition<[], [IShellSer
                 horizontalLocation: "right",
                 verticalLocation: "top",
                 teachingMoment: false,
-                content: () => <PropertiesView context={context} />,
+                content: () => <PropertyTabComponent globalState={globalState} />,
             }),
             shellService.addToolbarItem({
                 key: "Undo",
@@ -196,7 +154,7 @@ export const NodeAssetsEditorServiceDefinition: ServiceDefinition<[], [IShellSer
                 verticalLocation: "top",
                 order: 0,
                 teachingMoment: false,
-                component: () => <UndoButton state={state} />,
+                component: () => <UndoButton controller={controller} />,
             }),
             shellService.addToolbarItem({
                 key: "Redo",
@@ -204,7 +162,7 @@ export const NodeAssetsEditorServiceDefinition: ServiceDefinition<[], [IShellSer
                 verticalLocation: "top",
                 order: 1,
                 teachingMoment: false,
-                component: () => <RedoButton state={state} />,
+                component: () => <RedoButton controller={controller} />,
             }),
             shellService.addToolbarItem({
                 key: "ZoomToFit",
@@ -212,24 +170,13 @@ export const NodeAssetsEditorServiceDefinition: ServiceDefinition<[], [IShellSer
                 verticalLocation: "top",
                 order: 2,
                 teachingMoment: false,
-                component: () => <Button appearance="transparent" icon={ScaleFitRegular} title="Zoom to fit" ariaLabel="Zoom to fit" onClick={() => view.zoomToFit()} />,
-            }),
-            shellService.addToolbarItem({
-                key: "Reorganize",
-                horizontalLocation: "left",
-                verticalLocation: "top",
-                order: 3,
-                teachingMoment: false,
                 component: () => (
                     <Button
                         appearance="transparent"
-                        icon={TextExpandRegular}
-                        title="Reorganize"
-                        ariaLabel="Reorganize"
-                        onClick={() => {
-                            state.reorganize();
-                            view.zoomToFit();
-                        }}
+                        icon={ScaleFitRegular}
+                        title="Zoom to fit"
+                        ariaLabel="Zoom to fit"
+                        onClick={() => globalState.onZoomToFitRequiredObservable.notifyObservers()}
                     />
                 ),
             }),
@@ -254,6 +201,8 @@ export const NodeAssetsEditorServiceDefinition: ServiceDefinition<[], [IShellSer
         return {
             dispose: () => {
                 orchestrator.dispose();
+                bridge.detach();
+                globalState.dispose();
                 controller.onExportRequested.remove(exportObserver);
                 for (const registration of registrations) {
                     registration.dispose();
