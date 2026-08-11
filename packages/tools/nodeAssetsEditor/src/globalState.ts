@@ -64,6 +64,7 @@ export class GlobalState {
         this.stateManager = new StateManager();
         this.stateManager.data = this;
         this.stateManager.lockObject = this.lockObject;
+        this.stateManager.hostDocument = document;
 
         // Register all ledgers and designs
         RegisterToDisplayManagers();
