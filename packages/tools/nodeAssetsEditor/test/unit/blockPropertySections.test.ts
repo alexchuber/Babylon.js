@@ -88,10 +88,12 @@ describe("block property sections (unified descriptor path)", () => {
             expect(FindProperty(controller, importNode, "Upload Node Geometry\u2026", "button")).toBeDefined();
 
             const paletteLabels = controller.getPaletteCategories().flatMap((category) => category.items.map((item) => item.label));
-            expect(paletteLabels).toContain("Import Node Geometry");
-            expect(paletteLabels).not.toContain("Read Node Geometry");
-            expect(paletteLabels).not.toContain("Node Geometry to Universal");
-            expect(paletteLabels).not.toContain("Evaluate Node Geometry");
+            expect(paletteLabels).not.toContain("Import Node Geometry");
+            expect(paletteLabels).toContain("Read Node Geometry");
+            expect(paletteLabels).toContain("Node Geometry → Universal");
+
+            const aggregateLabels = controller.getPaletteCategories({ showAggregates: true }).flatMap((category) => category.items.map((item) => item.label));
+            expect(aggregateLabels).toContain("Import Node Geometry");
         } finally {
             controller.dispose();
         }
@@ -109,9 +111,12 @@ describe("block property sections (unified descriptor path)", () => {
             expect(FindProperty(controller, importNode, "Upload FBX\u2026", "button")).toBeDefined();
 
             const paletteLabels = controller.getPaletteCategories().flatMap((category) => category.items.map((item) => item.label));
-            expect(paletteLabels).toContain("Import FBX");
-            expect(paletteLabels).not.toContain("Read FBX");
-            expect(paletteLabels).not.toContain("FBX \u2192 Universal");
+            expect(paletteLabels).not.toContain("Import FBX");
+            expect(paletteLabels).toContain("Read FBX");
+            expect(paletteLabels).toContain("FBX \u2192 Universal");
+
+            const aggregateLabels = controller.getPaletteCategories({ showAggregates: true }).flatMap((category) => category.items.map((item) => item.label));
+            expect(aggregateLabels).toContain("Import FBX");
         } finally {
             controller.dispose();
         }
@@ -254,7 +259,7 @@ describe("block property sections (unified descriptor path)", () => {
         const controller = new NodeAssetGraphController();
         try {
             const visibleLabels = controller.getPaletteCategories().flatMap((category) => category.items.map((item) => item.label));
-            const primitiveLabels = controller.getPaletteCategories({ showPrimitives: true }).flatMap((category) => category.items.map((item) => item.label));
+            const allLabels = controller.getPaletteCategories({ showAggregates: true }).flatMap((category) => category.items.map((item) => item.label));
 
             expect(abstracted.map((descriptor) => [descriptor.label, descriptor.abstractedBy])).toEqual([
                 ["Deduplicate Materials", "deduplicate-resources"],
@@ -262,9 +267,10 @@ describe("block property sections (unified descriptor path)", () => {
                 ["Reuse Identical Meshes", "deduplicate-resources"],
                 ["Deduplicate Data", "deduplicate-resources"],
             ]);
-            expect(visibleLabels).toContain("Deduplicate Resources");
-            expect(visibleLabels).not.toEqual(expect.arrayContaining(abstracted.map((descriptor) => descriptor.label)));
-            expect(primitiveLabels).toEqual(expect.arrayContaining(abstracted.map((descriptor) => descriptor.label)));
+            expect(visibleLabels).not.toContain("Deduplicate Resources");
+            expect(visibleLabels).toEqual(expect.arrayContaining(abstracted.map((descriptor) => descriptor.label)));
+            expect(allLabels).toContain("Deduplicate Resources");
+            expect(allLabels).toEqual(expect.arrayContaining(abstracted.map((descriptor) => descriptor.label)));
         } finally {
             controller.dispose();
         }

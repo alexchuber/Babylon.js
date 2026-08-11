@@ -6,17 +6,17 @@ export interface IPalettePreferenceStorage {
     setItem(key: string, value: string): void;
 }
 
-const ShowPrimitivesStorageKey = "BabylonJS.NodeAssetsEditor.ShowPrimitives.v1";
+const ShowAggregatesStorageKey = "BabylonJS.NodeAssetsEditor.ShowAggregates.v1";
 
 /** Persists palette discovery preferences without coupling them to graph state. */
 export class PalettePreferences implements IPalettePreferences {
     public constructor(private readonly _storage: IPalettePreferenceStorage) {}
 
-    public get showPrimitives(): boolean {
-        return this._storage.getItem(ShowPrimitivesStorageKey) === "true";
+    public get showAggregates(): boolean {
+        return this._storage.getItem(ShowAggregatesStorageKey) === "true";
     }
 
-    public set showPrimitives(value: boolean) {
-        this._storage.setItem(ShowPrimitivesStorageKey, String(value));
+    public set showAggregates(value: boolean) {
+        this._storage.setItem(ShowAggregatesStorageKey, String(value));
     }
 }

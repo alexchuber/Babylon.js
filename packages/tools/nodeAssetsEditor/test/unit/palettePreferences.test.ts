@@ -15,14 +15,14 @@ class MemoryStorage implements IPalettePreferenceStorage {
 }
 
 describe("PalettePreferences", () => {
-    it("defaults Show primitives off and restores its persisted value", () => {
+    it("defaults Show aggregates off and restores its persisted value", () => {
         const storage = new MemoryStorage();
         const preferences = new PalettePreferences(storage);
 
-        expect(preferences.showPrimitives).toBe(false);
+        expect(preferences.showAggregates).toBe(false);
 
-        preferences.showPrimitives = true;
+        preferences.showAggregates = true;
 
-        expect(new PalettePreferences(storage).showPrimitives).toBe(true);
+        expect(new PalettePreferences(storage).showAggregates).toBe(true);
     });
 });

@@ -112,8 +112,9 @@ export const PaletteView: FunctionComponent<{ context: EditorContextValue; prefe
     const { context, preferences } = props;
     const classes = useStyles();
     const [filter, setFilter] = useState("");
-    const [showPrimitives, setShowPrimitives] = useState(() => preferences.showPrimitives);
-    const categories = useMemo(() => context.getPaletteCategories({ filter, showPrimitives }), [context, filter, showPrimitives]);
+    const [showAggregates, setShowAggregates] = useState(() => preferences.showAggregates);
+    const showAggregatesToggle = useMemo(() => new URLSearchParams(window.location.search).has("showAggregates"), []);
+    const categories = useMemo(() => context.getPaletteCategories({ filter, showAggregates }), [context, filter, showAggregates]);
     const categoryValues = useMemo(() => categories.map(GetCategoryValue), [categories]);
     const [openCategoryValues, setOpenCategoryValues] = useState<string[]>(categoryValues);
     const isFiltering = filter.trim().length > 0;
@@ -144,15 +145,17 @@ export const PaletteView: FunctionComponent<{ context: EditorContextValue; prefe
     return (
         <div className={classes.root} data-testid="node-palette">
             <div className={classes.header}>
-                <Checkbox
-                    checked={showPrimitives}
-                    label="Show primitives"
-                    onChange={(_, data) => {
-                        const nextValue = data.checked === true;
-                        preferences.showPrimitives = nextValue;
-                        setShowPrimitives(nextValue);
-                    }}
-                />
+                {showAggregatesToggle && (
+                    <Checkbox
+                        checked={showAggregates}
+                        label="Show aggregates"
+                        onChange={(_, data) => {
+                            const nextValue = data.checked === true;
+                            preferences.showAggregates = nextValue;
+                            setShowAggregates(nextValue);
+                        }}
+                    />
+                )}
                 <SearchBar onChange={setFilter} placeholder="Search palette" />
             </div>
             {categories.length > 0 ? (

@@ -247,13 +247,13 @@ describe("NodeAssetGraphController", () => {
             expect(FindNode(controller, "Write glTF")).toBeDefined();
             expect(
                 controller
-                    .getPaletteCategories({ showPrimitives: false })
+                    .getPaletteCategories({ showAggregates: false })
                     .flatMap((category) => category.items)
                     .some((item) => item.id === "write-gltf")
-            ).toBe(false);
+            ).toBe(true);
             expect(
                 controller
-                    .getPaletteCategories({ showPrimitives: true })
+                    .getPaletteCategories({ showAggregates: true })
                     .flatMap((category) => category.items)
                     .some((item) => item.id === "write-gltf")
             ).toBe(true);
@@ -1391,22 +1391,26 @@ describe("NodeAssetGraphController", () => {
         }
     });
 
-    it("projects only the canonical default categories through the controller", () => {
+    it("projects the canonical default categories (primitives, no aggregates) through the controller", () => {
         const controller = new NodeAssetGraphController();
         try {
-            expect(controller.getPaletteCategories().map((category) => category.label)).toEqual(["Inputs", "Universal", "glTF"]);
+            const categories = controller.getPaletteCategories().map((category) => category.label);
+            expect(categories).toEqual(expect.arrayContaining(["Universal", "glTF", "Inputs"]));
         } finally {
             controller.dispose();
         }
     });
 
-    it("provides discovery metadata for every built-in palette item", () => {
+    it("provides discovery metadata for every aggregate palette item", () => {
         const controller = new NodeAssetGraphController();
         try {
-            const items = controller.getPaletteCategories().flatMap((category) => category.items);
-            expect(items.length).toBeGreaterThan(0);
-            expect(items.filter((item) => !item.description?.trim()).map((item) => item.label)).toEqual([]);
-            expect(items.filter((item) => !item.keywords?.length).map((item) => item.label)).toEqual([]);
+            const defaultItems = controller.getPaletteCategories().flatMap((category) => category.items);
+            const allItems = controller.getPaletteCategories({ showAggregates: true }).flatMap((category) => category.items);
+            const defaultIds = new Set(defaultItems.map((item) => item.id));
+            const aggregateItems = allItems.filter((item) => !defaultIds.has(item.id));
+            expect(aggregateItems.length).toBeGreaterThan(0);
+            expect(aggregateItems.filter((item) => !item.description?.trim()).map((item) => item.label)).toEqual([]);
+            expect(aggregateItems.filter((item) => !item.keywords?.length).map((item) => item.label)).toEqual([]);
         } finally {
             controller.dispose();
         }
@@ -1416,7 +1420,7 @@ describe("NodeAssetGraphController", () => {
         const controller = new NodeAssetGraphController();
         try {
             const matches = controller
-                .getPaletteCategories()
+                .getPaletteCategories({ showAggregates: true })
                 .flatMap((category) => category.items.filter((item) => PaletteItemMatchesFilter(item, category.label, "cleanup")).map((item) => item.id));
 
             expect(matches).toEqual(

@@ -19,11 +19,13 @@ const DefaultPaletteCategory = "Blocks";
  */
 export function BuildPaletteCategories(descriptors: readonly IBlockDescriptor[], options: IPaletteProjectionOptions = {}): readonly IPaletteCategory[] {
     const itemsByCategory = new Map<string, IPaletteItem[]>();
-    const orderedDescriptors = options.showPrimitives
-        ? [...descriptors.filter((descriptor) => descriptor.abstractedBy === undefined), ...descriptors.filter((descriptor) => descriptor.abstractedBy !== undefined)]
+    // Compute which palette item ids are aggregates (referenced by some primitive's abstractedBy).
+    const aggregateIds = new Set(descriptors.map((d) => d.abstractedBy).filter((id): id is string => id !== undefined));
+    const orderedDescriptors = options.showAggregates
+        ? [...descriptors.filter((descriptor) => !aggregateIds.has(descriptor.paletteItemId)), ...descriptors.filter((descriptor) => aggregateIds.has(descriptor.paletteItemId))]
         : descriptors;
     for (const descriptor of orderedDescriptors) {
-        if (descriptor.isPaletteVisible === false || (!options.showPrimitives && descriptor.abstractedBy !== undefined)) {
+        if (descriptor.isPaletteVisible === false || (!options.showAggregates && aggregateIds.has(descriptor.paletteItemId))) {
             continue;
         }
         const label = descriptor.category ?? DefaultPaletteCategory;
