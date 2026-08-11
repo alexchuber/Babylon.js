@@ -1,6 +1,6 @@
 import { ImportGLTFBlock } from "node-assets/Blocks/importGLTFBlock";
 
-import { ConfigureBlockForEditor, RegisterBlockDescriptor } from "../blockCatalog";
+import { ConfigureBlockForEditor, InputsCategory, RegisterBlockDescriptor } from "../blockCatalog";
 import { PromptForFileAsync } from "../browserFiles";
 
 async function PromptForLegacyGLTFAsync(block: ImportGLTFBlock, refresh: () => void): Promise<void> {
@@ -17,7 +17,7 @@ RegisterBlockDescriptor({
     paletteItemId: "legacy-import-gltf",
     label: "Import glTF",
     description: "Legacy direct glTF import retained for saved-graph compatibility.",
-    category: "Inputs",
+    category: InputsCategory,
     headerColor: "#3f7d4e",
     className: ImportGLTFBlock.ClassName,
     isPaletteVisible: false,

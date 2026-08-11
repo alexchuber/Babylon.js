@@ -47,13 +47,21 @@ The categorized, searchable list of nodes available to add to the canvas.
 _Avoid_: toolbox, block registry, node library
 
 **Inputs**:
-The default palette category containing Import glTF, Import USD, Import Babylon, and Import Node
-Geometry aggregates.
+The first palette category, containing one source boundary per format, each labeled for its format
+alone: Babylon, FBX, glTF, Node Geometry, OBJ, and USD. The `Import *` aggregates live here too and
+appear only when aggregates are shown.
 _Avoid_: Sources, Imports, Readers
 
+**pipeline-stage category**:
+A palette category named for the stage a node occupies: Inputs, Importers (transcoders into
+Universal), Exporters (transcoders into file representations), and Outputs (terminal file writers).
+They lead the palette in that order.
+_Avoid_: lane, block class, transcoder category, operand category
+
 **operand category**:
-A palette category named for the type primarily consumed by its nodes. Universal and glTF are visible
-by default; USD, Babylon, and Node Geometry appear when they contain visible primitives.
+A palette category named for the type primarily consumed by its nodes. glTF holds delivery-format
+operators and Universal holds source-independent operators; they follow the pipeline-stage
+categories.
 _Avoid_: lane, block class, transcoder category
 
 **Show primitives**:

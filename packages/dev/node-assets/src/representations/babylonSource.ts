@@ -1,4 +1,4 @@
-/** A resolved `.babylon` source carried only from Read Babylon to Babylon to Universal. */
+/** A resolved `.babylon` source carried only from the Babylon input block to Babylon → Universal. */
 export class BabylonSource {
     /** The resolved `.babylon` JSON bytes. */
     public readonly data: Uint8Array;

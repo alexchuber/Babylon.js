@@ -124,15 +124,16 @@ export class NodeAssetsEditorPage {
     }
 
     /**
-     * Locate a node by its title text, e.g. "Import glTF". When the graph holds several nodes of the
-     * same title, pass `occurrence` to narrow to a single one: an index, or "last" for the most
-     * recently added node.
+     * Locate a node by its exact title text, e.g. "Import glTF". Matching is exact so that a title
+     * that is a prefix of another ("glTF" vs "Import glTF") never widens the locator. When the graph
+     * holds several nodes of the same title, pass `occurrence` to narrow to a single one: an index,
+     * or "last" for the most recently added node.
      * @param title - The node's visible title.
      * @param occurrence - Optional disambiguator when several nodes share the title.
      * @returns The node locator.
      */
     nodeByTitle(title: string, occurrence?: NodeOccurrence): Locator {
-        const matches = this.nodes.filter({ hasText: title });
+        const matches = this.nodes.filter({ has: this.page.getByTestId("graph-node-title").getByText(title, { exact: true }) });
         if (occurrence === undefined) {
             return matches;
         }
@@ -149,12 +150,22 @@ export class NodeAssetsEditorPage {
     }
 
     /**
+     * Locate a palette item through its palette item id. Two categories can publish the same label
+     * (the glTF input and the glTF output both read "glTF"), so ids are the unambiguous seam.
+     * @param paletteItemId - The descriptor's palette item id, e.g. "gltf-input".
+     * @returns The palette item row locator.
+     */
+    paletteItemById(paletteItemId: string): Locator {
+        return this.page.getByTestId("palette-item").filter({ has: this.page.locator(`#palette-item-label-${paletteItemId}`) });
+    }
+
+    /**
      * Select a node by clicking its header title, which reveals its properties in the right pane.
      * @param title - The node's visible title.
      * @param occurrence - Optional disambiguator when several nodes share the title (see {@link nodeByTitle}).
      */
     async selectNode(title: string, occurrence?: NodeOccurrence): Promise<void> {
-        await this.nodeByTitle(title, occurrence).getByText(title, { exact: true }).click();
+        await this.nodeByTitle(title, occurrence).getByTestId("graph-node-title").getByText(title, { exact: true }).click();
     }
 
     /**

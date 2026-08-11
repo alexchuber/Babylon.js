@@ -47,6 +47,18 @@ export const OperatorHeaderColor = "#2f8f83";
 /** Palette category for source-independent Universal operators. */
 export const UniversalCategory = "Universal";
 
+/** Palette category for the source boundaries that resolve a URL, snippet, or upload into a typed source payload. */
+export const InputsCategory = "Inputs";
+
+/** Palette category for transcoders that cross a source payload into the in-memory Universal representation. */
+export const ImportersCategory = "Importers";
+
+/** Palette category for transcoders that cross Universal into a file representation. */
+export const ExportersCategory = "Exporters";
+
+/** Palette category for the terminal boundaries that turn a file representation into delivered bytes. */
+export const OutputsCategory = "Outputs";
+
 /** Palette category and shared node header color for blocks that operate on glTF documents. */
 export const GltfCategory = "glTF";
 export const GltfHeaderColor = "#2f8f83";

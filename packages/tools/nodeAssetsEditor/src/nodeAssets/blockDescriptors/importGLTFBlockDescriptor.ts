@@ -1,6 +1,6 @@
 import { ImportGLTFAggregateBlock } from "node-assets/Blocks/importGLTFAggregateBlock";
 
-import { AggregateImportsFamily, ConfigureBlockForEditor, RegisterBlockDescriptor } from "../blockCatalog";
+import { AggregateImportsFamily, ConfigureBlockForEditor, InputsCategory, RegisterBlockDescriptor } from "../blockCatalog";
 
 const ImportHeaderColor = "#3f7d4e";
 
@@ -9,7 +9,7 @@ RegisterBlockDescriptor({
     label: "Import glTF",
     description: "Read glTF or GLB and cross into Universal.",
     keywords: ["open", "load", "source", "model", "GLB", "Universal"],
-    category: "Inputs",
+    category: InputsCategory,
     family: AggregateImportsFamily,
     headerColor: ImportHeaderColor,
     className: ImportGLTFAggregateBlock.ClassName,

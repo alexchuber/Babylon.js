@@ -1,13 +1,13 @@
 import { BabylonToUniversalBlock } from "node-assets/Blocks/babylonToUniversalBlock";
 
-import { BabylonHeaderColor, RegisterBlockDescriptor } from "../blockCatalog";
+import { BabylonHeaderColor, ImportersCategory, RegisterBlockDescriptor } from "../blockCatalog";
 
 RegisterBlockDescriptor({
     paletteItemId: "babylon-to-universal",
     label: "Babylon → Universal",
     description: "Parse a Babylon source and cross into Universal.",
     keywords: ["convert", "transcode", "babylon", "Universal"],
-    category: "Babylon",
+    category: ImportersCategory,
     headerColor: BabylonHeaderColor,
     className: BabylonToUniversalBlock.ClassName,
     abstractedBy: "import-babylon",

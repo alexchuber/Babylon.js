@@ -1,14 +1,15 @@
-import { ReadBabylonBlock } from "node-assets/Blocks/readBabylonBlock";
+import { GLTFInputBlock } from "node-assets/Blocks/gltfInputBlock";
 
+import { ConfigureBlockForEditor, type IPropertySectionContext, InputsCategory, RegisterBlockDescriptor } from "../blockCatalog";
 import { type IPropertySection } from "../../nodeGraph/propertyModel";
 import { PromptForFileAsync } from "../browserFiles";
-import { BabylonHeaderColor, ConfigureBlockForEditor, type IPropertySectionContext, RegisterBlockDescriptor } from "../blockCatalog";
 
-const SourceErrors = new WeakMap<ReadBabylonBlock, string>();
-const PendingSourceRequests = new WeakMap<ReadBabylonBlock, Promise<unknown>>();
+const InputHeaderColor = "#3f7d4e";
+const SourceErrors = new WeakMap<GLTFInputBlock, string>();
+const PendingSourceRequests = new WeakMap<GLTFInputBlock, Promise<unknown>>();
 
-async function PromptForBabylonAsync(block: ReadBabylonBlock, context: IPropertySectionContext): Promise<void> {
-    const file = await PromptForFileAsync(".babylon");
+async function PromptForGLTFAsync(block: GLTFInputBlock, context: IPropertySectionContext): Promise<void> {
+    const file = await PromptForFileAsync(".glb,.gltf");
     if (!file) {
         return;
     }
@@ -39,7 +40,7 @@ async function PromptForBabylonAsync(block: ReadBabylonBlock, context: IProperty
     }
 }
 
-async function SetBabylonUrlAsync(block: ReadBabylonBlock, url: string, context: IPropertySectionContext): Promise<void> {
+async function SetGLTFUrlAsync(block: GLTFInputBlock, url: string, context: IPropertySectionContext): Promise<void> {
     const authoredBlock = context.prepareEdit(block);
     if (!authoredBlock) {
         return;
@@ -66,13 +67,13 @@ async function SetBabylonUrlAsync(block: ReadBabylonBlock, url: string, context:
 }
 
 /**
- * Builds the source controls shared by Read Babylon and Import Babylon.
- * @param block The owned Read Babylon primitive.
+ * Builds the source controls shared by the glTF input block and Import glTF.
+ * @param block The owned glTF input primitive.
  * @param context Editor property actions.
  * @param title Child-attributed section title.
  * @returns The shared property section.
  */
-export function CreateReadBabylonPropertySection(block: ReadBabylonBlock, context: IPropertySectionContext, title = "SOURCE"): IPropertySection {
+export function CreateGLTFInputPropertySection(block: GLTFInputBlock, context: IPropertySectionContext, title = "SOURCE"): IPropertySection {
     const sourceError = SourceErrors.get(block);
     return {
         title,
@@ -94,7 +95,7 @@ export function CreateReadBabylonPropertySection(block: ReadBabylonBlock, contex
                         context.refresh();
                         return;
                     }
-                    void SetBabylonUrlAsync(block, value, context);
+                    void SetGLTFUrlAsync(block, value, context);
                 },
             },
             {
@@ -106,9 +107,9 @@ export function CreateReadBabylonPropertySection(block: ReadBabylonBlock, contex
             },
             {
                 kind: "button",
-                label: "Upload Babylon\u2026",
+                label: "Upload glTF\u2026",
                 onClick: () => {
-                    void PromptForBabylonAsync(block, context);
+                    void PromptForGLTFAsync(block, context);
                 },
             },
             ...(sourceError
@@ -127,13 +128,14 @@ export function CreateReadBabylonPropertySection(block: ReadBabylonBlock, contex
 }
 
 RegisterBlockDescriptor({
-    paletteItemId: "read-babylon",
-    label: "Read Babylon",
-    description: "Read a URL or uploaded .babylon source.",
-    category: "Inputs",
-    headerColor: BabylonHeaderColor,
-    className: ReadBabylonBlock.ClassName,
-    abstractedBy: "import-babylon",
-    create: (nodeAsset) => ConfigureBlockForEditor(new ReadBabylonBlock("Read Babylon", nodeAsset)),
-    getPropertySection: (block, context) => CreateReadBabylonPropertySection(block as ReadBabylonBlock, context),
+    paletteItemId: "gltf-input",
+    label: "glTF",
+    description: "Read a URL or uploaded glTF/GLB source.",
+    keywords: ["read", "open", "load", "url", "upload", "gltf", "glb", "input", "source"],
+    category: InputsCategory,
+    headerColor: InputHeaderColor,
+    className: GLTFInputBlock.ClassName,
+    abstractedBy: "import-gltf",
+    create: (nodeAsset) => ConfigureBlockForEditor(new GLTFInputBlock("glTF", nodeAsset)),
+    getPropertySection: (block, context) => CreateGLTFInputPropertySection(block as GLTFInputBlock, context),
 });

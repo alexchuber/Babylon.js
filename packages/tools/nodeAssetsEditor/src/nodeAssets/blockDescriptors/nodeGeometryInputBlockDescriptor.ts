@@ -1,15 +1,15 @@
-import { ReadGLTFBlock } from "node-assets/Blocks/readGLTFBlock";
+import { NodeGeometryInputBlock } from "node-assets/Blocks/nodeGeometryInputBlock";
 
-import { ConfigureBlockForEditor, type IPropertySectionContext, RegisterBlockDescriptor } from "../blockCatalog";
 import { type IPropertySection } from "../../nodeGraph/propertyModel";
+import { ConfigureBlockForEditor, type IPropertySectionContext, InputsCategory, RegisterBlockDescriptor } from "../blockCatalog";
 import { PromptForFileAsync } from "../browserFiles";
 
-const ReadHeaderColor = "#3f7d4e";
-const SourceErrors = new WeakMap<ReadGLTFBlock, string>();
-const PendingSourceRequests = new WeakMap<ReadGLTFBlock, Promise<unknown>>();
+const InputHeaderColor = "#3f7d4e";
+const SourceErrors = new WeakMap<NodeGeometryInputBlock, string>();
+const PendingSourceRequests = new WeakMap<NodeGeometryInputBlock, Promise<unknown>>();
 
-async function PromptForGLTFAsync(block: ReadGLTFBlock, context: IPropertySectionContext): Promise<void> {
-    const file = await PromptForFileAsync(".glb,.gltf");
+async function PromptForNodeGeometryAsync(block: NodeGeometryInputBlock, context: IPropertySectionContext): Promise<void> {
+    const file = await PromptForFileAsync("application/json,.json");
     if (!file) {
         return;
     }
@@ -24,7 +24,7 @@ async function PromptForGLTFAsync(block: ReadGLTFBlock, context: IPropertySectio
         if (context.prepareEdit(authoredBlock) !== authoredBlock || PendingSourceRequests.get(authoredBlock) !== request) {
             return;
         }
-        authoredBlock.setUploadedSource(data, file.name);
+        await authoredBlock.setUploadedSourceAsync(data, file.name);
         SourceErrors.delete(authoredBlock);
     } catch (error) {
         if (context.prepareEdit(authoredBlock) === authoredBlock && PendingSourceRequests.get(authoredBlock) === request) {
@@ -40,12 +40,12 @@ async function PromptForGLTFAsync(block: ReadGLTFBlock, context: IPropertySectio
     }
 }
 
-async function SetGLTFUrlAsync(block: ReadGLTFBlock, url: string, context: IPropertySectionContext): Promise<void> {
+async function SetSnippetIdAsync(block: NodeGeometryInputBlock, snippetId: string, context: IPropertySectionContext): Promise<void> {
     const authoredBlock = context.prepareEdit(block);
     if (!authoredBlock) {
         return;
     }
-    const request = authoredBlock.setUrlAsync(url, undefined, () => context.prepareEdit(authoredBlock) === authoredBlock);
+    const request = authoredBlock.setSnippetIdAsync(snippetId, undefined, () => context.prepareEdit(authoredBlock) === authoredBlock);
     PendingSourceRequests.set(authoredBlock, request);
     try {
         await request;
@@ -67,21 +67,21 @@ async function SetGLTFUrlAsync(block: ReadGLTFBlock, url: string, context: IProp
 }
 
 /**
- * Builds the source controls shared by Read glTF and Import glTF.
- * @param block The owned Read glTF primitive.
+ * Builds the source controls shared by the Node Geometry input block and Import Node Geometry.
+ * @param block The owned Node Geometry input primitive.
  * @param context Editor property actions.
  * @param title Child-attributed section title.
  * @returns The shared property section.
  */
-export function CreateReadGLTFPropertySection(block: ReadGLTFBlock, context: IPropertySectionContext, title = "SOURCE"): IPropertySection {
+export function CreateNodeGeometryInputPropertySection(block: NodeGeometryInputBlock, context: IPropertySectionContext, title = "SOURCE"): IPropertySection {
     const sourceError = SourceErrors.get(block);
     return {
         title,
         properties: [
             {
                 kind: "text",
-                label: "URL",
-                value: block.sourceKind === "url" ? (block.source ?? "") : "",
+                label: "Snippet ID",
+                value: block.sourceKind === "snippet" ? `#${block.source ?? ""}` : "",
                 validateOnlyOnBlur: true,
                 onChange: (value) => {
                     if (!value) {
@@ -95,7 +95,7 @@ export function CreateReadGLTFPropertySection(block: ReadGLTFBlock, context: IPr
                         context.refresh();
                         return;
                     }
-                    void SetGLTFUrlAsync(block, value, context);
+                    void SetSnippetIdAsync(block, value, context);
                 },
             },
             {
@@ -107,9 +107,9 @@ export function CreateReadGLTFPropertySection(block: ReadGLTFBlock, context: IPr
             },
             {
                 kind: "button",
-                label: "Upload glTF\u2026",
+                label: "Upload Node Geometry\u2026",
                 onClick: () => {
-                    void PromptForGLTFAsync(block, context);
+                    void PromptForNodeGeometryAsync(block, context);
                 },
             },
             ...(sourceError
@@ -128,13 +128,14 @@ export function CreateReadGLTFPropertySection(block: ReadGLTFBlock, context: IPr
 }
 
 RegisterBlockDescriptor({
-    paletteItemId: "read-gltf",
-    label: "Read glTF",
-    description: "Read a URL or uploaded glTF/GLB source.",
-    category: "Inputs",
-    headerColor: ReadHeaderColor,
-    className: ReadGLTFBlock.ClassName,
-    abstractedBy: "import-gltf",
-    create: (nodeAsset) => ConfigureBlockForEditor(new ReadGLTFBlock("Read glTF", nodeAsset)),
-    getPropertySection: (block, context) => CreateReadGLTFPropertySection(block as ReadGLTFBlock, context),
+    paletteItemId: "node-geometry-input",
+    label: "Node Geometry",
+    description: "Resolve a snippet ID or uploaded serialized Node Geometry graph.",
+    keywords: ["read", "open", "load", "snippet", "upload", "node geometry", "nge", "input", "source"],
+    category: InputsCategory,
+    headerColor: InputHeaderColor,
+    className: NodeGeometryInputBlock.ClassName,
+    abstractedBy: "import-node-geometry",
+    create: (nodeAsset) => ConfigureBlockForEditor(new NodeGeometryInputBlock("Node Geometry", nodeAsset)),
+    getPropertySection: (block, context) => CreateNodeGeometryInputPropertySection(block as NodeGeometryInputBlock, context),
 });

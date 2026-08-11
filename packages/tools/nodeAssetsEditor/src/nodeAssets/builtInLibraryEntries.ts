@@ -96,15 +96,15 @@ class BuiltInPipelineBuilder {
             y,
             [
                 {
-                    customType: "ReadOBJBlock",
+                    customType: "OBJInputBlock",
                     id: readId,
-                    name: "Read OBJ",
+                    name: "OBJ",
                     primary: null,
                     source,
                     sourceKind: "url",
                     companions: [],
                 },
-                { customType: "OBJToUniversalBlock", id: transcoderId, name: "OBJ to Universal" },
+                { customType: "OBJToUniversalBlock", id: transcoderId, name: "OBJ → Universal" },
             ],
             [{ fromBlock: readId, fromPoint: "output", toBlock: transcoderId, toPoint: "input" }],
             [],
@@ -121,8 +121,8 @@ class BuiltInPipelineBuilder {
             x,
             y,
             [
-                { customType: "UniversalToGLTFBlock", id: transcoderId, name: "Universal to glTF" },
-                { customType: "WriteGLTFBlock", id: writeId, name: "Write glTF", fileName },
+                { customType: "UniversalToGLTFBlock", id: transcoderId, name: "Universal → glTF" },
+                { customType: "GLTFOutputBlock", id: writeId, name: "glTF", fileName },
             ],
             [{ fromBlock: transcoderId, fromPoint: "output", toBlock: writeId, toPoint: "input" }],
             [{ publicName: "input", blockId: transcoderId, pointName: "input" }],
@@ -236,22 +236,12 @@ const DefaultQuantizationProperties = {
 } as const;
 
 function CreateGltfImport(builder: BuiltInPipelineBuilder, source: string, name = "Import glTF", x = 40, y = 120): BlockReference {
-    return builder.addUrlImport("ImportGLTFAggregateBlock", name, x, y, "ReadGLTFBlock", "Read glTF", "GLTFToUniversalBlock", "glTF to Universal", source);
+    return builder.addUrlImport("ImportGLTFAggregateBlock", name, x, y, "GLTFInputBlock", "glTF", "GLTFToUniversalBlock", "glTF → Universal", source);
 }
 
 function CreateConvertModelEntry(): INodeAssetLibraryEntry {
     const builder = new BuiltInPipelineBuilder("Convert a Model");
-    const source = builder.addUrlImport(
-        "ImportFBXAggregateBlock",
-        "Import FBX",
-        40,
-        120,
-        "ReadFBXBlock",
-        "Read FBX",
-        "FBXToUniversalBlock",
-        "FBX to Universal",
-        SourceUrls.convert
-    );
+    const source = builder.addUrlImport("ImportFBXAggregateBlock", "Import FBX", 40, 120, "FBXInputBlock", "FBX", "FBXToUniversalBlock", "FBX → Universal", SourceUrls.convert);
     const output = builder.addExport(400, 120, "converted-model");
     builder.connect(source, output);
     return builder.createEntry();
@@ -312,10 +302,10 @@ function CreateReduceModelEntry(): INodeAssetLibraryEntry {
 function CreateCompressModelEntry(): INodeAssetLibraryEntry {
     const builder = new BuiltInPipelineBuilder("Compress a Model");
     const source = CreateGltfImport(builder, SourceUrls.compress);
-    const toGltf = builder.addBlock("UniversalToGLTFBlock", "Universal to glTF", 340, 120);
+    const toGltf = builder.addBlock("UniversalToGLTFBlock", "Universal → glTF", 340, 120);
     const textures = builder.addBlock("KTX2CompressionBlock", "Compress Textures (KTX2)", 640, 120, DefaultKtx2CompressionProperties);
     const geometry = builder.addBlock("DracoCompressionBlock", "Compress Geometry (Draco)", 960, 120, DefaultDracoCompressionProperties);
-    const write = builder.addBlock("WriteGLTFBlock", "Write glTF", 1280, 120, { fileName: "compressed-model" });
+    const write = builder.addBlock("GLTFOutputBlock", "glTF", 1280, 120, { fileName: "compressed-model" });
     builder.connect(source, toGltf);
     builder.connect(toGltf, textures);
     builder.connect(textures, geometry);
@@ -401,10 +391,10 @@ function CreateProductionReadyEntry(): INodeAssetLibraryEntry {
     });
     const generateTangents = builder.addBlock("GenerateTangentsBlock", "Generate Tangents", 2280, 120);
     const quantize = builder.addBlock("QuantizeAttributesBlock", "Quantize Attributes", 2560, 120, DefaultQuantizationProperties);
-    const toGltf = builder.addBlock("UniversalToGLTFBlock", "Universal to glTF", 2840, 120);
+    const toGltf = builder.addBlock("UniversalToGLTFBlock", "Universal → glTF", 2840, 120);
     const textures = builder.addBlock("KTX2CompressionBlock", "Compress Textures (KTX2)", 3120, 120, DefaultKtx2CompressionProperties);
     const geometry = builder.addBlock("DracoCompressionBlock", "Compress Geometry (Draco)", 3400, 120, DefaultDracoCompressionProperties);
-    const write = builder.addBlock("WriteGLTFBlock", "Write glTF", 3680, 120, { fileName: "production-ready" });
+    const write = builder.addBlock("GLTFOutputBlock", "glTF", 3680, 120, { fileName: "production-ready" });
     builder.connect(source, transform);
     builder.connect(transform, center);
     builder.connect(center, deduplicate);

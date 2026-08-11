@@ -14,10 +14,10 @@
 import { Observable } from "core/Misc/observable";
 
 import { ExportGLTFBlock } from "node-assets/Blocks/exportGLTFBlock";
-import { ReadFBXBlock } from "node-assets/Blocks/readFBXBlock";
-import { ReadGLTFBlock, type GLTFSourceFetcher } from "node-assets/Blocks/readGLTFBlock";
-import { ReadOBJBlock } from "node-assets/Blocks/readOBJBlock";
-import { ReadUSDBlock } from "node-assets/Blocks/readUSDBlock";
+import { FBXInputBlock } from "node-assets/Blocks/fbxInputBlock";
+import { GLTFInputBlock, type GLTFSourceFetcher } from "node-assets/Blocks/gltfInputBlock";
+import { OBJInputBlock } from "node-assets/Blocks/objInputBlock";
+import { USDInputBlock } from "node-assets/Blocks/usdInputBlock";
 import { NodeAsset } from "node-assets/nodeAsset";
 import { NodeAssetBuildError } from "node-assets/nodeAssetBuildError";
 import { AggregateBlock } from "node-assets/blockFoundation/aggregateBlock";
@@ -316,7 +316,7 @@ export class NodeAssetGraphController {
     /**
      * Creates a controller seeded from the maintained default entry in the production pipeline catalog.
      * @param buildClient - Worker-backed build client.
-     * @param sourceFetcher - Fetch-compatible source loader used by URL-backed Read blocks.
+     * @param sourceFetcher - Fetch-compatible source loader used by URL-backed input blocks.
      */
     public constructor(buildClient: INodeAssetBuildClient = new NodeAssetBuildWorkerClient(), sourceFetcher: GLTFSourceFetcher = async (url) => await fetch(url)) {
         this._nodeAsset = new NodeAsset("nodeAsset");
@@ -900,7 +900,7 @@ export class NodeAssetGraphController {
     private async _hydrateSourceBlockAsync(block: NodeAssetBlock, graphRevision: number, activeNodeAsset: NodeAsset): Promise<void> {
         const canApplyResult = () => this._isActiveGraph(activeNodeAsset, graphRevision) && this._ownsBlock(activeNodeAsset, block);
         try {
-            if (block instanceof ReadGLTFBlock) {
+            if (block instanceof GLTFInputBlock) {
                 const url = block.source;
                 if (block.sourceKind === "url" && url && !block.data) {
                     await block.setUrlAsync(url, this._sourceFetcher, canApplyResult);
@@ -908,7 +908,7 @@ export class NodeAssetGraphController {
                 return;
             }
 
-            if (block instanceof ReadUSDBlock) {
+            if (block instanceof USDInputBlock) {
                 const url = block.source;
                 if (block.sourceKind === "url" && url && !block.data) {
                     await block.setUrlAsync(url, this._sourceFetcher, canApplyResult);
@@ -916,7 +916,7 @@ export class NodeAssetGraphController {
                 return;
             }
 
-            if (block instanceof ReadOBJBlock) {
+            if (block instanceof OBJInputBlock) {
                 const url = block.source;
                 if (block.sourceKind === "url" && url && !block.primary) {
                     await block.setUrlAsync(url, this._sourceFetcher, canApplyResult);
@@ -924,7 +924,7 @@ export class NodeAssetGraphController {
                 return;
             }
 
-            if (block instanceof ReadFBXBlock) {
+            if (block instanceof FBXInputBlock) {
                 const url = block.source;
                 if (block.sourceKind === "url" && url && !block.data) {
                     await block.setUrlAsync(url, this._sourceFetcher, canApplyResult);

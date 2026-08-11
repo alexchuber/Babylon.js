@@ -3,9 +3,9 @@ import { RegisterBlock } from "../blockFoundation/blockRegistry";
 import { type NodeAssetConnectionPoint } from "../connection/nodeAssetConnectionPoint";
 import { type NodeAsset } from "../nodeAsset";
 import { BabylonToUniversalBlock } from "./babylonToUniversalBlock";
-import { ReadBabylonBlock, type BabylonSourceFetcher, type BabylonSourceKind } from "./readBabylonBlock";
+import { BabylonInputBlock, type BabylonSourceFetcher, type BabylonSourceKind } from "./babylonInputBlock";
 
-/** Built-in `Read Babylon -> Babylon -> Universal` aggregate. */
+/** Built-in `Babylon input -> Babylon -> Universal` aggregate. */
 export class ImportBabylonAggregateBlock extends AggregateBlock {
     /** The class name, used for identification and safe under minification. */
     public static override ClassName = "ImportBabylonAggregateBlock";
@@ -20,42 +20,42 @@ export class ImportBabylonAggregateBlock extends AggregateBlock {
      */
     public constructor(name: string, nodeAsset: NodeAsset) {
         super(name, nodeAsset);
-        const read = new ReadBabylonBlock("Read Babylon", this.subgraph);
-        const transcoder = new BabylonToUniversalBlock("Babylon to Universal", this.subgraph);
-        read.output.connectTo(transcoder.input);
+        const inputBlock = new BabylonInputBlock("Babylon", this.subgraph);
+        const transcoder = new BabylonToUniversalBlock("Babylon → Universal", this.subgraph);
+        inputBlock.output.connectTo(transcoder.input);
         this.output = this._exposeOutput(transcoder.output, "output");
     }
 
-    /** The owned Read Babylon primitive. */
-    public get readBlock(): ReadBabylonBlock {
-        const block = this.subgraph.attachedBlocks.find((candidate): candidate is ReadBabylonBlock => candidate instanceof ReadBabylonBlock);
+    /** The owned Babylon input primitive. */
+    public get inputBlock(): BabylonInputBlock {
+        const block = this.subgraph.attachedBlocks.find((candidate): candidate is BabylonInputBlock => candidate instanceof BabylonInputBlock);
         if (!block) {
-            throw new Error(`The "${this.name}" aggregate has no ReadBabylonBlock.`);
+            throw new Error(`The "${this.name}" aggregate has no BabylonInputBlock.`);
         }
         return block;
     }
 
-    /** Source bytes forwarded to the Read Babylon primitive. */
+    /** Source bytes forwarded to the Babylon input primitive. */
     public get data(): Uint8Array | null {
-        return this.readBlock.data;
+        return this.inputBlock.data;
     }
 
     public set data(value: Uint8Array | null) {
-        this.readBlock.data = value;
+        this.inputBlock.data = value;
     }
 
-    /** Active source label forwarded to the Read Babylon primitive. */
+    /** Active source label forwarded to the Babylon input primitive. */
     public get source(): string | null {
-        return this.readBlock.source;
+        return this.inputBlock.source;
     }
 
     public set source(value: string | null) {
-        this.readBlock.source = value;
+        this.inputBlock.source = value;
     }
 
-    /** Active source kind forwarded to the Read Babylon primitive. */
+    /** Active source kind forwarded to the Babylon input primitive. */
     public get sourceKind(): BabylonSourceKind | null {
-        return this.readBlock.sourceKind;
+        return this.inputBlock.sourceKind;
     }
 
     /**
@@ -64,16 +64,16 @@ export class ImportBabylonAggregateBlock extends AggregateBlock {
      * @param fileName The uploaded file name.
      */
     public setUploadedSource(data: Uint8Array, fileName: string): void {
-        this.readBlock.setUploadedSource(data, fileName);
+        this.inputBlock.setUploadedSource(data, fileName);
     }
 
     /**
-     * Loads and activates a URL on the owned Read Babylon primitive.
+     * Loads and activates a URL on the owned Babylon input primitive.
      * @param url The `.babylon` URL.
      * @param fetcher The fetch-compatible loader.
      */
     public async setUrlAsync(url: string, fetcher?: BabylonSourceFetcher): Promise<void> {
-        await this.readBlock.setUrlAsync(url, fetcher);
+        await this.inputBlock.setUrlAsync(url, fetcher);
     }
 }
 

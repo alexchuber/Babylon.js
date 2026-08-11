@@ -48,7 +48,7 @@ _Avoid_: compile, render, preview
 ### Asset flow
 
 **source payload**:
-A typed glTF, USD, Babylon, or Node Geometry value produced by a Read block. A source payload is only
+A typed glTF, USD, Babylon, or Node Geometry value produced by an input block. A source payload is only
 guaranteed to support its matching Universal transcoder unless its format lane defines other blocks.
 _Avoid_: faithful native representation, Universal value, file
 
@@ -66,10 +66,10 @@ A typed source- or target-specific graph segment outside Universal. The proof of
 glTF delivery lane; USD, Babylon, and Node Geometry only funnel into Universal.
 _Avoid_: domain, branch, implicit conversion path
 
-**Read block**:
+**input block**:
 A primitive source boundary that resolves a URL, snippet, or uploaded file into one typed source
-payload.
-_Avoid_: Import block, loader, source operator
+payload. Named for its format alone, e.g. `GLTFInputBlock` shows as "glTF" under Inputs.
+_Avoid_: Read block, Import block, loader, source operator
 
 **transcoder**:
 A primitive block that explicitly crosses between a source payload and Universal, or from Universal
@@ -77,17 +77,26 @@ to glTF. The supported crossings are glTF, USD, Babylon, and Node Geometry into 
 Universal into glTF.
 _Avoid_: converter, adapter, automatic cast, pairwise transcoder
 
-**Import block**:
-A built-in aggregate combining one Read block with its matching source-to-Universal transcoder.
-_Avoid_: Read block, loader, source primitive
+**importer**:
+A transcoder that crosses from a source payload into Universal, e.g. `GLTFToUniversalBlock`.
+_Avoid_: reader, loader, exporter
 
-**Write glTF**:
-The primitive output boundary that turns a glTF payload into the terminal GLB.
-_Avoid_: Export glTF, serializer node, save block
+**exporter**:
+A transcoder that crosses from Universal into a file representation, e.g. `UniversalToGLTFBlock`.
+_Avoid_: writer, serializer, importer
+
+**Import block**:
+A built-in aggregate combining one input block with its matching importer.
+_Avoid_: Read block, input block, loader, source primitive
+
+**output block**:
+The primitive output boundary that turns a glTF payload into the terminal GLB. `GLTFOutputBlock`
+shows as "glTF" under Outputs.
+_Avoid_: Write glTF, Export glTF, serializer node, save block
 
 **Export glTF**:
-The built-in aggregate combining Universal-to-glTF transcoding with Write glTF.
-_Avoid_: Write glTF, implicit exporter, output primitive
+The built-in aggregate combining the Universal-to-glTF exporter with the glTF output block.
+_Avoid_: Write glTF, output block, implicit exporter, output primitive
 
 **LossRecord**:
 A build result describing content approximated or dropped while crossing a transcoder.

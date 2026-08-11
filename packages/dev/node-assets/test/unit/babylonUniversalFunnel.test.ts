@@ -6,9 +6,9 @@ import { Babylon2GLTFBlock } from "../../src/Blocks/babylon2GLTFBlock";
 import { BabylonToUniversalBlock } from "../../src/Blocks/babylonToUniversalBlock";
 import { ExportGLTFAggregateBlock } from "../../src/Blocks/exportGLTFAggregateBlock";
 import { ImportBabylonAggregateBlock } from "../../src/Blocks/importBabylonAggregateBlock";
-import { ReadBabylonBlock } from "../../src/Blocks/readBabylonBlock";
+import { BabylonInputBlock } from "../../src/Blocks/babylonInputBlock";
 import { UniversalToGLTFBlock } from "../../src/Blocks/universalToGLTFBlock";
-import { WriteGLTFBlock } from "../../src/Blocks/writeGLTFBlock";
+import { GLTFOutputBlock } from "../../src/Blocks/gltfOutputBlock";
 import { NodeAssetConnectionPointType } from "../../src/connection/nodeAssetConnectionPointType";
 import { NodeAsset } from "../../src/nodeAsset";
 
@@ -67,11 +67,11 @@ async function GetAssetFactsAsync(glb: Uint8Array): Promise<{ readonly sceneCoun
 describe("Babylon Universal funnel", () => {
     it("keeps the shallow Babylon source payload behind its matching transcoder", () => {
         const asset = new NodeAsset("babylon-source-kind");
-        const read = new ReadBabylonBlock("Read Babylon", asset);
-        const toUniversal = new BabylonToUniversalBlock("Babylon to Universal", asset);
+        const read = new BabylonInputBlock("Babylon", asset);
+        const toUniversal = new BabylonToUniversalBlock("Babylon → Universal", asset);
         const legacyToGltf = new Babylon2GLTFBlock("Babylon to glTF", asset);
-        const toGltf = new UniversalToGLTFBlock("Universal to glTF", asset);
-        const write = new WriteGLTFBlock("Write glTF", asset);
+        const toGltf = new UniversalToGLTFBlock("Universal → glTF", asset);
+        const write = new GLTFOutputBlock("glTF", asset);
 
         expect(read.inputs).toHaveLength(0);
         expect(read.output.type).toBe(NodeAssetConnectionPointType.BABYLON_SOURCE);
@@ -96,15 +96,15 @@ describe("Babylon Universal funnel", () => {
             customType: ImportBabylonAggregateBlock.ClassName,
             aggregateVersion: 1,
             subgraph: {
-                blocks: [{ customType: ReadBabylonBlock.ClassName, source: "fixture.babylon", sourceKind: "upload" }, { customType: BabylonToUniversalBlock.ClassName }],
+                blocks: [{ customType: BabylonInputBlock.ClassName, source: "fixture.babylon", sourceKind: "upload" }, { customType: BabylonToUniversalBlock.ClassName }],
             },
         });
         const aggregateResult = await NodeAsset.Parse(JSON.parse(JSON.stringify(serialized))).buildAsync();
 
         const primitiveAsset = new NodeAsset("primitive-babylon");
-        const read = new ReadBabylonBlock("Read Babylon", primitiveAsset);
+        const read = new BabylonInputBlock("Babylon", primitiveAsset);
         read.setUploadedSource(source, "fixture.babylon");
-        const toUniversal = new BabylonToUniversalBlock("Babylon to Universal", primitiveAsset);
+        const toUniversal = new BabylonToUniversalBlock("Babylon → Universal", primitiveAsset);
         const primitiveExporter = new ExportGLTFAggregateBlock("Export glTF", primitiveAsset);
         read.output.connectTo(toUniversal.input);
         toUniversal.output.connectTo(primitiveExporter.input);
@@ -157,7 +157,7 @@ describe("Babylon Universal funnel", () => {
         const uploaded = CreateBabylonFixture();
         const remote = new TextEncoder().encode(new TextDecoder().decode(uploaded).replaceAll("fixture-mesh", "remote-mesh"));
         const asset = new NodeAsset("babylon-source-race");
-        const read = new ReadBabylonBlock("Read Babylon", asset);
+        const read = new BabylonInputBlock("Babylon", asset);
         let resolveResponse: ((response: { ok: boolean; status: number; statusText: string; arrayBuffer: () => Promise<ArrayBuffer> }) => void) | undefined;
 
         const pendingUrl = read.setUrlAsync(
@@ -184,7 +184,7 @@ describe("Babylon Universal funnel", () => {
     it("does not let an in-flight Babylon URL replace a cleared source", async () => {
         const remote = CreateBabylonFixture();
         const asset = new NodeAsset("babylon-source-clear-race");
-        const read = new ReadBabylonBlock("Read Babylon", asset);
+        const read = new BabylonInputBlock("Babylon", asset);
         let resolveResponse: ((response: { ok: boolean; status: number; statusText: string; arrayBuffer: () => Promise<ArrayBuffer> }) => void) | undefined;
 
         const pendingUrl = read.setUrlAsync(
@@ -210,7 +210,7 @@ describe("Babylon Universal funnel", () => {
 
     it("ignores a failed Babylon URL after the source is cleared", async () => {
         const asset = new NodeAsset("babylon-source-clear-error");
-        const read = new ReadBabylonBlock("Read Babylon", asset);
+        const read = new BabylonInputBlock("Babylon", asset);
         let resolveResponse: ((response: { ok: boolean; status: number; statusText: string; arrayBuffer: () => Promise<ArrayBuffer> }) => void) | undefined;
 
         const pendingUrl = read.setUrlAsync(
@@ -236,7 +236,7 @@ describe("Babylon Universal funnel", () => {
     it("preserves the resource root for URL-backed Babylon payloads", async () => {
         const source = CreateBabylonFixture();
         const asset = new NodeAsset("babylon-url-root");
-        const read = new ReadBabylonBlock("Read Babylon", asset);
+        const read = new BabylonInputBlock("Babylon", asset);
         await read.setUrlAsync("https://cdn.example.com/scenes/remote.babylon?version=1", async () => ({
             ok: true,
             status: 200,

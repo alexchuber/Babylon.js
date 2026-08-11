@@ -1,12 +1,12 @@
 import { ExportGLTFBlock } from "node-assets/Blocks/exportGLTFBlock";
 
-import { ConfigureBlockForEditor, RegisterBlockDescriptor } from "../blockCatalog";
+import { ConfigureBlockForEditor, GltfCategory, RegisterBlockDescriptor } from "../blockCatalog";
 
 RegisterBlockDescriptor({
     paletteItemId: "legacy-export-gltf",
     label: "Export glTF",
     description: "Legacy direct glTF export retained for saved-graph compatibility.",
-    category: "glTF",
+    category: GltfCategory,
     headerColor: "#3a6ea5",
     className: ExportGLTFBlock.ClassName,
     isPaletteVisible: false,

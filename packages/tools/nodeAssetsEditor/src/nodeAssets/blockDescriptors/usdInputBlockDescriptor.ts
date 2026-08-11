@@ -1,15 +1,15 @@
-import { ReadUSDBlock } from "node-assets/Blocks/readUSDBlock";
+import { USDInputBlock } from "node-assets/Blocks/usdInputBlock";
 
 import { type IPropertySection } from "../../nodeGraph/propertyModel";
-import { ConfigureBlockForEditor, type IPropertySectionContext, RegisterBlockDescriptor } from "../blockCatalog";
+import { ConfigureBlockForEditor, type IPropertySectionContext, InputsCategory, RegisterBlockDescriptor } from "../blockCatalog";
 import { PromptForFileAsync } from "../browserFiles";
 
-const ReadHeaderColor = "#3f7d4e";
-const SourceErrors = new WeakMap<ReadUSDBlock, string>();
-const PendingSourceRequests = new WeakMap<ReadUSDBlock, Promise<void>>();
+const InputHeaderColor = "#3f7d4e";
+const SourceErrors = new WeakMap<USDInputBlock, string>();
+const PendingSourceRequests = new WeakMap<USDInputBlock, Promise<void>>();
 
 // eslint-disable-next-line @typescript-eslint/naming-convention
-async function PromptForUSDAsync(block: ReadUSDBlock, context: IPropertySectionContext): Promise<void> {
+async function PromptForUSDAsync(block: USDInputBlock, context: IPropertySectionContext): Promise<void> {
     const file = await PromptForFileAsync(".usd,.usda,.usdc,.usdz");
     if (!file) {
         return;
@@ -46,7 +46,7 @@ async function PromptForUSDAsync(block: ReadUSDBlock, context: IPropertySectionC
 }
 
 // eslint-disable-next-line @typescript-eslint/naming-convention
-async function SetUSDUrlAsync(block: ReadUSDBlock, url: string, context: IPropertySectionContext): Promise<void> {
+async function SetUSDUrlAsync(block: USDInputBlock, url: string, context: IPropertySectionContext): Promise<void> {
     const authoredBlock = context.prepareEdit(block);
     if (!authoredBlock) {
         return;
@@ -74,14 +74,14 @@ async function SetUSDUrlAsync(block: ReadUSDBlock, url: string, context: IProper
 }
 
 /**
- * Builds the source controls shared by Read USD and Import USD.
- * @param block The owned Read USD primitive.
+ * Builds the source controls shared by the USD input block and Import USD.
+ * @param block The owned USD input primitive.
  * @param context Editor property actions.
  * @param title Child-attributed section title.
  * @returns The shared property section.
  */
 // eslint-disable-next-line @typescript-eslint/naming-convention
-export function CreateReadUSDPropertySection(block: ReadUSDBlock, context: IPropertySectionContext, title = "SOURCE"): IPropertySection {
+export function CreateUSDInputPropertySection(block: USDInputBlock, context: IPropertySectionContext, title = "SOURCE"): IPropertySection {
     const sourceError = SourceErrors.get(block);
     return {
         title,
@@ -136,13 +136,14 @@ export function CreateReadUSDPropertySection(block: ReadUSDBlock, context: IProp
 }
 
 RegisterBlockDescriptor({
-    paletteItemId: "read-usd",
-    label: "Read USD",
+    paletteItemId: "usd-input",
+    label: "USD",
     description: "Read a URL or uploaded USD source.",
-    category: "Inputs",
-    headerColor: ReadHeaderColor,
-    className: ReadUSDBlock.ClassName,
+    keywords: ["read", "open", "load", "url", "upload", "usd", "usdz", "input", "source"],
+    category: InputsCategory,
+    headerColor: InputHeaderColor,
+    className: USDInputBlock.ClassName,
     abstractedBy: "import-usd",
-    create: (nodeAsset) => ConfigureBlockForEditor(new ReadUSDBlock("Read USD", nodeAsset)),
-    getPropertySection: (block, context) => CreateReadUSDPropertySection(block as ReadUSDBlock, context),
+    create: (nodeAsset) => ConfigureBlockForEditor(new USDInputBlock("USD", nodeAsset)),
+    getPropertySection: (block, context) => CreateUSDInputPropertySection(block as USDInputBlock, context),
 });

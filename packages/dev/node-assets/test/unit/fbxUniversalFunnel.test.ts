@@ -10,7 +10,7 @@ import { describe, expect, it, vi } from "vitest";
 import { ExportGLTFAggregateBlock } from "../../src/Blocks/exportGLTFAggregateBlock";
 import { FBXToUniversalBlock } from "../../src/Blocks/fbxToUniversalBlock";
 import { ImportFBXAggregateBlock } from "../../src/Blocks/importFBXAggregateBlock";
-import { ReadFBXBlock } from "../../src/Blocks/readFBXBlock";
+import { FBXInputBlock } from "../../src/Blocks/fbxInputBlock";
 import { NodeAssetBlock } from "../../src/blockFoundation/nodeAssetBlock";
 import { type NodeAssetConnectionPoint } from "../../src/connection/nodeAssetConnectionPoint";
 import { NodeAssetConnectionPointType } from "../../src/connection/nodeAssetConnectionPointType";
@@ -89,11 +89,11 @@ const SerializedFBXFixture = EncodeArrayBufferToBase64(CreateAsciiFbx74TriangleF
 describe("FBX Universal funnel", () => {
     function CreateExportingAsset(data?: Uint8Array): NodeAsset {
         const asset = new NodeAsset("fbx-errors");
-        const read = new ReadFBXBlock("Read FBX", asset);
+        const read = new FBXInputBlock("FBX", asset);
         if (data) {
             read.setUploadedSource(data, "triangle.fbx");
         }
-        const toUniversal = new FBXToUniversalBlock("FBX \u2192 Universal", asset);
+        const toUniversal = new FBXToUniversalBlock("FBX → Universal", asset);
         const exporter = new ExportGLTFAggregateBlock("Export glTF", asset);
         read.output.connectTo(toUniversal.input);
         toUniversal.output.connectTo(exporter.input);
@@ -104,9 +104,9 @@ describe("FBX Universal funnel", () => {
         const source = "https://cdn.example.com/scenes/remote.fbx?version=1";
         const bytes = CreateAsciiFbx74TriangleFixture();
         const asset = new NodeAsset("url-fbx-source");
-        const read = new ReadFBXBlock("Read FBX", asset);
+        const read = new FBXInputBlock("FBX", asset);
         const capture = new CaptureFBXSourceBlock("Capture FBX source", asset);
-        const toUniversal = new FBXToUniversalBlock("FBX \u2192 Universal", asset);
+        const toUniversal = new FBXToUniversalBlock("FBX → Universal", asset);
         const exporter = new ExportGLTFAggregateBlock("Export glTF", asset);
         read.output.connectTo(capture.input);
         capture.output.connectTo(toUniversal.input);
@@ -128,7 +128,7 @@ describe("FBX Universal funnel", () => {
         expect(result.subarray(0, 4)).toEqual(new TextEncoder().encode("glTF"));
         expect(capture.source).toBeDefined();
         if (!capture.source) {
-            throw new Error("Expected the Read FBX block to emit an FBX source payload.");
+            throw new Error("Expected the FBX input block to emit an FBX source payload.");
         }
         const payload: FBXSource = capture.source;
         expect(payload.data).toEqual(bytes);
@@ -147,8 +147,8 @@ describe("FBX Universal funnel", () => {
         const source = "https://cdn.example.com/scenes/remote.fbx";
         const bytes = CreateAsciiFbx74TriangleFixture();
         const asset = new NodeAsset("url-only-fbx-state");
-        const read = new ReadFBXBlock("Read FBX", asset);
-        const toUniversal = new FBXToUniversalBlock("FBX \u2192 Universal", asset);
+        const read = new FBXInputBlock("FBX", asset);
+        const toUniversal = new FBXToUniversalBlock("FBX → Universal", asset);
         const exporter = new ExportGLTFAggregateBlock("Export glTF", asset);
         read.output.connectTo(toUniversal.input);
         toUniversal.output.connectTo(exporter.input);
@@ -159,7 +159,7 @@ describe("FBX Universal funnel", () => {
         Object.assign(serialized.blocks[0], { data: null, source, sourceKind: "url" });
 
         const parsed = NodeAsset.Parse(serialized);
-        const parsedRead = parsed.attachedBlocks[0] as ReadFBXBlock;
+        const parsedRead = parsed.attachedBlocks[0] as FBXInputBlock;
         expect(parsedRead.data).toBeNull();
         expect(parsedRead.source).toBe(source);
         expect(parsedRead.sourceKind).toBe("url");
@@ -180,7 +180,7 @@ describe("FBX Universal funnel", () => {
     it("preserves the last successful FBX source when a URL fails with contextual error", async () => {
         const uploaded = CreateAsciiFbx74TriangleFixture();
         const asset = new NodeAsset("fbx-source-failure");
-        const read = new ReadFBXBlock("Read FBX", asset);
+        const read = new FBXInputBlock("FBX", asset);
         read.setUploadedSource(uploaded, "uploaded.fbx");
 
         await expect(
@@ -208,7 +208,7 @@ describe("FBX Universal funnel", () => {
         const newerUrl = "https://cdn.example.com/scenes/newer.fbx";
         const newerUrlBytes = new Uint8Array([7, 8, 9]);
         const asset = new NodeAsset(`fbx-source-race-${replacement}-${outcome}`);
-        const read = new ReadFBXBlock("Read FBX", asset);
+        const read = new FBXInputBlock("FBX", asset);
         read.setUploadedSource(initial, "initial.fbx");
 
         let resolveResponse: ((response: { ok: boolean; status: number; statusText: string; arrayBuffer: () => Promise<ArrayBuffer> }) => void) | undefined;
@@ -279,7 +279,7 @@ describe("FBX Universal funnel", () => {
             subgraph: {
                 blocks: [
                     {
-                        customType: ReadFBXBlock.ClassName,
+                        customType: FBXInputBlock.ClassName,
                         source: "triangle.fbx",
                         sourceKind: "upload",
                     },
@@ -296,9 +296,9 @@ describe("FBX Universal funnel", () => {
         aggregateCapture.output.connectTo(aggregateExport.input);
 
         const primitiveAsset = new NodeAsset("primitive-fbx-funnel");
-        const read = new ReadFBXBlock("Read FBX", primitiveAsset);
+        const read = new FBXInputBlock("FBX", primitiveAsset);
         read.setUploadedSource(source, "triangle.fbx");
-        const toUniversal = new FBXToUniversalBlock("FBX \u2192 Universal", primitiveAsset);
+        const toUniversal = new FBXToUniversalBlock("FBX → Universal", primitiveAsset);
         const primitiveCapture = new CaptureUniversalManifestBlock("Capture primitive manifest", primitiveAsset);
         const primitiveExport = new ExportGLTFAggregateBlock("Export primitive glTF", primitiveAsset);
         read.output.connectTo(toUniversal.input);
@@ -403,7 +403,7 @@ describe("FBX Universal funnel", () => {
         Object.assign(serialization.blocks[0].subgraph.blocks[0], { data, source, sourceKind });
 
         const parsed = NodeAsset.Parse(serialization);
-        const parsedRead = (parsed.attachedBlocks[0] as ImportFBXAggregateBlock).subgraph.attachedBlocks[0] as ReadFBXBlock;
+        const parsedRead = (parsed.attachedBlocks[0] as ImportFBXAggregateBlock).subgraph.attachedBlocks[0] as FBXInputBlock;
         expect(parsed.serialize()).toEqual(serialization);
         expect(parsedRead.data).toEqual(data === null ? null : CreateAsciiFbx74TriangleFixture());
         expect(parsedRead.source).toBe(source);
@@ -424,11 +424,11 @@ describe("FBX Universal funnel", () => {
 
     it("round-trips empty uploaded bytes without producing a partial active source", () => {
         const asset = new NodeAsset("empty-fbx-source");
-        const read = new ReadFBXBlock("Read FBX", asset);
+        const read = new FBXInputBlock("FBX", asset);
         read.setUploadedSource(new Uint8Array(), "empty.fbx");
 
         const parsed = NodeAsset.Parse(JSON.parse(JSON.stringify(asset.serialize())));
-        const parsedRead = parsed.attachedBlocks[0] as ReadFBXBlock;
+        const parsedRead = parsed.attachedBlocks[0] as FBXInputBlock;
 
         expect(parsedRead.data).toEqual(new Uint8Array());
         expect(parsedRead.source).toBe("empty.fbx");
@@ -452,7 +452,7 @@ describe("FBX Universal funnel", () => {
         { data: null, source: "https://cdn.example.com/scenes/remote.fbx", sourceKind: "upload" },
     ])("rejects partial or non-canonical serialized source state: %j", (sourceState) => {
         const asset = new NodeAsset("invalid-fbx-state");
-        const read = new ReadFBXBlock("Read FBX", asset);
+        const read = new FBXInputBlock("FBX", asset);
         const serialization = JSON.parse(JSON.stringify(asset.serialize())) as {
             blocks: Array<{
                 data: string | null;

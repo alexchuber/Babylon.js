@@ -1,13 +1,13 @@
 import { ImportNodeGeometryAggregateBlock } from "node-assets/Blocks/importNodeGeometryAggregateBlock";
 
-import { AggregateImportsFamily, ConfigureBlockForEditor, RegisterBlockDescriptor } from "../blockCatalog";
+import { AggregateImportsFamily, ConfigureBlockForEditor, InputsCategory, RegisterBlockDescriptor } from "../blockCatalog";
 
 const ImportHeaderColor = "#3f7d4e";
 
 RegisterBlockDescriptor({
     paletteItemId: "import-node-geometry",
     label: "Import Node Geometry",
-    category: "Inputs",
+    category: InputsCategory,
     family: AggregateImportsFamily,
     description: "Read and evaluate Node Geometry into Universal.",
     keywords: ["node geometry", "NGE", "procedural geometry", "snippet", "Universal"],

@@ -12,9 +12,9 @@ import { ExportGLTFBlock } from "../../src/Blocks/exportGLTFBlock";
 import { ExportGLTFAggregateBlock } from "../../src/Blocks/exportGLTFAggregateBlock";
 import { ImportOBJAggregateBlock } from "../../src/Blocks/importOBJAggregateBlock";
 import { OBJToUniversalBlock } from "../../src/Blocks/objToUniversalBlock";
-import { ReadOBJBlock } from "../../src/Blocks/readOBJBlock";
+import { OBJInputBlock } from "../../src/Blocks/objInputBlock";
 import { UniversalToGLTFBlock } from "../../src/Blocks/universalToGLTFBlock";
-import { WriteGLTFBlock } from "../../src/Blocks/writeGLTFBlock";
+import { GLTFOutputBlock } from "../../src/Blocks/gltfOutputBlock";
 import { NodeAssetBlock } from "../../src/blockFoundation/nodeAssetBlock";
 import { type NodeAssetConnectionPoint } from "../../src/connection/nodeAssetConnectionPoint";
 import { NodeAssetConnectionPointType } from "../../src/connection/nodeAssetConnectionPointType";
@@ -198,28 +198,28 @@ function CreatePrimitivePipeline(
     fileName = "fixture.OBJ"
 ): {
     readonly asset: NodeAsset;
-    readonly read: ReadOBJBlock;
+    readonly read: OBJInputBlock;
     readonly transcoder: OBJToUniversalBlock;
 } {
     const asset = new NodeAsset("primitive-obj");
-    const read = new ReadOBJBlock("Read OBJ", asset);
+    const read = new OBJInputBlock("OBJ", asset);
     read.setUploadedSource(bytes, fileName);
-    const transcoder = new OBJToUniversalBlock("OBJ to Universal", asset);
+    const transcoder = new OBJToUniversalBlock("OBJ → Universal", asset);
     const exporter = new ExportGLTFAggregateBlock("Export glTF", asset);
     read.output.connectTo(transcoder.input);
     transcoder.output.connectTo(exporter.input);
     return { asset, read, transcoder };
 }
 
-function CreateBundlePipeline(): { readonly asset: NodeAsset; readonly read: ReadOBJBlock } {
+function CreateBundlePipeline(): { readonly asset: NodeAsset; readonly read: OBJInputBlock } {
     const asset = new NodeAsset("bundle-obj");
-    const read = new ReadOBJBlock("Read OBJ", asset);
+    const read = new OBJInputBlock("OBJ", asset);
     read.setUploadedSourceBundle([
         { path: "Models/material.obj", bytes: OBJBundleFixture },
         { path: "Materials/Catalog.MTL", bytes: MTLBundleFixture },
         { path: "Textures/Tiny.PNG", bytes: TinyPng },
     ]);
-    const transcoder = new OBJToUniversalBlock("OBJ to Universal", asset);
+    const transcoder = new OBJToUniversalBlock("OBJ → Universal", asset);
     const exporter = new ExportGLTFAggregateBlock("Export glTF", asset);
     read.output.connectTo(transcoder.input);
     transcoder.output.connectTo(exporter.input);
@@ -232,7 +232,7 @@ function CreateNamedBundlePipeline(
     textureBytes: Uint8Array
 ): {
     readonly asset: NodeAsset;
-    readonly read: ReadOBJBlock;
+    readonly read: OBJInputBlock;
 } {
     const obj = new TextEncoder().encode(`mtllib Materials/catalog.mtl
 o ${materialName}Object
@@ -251,13 +251,13 @@ Kd ${color}
 map_Kd Textures/tiny.png
 `);
     const asset = new NodeAsset(`${materialName}-bundle`);
-    const read = new ReadOBJBlock("Read OBJ", asset);
+    const read = new OBJInputBlock("OBJ", asset);
     read.setUploadedSourceBundle([
         { path: "model.obj", bytes: obj },
         { path: "catalog.mtl", bytes: mtl },
         { path: "tiny.png", bytes: textureBytes },
     ]);
-    const transcoder = new OBJToUniversalBlock("OBJ to Universal", asset);
+    const transcoder = new OBJToUniversalBlock("OBJ → Universal", asset);
     const exporter = new ExportGLTFAggregateBlock("Export glTF", asset);
     read.output.connectTo(transcoder.input);
     transcoder.output.connectTo(exporter.input);
@@ -289,14 +289,14 @@ Kd 0.0 0.0 1.0
 map_Kd ${textureReferences[1]}
 `);
     const asset = new NodeAsset("repeated-basename-bundle");
-    const read = new ReadOBJBlock("Read OBJ", asset);
+    const read = new OBJInputBlock("OBJ", asset);
     read.setUploadedSourceBundle([
         { path: "model.obj", bytes: obj },
         { path: "materials/catalog.mtl", bytes: mtl },
         { path: "materials/a/shared.png", bytes: TinyPng },
         { path: "materials/b/shared.png", bytes: TinyPngWithTrailingByte },
     ]);
-    const transcoder = new OBJToUniversalBlock("OBJ to Universal", asset);
+    const transcoder = new OBJToUniversalBlock("OBJ → Universal", asset);
     const exporter = new ExportGLTFAggregateBlock("Export glTF", asset);
     read.output.connectTo(transcoder.input);
     transcoder.output.connectTo(exporter.input);
@@ -305,7 +305,7 @@ map_Kd ${textureReferences[1]}
 
 async function CreateUrlPipelineAsync(url: string, bytes = OBJFixture) {
     const asset = new NodeAsset("url-obj");
-    const read = new ReadOBJBlock("Read OBJ", asset);
+    const read = new OBJInputBlock("OBJ", asset);
     const fetcher = vi.fn(async () => ({
         ok: true,
         status: 200,
@@ -313,8 +313,8 @@ async function CreateUrlPipelineAsync(url: string, bytes = OBJFixture) {
         arrayBuffer: async () => ArrayBufferFor(bytes),
     }));
     await read.setUrlAsync(url, fetcher);
-    const objToUniversal = new OBJToUniversalBlock("OBJ to Universal", asset);
-    const universalToGltf = new UniversalToGLTFBlock("Universal to glTF", asset);
+    const objToUniversal = new OBJToUniversalBlock("OBJ → Universal", asset);
+    const universalToGltf = new UniversalToGLTFBlock("Universal → glTF", asset);
     const exporter = new ExportGLTFBlock("Export glTF", asset);
     read.output.connectTo(objToUniversal.input);
     objToUniversal.output.connectTo(universalToGltf.input);
@@ -337,10 +337,10 @@ describe("OBJ Universal funnel", () => {
         expect(IsOBJSourceAsset(source)).toBe(true);
 
         const asset = new NodeAsset("obj-source-kind");
-        const read = new ReadOBJBlock("Read OBJ", asset);
-        const toUniversal = new OBJToUniversalBlock("OBJ to Universal", asset);
-        const toGltf = new UniversalToGLTFBlock("Universal to glTF", asset);
-        const write = new WriteGLTFBlock("Write glTF", asset);
+        const read = new OBJInputBlock("OBJ", asset);
+        const toUniversal = new OBJToUniversalBlock("OBJ → Universal", asset);
+        const toGltf = new UniversalToGLTFBlock("Universal → glTF", asset);
+        const write = new GLTFOutputBlock("glTF", asset);
 
         expect(read.inputs).toHaveLength(0);
         expect(read.output.type).toBe(NodeAssetConnectionPointType.OBJ_SOURCE);
@@ -415,8 +415,8 @@ describe("OBJ Universal funnel", () => {
     it("round-trips a URL-only persisted source before hydration and keeps URL sources companion-free", async () => {
         const source = "https://cdn.example.com/catalogs/remote.obj?version=2";
         const asset = new NodeAsset("url-only-obj-state");
-        const read = new ReadOBJBlock("Read OBJ", asset);
-        const toUniversal = new OBJToUniversalBlock("OBJ to Universal", asset);
+        const read = new OBJInputBlock("OBJ", asset);
+        const toUniversal = new OBJToUniversalBlock("OBJ → Universal", asset);
         const exporter = new ExportGLTFAggregateBlock("Export glTF", asset);
         read.output.connectTo(toUniversal.input);
         toUniversal.output.connectTo(exporter.input);
@@ -427,7 +427,7 @@ describe("OBJ Universal funnel", () => {
         Object.assign(serialized.blocks[0], { primary: null, source, sourceKind: "url", companions: [] });
 
         const parsed = NodeAsset.Parse(serialized);
-        const parsedRead = parsed.attachedBlocks[0] as ReadOBJBlock;
+        const parsedRead = parsed.attachedBlocks[0] as OBJInputBlock;
         expect(parsedRead.primary).toBeNull();
         expect(parsedRead.source).toBe(source);
         expect(parsedRead.sourceKind).toBe("url");
@@ -455,7 +455,7 @@ describe("OBJ Universal funnel", () => {
         expect(await GetAssetFactsAsync(result)).toMatchObject({ meshCount: 2, primitiveCount: 2 });
         expect(capture.source).toBeDefined();
         if (!capture.source) {
-            throw new Error("Expected the Read OBJ block to emit an OBJ source payload.");
+            throw new Error("Expected the OBJ input block to emit an OBJ source payload.");
         }
         expect(capture.source.source).toBe(source);
         expect(capture.source.sourceKind).toBe("url");
@@ -555,7 +555,7 @@ describe("OBJ Universal funnel", () => {
         expect(importer.inputs).toHaveLength(0);
         expect(importer.outputs).toEqual([importer.output]);
         expect(importer.output.type).toBe(NodeAssetConnectionPointType.UNIVERSAL);
-        expect(importer.subgraph.attachedBlocks.map((block) => block.getClassName())).toEqual([ReadOBJBlock.ClassName, OBJToUniversalBlock.ClassName]);
+        expect(importer.subgraph.attachedBlocks.map((block) => block.getClassName())).toEqual([OBJInputBlock.ClassName, OBJToUniversalBlock.ClassName]);
 
         const serialized = asset.serialize();
         expect(serialized.blocks[0]).toMatchObject({
@@ -564,7 +564,7 @@ describe("OBJ Universal funnel", () => {
             subgraph: {
                 blocks: [
                     {
-                        customType: ReadOBJBlock.ClassName,
+                        customType: OBJInputBlock.ClassName,
                         primary: { path: "Models/material.obj", bytes: expect.any(String) },
                         source: "Models/material.obj",
                         sourceKind: "upload",
@@ -627,7 +627,7 @@ describe("OBJ Universal funnel", () => {
         ];
 
         for (const files of invalidBundles) {
-            expect(() => read.setUploadedSourceBundle(files)).toThrow(/Read OBJ.*bundle/i);
+            expect(() => read.setUploadedSourceBundle(files)).toThrow(/OBJ input block.*bundle/i);
             expect(read.primary).toEqual(expectedPrimary);
             expect(read.companions).toEqual(expectedCompanions);
         }
@@ -643,7 +643,7 @@ describe("OBJ Universal funnel", () => {
 
     it("does not let an older bundle replace a newer successful source", async () => {
         const asset = new NodeAsset("obj-bundle-race");
-        const read = new ReadOBJBlock("Read OBJ", asset);
+        const read = new OBJInputBlock("OBJ", asset);
         let resolveBundle: ((files: ReadonlyArray<{ readonly path: string; readonly bytes: Uint8Array }>) => void) | undefined;
         const pendingBundle = read.setUploadedSourceBundleAsync(
             async () =>
@@ -720,7 +720,7 @@ describe("OBJ Universal funnel", () => {
 
     it("activates URLs only after success and keeps the last successful source on failure", async () => {
         const asset = new NodeAsset("obj-source-choice");
-        const read = new ReadOBJBlock("Read OBJ", asset);
+        const read = new OBJInputBlock("OBJ", asset);
         read.setUploadedSource(OBJFixture, "uploaded.obj");
 
         await expect(
@@ -750,7 +750,7 @@ describe("OBJ Universal funnel", () => {
 
     it("does not let an older URL replace a newer upload or a cleared source", async () => {
         const asset = new NodeAsset("obj-source-race");
-        const read = new ReadOBJBlock("Read OBJ", asset);
+        const read = new OBJInputBlock("OBJ", asset);
         let resolveResponse: ((response: { ok: boolean; status: number; statusText: string; arrayBuffer: () => Promise<ArrayBuffer> }) => void) | undefined;
 
         const pendingUrl = read.setUrlAsync(
@@ -795,7 +795,7 @@ describe("OBJ Universal funnel", () => {
     it("rejects invalid uploads without replacing the active source and owns defensive copies", () => {
         const source = OBJFixture.slice();
         const asset = new NodeAsset("obj-upload-validation");
-        const read = new ReadOBJBlock("Read OBJ", asset);
+        const read = new OBJInputBlock("OBJ", asset);
         read.setUploadedSource(source, "valid.OBJ");
         source[0] = 0;
 
@@ -812,7 +812,7 @@ describe("OBJ Universal funnel", () => {
 
     it("rejects malformed or incoherent persisted OBJ state contextually", () => {
         const asset = new NodeAsset("obj-persistence-validation");
-        const read = new ReadOBJBlock("Read OBJ", asset);
+        const read = new OBJInputBlock("OBJ", asset);
         read.setUploadedSource(OBJFixture, "fixture.obj");
         const serialized = asset.serialize();
 
@@ -843,7 +843,7 @@ describe("OBJ Universal funnel", () => {
         for (const invalidate of invalidStates) {
             const candidate = JSON.parse(JSON.stringify(serialized)) as { blocks: Array<Record<string, unknown>> };
             invalidate(candidate.blocks[0]);
-            expect(() => NodeAsset.Parse(candidate)).toThrow(/Read OBJ.*persisted OBJ source state/);
+            expect(() => NodeAsset.Parse(candidate)).toThrow(/"OBJ".*persisted OBJ source state/);
         }
     });
 
@@ -890,12 +890,12 @@ ${new TextDecoder().decode(OBJFixture)}`);
 
     it("disposes its scene and engine when an injected export failure rejects", async () => {
         const asset = new NodeAsset("obj-cleanup");
-        const read = new ReadOBJBlock("Read OBJ", asset);
+        const read = new OBJInputBlock("OBJ", asset);
         read.setUploadedSourceBundle([
             { path: "fixture.obj", bytes: OBJFixture },
             { path: "material.mtl", bytes: MTLBundleFixture },
         ]);
-        const transcoder = new OBJToUniversalBlock("OBJ to Universal", asset);
+        const transcoder = new OBJToUniversalBlock("OBJ → Universal", asset);
         await read._buildBlockAsync();
         transcoder.input.value = read.output.value;
 
@@ -907,7 +907,7 @@ ${new TextDecoder().decode(OBJFixture)}`);
         const engineDispose = vi.spyOn(NullEngine.prototype, "dispose");
         const initialStore = { ...FilesInputStore.FilesToLoad };
         try {
-            await expect(transcoder._buildBlockAsync()).rejects.toThrow(/OBJ to Universal.*Injected OBJ export failure/);
+            await expect(transcoder._buildBlockAsync()).rejects.toThrow(/OBJ → Universal.*Injected OBJ export failure/);
             expect(sceneDispose).toHaveBeenCalled();
             expect(engineDispose).toHaveBeenCalled();
             expect(FilesInputStore.FilesToLoad).toEqual(initialStore);
@@ -920,12 +920,12 @@ ${new TextDecoder().decode(OBJFixture)}`);
 
     it("preserves the conversion failure when scene and engine cleanup also fail", async () => {
         const asset = new NodeAsset("obj-cleanup-errors");
-        const read = new ReadOBJBlock("Read OBJ", asset);
+        const read = new OBJInputBlock("OBJ", asset);
         read.setUploadedSourceBundle([
             { path: "fixture.obj", bytes: OBJFixture },
             { path: "material.mtl", bytes: MTLBundleFixture },
         ]);
-        const transcoder = new OBJToUniversalBlock("OBJ to Universal", asset);
+        const transcoder = new OBJToUniversalBlock("OBJ → Universal", asset);
         await read._buildBlockAsync();
         transcoder.input.value = read.output.value;
 

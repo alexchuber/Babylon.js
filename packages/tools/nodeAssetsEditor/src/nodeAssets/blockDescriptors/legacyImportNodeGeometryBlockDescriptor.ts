@@ -1,11 +1,11 @@
 import { ImportNodeGeometryBlock } from "node-assets/Blocks/importNodeGeometryBlock";
 
-import { ConfigureBlockForEditor, RegisterBlockDescriptor } from "../blockCatalog";
+import { ConfigureBlockForEditor, InputsCategory, RegisterBlockDescriptor } from "../blockCatalog";
 
 RegisterBlockDescriptor({
     paletteItemId: "legacy-import-node-geometry",
     label: "Legacy Import Node Geometry",
-    category: "Inputs",
+    category: InputsCategory,
     headerColor: "#3f6fd9",
     className: ImportNodeGeometryBlock.ClassName,
     isPaletteVisible: false,

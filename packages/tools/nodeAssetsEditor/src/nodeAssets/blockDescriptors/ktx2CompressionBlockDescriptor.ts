@@ -1,6 +1,6 @@
 import { KTX2CompressionBlock } from "node-assets/Blocks/ktx2CompressionBlock";
 
-import { ConfigureBlockForEditor, EncodingOutputFamily, RegisterBlockDescriptor } from "../blockCatalog";
+import { ConfigureBlockForEditor, EncodingOutputFamily, GltfCategory, RegisterBlockDescriptor } from "../blockCatalog";
 
 // Data-driven node header color for the KTX2 compression block.
 const CompressionHeaderColor = "#7d5aa8";
@@ -38,7 +38,7 @@ RegisterBlockDescriptor({
     description: "Compress scene textures to KTX2 / Basis Universal.",
     keywords: ["compress", "texture compression", "Basis", "UASTC", "ETC1S"],
     headerColor: CompressionHeaderColor,
-    category: "glTF",
+    category: GltfCategory,
     family: EncodingOutputFamily,
     className: KTX2CompressionBlock.ClassName,
     create: (nodeAsset) => ConfigureBlockForEditor(new KTX2CompressionBlock("Compress Textures (KTX2)", nodeAsset)),

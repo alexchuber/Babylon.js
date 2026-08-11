@@ -19,7 +19,7 @@ export interface IOBJSourceResponse {
     arrayBuffer(): Promise<ArrayBuffer>;
 }
 
-/** Fetch-compatible loader used by {@link ReadOBJBlock.setUrlAsync}. */
+/** Fetch-compatible loader used by {@link OBJInputBlock.setUrlAsync}. */
 // eslint-disable-next-line @typescript-eslint/naming-convention
 export type OBJSourceFetcher = (url: string) => Promise<IOBJSourceResponse>;
 
@@ -58,9 +58,9 @@ function ParseSerializedSourceFile(value: unknown, label: string): IOBJSourceFil
 
 /** Resolves a URL or uploaded OBJ bundle into a shallow OBJ source payload. */
 // eslint-disable-next-line @typescript-eslint/naming-convention
-export class ReadOBJBlock extends NodeAssetBlock {
+export class OBJInputBlock extends NodeAssetBlock {
     /** The class name, used for identification and safe under minification. */
-    public static override ClassName = "ReadOBJBlock";
+    public static override ClassName = "OBJInputBlock";
 
     /** The shallow OBJ source payload. */
     public readonly output: NodeAssetConnectionPoint;
@@ -73,7 +73,7 @@ export class ReadOBJBlock extends NodeAssetBlock {
     private _lastSuccessfulSourceAttempt = 0;
 
     /**
-     * Creates an OBJ read block.
+     * Creates a OBJ input block.
      * @param name The display name.
      * @param nodeAsset The owning graph.
      */
@@ -109,7 +109,7 @@ export class ReadOBJBlock extends NodeAssetBlock {
      */
     public setUploadedSource(bytes: Uint8Array, fileName: string): void {
         if (!(bytes instanceof Uint8Array) || !IsOBJFileName(fileName)) {
-            throw new TypeError("Read OBJ requires a single .obj file.");
+            throw new TypeError("The OBJ input block requires a single .obj file.");
         }
         this.setUploadedSourceBundle([{ path: fileName, bytes }]);
     }
@@ -128,7 +128,7 @@ export class ReadOBJBlock extends NodeAssetBlock {
         applyResult?: IOBJSourceApplyResult
     ): Promise<void> {
         if (!IsOBJFileName(fileName)) {
-            throw new TypeError("Read OBJ requires a single .obj file.");
+            throw new TypeError("The OBJ input block requires a single .obj file.");
         }
         await this.setUploadedSourceBundleAsync(async () => [{ path: fileName, bytes: new Uint8Array(await loadBytesAsync()) }], canApplyResult, applyResult);
     }
@@ -193,7 +193,7 @@ export class ReadOBJBlock extends NodeAssetBlock {
         applyResult?: IOBJSourceApplyResult
     ): Promise<void> {
         if (typeof url !== "string" || url.trim().length === 0) {
-            throw new TypeError("Read OBJ requires a non-empty URL.");
+            throw new TypeError("The OBJ input block requires a non-empty URL.");
         }
         if (applyResult) {
             applyResult.applied = false;
@@ -234,7 +234,7 @@ export class ReadOBJBlock extends NodeAssetBlock {
         const source = this._source;
         const sourceKind = this._sourceKind;
         if (!primary || !source || !sourceKind) {
-            throw new Error(`The "${this.name}" read block has no OBJ source.`);
+            throw new Error(`The "${this.name}" input block has no OBJ source.`);
         }
         scope?.accountSourceBytes(primary.bytes.byteLength + this._companions.reduce((total, companion) => total + companion.bytes.byteLength, 0));
         this.output.value = new OBJSourceAsset(primary, source, sourceKind, this._companions);
@@ -313,18 +313,18 @@ export class ReadOBJBlock extends NodeAssetBlock {
 
     private _createUploadedSource(files: ReadonlyArray<IOBJSourceFile>): OBJSourceAsset {
         if (!Array.isArray(files)) {
-            throw new TypeError("Read OBJ requires an uploaded bundle array.");
+            throw new TypeError("The OBJ input block requires an uploaded bundle array.");
         }
         const primaryFiles = files.filter((file) => typeof file === "object" && file !== null && typeof file.path === "string" && IsOBJFileName(file.path));
         if (primaryFiles.length !== 1) {
-            throw new TypeError("Read OBJ requires an uploaded bundle containing a single .obj file.");
+            throw new TypeError("The OBJ input block requires an uploaded bundle containing a single .obj file.");
         }
         const primary = primaryFiles[0];
         const companions = files.filter((file) => file !== primary);
         try {
             return new OBJSourceAsset(primary, primary.path, "upload", companions);
         } catch (error) {
-            throw new TypeError(`Read OBJ rejected the uploaded bundle: ${error instanceof Error ? error.message : String(error)}`, { cause: error });
+            throw new TypeError(`The OBJ input block rejected the uploaded bundle: ${error instanceof Error ? error.message : String(error)}`, { cause: error });
         }
     }
 
@@ -336,4 +336,4 @@ export class ReadOBJBlock extends NodeAssetBlock {
     }
 }
 
-RegisterBlock(ReadOBJBlock.ClassName, (name, nodeAsset) => new ReadOBJBlock(name, nodeAsset));
+RegisterBlock(OBJInputBlock.ClassName, (name, nodeAsset) => new OBJInputBlock(name, nodeAsset));

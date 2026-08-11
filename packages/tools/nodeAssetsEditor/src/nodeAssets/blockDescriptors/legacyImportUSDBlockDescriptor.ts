@@ -1,6 +1,6 @@
 import { ImportUSDBlock } from "node-assets/Blocks/importUSDBlock";
 
-import { ConfigureBlockForEditor, RegisterBlockDescriptor } from "../blockCatalog";
+import { ConfigureBlockForEditor, InputsCategory, RegisterBlockDescriptor } from "../blockCatalog";
 import { PromptForFileAsync } from "../browserFiles";
 
 // eslint-disable-next-line @typescript-eslint/naming-convention
@@ -18,7 +18,7 @@ RegisterBlockDescriptor({
     paletteItemId: "legacy-import-usd",
     label: "Import USD (legacy)",
     description: "Legacy single-block USD importer retained for saved graph compatibility.",
-    category: "Inputs",
+    category: InputsCategory,
     headerColor: "#3f7d4e",
     className: ImportUSDBlock.ClassName,
     isPaletteVisible: false,

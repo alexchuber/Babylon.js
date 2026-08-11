@@ -7,9 +7,9 @@ import { DracoCompressionBlock } from "../../src/Blocks/dracoCompressionBlock";
 import { ExportGLTFAggregateBlock } from "../../src/Blocks/exportGLTFAggregateBlock";
 import { ImportGLTFAggregateBlock } from "../../src/Blocks/importGLTFAggregateBlock";
 import { KTX2CompressionBlock } from "../../src/Blocks/ktx2CompressionBlock";
-import { ReadGLTFBlock } from "../../src/Blocks/readGLTFBlock";
+import { GLTFInputBlock } from "../../src/Blocks/gltfInputBlock";
 import { UniversalToGLTFBlock } from "../../src/Blocks/universalToGLTFBlock";
-import { WriteGLTFBlock } from "../../src/Blocks/writeGLTFBlock";
+import { GLTFOutputBlock } from "../../src/Blocks/gltfOutputBlock";
 import { CustomAggregateBlock } from "../../src/blockFoundation/customAggregateBlock";
 import { NodeAssetConnectionPointType } from "../../src/connection/nodeAssetConnectionPointType";
 import { NodeAsset } from "../../src/nodeAsset";
@@ -62,9 +62,9 @@ describe("Universal glTF funnel", () => {
             NodeAsset.Parse({
                 name: "invalid-funnel",
                 blocks: [
-                    { customType: ReadGLTFBlock.ClassName, id: 1, name: "Read glTF", data: null, source: null },
-                    { customType: UniversalToGLTFBlock.ClassName, id: 2, name: "Universal to glTF" },
-                    { customType: WriteGLTFBlock.ClassName, id: 3, name: "Write glTF" },
+                    { customType: GLTFInputBlock.ClassName, id: 1, name: "glTF", data: null, source: null },
+                    { customType: UniversalToGLTFBlock.ClassName, id: 2, name: "Universal → glTF" },
+                    { customType: GLTFOutputBlock.ClassName, id: 3, name: "glTF" },
                 ],
                 connections: [
                     { fromBlock: 1, fromPoint: "output", toBlock: 2, toPoint: "input" },
@@ -76,12 +76,12 @@ describe("Universal glTF funnel", () => {
 
     it("builds a valid GLB through the explicit glTF and Universal primitive path", async () => {
         const asset = new NodeAsset("explicit-funnel");
-        const read = new ReadGLTFBlock("Read glTF", asset);
+        const read = new GLTFInputBlock("glTF", asset);
         read.data = await CreateFixtureGlbAsync();
         read.source = "fixture.glb";
-        const toUniversal = new GLTFToUniversalBlock("glTF to Universal", asset);
-        const toGltf = new UniversalToGLTFBlock("Universal to glTF", asset);
-        const write = new WriteGLTFBlock("Write glTF", asset);
+        const toUniversal = new GLTFToUniversalBlock("glTF → Universal", asset);
+        const toGltf = new UniversalToGLTFBlock("Universal → glTF", asset);
+        const write = new GLTFOutputBlock("glTF", asset);
 
         read.output.connectTo(toUniversal.input);
         toUniversal.output.connectTo(toGltf.input);
@@ -112,8 +112,8 @@ describe("Universal glTF funnel", () => {
 
     it("keeps both delivery codecs on the explicit glTF target lane", () => {
         const asset = new NodeAsset("codec-lane-types");
-        const toUniversal = new GLTFToUniversalBlock("glTF to Universal", asset);
-        const toGltf = new UniversalToGLTFBlock("Universal to glTF", asset);
+        const toUniversal = new GLTFToUniversalBlock("glTF → Universal", asset);
+        const toGltf = new UniversalToGLTFBlock("Universal → glTF", asset);
         const ktx2 = new KTX2CompressionBlock("Compress Textures (KTX2)", asset);
         const draco = new DracoCompressionBlock("Compress Geometry (Draco)", asset);
 
@@ -129,15 +129,15 @@ describe("Universal glTF funnel", () => {
 
     it("builds KTX2 textures and Draco geometry through the advanced explicit delivery lane", async () => {
         const asset = new NodeAsset("advanced-codec-lane");
-        const read = new ReadGLTFBlock("Read glTF", asset);
+        const read = new GLTFInputBlock("glTF", asset);
         read.data = await CreateCodecFixtureGlbAsync();
         read.source = "codec-fixture.glb";
-        const toUniversal = new GLTFToUniversalBlock("glTF to Universal", asset);
-        const toGltf = new UniversalToGLTFBlock("Universal to glTF", asset);
+        const toUniversal = new GLTFToUniversalBlock("glTF → Universal", asset);
+        const toGltf = new UniversalToGLTFBlock("Universal → glTF", asset);
         const ktx2 = new KTX2CompressionBlock("Compress Textures (KTX2)", asset);
         ktx2.imageDecoder = DecodeCodecFixtureAsync;
         const draco = new DracoCompressionBlock("Compress Geometry (Draco)", asset);
-        const write = new WriteGLTFBlock("Write glTF", asset);
+        const write = new GLTFOutputBlock("glTF", asset);
         write.fileName = "advanced-codecs";
 
         read.output.connectTo(toUniversal.input);
@@ -171,22 +171,22 @@ describe("Universal glTF funnel", () => {
         const serializedExport = serialized.blocks.find((block) => block.customType === ExportGLTFAggregateBlock.ClassName);
         expect(serializedImport?.aggregateVersion).toBe(1);
         expect(serializedImport?.subgraph).toMatchObject({
-            blocks: [{ customType: ReadGLTFBlock.ClassName }, { customType: GLTFToUniversalBlock.ClassName }],
+            blocks: [{ customType: GLTFInputBlock.ClassName }, { customType: GLTFToUniversalBlock.ClassName }],
         });
         expect(serializedExport?.aggregateVersion).toBe(1);
         expect(serializedExport?.subgraph).toMatchObject({
-            blocks: [{ customType: UniversalToGLTFBlock.ClassName }, { customType: WriteGLTFBlock.ClassName, fileName: "aggregate-result" }],
+            blocks: [{ customType: UniversalToGLTFBlock.ClassName }, { customType: GLTFOutputBlock.ClassName, fileName: "aggregate-result" }],
         });
 
         const aggregateResult = await NodeAsset.Parse(JSON.parse(JSON.stringify(serialized))).buildAsync();
 
         const primitiveAsset = new NodeAsset("primitive-funnel");
-        const read = new ReadGLTFBlock("Read glTF", primitiveAsset);
+        const read = new GLTFInputBlock("glTF", primitiveAsset);
         read.data = source;
         read.source = "fixture.glb";
-        const toUniversal = new GLTFToUniversalBlock("glTF to Universal", primitiveAsset);
-        const toGltf = new UniversalToGLTFBlock("Universal to glTF", primitiveAsset);
-        const write = new WriteGLTFBlock("Write glTF", primitiveAsset);
+        const toUniversal = new GLTFToUniversalBlock("glTF → Universal", primitiveAsset);
+        const toGltf = new UniversalToGLTFBlock("Universal → glTF", primitiveAsset);
+        const write = new GLTFOutputBlock("glTF", primitiveAsset);
         read.output.connectTo(toUniversal.input);
         toUniversal.output.connectTo(toGltf.input);
         toGltf.output.connectTo(write.input);
@@ -222,7 +222,7 @@ describe("Universal glTF funnel", () => {
         expect(serialized.blocks.find((block) => block.customType === CustomAggregateBlock.ClassName)).toMatchObject({
             aggregateVersion: 1,
             subgraph: {
-                blocks: [{ customType: UniversalToGLTFBlock.ClassName }, { customType: WriteGLTFBlock.ClassName }],
+                blocks: [{ customType: UniversalToGLTFBlock.ClassName }, { customType: GLTFOutputBlock.ClassName }],
             },
         });
 
@@ -307,7 +307,7 @@ describe("Universal glTF funnel", () => {
 
     it("keeps a glTF source cleared when an earlier URL request succeeds later", async () => {
         const asset = new NodeAsset("cleared-gltf-source");
-        const read = new ReadGLTFBlock("Read glTF", asset);
+        const read = new GLTFInputBlock("glTF", asset);
         let resolveResponse: ((response: { ok: boolean; status: number; statusText: string; arrayBuffer: () => Promise<ArrayBuffer> }) => void) | undefined;
         const pendingUrl = read.setUrlAsync(
             "https://example.com/delayed.glb",

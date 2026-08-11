@@ -1,9 +1,9 @@
 import { ImportGLTFBlock } from "node-assets/Blocks/importGLTFBlock";
-import { ReadGLTFBlock } from "node-assets/Blocks/readGLTFBlock";
+import { GLTFInputBlock } from "node-assets/Blocks/gltfInputBlock";
 import { ImportUSDBlock } from "node-assets/Blocks/importUSDBlock";
 import { USDToUniversalBlock } from "node-assets/Blocks/usdToUniversalBlock";
 import { ExportGLTFBlock } from "node-assets/Blocks/exportGLTFBlock";
-import { WriteGLTFBlock } from "node-assets/Blocks/writeGLTFBlock";
+import { GLTFOutputBlock } from "node-assets/Blocks/gltfOutputBlock";
 import { KTX2CompressionBlock } from "node-assets/Blocks/ktx2CompressionBlock";
 import { type NodeAsset } from "node-assets/nodeAsset";
 import { AggregateBlock } from "node-assets/blockFoundation/aggregateBlock";
@@ -30,11 +30,11 @@ export interface INodeAssetBuildResourceUrls {
  */
 export function ConfigureNodeAssetBuildResources(nodeAsset: NodeAsset, resourceUrls: INodeAssetBuildResourceUrls): void {
     const configureBlock = (block: NodeAssetBlock): void => {
-        if (block instanceof ImportGLTFBlock || block instanceof ReadGLTFBlock) {
+        if (block instanceof ImportGLTFBlock || block instanceof GLTFInputBlock) {
             block.dracoDecoderWasmUrl = resourceUrls.dracoDecoderWasmUrl;
         } else if (block instanceof ImportUSDBlock || block instanceof USDToUniversalBlock) {
             block.usdWasmUrl = resourceUrls.usdWasmUrl;
-        } else if (block instanceof ExportGLTFBlock || block instanceof WriteGLTFBlock) {
+        } else if (block instanceof ExportGLTFBlock || block instanceof GLTFOutputBlock) {
             block.dracoEncoderWasmUrl = resourceUrls.dracoEncoderWasmUrl;
         } else if (block instanceof KTX2CompressionBlock) {
             block.jsUrl ??= resourceUrls.basisEncoderJsUrl;

@@ -3,9 +3,9 @@ import { AggregateBlock } from "../blockFoundation/aggregateBlock";
 import { type NodeAssetConnectionPoint } from "../connection/nodeAssetConnectionPoint";
 import { type NodeAsset } from "../nodeAsset";
 import { UniversalToGLTFBlock } from "./universalToGLTFBlock";
-import { WriteGLTFBlock } from "./writeGLTFBlock";
+import { GLTFOutputBlock } from "./gltfOutputBlock";
 
-/** Built-in `Universal -> glTF -> Write glTF` aggregate. */
+/** Built-in `Universal -> glTF -> glTF output` aggregate. */
 export class ExportGLTFAggregateBlock extends AggregateBlock {
     /** The class name, used for identification and safe under minification. */
     public static override ClassName = "ExportGLTFAggregateBlock";
@@ -20,37 +20,37 @@ export class ExportGLTFAggregateBlock extends AggregateBlock {
      */
     public constructor(name: string, nodeAsset: NodeAsset) {
         super(name, nodeAsset);
-        const transcoder = new UniversalToGLTFBlock("Universal to glTF", this.subgraph);
-        const write = new WriteGLTFBlock("Write glTF", this.subgraph);
-        transcoder.output.connectTo(write.input);
+        const transcoder = new UniversalToGLTFBlock("Universal → glTF", this.subgraph);
+        const outputBlock = new GLTFOutputBlock("glTF", this.subgraph);
+        transcoder.output.connectTo(outputBlock.input);
         this.input = this._exposeInput(transcoder.input, "input");
     }
 
-    /** The owned Write glTF primitive. */
-    public get writeBlock(): WriteGLTFBlock {
-        const block = this.subgraph.attachedBlocks.find((candidate): candidate is WriteGLTFBlock => candidate instanceof WriteGLTFBlock);
+    /** The owned glTF output primitive. */
+    public get outputBlock(): GLTFOutputBlock {
+        const block = this.subgraph.attachedBlocks.find((candidate): candidate is GLTFOutputBlock => candidate instanceof GLTFOutputBlock);
         if (!block) {
-            throw new Error(`The "${this.name}" aggregate has no WriteGLTFBlock.`);
+            throw new Error(`The "${this.name}" aggregate has no GLTFOutputBlock.`);
         }
         return block;
     }
 
-    /** Export file name forwarded to the Write glTF primitive. */
+    /** Export file name forwarded to the glTF output primitive. */
     public get fileName(): string {
-        return this.writeBlock.fileName;
+        return this.outputBlock.fileName;
     }
 
     public set fileName(value: string) {
-        this.writeBlock.fileName = value;
+        this.outputBlock.fileName = value;
     }
 
-    /** Draco encoder URL forwarded to the Write glTF primitive. */
+    /** Draco encoder URL forwarded to the glTF output primitive. */
     public get dracoEncoderWasmUrl(): string | undefined {
-        return this.writeBlock.dracoEncoderWasmUrl;
+        return this.outputBlock.dracoEncoderWasmUrl;
     }
 
     public set dracoEncoderWasmUrl(value: string | undefined) {
-        this.writeBlock.dracoEncoderWasmUrl = value;
+        this.outputBlock.dracoEncoderWasmUrl = value;
     }
 }
 

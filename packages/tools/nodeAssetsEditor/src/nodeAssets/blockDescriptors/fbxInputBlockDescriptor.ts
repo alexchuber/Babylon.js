@@ -1,40 +1,30 @@
-import { ReadOBJBlock } from "node-assets/Blocks/readOBJBlock";
+import { FBXInputBlock } from "node-assets/Blocks/fbxInputBlock";
 
 import { type IPropertySection } from "../../nodeGraph/propertyModel";
-import { PromptForFilesAsync } from "../browserFiles";
-import { ConfigureBlockForEditor, type IPropertySectionContext, OBJHeaderColor, RegisterBlockDescriptor } from "../blockCatalog";
+import { FBXHeaderColor, ConfigureBlockForEditor, type IPropertySectionContext, InputsCategory, RegisterBlockDescriptor } from "../blockCatalog";
+import { PromptForFileAsync } from "../browserFiles";
 
-const SourceErrors = new WeakMap<ReadOBJBlock, string>();
-const PendingSourceRequests = new WeakMap<ReadOBJBlock, Promise<unknown>>();
+const SourceErrors = new WeakMap<FBXInputBlock, string>();
+const PendingSourceRequests = new WeakMap<FBXInputBlock, Promise<unknown>>();
 
-// eslint-disable-next-line @typescript-eslint/naming-convention
-async function PromptForOBJAsync(block: ReadOBJBlock, context: IPropertySectionContext): Promise<void> {
-    const files = await PromptForFilesAsync(".obj,.mtl,.jpg,.jpeg,.png,.webp,.avif,.ktx2");
-    if (files === null) {
+async function PromptForFBXAsync(block: FBXInputBlock, context: IPropertySectionContext): Promise<void> {
+    const file = await PromptForFileAsync(".fbx");
+    if (!file) {
         return;
     }
     const authoredBlock = context.prepareEdit(block);
     if (!authoredBlock) {
         return;
     }
-    const applyResult = { applied: false };
-    const request = authoredBlock.setUploadedSourceBundleAsync(
-        async () =>
-            await Promise.all(
-                files.map(async ({ file, path }) => ({
-                    path,
-                    bytes: new Uint8Array(await file.arrayBuffer()),
-                }))
-            ),
-        () => context.prepareEdit(authoredBlock) === authoredBlock,
-        applyResult
-    );
+    const request = file.arrayBuffer();
     PendingSourceRequests.set(authoredBlock, request);
     try {
-        await request;
-        if (context.prepareEdit(authoredBlock) === authoredBlock && applyResult.applied) {
-            SourceErrors.delete(authoredBlock);
+        const data = new Uint8Array(await request);
+        if (context.prepareEdit(authoredBlock) !== authoredBlock || PendingSourceRequests.get(authoredBlock) !== request) {
+            return;
         }
+        authoredBlock.setUploadedSource(data, file.name);
+        SourceErrors.delete(authoredBlock);
     } catch (error) {
         if (context.prepareEdit(authoredBlock) === authoredBlock && PendingSourceRequests.get(authoredBlock) === request) {
             SourceErrors.set(authoredBlock, error instanceof Error ? error.message : String(error));
@@ -50,17 +40,22 @@ async function PromptForOBJAsync(block: ReadOBJBlock, context: IPropertySectionC
 }
 
 // eslint-disable-next-line @typescript-eslint/naming-convention
-async function SetOBJUrlAsync(block: ReadOBJBlock, url: string, context: IPropertySectionContext): Promise<void> {
+async function SetFBXUrlAsync(block: FBXInputBlock, url: string, context: IPropertySectionContext): Promise<void> {
     const authoredBlock = context.prepareEdit(block);
     if (!authoredBlock) {
         return;
     }
     const applyResult = { applied: false };
-    const request = authoredBlock.setUrlAsync(url, undefined, () => context.prepareEdit(authoredBlock) === authoredBlock, applyResult);
+    const request = authoredBlock.setUrlAsync(
+        url,
+        undefined,
+        () => context.prepareEdit(authoredBlock) === authoredBlock && PendingSourceRequests.get(authoredBlock) === request,
+        applyResult
+    );
     PendingSourceRequests.set(authoredBlock, request);
     try {
         await request;
-        if (context.prepareEdit(authoredBlock) === authoredBlock && applyResult.applied) {
+        if (context.prepareEdit(authoredBlock) === authoredBlock && PendingSourceRequests.get(authoredBlock) === request && applyResult.applied) {
             SourceErrors.delete(authoredBlock);
         }
     } catch (error) {
@@ -78,14 +73,13 @@ async function SetOBJUrlAsync(block: ReadOBJBlock, url: string, context: IProper
 }
 
 /**
- * Builds the source controls shared by Read OBJ and Import OBJ.
- * @param block The owned Read OBJ primitive.
+ * Builds the source controls shared by the FBX input block and Import FBX.
+ * @param block The owned FBX input primitive.
  * @param context Editor property actions.
  * @param title Child-attributed section title.
  * @returns The shared property section.
  */
-// eslint-disable-next-line @typescript-eslint/naming-convention
-export function CreateReadOBJPropertySection(block: ReadOBJBlock, context: IPropertySectionContext, title = "SOURCE"): IPropertySection {
+export function CreateFBXInputPropertySection(block: FBXInputBlock, context: IPropertySectionContext, title = "SOURCE"): IPropertySection {
     const sourceError = SourceErrors.get(block);
     return {
         title,
@@ -107,7 +101,7 @@ export function CreateReadOBJPropertySection(block: ReadOBJBlock, context: IProp
                         context.refresh();
                         return;
                     }
-                    void SetOBJUrlAsync(block, value, context);
+                    void SetFBXUrlAsync(block, value, context);
                 },
             },
             {
@@ -119,9 +113,9 @@ export function CreateReadOBJPropertySection(block: ReadOBJBlock, context: IProp
             },
             {
                 kind: "button",
-                label: "Upload OBJ\u2026",
+                label: "Upload FBX\u2026",
                 onClick: () => {
-                    void PromptForOBJAsync(block, context);
+                    void PromptForFBXAsync(block, context);
                 },
             },
             ...(sourceError
@@ -140,13 +134,14 @@ export function CreateReadOBJPropertySection(block: ReadOBJBlock, context: IProp
 }
 
 RegisterBlockDescriptor({
-    paletteItemId: "read-obj",
-    label: "Read OBJ",
-    description: "Read a URL or one uploaded OBJ bundle.",
-    category: "Inputs",
-    headerColor: OBJHeaderColor,
-    className: ReadOBJBlock.ClassName,
-    abstractedBy: "import-obj",
-    create: (nodeAsset) => ConfigureBlockForEditor(new ReadOBJBlock("Read OBJ", nodeAsset)),
-    getPropertySection: (block, context) => CreateReadOBJPropertySection(block as ReadOBJBlock, context),
+    paletteItemId: "fbx-input",
+    label: "FBX",
+    description: "Read a URL or uploaded .fbx source.",
+    keywords: ["read", "open", "load", "url", "upload", "fbx", "input", "source"],
+    category: InputsCategory,
+    headerColor: FBXHeaderColor,
+    className: FBXInputBlock.ClassName,
+    abstractedBy: "import-fbx",
+    create: (nodeAsset) => ConfigureBlockForEditor(new FBXInputBlock("FBX", nodeAsset)),
+    getPropertySection: (block, context) => CreateFBXInputPropertySection(block as FBXInputBlock, context),
 });

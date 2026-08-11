@@ -1,4 +1,4 @@
-/** Immutable resolved `.fbx` source carried only from Read FBX to FBX to Universal. */
+/** Immutable resolved `.fbx` source carried only from the FBX input block to FBX → Universal. */
 export class FBXSource {
     private readonly _data: Uint8Array;
 

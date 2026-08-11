@@ -1,5 +1,6 @@
 import { type Nullable } from "core/types";
 import { DecodeBase64ToBinary, EncodeArrayBufferToBase64 } from "core/Misc/stringTools";
+import { Tools } from "core/Misc/tools.pure";
 
 import { RegisterBlock } from "../blockFoundation/blockRegistry";
 import { NodeAssetBlock } from "../blockFoundation/nodeAssetBlock";
@@ -7,60 +8,53 @@ import { type NodeAssetConnectionPoint } from "../connection/nodeAssetConnection
 import { NodeAssetConnectionPointType } from "../connection/nodeAssetConnectionPointType";
 import { type BuildScope } from "../evaluation/buildScope";
 import { type NodeAsset } from "../nodeAsset";
-import { GltfAsset } from "../representations/gltfAsset";
+import { BabylonSource } from "../representations/babylonSource";
 import { GetSerializedNullableString, GetSerializedStringUnion, type NodeAssetBlockSerialization } from "../serialization/nodeAssetSerialization";
-import { GetDracoModuleOptions, ResolveDraco3DGltfModule } from "./dracoWasm";
 
-/** The active source kind for a Read glTF block. */
-export type GLTFSourceKind = "url" | "upload";
+/** The active source kind for a Babylon input block. */
+export type BabylonSourceKind = "url" | "upload";
 
-/** Minimal response surface used to load a glTF URL. */
-export interface IGLTFSourceResponse {
+/** Minimal response surface used to load a Babylon URL. */
+export interface IBabylonSourceResponse {
     readonly ok: boolean;
     readonly status: number;
     readonly statusText: string;
     arrayBuffer(): Promise<ArrayBuffer>;
 }
 
-/** Fetch-compatible loader used by {@link ReadGLTFBlock.setUrlAsync}. */
-export type GLTFSourceFetcher = (url: string) => Promise<IGLTFSourceResponse>;
+/** Fetch-compatible loader used by {@link BabylonInputBlock.setUrlAsync}. */
+export type BabylonSourceFetcher = (url: string) => Promise<IBabylonSourceResponse>;
 
-/** Reads glTF or GLB bytes into a glTF source payload. */
-export class ReadGLTFBlock extends NodeAssetBlock {
+/** Resolves a URL or uploaded `.babylon` file into a shallow Babylon source payload. */
+export class BabylonInputBlock extends NodeAssetBlock {
     /** The class name, used for identification and safe under minification. */
-    public static override ClassName = "ReadGLTFBlock";
+    public static override ClassName = "BabylonInputBlock";
 
-    /** Uploaded glTF or GLB bytes. */
+    /** Resolved `.babylon` source bytes. */
     public data: Nullable<Uint8Array> = null;
-
     /** The active source URL or uploaded file name. */
     public source: Nullable<string> = null;
-
     /** Whether the active source was loaded from a URL or upload. */
-    public sourceKind: Nullable<GLTFSourceKind> = null;
-
-    /** The glTF source payload. */
+    public sourceKind: Nullable<BabylonSourceKind> = null;
+    /** The shallow Babylon source payload. */
     public readonly output: NodeAssetConnectionPoint;
-
-    /** Optional URL of the Draco decoder wasm binary. */
-    public dracoDecoderWasmUrl: string | undefined = undefined;
 
     private _sourceAttempt = 0;
     private _lastSuccessfulSourceAttempt = 0;
 
     /**
-     * Creates a glTF read block.
+     * Creates a Babylon input block.
      * @param name The display name.
      * @param nodeAsset The owning graph.
      */
     public constructor(name: string, nodeAsset: NodeAsset) {
         super(name, nodeAsset);
-        this.output = this._registerOutput("output", NodeAssetConnectionPointType.GLTF_DOCUMENT);
+        this.output = this._registerOutput("output", NodeAssetConnectionPointType.BABYLON_SOURCE);
     }
 
     /**
      * Makes uploaded bytes the active source.
-     * @param data The uploaded glTF or GLB bytes.
+     * @param data The uploaded `.babylon` bytes.
      * @param fileName The uploaded file name.
      */
     public setUploadedSource(data: Uint8Array, fileName: string): void {
@@ -80,17 +74,17 @@ export class ReadGLTFBlock extends NodeAssetBlock {
 
     /**
      * Loads a URL and makes it active only after the request succeeds.
-     * @param url The glTF or GLB URL.
+     * @param url The `.babylon` URL.
      * @param fetcher The fetch-compatible loader.
      * @param canApplyResult Optional ownership guard checked immediately before resolved bytes become active.
      */
-    public async setUrlAsync(url: string, fetcher: GLTFSourceFetcher = async (sourceUrl) => await fetch(sourceUrl), canApplyResult: () => boolean = () => true): Promise<void> {
+    public async setUrlAsync(url: string, fetcher: BabylonSourceFetcher = async (sourceUrl) => await fetch(sourceUrl), canApplyResult: () => boolean = () => true): Promise<void> {
         const sourceAttempt = ++this._sourceAttempt;
         let data: Uint8Array;
         try {
             const response = await fetcher(url);
             if (!response.ok) {
-                throw new Error(`Could not load glTF from "${url}" (${response.status} ${response.statusText}).`);
+                throw new Error(`Could not load Babylon from "${url}" (${response.status} ${response.statusText}).`);
             }
             data = new Uint8Array(await response.arrayBuffer());
         } catch (error) {
@@ -109,32 +103,21 @@ export class ReadGLTFBlock extends NodeAssetBlock {
     }
 
     /**
-     * Reads the active uploaded bytes into a glTF payload.
+     * Emits the active source bytes without parsing the Babylon scene.
      * @param scope The build scope used to account source bytes.
      */
     public override async _buildBlockAsync(scope?: BuildScope): Promise<void> {
         const data = this.data;
         if (!data) {
-            throw new Error(`The "${this.name}" read block has no glTF source.`);
+            throw new Error(`The "${this.name}" input block has no Babylon source.`);
         }
         scope?.accountSourceBytes(data.byteLength);
-
-        const { WebIO } = await import("@gltf-transform/core");
-        const { ALL_EXTENSIONS } = await import("@gltf-transform/extensions");
-        const draco3d = ResolveDraco3DGltfModule(await import("draco3dgltf"));
-        const dracoModuleOptions = GetDracoModuleOptions(this.dracoDecoderWasmUrl);
-        // eslint-disable-next-line @typescript-eslint/naming-convention -- gltf-transform dependency key
-        const dependencies = { "draco3d.decoder": dracoModuleOptions ? await draco3d.createDecoderModule(dracoModuleOptions) : await draco3d.createDecoderModule() };
-        const document = await new WebIO().registerExtensions(ALL_EXTENSIONS).registerDependencies(dependencies).readBinary(data);
-        this.output.value = new GltfAsset(document, {
-            identity: this.source ?? this.name,
-            revision: 0,
-            manifest: { format: "gltf", source: this.source },
-        });
+        const source = this.source ?? this.name;
+        this.output.value = new BabylonSource(data, source, this.sourceKind === "url" ? Tools.GetFolderPath(source) : "");
     }
 
     /**
-     * Serializes uploaded bytes and their source label.
+     * Serializes the source bytes and active source choice.
      * @returns The serialized block.
      */
     public override serialize(): NodeAssetBlockSerialization {
@@ -147,7 +130,7 @@ export class ReadGLTFBlock extends NodeAssetBlock {
     }
 
     /**
-     * Restores uploaded bytes and their source label.
+     * Restores the source bytes and active source choice.
      * @param serializationObject The serialized block.
      */
     public override _deserialize(serializationObject: NodeAssetBlockSerialization): void {
@@ -159,4 +142,4 @@ export class ReadGLTFBlock extends NodeAssetBlock {
     }
 }
 
-RegisterBlock(ReadGLTFBlock.ClassName, (name, nodeAsset) => new ReadGLTFBlock(name, nodeAsset));
+RegisterBlock(BabylonInputBlock.ClassName, (name, nodeAsset) => new BabylonInputBlock(name, nodeAsset));

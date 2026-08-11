@@ -11,9 +11,9 @@ import { GetSerializedString, type NodeAssetBlockSerialization } from "../serial
 import { GetDracoModuleOptions, ResolveDraco3DGltfModule } from "./dracoWasm";
 
 /** Writes a glTF delivery payload as terminal GLB bytes. */
-export class WriteGLTFBlock extends NodeAssetBlock implements IExportBlock {
+export class GLTFOutputBlock extends NodeAssetBlock implements IExportBlock {
     /** The class name, used for identification and safe under minification. */
-    public static override ClassName = "WriteGLTFBlock";
+    public static override ClassName = "GLTFOutputBlock";
 
     /** Marks this block as a terminal export block. */
     public readonly isExportTerminal = true;
@@ -70,4 +70,4 @@ export class WriteGLTFBlock extends NodeAssetBlock implements IExportBlock {
     }
 }
 
-RegisterBlock(WriteGLTFBlock.ClassName, (name, nodeAsset) => new WriteGLTFBlock(name, nodeAsset));
+RegisterBlock(GLTFOutputBlock.ClassName, (name, nodeAsset) => new GLTFOutputBlock(name, nodeAsset));

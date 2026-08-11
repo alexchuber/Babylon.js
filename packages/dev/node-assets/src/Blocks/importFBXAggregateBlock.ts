@@ -3,9 +3,9 @@ import { RegisterBlock } from "../blockFoundation/blockRegistry";
 import { type NodeAssetConnectionPoint } from "../connection/nodeAssetConnectionPoint";
 import { type NodeAsset } from "../nodeAsset";
 import { FBXToUniversalBlock } from "./fbxToUniversalBlock";
-import { ReadFBXBlock, type FBXSourceFetcher, type FBXSourceKind, type IFBXSourceApplyResult } from "./readFBXBlock";
+import { FBXInputBlock, type FBXSourceFetcher, type FBXSourceKind, type IFBXSourceApplyResult } from "./fbxInputBlock";
 
-/** Built-in `Read FBX -> FBX to Universal` aggregate. */
+/** Built-in `FBX input -> FBX → Universal` aggregate. */
 export class ImportFBXAggregateBlock extends AggregateBlock {
     /** The class name, used for identification and safe under minification. */
     public static override ClassName = "ImportFBXAggregateBlock";
@@ -20,42 +20,42 @@ export class ImportFBXAggregateBlock extends AggregateBlock {
      */
     public constructor(name: string, nodeAsset: NodeAsset) {
         super(name, nodeAsset);
-        const read = new ReadFBXBlock("Read FBX", this.subgraph);
-        const transcoder = new FBXToUniversalBlock("FBX \u2192 Universal", this.subgraph);
-        read.output.connectTo(transcoder.input);
+        const inputBlock = new FBXInputBlock("FBX", this.subgraph);
+        const transcoder = new FBXToUniversalBlock("FBX → Universal", this.subgraph);
+        inputBlock.output.connectTo(transcoder.input);
         this.output = this._exposeOutput(transcoder.output, "output");
     }
 
-    /** The owned Read FBX primitive. */
-    public get readBlock(): ReadFBXBlock {
-        const block = this.subgraph.attachedBlocks.find((candidate): candidate is ReadFBXBlock => candidate instanceof ReadFBXBlock);
+    /** The owned FBX input primitive. */
+    public get inputBlock(): FBXInputBlock {
+        const block = this.subgraph.attachedBlocks.find((candidate): candidate is FBXInputBlock => candidate instanceof FBXInputBlock);
         if (!block) {
-            throw new Error(`The "${this.name}" aggregate has no ReadFBXBlock.`);
+            throw new Error(`The "${this.name}" aggregate has no FBXInputBlock.`);
         }
         return block;
     }
 
-    /** Resolved source bytes forwarded to the Read FBX primitive. */
+    /** Resolved source bytes forwarded to the FBX input primitive. */
     public get data(): Uint8Array | null {
-        return this.readBlock.data;
+        return this.inputBlock.data;
     }
 
     public set data(value: Uint8Array | null) {
-        this.readBlock.data = value?.slice() ?? null;
+        this.inputBlock.data = value?.slice() ?? null;
     }
 
-    /** Active source label forwarded to the Read FBX primitive. */
+    /** Active source label forwarded to the FBX input primitive. */
     public get source(): string | null {
-        return this.readBlock.source;
+        return this.inputBlock.source;
     }
 
     public set source(value: string | null) {
-        this.readBlock.source = value;
+        this.inputBlock.source = value;
     }
 
-    /** Active source kind forwarded to the Read FBX primitive. */
+    /** Active source kind forwarded to the FBX input primitive. */
     public get sourceKind(): FBXSourceKind | null {
-        return this.readBlock.sourceKind;
+        return this.inputBlock.sourceKind;
     }
 
     /**
@@ -64,23 +64,23 @@ export class ImportFBXAggregateBlock extends AggregateBlock {
      * @param fileName The uploaded file name.
      */
     public setUploadedSource(data: Uint8Array, fileName: string): void {
-        this.readBlock.setUploadedSource(data, fileName);
+        this.inputBlock.setUploadedSource(data, fileName);
     }
 
     /**
-     * Loads and activates a URL on the owned Read FBX primitive.
+     * Loads and activates a URL on the owned FBX input primitive.
      * @param url The FBX URL.
      * @param fetcher The fetch-compatible loader.
      * @param canApplyResult Optional ownership guard checked immediately before resolved bytes become active.
      * @param applyResult Optional operation result populated after ownership and source-order checks.
      */
     public async setUrlAsync(url: string, fetcher?: FBXSourceFetcher, canApplyResult?: () => boolean, applyResult?: IFBXSourceApplyResult): Promise<void> {
-        await this.readBlock.setUrlAsync(url, fetcher, canApplyResult, applyResult);
+        await this.inputBlock.setUrlAsync(url, fetcher, canApplyResult, applyResult);
     }
 
     /** Clears the active child source. */
     public clearSource(): void {
-        this.readBlock.clearSource();
+        this.inputBlock.clearSource();
     }
 }
 

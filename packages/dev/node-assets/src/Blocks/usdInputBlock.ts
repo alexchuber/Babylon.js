@@ -19,7 +19,7 @@ export interface IUSDSourceResponse {
     arrayBuffer(): Promise<ArrayBuffer>;
 }
 
-/** Fetch-compatible loader used by {@link ReadUSDBlock.setUrlAsync}. */
+/** Fetch-compatible loader used by {@link USDInputBlock.setUrlAsync}. */
 // eslint-disable-next-line @typescript-eslint/naming-convention
 export type USDSourceFetcher = (url: string) => Promise<IUSDSourceResponse>;
 
@@ -31,9 +31,10 @@ export interface IUSDSourceApplyResult {
 }
 
 /** Resolves USD bytes from a URL or upload into a lightweight USD source payload. */
-export class ReadUSDBlock extends NodeAssetBlock {
+// eslint-disable-next-line @typescript-eslint/naming-convention
+export class USDInputBlock extends NodeAssetBlock {
     /** The class name, used for identification and safe under minification. */
-    public static override ClassName = "ReadUSDBlock";
+    public static override ClassName = "USDInputBlock";
 
     /** Resolved USD bytes for the active source. */
     public data: Nullable<Uint8Array> = null;
@@ -51,7 +52,7 @@ export class ReadUSDBlock extends NodeAssetBlock {
     private _lastSuccessfulSourceAttempt = 0;
 
     /**
-     * Creates a USD read block.
+     * Creates a USD input block.
      * @param name The display name.
      * @param nodeAsset The owning graph.
      */
@@ -155,7 +156,7 @@ export class ReadUSDBlock extends NodeAssetBlock {
         const source = this.source;
         const sourceKind = this.sourceKind;
         if (!data || !source || !sourceKind) {
-            throw new Error(`The "${this.name}" read block has no USD source.`);
+            throw new Error(`The "${this.name}" input block has no USD source.`);
         }
         scope?.accountSourceBytes(data.byteLength);
         this.output.value = new UsdSourceAsset(data, source, sourceKind);
@@ -187,4 +188,4 @@ export class ReadUSDBlock extends NodeAssetBlock {
     }
 }
 
-RegisterBlock(ReadUSDBlock.ClassName, (name, nodeAsset) => new ReadUSDBlock(name, nodeAsset));
+RegisterBlock(USDInputBlock.ClassName, (name, nodeAsset) => new USDInputBlock(name, nodeAsset));

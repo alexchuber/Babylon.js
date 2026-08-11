@@ -178,28 +178,28 @@ describe("built-in NodeAsset pipeline catalog", () => {
 
     it("serializes every curated source as an exact, distinct, URL-only Babylon asset", () => {
         const expectedSources = {
-            "Convert a Model": [["ReadFBXBlock", "https://assets.babylonjs.com/meshes/fbx/dice_embedded.fbx"]],
-            "Normalize a Model": [["ReadOBJBlock", "https://assets.babylonjs.com/meshes/Chair/Chair.obj"]],
-            "Clean Up a Model": [["ReadGLTFBlock", "https://assets.babylonjs.com/meshes/both_houses_scene.glb"]],
-            "Reduce a Model": [["ReadGLTFBlock", "https://assets.babylonjs.com/meshes/StandardShaderBall/StandardShaderBall.glb"]],
-            "Compress a Model": [["ReadGLTFBlock", "https://assets.babylonjs.com/meshes/aerobatic_plane.glb"]],
+            "Convert a Model": [["FBXInputBlock", "https://assets.babylonjs.com/meshes/fbx/dice_embedded.fbx"]],
+            "Normalize a Model": [["OBJInputBlock", "https://assets.babylonjs.com/meshes/Chair/Chair.obj"]],
+            "Clean Up a Model": [["GLTFInputBlock", "https://assets.babylonjs.com/meshes/both_houses_scene.glb"]],
+            "Reduce a Model": [["GLTFInputBlock", "https://assets.babylonjs.com/meshes/StandardShaderBall/StandardShaderBall.glb"]],
+            "Compress a Model": [["GLTFInputBlock", "https://assets.babylonjs.com/meshes/aerobatic_plane.glb"]],
             "Combine Many Models": [
-                ["ReadGLTFBlock", "https://assets.babylonjs.com/meshes/Demos/Snow_Man_Scene/snowMan.glb"],
-                ["ReadGLTFBlock", "https://assets.babylonjs.com/meshes/CornellBox/cornellBox.glb"],
-                ["ReadGLTFBlock", "https://assets.babylonjs.com/meshes/module_600.glb"],
+                ["GLTFInputBlock", "https://assets.babylonjs.com/meshes/Demos/Snow_Man_Scene/snowMan.glb"],
+                ["GLTFInputBlock", "https://assets.babylonjs.com/meshes/CornellBox/cornellBox.glb"],
+                ["GLTFInputBlock", "https://assets.babylonjs.com/meshes/module_600.glb"],
             ],
-            "Build a Production-Ready GLB": [["ReadGLTFBlock", "https://assets.babylonjs.com/meshes/SurfaceTinting/surface_transmission.glb"]],
+            "Build a Production-Ready GLB": [["GLTFInputBlock", "https://assets.babylonjs.com/meshes/SurfaceTinting/surface_transmission.glb"]],
         } as const;
         const allSources: string[] = [];
 
         for (const name of ExpectedPipelineNames) {
-            const sourceBlocks = CollectBlocks(ParseEntry(name).graph.blocks).filter((block) => block.customType.startsWith("Read"));
+            const sourceBlocks = CollectBlocks(ParseEntry(name).graph.blocks).filter((block) => block.customType.endsWith("InputBlock"));
             expect(sourceBlocks.map((block) => [block.customType, block.source])).toEqual(expectedSources[name]);
             for (const block of sourceBlocks) {
                 expect(block.sourceKind).toBe("url");
                 expect(block.source).toMatch(/^https:\/\/assets\.babylonjs\.com\//);
                 allSources.push(block.source!);
-                if (block.customType === "ReadOBJBlock") {
+                if (block.customType === "OBJInputBlock") {
                     expect(block.primary).toBeNull();
                     expect(block.companions).toEqual([]);
                 } else {
@@ -234,7 +234,7 @@ describe("built-in NodeAsset pipeline catalog", () => {
         expect(FindTopLevelBlock("Reduce a Model", "Simplify Meshes")).toMatchObject({ targetRatio: 0.5, errorLimit: 0.01, lockBorder: false });
         expect(FindTopLevelBlock("Reduce a Model", "Resize Textures")).toMatchObject({ maximumWidth: 1024, maximumHeight: 1024, resizeMode: "smooth" });
 
-        expect(topLevelTypes("Compress a Model")).toEqual(["ImportGLTFAggregateBlock", "UniversalToGLTFBlock", "KTX2CompressionBlock", "DracoCompressionBlock", "WriteGLTFBlock"]);
+        expect(topLevelTypes("Compress a Model")).toEqual(["ImportGLTFAggregateBlock", "UniversalToGLTFBlock", "KTX2CompressionBlock", "DracoCompressionBlock", "GLTFOutputBlock"]);
 
         expect(topLevelTypes("Combine Many Models")).toEqual([
             "ImportGLTFAggregateBlock",
@@ -266,7 +266,7 @@ describe("built-in NodeAsset pipeline catalog", () => {
             "UniversalToGLTFBlock",
             "KTX2CompressionBlock",
             "DracoCompressionBlock",
-            "WriteGLTFBlock",
+            "GLTFOutputBlock",
         ]);
         expect(FindTopLevelBlock("Build a Production-Ready GLB", "Transform Scene")).toMatchObject({ rotation: [0, 15, 0] });
         expect(FindTopLevelBlock("Build a Production-Ready GLB", "Center Scene")).toMatchObject({ pivot: "center" });
@@ -288,7 +288,7 @@ describe("built-in NodeAsset pipeline catalog", () => {
                 expect(asset.serialize()).toEqual(editorFile.graph);
                 expect(editorFile.editor.blocks).toHaveLength(editorFile.graph.blocks.length);
                 expect(editorFile.graph.connections.length).toBeGreaterThan(0);
-                expect(editorFile.graph.blocks.some((block) => block.customType === "ExportGLTFAggregateBlock" || block.customType === "WriteGLTFBlock")).toBe(true);
+                expect(editorFile.graph.blocks.some((block) => block.customType === "ExportGLTFAggregateBlock" || block.customType === "GLTFOutputBlock")).toBe(true);
                 expect(CollectBlockTypes(editorFile.graph.blocks).every((customType) => !ObsoleteBlockTypes.has(customType))).toBe(true);
 
                 controller.load(entry.serializedGraph);

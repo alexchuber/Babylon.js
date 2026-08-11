@@ -3,9 +3,9 @@ import { AggregateBlock } from "../blockFoundation/aggregateBlock";
 import { type NodeAssetConnectionPoint } from "../connection/nodeAssetConnectionPoint";
 import { type NodeAsset } from "../nodeAsset";
 import { GLTFToUniversalBlock } from "./gltfToUniversalBlock";
-import { ReadGLTFBlock, type GLTFSourceFetcher, type GLTFSourceKind } from "./readGLTFBlock";
+import { GLTFInputBlock, type GLTFSourceFetcher, type GLTFSourceKind } from "./gltfInputBlock";
 
-/** Built-in `Read glTF -> glTF -> Universal` aggregate. */
+/** Built-in `glTF input -> glTF -> Universal` aggregate. */
 export class ImportGLTFAggregateBlock extends AggregateBlock {
     /** The class name, used for identification and safe under minification. */
     public static override ClassName = "ImportGLTFAggregateBlock";
@@ -20,42 +20,42 @@ export class ImportGLTFAggregateBlock extends AggregateBlock {
      */
     public constructor(name: string, nodeAsset: NodeAsset) {
         super(name, nodeAsset);
-        const read = new ReadGLTFBlock("Read glTF", this.subgraph);
-        const transcoder = new GLTFToUniversalBlock("glTF to Universal", this.subgraph);
-        read.output.connectTo(transcoder.input);
+        const inputBlock = new GLTFInputBlock("glTF", this.subgraph);
+        const transcoder = new GLTFToUniversalBlock("glTF → Universal", this.subgraph);
+        inputBlock.output.connectTo(transcoder.input);
         this.output = this._exposeOutput(transcoder.output, "output");
     }
 
-    /** The owned Read glTF primitive. */
-    public get readBlock(): ReadGLTFBlock {
-        const block = this.subgraph.attachedBlocks.find((candidate): candidate is ReadGLTFBlock => candidate instanceof ReadGLTFBlock);
+    /** The owned glTF input primitive. */
+    public get inputBlock(): GLTFInputBlock {
+        const block = this.subgraph.attachedBlocks.find((candidate): candidate is GLTFInputBlock => candidate instanceof GLTFInputBlock);
         if (!block) {
-            throw new Error(`The "${this.name}" aggregate has no ReadGLTFBlock.`);
+            throw new Error(`The "${this.name}" aggregate has no GLTFInputBlock.`);
         }
         return block;
     }
 
-    /** Uploaded source bytes forwarded to the Read glTF primitive. */
+    /** Uploaded source bytes forwarded to the glTF input primitive. */
     public get data(): Uint8Array | null {
-        return this.readBlock.data;
+        return this.inputBlock.data;
     }
 
     public set data(value: Uint8Array | null) {
-        this.readBlock.data = value;
+        this.inputBlock.data = value;
     }
 
-    /** Active source label forwarded to the Read glTF primitive. */
+    /** Active source label forwarded to the glTF input primitive. */
     public get source(): string | null {
-        return this.readBlock.source;
+        return this.inputBlock.source;
     }
 
     public set source(value: string | null) {
-        this.readBlock.source = value;
+        this.inputBlock.source = value;
     }
 
-    /** Active source kind forwarded to the Read glTF primitive. */
+    /** Active source kind forwarded to the glTF input primitive. */
     public get sourceKind(): GLTFSourceKind | null {
-        return this.readBlock.sourceKind;
+        return this.inputBlock.sourceKind;
     }
 
     /**
@@ -64,25 +64,25 @@ export class ImportGLTFAggregateBlock extends AggregateBlock {
      * @param fileName The uploaded file name.
      */
     public setUploadedSource(data: Uint8Array, fileName: string): void {
-        this.readBlock.setUploadedSource(data, fileName);
+        this.inputBlock.setUploadedSource(data, fileName);
     }
 
     /**
-     * Loads and activates a URL on the owned Read glTF primitive.
+     * Loads and activates a URL on the owned glTF input primitive.
      * @param url The glTF or GLB URL.
      * @param fetcher The fetch-compatible loader.
      */
     public async setUrlAsync(url: string, fetcher?: GLTFSourceFetcher): Promise<void> {
-        await this.readBlock.setUrlAsync(url, fetcher);
+        await this.inputBlock.setUrlAsync(url, fetcher);
     }
 
-    /** Draco decoder URL forwarded to the Read glTF primitive. */
+    /** Draco decoder URL forwarded to the glTF input primitive. */
     public get dracoDecoderWasmUrl(): string | undefined {
-        return this.readBlock.dracoDecoderWasmUrl;
+        return this.inputBlock.dracoDecoderWasmUrl;
     }
 
     public set dracoDecoderWasmUrl(value: string | undefined) {
-        this.readBlock.dracoDecoderWasmUrl = value;
+        this.inputBlock.dracoDecoderWasmUrl = value;
     }
 }
 

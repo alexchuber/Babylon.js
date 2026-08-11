@@ -71,7 +71,7 @@ const ExpectedBlockClassNames = [
     "CompositeImageBlock",
     "ImportBabylonBlock",
     "ImportNodeGeometryBlock",
-    "ReadNodeGeometryBlock",
+    "NodeGeometryInputBlock",
     "NodeGeometryToUniversalBlock",
     "ImportNodeGeometryAggregateBlock",
     "USD2GLTFBlock",
@@ -87,28 +87,28 @@ const ExpectedBlockClassNames = [
     "GLTFSelectorBlock",
     "USDSelectorBlock",
     "BabylonSelectorBlock",
-    "ReadGLTFBlock",
+    "GLTFInputBlock",
     "GLTFToUniversalBlock",
     "UniversalToGLTFBlock",
-    "WriteGLTFBlock",
+    "GLTFOutputBlock",
     "ImportGLTFAggregateBlock",
     "ExportGLTFAggregateBlock",
-    "ReadUSDBlock",
+    "USDInputBlock",
     "USDToUniversalBlock",
     "ImportUSDAggregateBlock",
     "CustomAggregateBlock",
-    "ReadBabylonBlock",
+    "BabylonInputBlock",
     "BabylonToUniversalBlock",
     "ImportBabylonAggregateBlock",
-    "ReadFBXBlock",
+    "FBXInputBlock",
     "FBXToUniversalBlock",
     "ImportFBXAggregateBlock",
-    "ReadOBJBlock",
+    "OBJInputBlock",
     "OBJToUniversalBlock",
     "ImportOBJAggregateBlock",
 ] as const;
 
-const DefaultPipelineClassNames = ["ImportGLTFAggregateBlock", "UniversalToGLTFBlock", "KTX2CompressionBlock", "DracoCompressionBlock", "WriteGLTFBlock"] as const;
+const DefaultPipelineClassNames = ["ImportGLTFAggregateBlock", "UniversalToGLTFBlock", "KTX2CompressionBlock", "DracoCompressionBlock", "GLTFOutputBlock"] as const;
 
 describe("preview build worker block registration", () => {
     beforeEach(() => vi.stubGlobal("FileReader", TestFileReader));
@@ -156,18 +156,18 @@ describe("preview build worker block registration", () => {
             };
         };
         const importer = editorFile.graph.blocks.find((block) => block.customType === "ImportOBJAggregateBlock");
-        const readBlock = importer?.subgraph?.blocks.find((block) => block.customType === "ReadOBJBlock");
-        expect(readBlock).toMatchObject({
+        const inputBlock = importer?.subgraph?.blocks.find((block) => block.customType === "OBJInputBlock");
+        expect(inputBlock).toMatchObject({
             source: "https://assets.babylonjs.com/meshes/Chair/Chair.obj",
             sourceKind: "url",
             primary: null,
             companions: [],
         });
-        if (!readBlock) {
-            throw new Error("Could not find the Normalize a Model pipeline's Read OBJ block.");
+        if (!inputBlock) {
+            throw new Error("Could not find the Normalize a Model pipeline's OBJ input block.");
         }
-        readBlock.primary = {
-            path: readBlock.source,
+        inputBlock.primary = {
+            path: inputBlock.source,
             bytes: Buffer.from("o Triangle\nv 0 0 0\nv 100 0 0\nv 0 100 0\nf 1 2 3\n").toString("base64"),
         };
         const fetchMock = vi.fn(async () => {

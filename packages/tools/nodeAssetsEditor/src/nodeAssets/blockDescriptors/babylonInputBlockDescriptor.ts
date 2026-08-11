@@ -1,15 +1,14 @@
-import { ReadNodeGeometryBlock } from "node-assets/Blocks/readNodeGeometryBlock";
+import { BabylonInputBlock } from "node-assets/Blocks/babylonInputBlock";
 
 import { type IPropertySection } from "../../nodeGraph/propertyModel";
-import { ConfigureBlockForEditor, type IPropertySectionContext, RegisterBlockDescriptor } from "../blockCatalog";
 import { PromptForFileAsync } from "../browserFiles";
+import { BabylonHeaderColor, ConfigureBlockForEditor, type IPropertySectionContext, InputsCategory, RegisterBlockDescriptor } from "../blockCatalog";
 
-const ReadHeaderColor = "#3f7d4e";
-const SourceErrors = new WeakMap<ReadNodeGeometryBlock, string>();
-const PendingSourceRequests = new WeakMap<ReadNodeGeometryBlock, Promise<unknown>>();
+const SourceErrors = new WeakMap<BabylonInputBlock, string>();
+const PendingSourceRequests = new WeakMap<BabylonInputBlock, Promise<unknown>>();
 
-async function PromptForNodeGeometryAsync(block: ReadNodeGeometryBlock, context: IPropertySectionContext): Promise<void> {
-    const file = await PromptForFileAsync("application/json,.json");
+async function PromptForBabylonAsync(block: BabylonInputBlock, context: IPropertySectionContext): Promise<void> {
+    const file = await PromptForFileAsync(".babylon");
     if (!file) {
         return;
     }
@@ -24,7 +23,7 @@ async function PromptForNodeGeometryAsync(block: ReadNodeGeometryBlock, context:
         if (context.prepareEdit(authoredBlock) !== authoredBlock || PendingSourceRequests.get(authoredBlock) !== request) {
             return;
         }
-        await authoredBlock.setUploadedSourceAsync(data, file.name);
+        authoredBlock.setUploadedSource(data, file.name);
         SourceErrors.delete(authoredBlock);
     } catch (error) {
         if (context.prepareEdit(authoredBlock) === authoredBlock && PendingSourceRequests.get(authoredBlock) === request) {
@@ -40,12 +39,12 @@ async function PromptForNodeGeometryAsync(block: ReadNodeGeometryBlock, context:
     }
 }
 
-async function SetSnippetIdAsync(block: ReadNodeGeometryBlock, snippetId: string, context: IPropertySectionContext): Promise<void> {
+async function SetBabylonUrlAsync(block: BabylonInputBlock, url: string, context: IPropertySectionContext): Promise<void> {
     const authoredBlock = context.prepareEdit(block);
     if (!authoredBlock) {
         return;
     }
-    const request = authoredBlock.setSnippetIdAsync(snippetId, undefined, () => context.prepareEdit(authoredBlock) === authoredBlock);
+    const request = authoredBlock.setUrlAsync(url, undefined, () => context.prepareEdit(authoredBlock) === authoredBlock);
     PendingSourceRequests.set(authoredBlock, request);
     try {
         await request;
@@ -67,21 +66,21 @@ async function SetSnippetIdAsync(block: ReadNodeGeometryBlock, snippetId: string
 }
 
 /**
- * Builds the source controls shared by Read Node Geometry and Import Node Geometry.
- * @param block The owned Read Node Geometry primitive.
+ * Builds the source controls shared by the Babylon input block and Import Babylon.
+ * @param block The owned Babylon input primitive.
  * @param context Editor property actions.
  * @param title Child-attributed section title.
  * @returns The shared property section.
  */
-export function CreateReadNodeGeometryPropertySection(block: ReadNodeGeometryBlock, context: IPropertySectionContext, title = "SOURCE"): IPropertySection {
+export function CreateBabylonInputPropertySection(block: BabylonInputBlock, context: IPropertySectionContext, title = "SOURCE"): IPropertySection {
     const sourceError = SourceErrors.get(block);
     return {
         title,
         properties: [
             {
                 kind: "text",
-                label: "Snippet ID",
-                value: block.sourceKind === "snippet" ? `#${block.source ?? ""}` : "",
+                label: "URL",
+                value: block.sourceKind === "url" ? (block.source ?? "") : "",
                 validateOnlyOnBlur: true,
                 onChange: (value) => {
                     if (!value) {
@@ -95,7 +94,7 @@ export function CreateReadNodeGeometryPropertySection(block: ReadNodeGeometryBlo
                         context.refresh();
                         return;
                     }
-                    void SetSnippetIdAsync(block, value, context);
+                    void SetBabylonUrlAsync(block, value, context);
                 },
             },
             {
@@ -107,9 +106,9 @@ export function CreateReadNodeGeometryPropertySection(block: ReadNodeGeometryBlo
             },
             {
                 kind: "button",
-                label: "Upload Node Geometry\u2026",
+                label: "Upload Babylon\u2026",
                 onClick: () => {
-                    void PromptForNodeGeometryAsync(block, context);
+                    void PromptForBabylonAsync(block, context);
                 },
             },
             ...(sourceError
@@ -128,13 +127,14 @@ export function CreateReadNodeGeometryPropertySection(block: ReadNodeGeometryBlo
 }
 
 RegisterBlockDescriptor({
-    paletteItemId: "read-node-geometry",
-    label: "Read Node Geometry",
-    description: "Resolve a snippet ID or uploaded serialized Node Geometry graph.",
-    category: "Inputs",
-    headerColor: ReadHeaderColor,
-    className: ReadNodeGeometryBlock.ClassName,
-    abstractedBy: "import-node-geometry",
-    create: (nodeAsset) => ConfigureBlockForEditor(new ReadNodeGeometryBlock("Read Node Geometry", nodeAsset)),
-    getPropertySection: (block, context) => CreateReadNodeGeometryPropertySection(block as ReadNodeGeometryBlock, context),
+    paletteItemId: "babylon-input",
+    label: "Babylon",
+    description: "Read a URL or uploaded .babylon source.",
+    keywords: ["read", "open", "load", "url", "upload", "babylon", "input", "source"],
+    category: InputsCategory,
+    headerColor: BabylonHeaderColor,
+    className: BabylonInputBlock.ClassName,
+    abstractedBy: "import-babylon",
+    create: (nodeAsset) => ConfigureBlockForEditor(new BabylonInputBlock("Babylon", nodeAsset)),
+    getPropertySection: (block, context) => CreateBabylonInputPropertySection(block as BabylonInputBlock, context),
 });

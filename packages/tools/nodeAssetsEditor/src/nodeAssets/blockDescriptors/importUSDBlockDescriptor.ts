@@ -1,6 +1,6 @@
 import { ImportUSDAggregateBlock } from "node-assets/Blocks/importUSDAggregateBlock";
 
-import { AggregateImportsFamily, ConfigureBlockForEditor, RegisterBlockDescriptor } from "../blockCatalog";
+import { AggregateImportsFamily, ConfigureBlockForEditor, InputsCategory, RegisterBlockDescriptor } from "../blockCatalog";
 
 const ImportHeaderColor = "#3f7d4e";
 
@@ -9,7 +9,7 @@ RegisterBlockDescriptor({
     label: "Import USD",
     description: "Read USD and cross into Universal.",
     keywords: ["open", "load", "source", "Pixar", "USDZ", "Universal"],
-    category: "Inputs",
+    category: InputsCategory,
     family: AggregateImportsFamily,
     headerColor: ImportHeaderColor,
     className: ImportUSDAggregateBlock.ClassName,

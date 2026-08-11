@@ -63,11 +63,11 @@ describe("block property sections (unified descriptor path)", () => {
         }
     });
 
-    it("builds the forwarded Read glTF section for the aggregate import block", () => {
+    it("builds the forwarded glTF input section for the aggregate import block", () => {
         const controller = new NodeAssetGraphController();
         try {
             const importNode = FindNode(controller, "Import glTF");
-            const section = FindSection(controller, importNode, "READ GLTF");
+            const section = FindSection(controller, importNode, "GLTF");
 
             expect(section.properties.map((property) => property.label)).toEqual(["URL", "Active source", "Upload glTF\u2026"]);
             expect(FindProperty(controller, importNode, "Active source", "text").value).toBe("https://assets.babylonjs.com/meshes/aerobatic_plane.glb");
@@ -77,11 +77,11 @@ describe("block property sections (unified descriptor path)", () => {
         }
     });
 
-    it("forwards the exact Read Node Geometry source controls from the aggregate", () => {
+    it("forwards the exact Node Geometry input source controls from the aggregate", () => {
         const controller = new NodeAssetGraphController();
         try {
             const importNode = AddPaletteNode(controller, "import-node-geometry");
-            const section = FindSection(controller, importNode, "READ NODE GEOMETRY");
+            const section = FindSection(controller, importNode, "NODE GEOMETRY");
 
             expect(section.properties.map((property) => property.label)).toEqual(["Snippet ID", "Active source", "Upload Node Geometry\u2026"]);
             expect(FindProperty(controller, importNode, "Active source", "text").value).toBe("No source loaded");
@@ -89,7 +89,7 @@ describe("block property sections (unified descriptor path)", () => {
 
             const paletteLabels = controller.getPaletteCategories().flatMap((category) => category.items.map((item) => item.label));
             expect(paletteLabels).not.toContain("Import Node Geometry");
-            expect(paletteLabels).toContain("Read Node Geometry");
+            expect(paletteLabels).toContain("Node Geometry");
             expect(paletteLabels).toContain("Node Geometry → Universal");
 
             const aggregateLabels = controller.getPaletteCategories({ showAggregates: true }).flatMap((category) => category.items.map((item) => item.label));
@@ -99,11 +99,11 @@ describe("block property sections (unified descriptor path)", () => {
         }
     });
 
-    it("forwards the uploaded Read FBX source controls from the aggregate", () => {
+    it("forwards the uploaded FBX input source controls from the aggregate", () => {
         const controller = new NodeAssetGraphController();
         try {
             const importNode = AddPaletteNode(controller, "import-fbx");
-            const section = FindSection(controller, importNode, "READ FBX");
+            const section = FindSection(controller, importNode, "FBX");
 
             expect(section.properties.map((property) => property.label)).toEqual(["URL", "Active source", "Upload FBX\u2026"]);
             expect(FindProperty(controller, importNode, "URL", "text").value).toBe("");
@@ -112,8 +112,8 @@ describe("block property sections (unified descriptor path)", () => {
 
             const paletteLabels = controller.getPaletteCategories().flatMap((category) => category.items.map((item) => item.label));
             expect(paletteLabels).not.toContain("Import FBX");
-            expect(paletteLabels).toContain("Read FBX");
-            expect(paletteLabels).toContain("FBX \u2192 Universal");
+            expect(paletteLabels).toContain("FBX");
+            expect(paletteLabels).toContain("FBX → Universal");
 
             const aggregateLabels = controller.getPaletteCategories({ showAggregates: true }).flatMap((category) => category.items.map((item) => item.label));
             expect(aggregateLabels).toContain("Import FBX");
@@ -131,7 +131,7 @@ describe("block property sections (unified descriptor path)", () => {
 
         try {
             const exportNode = AddPaletteNode(controller, "export-gltf");
-            FindSection(controller, exportNode, "WRITE GLTF");
+            FindSection(controller, exportNode, "GLTF");
 
             FindProperty(controller, exportNode, "Export .glb", "button").onClick();
 

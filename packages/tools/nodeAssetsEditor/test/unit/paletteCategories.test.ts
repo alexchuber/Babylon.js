@@ -18,6 +18,10 @@ function Descriptor(
 }
 
 describe("BuildPaletteCategories", () => {
+    it("orders the default product palette by pipeline stage", () => {
+        expect(BuildPaletteCategories(GetAllBlockDescriptors()).map((category) => category.label)).toEqual(["Inputs", "Importers", "Exporters", "Outputs", "glTF", "Universal"]);
+    });
+
     it("publishes the default product palette without aggregates", () => {
         const projection = BuildPaletteCategories(GetAllBlockDescriptors()).map((category) => ({
             category: category.label,
@@ -26,6 +30,7 @@ describe("BuildPaletteCategories", () => {
                 label: item.label,
             })),
         }));
+        const LabelsIn = (category: string) => projection.find((candidate) => candidate.category === category)?.items.map((item) => item.label);
 
         // No aggregate labels appear in the default palette
         const allLabels = projection.flatMap((c) => c.items.map((i) => i.label));
@@ -38,12 +43,12 @@ describe("BuildPaletteCategories", () => {
         expect(allLabels).not.toContain("Export glTF");
         expect(allLabels).not.toContain("Deduplicate Resources");
 
-        // Primitives that were previously hidden are now shown
-        expect(allLabels).toContain("Read glTF");
-        expect(allLabels).toContain("Read Babylon");
-        expect(allLabels).toContain("Write glTF");
-        expect(allLabels).toContain("glTF → Universal");
-        expect(allLabels).toContain("Babylon → Universal");
+        // Every source boundary, transcoder, and output boundary sits in its pipeline-stage category
+        expect(LabelsIn("Inputs")).toEqual(["Babylon", "FBX", "glTF", "Node Geometry", "OBJ", "USD"]);
+        expect(LabelsIn("Importers")).toEqual(["glTF → Universal", "OBJ → Universal", "USD → Universal", "Babylon → Universal", "FBX → Universal", "Node Geometry → Universal"]);
+        expect(LabelsIn("Exporters")).toEqual(["Universal → glTF"]);
+        expect(LabelsIn("Outputs")).toEqual(["glTF"]);
+        expect(LabelsIn("glTF")).toEqual(["Compress Geometry (Draco)", "Compress Textures (KTX2)"]);
 
         // Non-aggregate blocks still appear
         expect(allLabels).toContain("Weld Vertices");
@@ -67,17 +72,20 @@ describe("BuildPaletteCategories", () => {
         }
         expect(additions).toEqual(
             expect.arrayContaining([
-                expect.objectContaining({ category: "Inputs", items: expect.arrayContaining(["Import glTF", "Import OBJ", "Import USD", "Import Babylon", "Import FBX", "Import Node Geometry"]) }),
+                expect.objectContaining({
+                    category: "Inputs",
+                    items: expect.arrayContaining(["Import glTF", "Import OBJ", "Import USD", "Import Babylon", "Import FBX", "Import Node Geometry"]),
+                }),
                 expect.objectContaining({ category: "Universal", items: expect.arrayContaining(["Deduplicate Resources"]) }),
-                expect.objectContaining({ category: "glTF", items: expect.arrayContaining(["Export glTF"]) }),
+                expect.objectContaining({ category: "Outputs", items: expect.arrayContaining(["Export glTF"]) }),
             ])
         );
     });
 
     it("uses the filtered product catalog for search", () => {
         expect(BuildPaletteCategories(GetAllBlockDescriptors(), { filter: "selector", showAggregates: true })).toEqual([]);
-        expect(BuildPaletteCategories(GetAllBlockDescriptors(), { filter: "Write glTF" })).toMatchObject([
-            { label: "glTF", items: [{ label: "Write glTF" }] },
+        expect(BuildPaletteCategories(GetAllBlockDescriptors(), { filter: "Compress Geometry" })).toMatchObject([
+            { label: "glTF", items: [{ label: "Compress Geometry (Draco)" }] },
         ]);
         expect(BuildPaletteCategories(GetAllBlockDescriptors(), { filter: "Import glTF" })).toEqual([]);
         expect(BuildPaletteCategories(GetAllBlockDescriptors(), { filter: "Import glTF", showAggregates: true })).toMatchObject([
@@ -87,10 +95,10 @@ describe("BuildPaletteCategories", () => {
 
     it("finds the FBX primitives by default and its aggregate only when requested", () => {
         expect(BuildPaletteCategories(GetAllBlockDescriptors(), { filter: "fbx" }).flatMap((category) => category.items.map((item) => item.label))).toEqual(
-            expect.arrayContaining(["Read FBX", "FBX \u2192 Universal"])
+            expect.arrayContaining(["FBX", "FBX → Universal"])
         );
         expect(BuildPaletteCategories(GetAllBlockDescriptors(), { filter: "fbx", showAggregates: true }).flatMap((category) => category.items.map((item) => item.label))).toEqual(
-            expect.arrayContaining(["Import FBX", "Read FBX", "FBX \u2192 Universal"])
+            expect.arrayContaining(["Import FBX", "FBX", "FBX → Universal"])
         );
     });
 
@@ -136,21 +144,21 @@ describe("BuildPaletteCategories", () => {
     it("hides aggregates by default and reveals them on request", () => {
         const descriptors = [
             Descriptor("import-gltf", "Import glTF", "Inputs"),
-            Descriptor("read-gltf", "Read glTF", "Inputs", undefined, undefined, { abstractedBy: "import-gltf" }),
+            Descriptor("gltf-input", "glTF", "Inputs", undefined, undefined, { abstractedBy: "import-gltf" }),
             Descriptor("legacy-import-gltf", "Legacy Import glTF", "Inputs", undefined, undefined, {
                 abstractedBy: undefined,
                 isPaletteVisible: false,
             }),
         ];
 
-        expect(BuildPaletteCategories(descriptors).flatMap((category) => category.items.map((item) => item.label))).toEqual(["Read glTF"]);
-        expect(BuildPaletteCategories(descriptors, { showAggregates: true }).flatMap((category) => category.items.map((item) => item.label))).toEqual(["Read glTF", "Import glTF"]);
+        expect(BuildPaletteCategories(descriptors).flatMap((category) => category.items.map((item) => item.label))).toEqual(["glTF"]);
+        expect(BuildPaletteCategories(descriptors, { showAggregates: true }).flatMap((category) => category.items.map((item) => item.label))).toEqual(["glTF", "Import glTF"]);
     });
 
     it("uses the same aggregate visibility for search and omits empty aggregate-only categories", () => {
         const descriptors = [
             Descriptor("import-babylon", "Import Babylon", "Inputs"),
-            Descriptor("babylon-to-universal", "Babylon to Universal", "Babylon", "Cross into Universal.", ["convert"], {
+            Descriptor("babylon-to-universal", "Babylon → Universal", "Babylon", "Cross into Universal.", ["convert"], {
                 abstractedBy: "import-babylon",
                 isPaletteVisible: undefined,
             }),
@@ -163,7 +171,7 @@ describe("BuildPaletteCategories", () => {
                 items: [
                     {
                         id: "babylon-to-universal",
-                        label: "Babylon to Universal",
+                        label: "Babylon → Universal",
                         description: "Cross into Universal.",
                         keywords: ["convert"],
                     },
@@ -171,9 +179,7 @@ describe("BuildPaletteCategories", () => {
             },
         ]);
         expect(BuildPaletteCategories(descriptors, { filter: "Import" })).toEqual([]);
-        expect(BuildPaletteCategories(descriptors, { filter: "Import", showAggregates: true })).toMatchObject([
-            { label: "Inputs", items: [{ label: "Import Babylon" }] },
-        ]);
+        expect(BuildPaletteCategories(descriptors, { filter: "Import", showAggregates: true })).toMatchObject([{ label: "Inputs", items: [{ label: "Import Babylon" }] }]);
     });
 
     it.each([

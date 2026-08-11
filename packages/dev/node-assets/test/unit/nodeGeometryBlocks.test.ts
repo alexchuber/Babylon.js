@@ -7,9 +7,9 @@ import { ExportGLTFAggregateBlock } from "../../src/Blocks/exportGLTFAggregateBl
 import { ImportNodeGeometryBlock } from "../../src/Blocks/importNodeGeometryBlock";
 import { ImportNodeGeometryAggregateBlock } from "../../src/Blocks/importNodeGeometryAggregateBlock";
 import { NodeGeometryToUniversalBlock } from "../../src/Blocks/nodeGeometryToUniversalBlock";
-import { ReadNodeGeometryBlock } from "../../src/Blocks/readNodeGeometryBlock";
+import { NodeGeometryInputBlock } from "../../src/Blocks/nodeGeometryInputBlock";
 import { UniversalToGLTFBlock } from "../../src/Blocks/universalToGLTFBlock";
-import { WriteGLTFBlock } from "../../src/Blocks/writeGLTFBlock";
+import { GLTFOutputBlock } from "../../src/Blocks/gltfOutputBlock";
 import { NodeAssetConnectionPointType } from "../../src/connection/nodeAssetConnectionPointType";
 import { NodeAsset } from "../../src/nodeAsset";
 import { IsBabylonAsset, type BabylonAsset } from "../../src/representations/babylonAsset";
@@ -47,11 +47,11 @@ function CreateSerializedNodeGeometry(): Uint8Array {
 describe("Node Geometry to Universal funnel", () => {
     it("builds externally meaningful geometry through the primitive path", async () => {
         const asset = new NodeAsset("node-geometry-funnel");
-        const read = new ReadNodeGeometryBlock("Read Node Geometry", asset);
+        const read = new NodeGeometryInputBlock("Node Geometry", asset);
         await read.setUploadedSourceAsync(CreateSerializedNodeGeometry(), "box.json");
-        const toUniversal = new NodeGeometryToUniversalBlock("Node Geometry to Universal", asset);
-        const toGltf = new UniversalToGLTFBlock("Universal to glTF", asset);
-        const write = new WriteGLTFBlock("Write glTF", asset);
+        const toUniversal = new NodeGeometryToUniversalBlock("Node Geometry → Universal", asset);
+        const toGltf = new UniversalToGLTFBlock("Universal → glTF", asset);
+        const write = new GLTFOutputBlock("glTF", asset);
 
         read.output.connectTo(toUniversal.input);
         toUniversal.output.connectTo(toGltf.input);
@@ -92,17 +92,17 @@ describe("Node Geometry to Universal funnel", () => {
         expect(serialized.blocks[0]).toMatchObject({
             customType: ImportNodeGeometryAggregateBlock.ClassName,
             subgraph: {
-                blocks: [{ customType: ReadNodeGeometryBlock.ClassName }, { customType: NodeGeometryToUniversalBlock.ClassName }],
+                blocks: [{ customType: NodeGeometryInputBlock.ClassName }, { customType: NodeGeometryToUniversalBlock.ClassName }],
             },
         });
         const aggregateResult = await NodeAsset.Parse(JSON.parse(JSON.stringify(serialized))).buildAsync();
 
         const primitiveAsset = new NodeAsset("primitive-node-geometry");
-        const read = new ReadNodeGeometryBlock("Read Node Geometry", primitiveAsset);
+        const read = new NodeGeometryInputBlock("Node Geometry", primitiveAsset);
         await read.setUploadedSourceAsync(source, "box.json");
-        const toUniversal = new NodeGeometryToUniversalBlock("Node Geometry to Universal", primitiveAsset);
-        const toGltf = new UniversalToGLTFBlock("Universal to glTF", primitiveAsset);
-        const write = new WriteGLTFBlock("Write glTF", primitiveAsset);
+        const toUniversal = new NodeGeometryToUniversalBlock("Node Geometry → Universal", primitiveAsset);
+        const toGltf = new UniversalToGLTFBlock("Universal → glTF", primitiveAsset);
+        const write = new GLTFOutputBlock("glTF", primitiveAsset);
         read.output.connectTo(toUniversal.input);
         toUniversal.output.connectTo(toGltf.input);
         toGltf.output.connectTo(write.input);
@@ -146,7 +146,7 @@ describe("Node Geometry to Universal funnel", () => {
         await importer.setSnippetIdAsync("#BOX#1", async () => uploaded);
         expect(importer.source).toBe("BOX#1");
         expect(importer.sourceKind).toBe("snippet");
-        expect(importer.readBlock.source).toBe("BOX#1");
+        expect(importer.inputBlock.source).toBe("BOX#1");
 
         const parsed = NodeAsset.Parse(JSON.parse(JSON.stringify(asset.serialize())));
         const parsedImporter = parsed.attachedBlocks[0] as ImportNodeGeometryAggregateBlock;
@@ -180,7 +180,7 @@ describe("Node Geometry to Universal funnel", () => {
     it("keeps a Node Geometry source cleared when an earlier snippet request succeeds later", async () => {
         const source = CreateSerializedNodeGeometry();
         const asset = new NodeAsset("cleared-node-geometry-source");
-        const read = new ReadNodeGeometryBlock("Read Node Geometry", asset);
+        const read = new NodeGeometryInputBlock("Node Geometry", asset);
         let resolveSnippet: ((data: Uint8Array) => void) | undefined;
         const pendingSnippet = read.setSnippetIdAsync(
             "BOX#1",
@@ -204,9 +204,9 @@ describe("Node Geometry to Universal funnel", () => {
             NodeAsset.Parse({
                 name: "invalid-node-geometry-wiring",
                 blocks: [
-                    { customType: ReadNodeGeometryBlock.ClassName, id: 1, name: "Read Node Geometry", data: null, source: null },
-                    { customType: UniversalToGLTFBlock.ClassName, id: 2, name: "Universal to glTF" },
-                    { customType: WriteGLTFBlock.ClassName, id: 3, name: "Write glTF" },
+                    { customType: NodeGeometryInputBlock.ClassName, id: 1, name: "Node Geometry", data: null, source: null },
+                    { customType: UniversalToGLTFBlock.ClassName, id: 2, name: "Universal → glTF" },
+                    { customType: GLTFOutputBlock.ClassName, id: 3, name: "glTF" },
                 ],
                 connections: [
                     { fromBlock: 1, fromPoint: "output", toBlock: 2, toPoint: "input" },

@@ -1,12 +1,12 @@
 import { UniversalToGLTFBlock } from "node-assets/Blocks/universalToGLTFBlock";
 
-import { ConfigureBlockForEditor, RegisterBlockDescriptor, TranscodersHeaderColor } from "../blockCatalog";
+import { ConfigureBlockForEditor, ExportersCategory, RegisterBlockDescriptor, TranscodersHeaderColor } from "../blockCatalog";
 
 RegisterBlockDescriptor({
     paletteItemId: "universal-to-gltf",
     label: "Universal → glTF",
     description: "Cross explicitly from Universal into the glTF delivery lane.",
-    category: "Universal",
+    category: ExportersCategory,
     headerColor: TranscodersHeaderColor,
     className: UniversalToGLTFBlock.ClassName,
     abstractedBy: "export-gltf",

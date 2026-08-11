@@ -11,7 +11,7 @@ import { type NodeAsset } from "../nodeAsset";
 import { FBXSource } from "../representations/fbxSource";
 import { GetSerializedNullableString, GetSerializedStringUnion, type NodeAssetBlockSerialization } from "../serialization/nodeAssetSerialization";
 
-/** The active source kind for a Read FBX block. */
+/** The active source kind for a FBX input block. */
 export type FBXSourceKind = "url" | "upload";
 
 /** Minimal response surface used to load an FBX URL. */
@@ -22,7 +22,7 @@ export interface IFBXSourceResponse {
     arrayBuffer(): Promise<ArrayBuffer>;
 }
 
-/** Fetch-compatible loader used by {@link ReadFBXBlock.setUrlAsync}. */
+/** Fetch-compatible loader used by {@link FBXInputBlock.setUrlAsync}. */
 export type FBXSourceFetcher = (url: string) => Promise<IFBXSourceResponse>;
 
 /** Reports whether an asynchronous FBX source operation became the active source. */
@@ -66,9 +66,9 @@ function DecodeSerializedFBXData(value: Nullable<string>): Nullable<Uint8Array> 
 }
 
 /** Resolves a URL or uploaded `.fbx` file into an immutable FBX source payload. */
-export class ReadFBXBlock extends NodeAssetBlock {
+export class FBXInputBlock extends NodeAssetBlock {
     /** The class name, used for identification and safe under minification. */
-    public static override ClassName = "ReadFBXBlock";
+    public static override ClassName = "FBXInputBlock";
 
     /** Resolved `.fbx` bytes for the active source. */
     public data: Nullable<Uint8Array> = null;
@@ -86,7 +86,7 @@ export class ReadFBXBlock extends NodeAssetBlock {
     private _lastSuccessfulSourceAttempt = 0;
 
     /**
-     * Creates an FBX read block.
+     * Creates a FBX input block.
      * @param name The display name.
      * @param nodeAsset The owning graph.
      */
@@ -102,7 +102,7 @@ export class ReadFBXBlock extends NodeAssetBlock {
      */
     public setUploadedSource(data: Uint8Array, fileName: string): void {
         if (!(data instanceof Uint8Array) || typeof fileName !== "string" || fileName.trim().length === 0) {
-            throw new TypeError("Read FBX requires source bytes and a non-empty source.");
+            throw new TypeError("The FBX input block requires source bytes and a non-empty source.");
         }
         this._lastSuccessfulSourceAttempt = ++this._sourceAttempt;
         this.data = data.slice();
@@ -132,7 +132,7 @@ export class ReadFBXBlock extends NodeAssetBlock {
         applyResult?: IFBXSourceApplyResult
     ): Promise<void> {
         if (typeof url !== "string" || url.trim().length === 0) {
-            throw new TypeError("Read FBX requires a non-empty URL.");
+            throw new TypeError("The FBX input block requires a non-empty URL.");
         }
         if (applyResult) {
             applyResult.applied = false;
@@ -172,7 +172,7 @@ export class ReadFBXBlock extends NodeAssetBlock {
         const source = this.source;
         const sourceKind = this.sourceKind;
         if (!(data instanceof Uint8Array) || source === null || source.trim().length === 0 || (sourceKind !== "url" && sourceKind !== "upload")) {
-            throw new Error(`The "${this.name}" read block has no FBX source. Choose a URL or upload a .fbx file before building.`);
+            throw new Error(`The "${this.name}" input block has no FBX source. Choose a URL or upload a .fbx file before building.`);
         }
         scope?.accountSourceBytes(data.byteLength);
         this.output.value = new FBXSource(data, source, sourceKind === "url" ? Tools.GetFolderPath(source) : "");
@@ -208,4 +208,4 @@ export class ReadFBXBlock extends NodeAssetBlock {
     }
 }
 
-RegisterBlock(ReadFBXBlock.ClassName, (name, nodeAsset) => new ReadFBXBlock(name, nodeAsset));
+RegisterBlock(FBXInputBlock.ClassName, (name, nodeAsset) => new FBXInputBlock(name, nodeAsset));

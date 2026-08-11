@@ -3,10 +3,10 @@ import { RegisterBlock } from "../blockFoundation/blockRegistry";
 import { type NodeAssetConnectionPoint } from "../connection/nodeAssetConnectionPoint";
 import { type NodeAsset } from "../nodeAsset";
 import { type USDSourceKind } from "../representations/usdSourceAsset";
-import { ReadUSDBlock, type USDSourceFetcher } from "./readUSDBlock";
+import { USDInputBlock, type USDSourceFetcher } from "./usdInputBlock";
 import { USDToUniversalBlock } from "./usdToUniversalBlock";
 
-/** Built-in `Read USD -> USD -> Universal` aggregate. */
+/** Built-in `USD input -> USD -> Universal` aggregate. */
 // eslint-disable-next-line @typescript-eslint/naming-convention
 export class ImportUSDAggregateBlock extends AggregateBlock {
     /** The class name, used for identification and safe under minification. */
@@ -22,17 +22,17 @@ export class ImportUSDAggregateBlock extends AggregateBlock {
      */
     public constructor(name: string, nodeAsset: NodeAsset) {
         super(name, nodeAsset);
-        const read = new ReadUSDBlock("Read USD", this.subgraph);
-        const transcoder = new USDToUniversalBlock("USD to Universal", this.subgraph);
-        read.output.connectTo(transcoder.input);
+        const inputBlock = new USDInputBlock("USD", this.subgraph);
+        const transcoder = new USDToUniversalBlock("USD → Universal", this.subgraph);
+        inputBlock.output.connectTo(transcoder.input);
         this.output = this._exposeOutput(transcoder.output, "output");
     }
 
-    /** The owned Read USD primitive. */
-    public get readBlock(): ReadUSDBlock {
-        const block = this.subgraph.attachedBlocks.find((candidate): candidate is ReadUSDBlock => candidate instanceof ReadUSDBlock);
+    /** The owned USD input primitive. */
+    public get inputBlock(): USDInputBlock {
+        const block = this.subgraph.attachedBlocks.find((candidate): candidate is USDInputBlock => candidate instanceof USDInputBlock);
         if (!block) {
-            throw new Error(`The "${this.name}" aggregate has no ReadUSDBlock.`);
+            throw new Error(`The "${this.name}" aggregate has no USDInputBlock.`);
         }
         return block;
     }
@@ -46,27 +46,27 @@ export class ImportUSDAggregateBlock extends AggregateBlock {
         return block;
     }
 
-    /** Resolved source bytes forwarded to Read USD. */
+    /** Resolved source bytes forwarded to the USD input primitive. */
     public get data(): Uint8Array | null {
-        return this.readBlock.data;
+        return this.inputBlock.data;
     }
 
     public set data(value: Uint8Array | null) {
-        this.readBlock.data = value;
+        this.inputBlock.data = value;
     }
 
-    /** Active source label forwarded to Read USD. */
+    /** Active source label forwarded to the USD input primitive. */
     public get source(): string | null {
-        return this.readBlock.source;
+        return this.inputBlock.source;
     }
 
     public set source(value: string | null) {
-        this.readBlock.source = value;
+        this.inputBlock.source = value;
     }
 
-    /** Active source kind forwarded to Read USD. */
+    /** Active source kind forwarded to the USD input primitive. */
     public get sourceKind(): USDSourceKind | null {
-        return this.readBlock.sourceKind;
+        return this.inputBlock.sourceKind;
     }
 
     /** Optional tinyusdz wasm URL forwarded to USD-to-Universal. */
@@ -84,16 +84,16 @@ export class ImportUSDAggregateBlock extends AggregateBlock {
      * @param fileName The uploaded file name.
      */
     public setUploadedSource(data: Uint8Array, fileName: string): void {
-        this.readBlock.setUploadedSource(data, fileName);
+        this.inputBlock.setUploadedSource(data, fileName);
     }
 
     /**
-     * Loads and activates a URL on the owned Read USD primitive.
+     * Loads and activates a URL on the owned USD input primitive.
      * @param url The USD URL.
      * @param fetcher The fetch-compatible loader.
      */
     public async setUrlAsync(url: string, fetcher?: USDSourceFetcher): Promise<void> {
-        await this.readBlock.setUrlAsync(url, fetcher);
+        await this.inputBlock.setUrlAsync(url, fetcher);
     }
 }
 

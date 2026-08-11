@@ -15,9 +15,9 @@ import { GetSerializedNullableString, GetSerializedStringUnion, type NodeAssetBl
 export type NodeGeometrySnippetFetcher = (snippetId: string) => Promise<Uint8Array>;
 
 /** Reads a snippet ID or uploaded serialized graph into a shallow Node Geometry source payload. */
-export class ReadNodeGeometryBlock extends NodeAssetBlock {
+export class NodeGeometryInputBlock extends NodeAssetBlock {
     /** The class name, used for identification and safe under minification. */
-    public static override ClassName = "ReadNodeGeometryBlock";
+    public static override ClassName = "NodeGeometryInputBlock";
 
     /** Resolved serialized Node Geometry bytes. */
     public data: Nullable<Uint8Array> = null;
@@ -32,7 +32,7 @@ export class ReadNodeGeometryBlock extends NodeAssetBlock {
     private _lastSuccessfulSourceAttempt = 0;
 
     /**
-     * Creates a Node Geometry read block.
+     * Creates a Node Geometry input block.
      * @param name The display name.
      * @param nodeAsset The owning graph.
      */
@@ -98,7 +98,7 @@ export class ReadNodeGeometryBlock extends NodeAssetBlock {
      */
     public override async _buildBlockAsync(scope?: BuildScope): Promise<void> {
         if (!this.data || !this.source || !this.sourceKind) {
-            throw new Error(`The "${this.name}" read block has no Node Geometry source.`);
+            throw new Error(`The "${this.name}" input block has no Node Geometry source.`);
         }
         scope?.accountSourceBytes(this.data.byteLength);
         this.output.value = new NodeGeometrySource(this.data, {
@@ -171,4 +171,4 @@ function IsRecord(value: unknown): value is Record<string, unknown> {
     return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
-RegisterBlock(ReadNodeGeometryBlock.ClassName, (name, nodeAsset) => new ReadNodeGeometryBlock(name, nodeAsset));
+RegisterBlock(NodeGeometryInputBlock.ClassName, (name, nodeAsset) => new NodeGeometryInputBlock(name, nodeAsset));

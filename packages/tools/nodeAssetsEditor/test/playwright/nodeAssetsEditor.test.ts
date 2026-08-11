@@ -123,10 +123,10 @@ async function clickWirePath(page: Page, path: Locator, button: "left" | "right"
 }
 
 const DefaultCompressionPipeline: readonly (readonly [string, string])[] = [
-    ["Import glTF", "Universal to glTF"],
-    ["Universal to glTF", "Compress Textures (KTX2)"],
+    ["Import glTF", "Universal → glTF"],
+    ["Universal → glTF", "Compress Textures (KTX2)"],
     ["Compress Textures (KTX2)", "Compress Geometry (Draco)"],
-    ["Compress Geometry (Draco)", "Write glTF"],
+    ["Compress Geometry (Draco)", "glTF"],
 ];
 const BuiltInPipelineNames = CreateBuiltInNodeAssetLibraryEntries().map((entry) => entry.name);
 
@@ -167,8 +167,8 @@ function CreateBabylonFunnelEditorFile(): string {
                     subgraph: {
                         name: "Import Babylon subgraph",
                         blocks: [
-                            { customType: "ReadBabylonBlock", id: 2, name: "Read Babylon", data: null, source: null, sourceKind: "" },
-                            { customType: "BabylonToUniversalBlock", id: 3, name: "Babylon to Universal" },
+                            { customType: "BabylonInputBlock", id: 2, name: "Babylon", data: null, source: null, sourceKind: "" },
+                            { customType: "BabylonToUniversalBlock", id: 3, name: "Babylon → Universal" },
                         ],
                         connections: [{ fromBlock: 2, fromPoint: "output", toBlock: 3, toPoint: "input" }],
                     },
@@ -183,8 +183,8 @@ function CreateBabylonFunnelEditorFile(): string {
                     subgraph: {
                         name: "Export glTF subgraph",
                         blocks: [
-                            { customType: "UniversalToGLTFBlock", id: 5, name: "Universal to glTF" },
-                            { customType: "WriteGLTFBlock", id: 6, name: "Write glTF", fileName: "scene" },
+                            { customType: "UniversalToGLTFBlock", id: 5, name: "Universal → glTF" },
+                            { customType: "GLTFOutputBlock", id: 6, name: "glTF", fileName: "scene" },
                         ],
                         connections: [{ fromBlock: 5, fromPoint: "output", toBlock: 6, toPoint: "input" }],
                     },
@@ -250,12 +250,12 @@ function CreateAsciiFbxTriangle(): Buffer {
 function createAdvancedCodecEditorFile(): string {
     const source = Buffer.from(BuiltInLibraryFixtures.gltf).toString("base64");
     const blocks = [
-        { customType: "ReadGLTFBlock", id: 1, name: "Read glTF", data: source, source: "catalog-triangle.glb", sourceKind: "upload" },
-        { customType: "GLTFToUniversalBlock", id: 2, name: "glTF to Universal" },
-        { customType: "UniversalToGLTFBlock", id: 3, name: "Universal to glTF" },
+        { customType: "GLTFInputBlock", id: 1, name: "glTF", data: source, source: "catalog-triangle.glb", sourceKind: "upload" },
+        { customType: "GLTFToUniversalBlock", id: 2, name: "glTF → Universal" },
+        { customType: "UniversalToGLTFBlock", id: 3, name: "Universal → glTF" },
         { customType: "KTX2CompressionBlock", id: 4, name: "Compress Textures (KTX2)" },
         { customType: "DracoCompressionBlock", id: 5, name: "Compress Geometry (Draco)" },
-        { customType: "WriteGLTFBlock", id: 6, name: "Write glTF", fileName: "codec-delivery" },
+        { customType: "GLTFOutputBlock", id: 6, name: "glTF", fileName: "codec-delivery" },
     ];
     return JSON.stringify({
         graph: {
@@ -330,8 +330,8 @@ function createImportAggregate(id: number, readId: number, transcoderId: number,
         subgraph: {
             name: `${name} subgraph`,
             blocks: [
-                { customType: "ReadGLTFBlock", id: readId, name: "Read glTF", data: data.toString("base64"), source: sourceName, sourceKind: "upload" },
-                { customType: "GLTFToUniversalBlock", id: transcoderId, name: "glTF to Universal" },
+                { customType: "GLTFInputBlock", id: readId, name: "glTF", data: data.toString("base64"), source: sourceName, sourceKind: "upload" },
+                { customType: "GLTFToUniversalBlock", id: transcoderId, name: "glTF → Universal" },
             ],
             connections: [{ fromBlock: readId, fromPoint: "output", toBlock: transcoderId, toPoint: "input" }],
         },
@@ -353,8 +353,8 @@ function createUniversalMergeEditorFile(): Buffer {
             subgraph: {
                 name: "Export glTF subgraph",
                 blocks: [
-                    { customType: "UniversalToGLTFBlock", id: 401, name: "Universal to glTF" },
-                    { customType: "WriteGLTFBlock", id: 402, name: "Write glTF", fileName: "scene" },
+                    { customType: "UniversalToGLTFBlock", id: 401, name: "Universal → glTF" },
+                    { customType: "GLTFOutputBlock", id: 402, name: "glTF", fileName: "scene" },
                 ],
                 connections: [{ fromBlock: 401, fromPoint: "output", toBlock: 402, toPoint: "input" }],
             },
@@ -409,8 +409,8 @@ function createNodeGeometryEditorFile(): Buffer {
                         subgraph: {
                             name: "Import Node Geometry subgraph",
                             blocks: [
-                                { customType: "ReadNodeGeometryBlock", id: 101, name: "Read Node Geometry", data: null, source: null, sourceKind: "" },
-                                { customType: "NodeGeometryToUniversalBlock", id: 102, name: "Node Geometry to Universal" },
+                                { customType: "NodeGeometryInputBlock", id: 101, name: "Node Geometry", data: null, source: null, sourceKind: "" },
+                                { customType: "NodeGeometryToUniversalBlock", id: 102, name: "Node Geometry → Universal" },
                             ],
                             connections: [{ fromBlock: 101, fromPoint: "output", toBlock: 102, toPoint: "input" }],
                         },
@@ -425,8 +425,8 @@ function createNodeGeometryEditorFile(): Buffer {
                         subgraph: {
                             name: "Export glTF subgraph",
                             blocks: [
-                                { customType: "UniversalToGLTFBlock", id: 201, name: "Universal to glTF" },
-                                { customType: "WriteGLTFBlock", id: 202, name: "Write glTF", fileName: "scene" },
+                                { customType: "UniversalToGLTFBlock", id: 201, name: "Universal → glTF" },
+                                { customType: "GLTFOutputBlock", id: 202, name: "glTF", fileName: "scene" },
                             ],
                             connections: [{ fromBlock: 201, fromPoint: "output", toBlock: 202, toPoint: "input" }],
                         },
@@ -476,10 +476,10 @@ test.describe("Node Assets Editor — maintained default pipeline", () => {
 
         await expect(editor.nodes).toHaveCount(5);
         await expect(editor.nodeByTitle("Import glTF")).toBeVisible();
-        await expect(editor.nodeByTitle("Universal to glTF")).toBeVisible();
+        await expect(editor.nodeByTitle("Universal → glTF")).toBeVisible();
         await expect(editor.nodeByTitle("Compress Textures (KTX2)")).toBeVisible();
         await expect(editor.nodeByTitle("Compress Geometry (Draco)")).toBeVisible();
-        await expect(editor.nodeByTitle("Write glTF")).toBeVisible();
+        await expect(editor.nodeByTitle("glTF")).toBeVisible();
         await editor.expectWiredPipeline(DefaultCompressionPipeline);
         await expect(page.locator('[data-testid="graph-frame"]')).toHaveCount(0);
 
@@ -694,14 +694,14 @@ test.describe("Node Assets Editor — maintained default pipeline", () => {
         await editor.goto();
         await editor.waitForNextSuccessfulPreviewBuild();
 
-        await editor.deleteWire("Compress Geometry (Draco)", "Write glTF");
+        await editor.deleteWire("Compress Geometry (Draco)", "glTF");
         await expect(editor.previewErrorOverlay).toBeVisible({ timeout: 30_000 });
 
-        const exportNode = editor.nodeByTitle("Write glTF");
+        const exportNode = editor.nodeByTitle("glTF");
         await expect(exportNode).toHaveAttribute("data-node-error", "true");
         await expect(exportNode.getByRole("img", { name: /Error: The .* input .* is not connected/ })).toBeVisible();
 
-        await editor.selectNode("Write glTF");
+        await editor.selectNode("glTF");
         await expect(page.getByText("BUILD ERROR", { exact: true })).toBeVisible();
 
         await page.locator('button[value="Validation"]').click();
@@ -792,8 +792,8 @@ test.describe("Node Assets Editor — maintained default pipeline", () => {
         await expect(editor.paletteItem("Import Babylon")).toHaveCount(0);
         await expect(editor.paletteItem("Export glTF")).toHaveCount(0);
         await expect(editor.paletteItem("Deduplicate Resources")).toHaveCount(0);
-        await expect(editor.paletteItem("Read glTF")).toBeVisible();
-        await expect(editor.paletteItem("Write glTF")).toBeVisible();
+        await expect(editor.paletteItemById("gltf-input")).toBeVisible();
+        await expect(editor.paletteItemById("gltf-output")).toBeVisible();
         await expect(editor.paletteItem("glTF → Universal")).toBeVisible();
 
         await search.fill("Import glTF");
@@ -801,14 +801,14 @@ test.describe("Node Assets Editor — maintained default pipeline", () => {
         await search.clear();
 
         await exportNode.getByRole("button", { name: "Expand aggregate" }).click();
-        await expect(editor.nodeByTitle("Write glTF")).toBeVisible();
+        await expect(editor.nodeByTitle("glTF")).toBeVisible();
 
         await showAggregates.check();
         await expect(editor.paletteItem("Import glTF")).toBeVisible();
         await expect(editor.paletteItem("Export glTF")).toBeVisible();
         await expect(editor.paletteItem("Deduplicate Resources")).toBeVisible();
-        await expect(editor.paletteItem("Read glTF")).toBeVisible();
-        await expect(editor.paletteItem("Write glTF")).toBeVisible();
+        await expect(editor.paletteItemById("gltf-input")).toBeVisible();
+        await expect(editor.paletteItemById("gltf-output")).toBeVisible();
 
         await search.fill("selector");
         await expect(items).toHaveCount(0);
@@ -816,9 +816,9 @@ test.describe("Node Assets Editor — maintained default pipeline", () => {
         await showAggregates.uncheck();
         await expect(editor.paletteItem("Import glTF")).toHaveCount(0);
         await expect(editor.paletteItem("Export glTF")).toHaveCount(0);
-        await expect(editor.paletteItem("Read glTF")).toBeVisible();
-        await expect(editor.paletteItem("Write glTF")).toBeVisible();
-        await expect(editor.nodeByTitle("Write glTF")).toBeVisible();
+        await expect(editor.paletteItemById("gltf-input")).toBeVisible();
+        await expect(editor.paletteItemById("gltf-output")).toBeVisible();
+        await expect(editor.nodeByTitle("glTF")).toBeVisible();
 
         await showAggregates.check();
         await page.reload({ waitUntil: "load" });
@@ -1121,7 +1121,7 @@ test.describe("Node Assets Editor — maintained default pipeline", () => {
 
         await expect.poll(overlaps).toBe(false);
         const pipelineX = await Promise.all(
-            ["Import glTF", "Universal to glTF", "Compress Textures (KTX2)", "Compress Geometry (Draco)", "Write glTF"].map(
+            ["Import glTF", "Universal → glTF", "Compress Textures (KTX2)", "Compress Geometry (Draco)", "glTF"].map(
                 async (title) => (await editor.nodeByTitle(title).boundingBox())?.x ?? 0
             )
         );
@@ -1148,11 +1148,11 @@ test.describe("Node Assets Editor — explicit glTF delivery codecs", () => {
 
         await expect(editor.nodes).toHaveCount(6);
         await editor.expectWiredPipeline([
-            ["Read glTF", "glTF to Universal"],
-            ["glTF to Universal", "Universal to glTF"],
-            ["Universal to glTF", "Compress Textures (KTX2)"],
+            ["glTF", "glTF → Universal"],
+            ["glTF → Universal", "Universal → glTF"],
+            ["Universal → glTF", "Compress Textures (KTX2)"],
             ["Compress Textures (KTX2)", "Compress Geometry (Draco)"],
-            ["Compress Geometry (Draco)", "Write glTF"],
+            ["Compress Geometry (Draco)", "glTF"],
         ]);
         await editor.waitForSuccessfulPreviewBuild();
         await expect(editor.previewCanvas).toBeVisible();
@@ -1166,7 +1166,8 @@ test.describe("Node Assets Editor — explicit glTF delivery codecs", () => {
         await expect(page.getByText("Quantization volume", { exact: true })).toBeVisible();
         await expect(page.getByText("Custom bounds minimum", { exact: true })).toBeVisible();
 
-        await editor.selectNode("Write glTF");
+        // The fixture's glTF input and terminal glTF output share a title; the output is the last one.
+        await editor.selectNode("glTF", "last");
         await page.getByRole("textbox").nth(2).fill("requested-codec-delivery");
         const downloadPromise = page.waitForEvent("download");
         await page.getByRole("button", { name: "Export .glb" }).click();
@@ -1194,14 +1195,17 @@ test.describe("Node Assets Editor — Universal glTF aggregates", () => {
         await editor.nodeByTitle("Import glTF").getByRole("button", { name: "Expand aggregate" }).click();
         const aggregateFrame = page.locator('[data-testid="aggregate-frame"]').filter({ hasText: "Import glTF" });
         await expect(aggregateFrame).toBeVisible();
-        await expect(editor.nodeByTitle("Read glTF")).toBeVisible();
-        await expect(editor.nodeByTitle("glTF to Universal")).toHaveCount(1);
-        await expect(page.locator('[data-testid="graph-wire"][data-from-node-title="Read glTF"][data-to-node-title="glTF to Universal"]')).toHaveCount(1);
+        // The seed graph's terminal output is also titled "glTF"; the expanded input child is the last one.
+        await expect(editor.nodeByTitle("glTF", "last")).toBeVisible();
+        await expect(editor.nodeByTitle("glTF")).toHaveCount(2);
+        await expect(editor.nodeByTitle("glTF → Universal")).toHaveCount(1);
+        await expect(page.locator('[data-testid="graph-wire"][data-from-node-title="glTF"][data-to-node-title="glTF → Universal"]')).toHaveCount(1);
         await editor.waitForSuccessfulPreviewBuild();
 
         await aggregateFrame.getByRole("button", { name: "Collapse aggregate" }).click();
-        await expect(editor.nodeByTitle("Read glTF")).toHaveCount(0);
-        await expect(editor.nodeByTitle("glTF to Universal")).toHaveCount(0);
+        // Only the seed graph's terminal glTF output survives the collapse.
+        await expect(editor.nodeByTitle("glTF")).toHaveCount(1);
+        await expect(editor.nodeByTitle("glTF → Universal")).toHaveCount(0);
         await expect(editor.nodeByTitle("Import glTF")).toBeVisible();
         await editor.waitForSuccessfulPreviewBuild();
     });
@@ -1269,7 +1273,7 @@ test.describe("Node Assets Editor — Universal glTF aggregates", () => {
 
         await editor.dropPaletteItem("Deduplicate Resources", { x: 0.55, y: 0.2 });
         await editor.connectPorts(editor.portOfNode("Import glTF", "out"), editor.portOfNode("Deduplicate Resources", "in"));
-        await editor.connectPorts(editor.portOfNode("Deduplicate Resources", "out"), editor.portOfNode("Universal to glTF", "in"));
+        await editor.connectPorts(editor.portOfNode("Deduplicate Resources", "out"), editor.portOfNode("Universal → glTF", "in"));
         await editor.waitForSuccessfulPreviewBuild();
 
         await editor.selectNode("Deduplicate Resources");
@@ -1313,9 +1317,9 @@ test.describe("Node Assets Editor — Universal glTF aggregates", () => {
 
         await expect(page.locator('[data-testid="aggregate-frame"]').filter({ hasText: "Deduplicate Resources" })).toBeVisible();
         await editor.expectWiredPipeline([
-            ...DefaultCompressionPipeline.filter(([from, to]) => !(from === "Import glTF" && to === "Universal to glTF")),
+            ...DefaultCompressionPipeline.filter(([from, to]) => !(from === "Import glTF" && to === "Universal → glTF")),
             ["Import glTF", "Deduplicate Resources"],
-            ["Deduplicate Resources", "Universal to glTF"],
+            ["Deduplicate Resources", "Universal → glTF"],
             ["Deduplicate Materials", "Reuse Identical Meshes"],
             ["Reuse Identical Meshes", "Deduplicate Textures"],
             ["Deduplicate Textures", "Deduplicate Data"],
@@ -1325,7 +1329,7 @@ test.describe("Node Assets Editor — Universal glTF aggregates", () => {
         await editor.waitForSuccessfulPreviewBuild();
     });
 
-    test("detaches before a child edit, persists the expanded custom aggregate, and exports from its Write primitive", async ({ page }) => {
+    test("detaches before a child edit, persists the expanded custom aggregate, and exports from its glTF output primitive", async ({ page }) => {
         const editor = new NodeAssetsEditorPage(page);
         await editor.goto();
         await editor.waitForNextSuccessfulPreviewBuild();
@@ -1334,7 +1338,7 @@ test.describe("Node Assets Editor — Universal glTF aggregates", () => {
         await editor.waitForNextSuccessfulPreviewBuild();
 
         await editor.nodeByTitle("Export glTF").getByRole("button", { name: "Expand aggregate" }).click();
-        await editor.selectNode("Write glTF");
+        await editor.selectNode("glTF");
         await page.getByRole("textbox").nth(2).fill("custom-output");
         await expect(page.getByRole("textbox").nth(2)).toHaveValue("custom-output");
 
@@ -1351,7 +1355,7 @@ test.describe("Node Assets Editor — Universal glTF aggregates", () => {
         await editor.selectNode("Export glTF");
         await expect(page.getByRole("textbox").nth(1)).toHaveValue("CustomAggregateBlock");
         await expect(page.getByRole("textbox").nth(2)).toHaveValue("custom-output");
-        await editor.selectNode("Write glTF");
+        await editor.selectNode("glTF");
         await expect(page.getByRole("textbox").nth(2)).toHaveValue("custom-output");
         await editor.waitForSuccessfulPreviewBuild();
 
@@ -1366,7 +1370,7 @@ test.describe("Node Assets Editor — Universal glTF aggregates", () => {
         await editor.waitForNextSuccessfulPreviewBuild();
 
         await editor.nodeByTitle("Export glTF").getByRole("button", { name: "Expand aggregate" }).click();
-        await editor.selectNode("Write glTF");
+        await editor.selectNode("glTF");
         await page.getByRole("textbox").nth(2).fill("collapsed-custom-output");
         await editor.selectNode("Export glTF");
         await expect(page.getByRole("textbox").nth(1)).toHaveValue("CustomAggregateBlock");
@@ -1387,15 +1391,16 @@ test.describe("Node Assets Editor — Universal glTF aggregates", () => {
         await editor.waitForNextSuccessfulPreviewBuild();
 
         await editor.nodeByTitle("Import glTF").getByRole("button", { name: "Expand aggregate" }).click();
-        await editor.selectNode("Read glTF");
+        // The seed graph's terminal output is also titled "glTF"; the expanded input child is the last one.
+        await editor.selectNode("glTF", "last");
         await page.keyboard.press("Delete");
 
-        await expect(editor.nodeByTitle("Read glTF")).toHaveCount(0);
+        await expect(editor.nodeByTitle("glTF")).toHaveCount(1);
         await editor.selectNode("Import glTF");
         await expect(page.getByRole("textbox").nth(1)).toHaveValue("CustomAggregateBlock");
         const saved = await saveEditorGraph(page);
         const imported = saved.graph.blocks.find((block) => block.name === "Import glTF");
-        expect(imported?.subgraph?.blocks.map((block) => block.customType)).not.toContain("ReadGLTFBlock");
+        expect(imported?.subgraph?.blocks.map((block) => block.customType)).not.toContain("GLTFInputBlock");
     });
 
     test("deletes an expanded aggregate root together with its projected subgraph", async ({ page }) => {
@@ -1407,11 +1412,11 @@ test.describe("Node Assets Editor — Universal glTF aggregates", () => {
         await page.keyboard.press("Delete");
 
         await expect(editor.nodeByTitle("Export glTF")).toHaveCount(0);
-        await expect(editor.nodeByTitle("Write glTF")).toHaveCount(0);
+        await expect(editor.nodeByTitle("glTF")).toHaveCount(0);
         await expect(page.locator('[data-testid="aggregate-frame"]').filter({ hasText: "Export glTF" })).toHaveCount(0);
     });
 
-    test("applies a delayed URL completion to the Read primitive after detachment", async ({ page }) => {
+    test("applies a delayed URL completion to the glTF input primitive after detachment", async ({ page }) => {
         const delayedUrl = "https://example.test/delayed.glb";
         let markRequestStarted: () => void = () => undefined;
         let releaseResponse: () => void = () => undefined;
@@ -1434,11 +1439,11 @@ test.describe("Node Assets Editor — Universal glTF aggregates", () => {
         await editor.waitForNextSuccessfulPreviewBuild();
 
         await editor.nodeByTitle("Import glTF").getByRole("button", { name: "Expand aggregate" }).click();
-        await editor.selectNode("Read glTF");
+        await editor.selectNode("glTF", "last");
         await page.getByRole("textbox").nth(2).fill(delayedUrl);
         await page.getByRole("textbox").nth(2).blur();
         await requestStarted;
-        await page.getByRole("textbox").nth(0).fill("Renamed Read glTF");
+        await page.getByRole("textbox").nth(0).fill("Renamed glTF");
         await editor.selectNode("Import glTF");
         await expect(page.getByRole("textbox").nth(1)).toHaveValue("CustomAggregateBlock");
 
@@ -1446,10 +1451,10 @@ test.describe("Node Assets Editor — Universal glTF aggregates", () => {
         await expect(page.getByRole("textbox").nth(3)).toHaveValue(delayedUrl);
         const saved = await saveEditorGraph(page);
         const imported = saved.graph.blocks.find((block) => block.name === "Import glTF");
-        expect(imported?.subgraph?.blocks.find((block) => block.customType === "ReadGLTFBlock")?.source).toBe(delayedUrl);
+        expect(imported?.subgraph?.blocks.find((block) => block.customType === "GLTFInputBlock")?.source).toBe(delayedUrl);
     });
 
-    test("applies an upload chosen after detachment to the active Read primitive", async ({ page }) => {
+    test("applies an upload chosen after detachment to the active glTF input primitive", async ({ page }) => {
         const editor = new NodeAssetsEditorPage(page);
         await editor.goto();
         await editor.waitForNextSuccessfulPreviewBuild();
@@ -1459,8 +1464,8 @@ test.describe("Node Assets Editor — Universal glTF aggregates", () => {
         await page.getByRole("button", { name: "Upload glTF…" }).click();
         const fileChooser = await fileChooserPromise;
         await editor.nodeByTitle("Import glTF").getByRole("button", { name: "Expand aggregate" }).click();
-        await editor.selectNode("Read glTF");
-        await page.getByRole("textbox").nth(0).fill("Renamed Read glTF");
+        await editor.selectNode("glTF", "last");
+        await page.getByRole("textbox").nth(0).fill("Renamed glTF");
         await fileChooser.setFiles({
             name: "detached-upload.glb",
             mimeType: "model/gltf-binary",
@@ -1472,10 +1477,10 @@ test.describe("Node Assets Editor — Universal glTF aggregates", () => {
         await expect(page.getByRole("textbox").nth(3)).toHaveValue("detached-upload.glb");
         const saved = await saveEditorGraph(page);
         const imported = saved.graph.blocks.find((block) => block.name === "Import glTF");
-        expect(imported?.subgraph?.blocks.find((block) => block.customType === "ReadGLTFBlock")?.source).toBe("detached-upload.glb");
+        expect(imported?.subgraph?.blocks.find((block) => block.customType === "GLTFInputBlock")?.source).toBe("detached-upload.glb");
     });
 
-    test("shares a successful upload between the compact Import aggregate and its Read primitive", async ({ page }) => {
+    test("shares a successful upload between the compact Import aggregate and its glTF input primitive", async ({ page }) => {
         const editor = new NodeAssetsEditorPage(page);
         await editor.goto();
         await editor.waitForNextSuccessfulPreviewBuild();
@@ -1492,7 +1497,7 @@ test.describe("Node Assets Editor — Universal glTF aggregates", () => {
         await expect(page.getByRole("textbox").nth(3)).toHaveValue("uploaded-triangle.glb");
 
         await editor.nodeByTitle("Import glTF").getByRole("button", { name: "Expand aggregate" }).click();
-        await editor.selectNode("Read glTF");
+        await editor.selectNode("glTF", "last");
         await expect(page.getByRole("textbox").nth(3)).toHaveValue("uploaded-triangle.glb");
         await editor.waitForSuccessfulPreviewBuild();
     });
@@ -1520,7 +1525,7 @@ test.describe("Node Assets Editor — Universal glTF aggregates", () => {
 
         const saved = await saveEditorGraph(page);
         const importer = saved.graph.blocks.find((block) => block.customType === "ImportOBJAggregateBlock");
-        const read = importer?.subgraph?.blocks.find((block) => block.customType === "ReadOBJBlock");
+        const read = importer?.subgraph?.blocks.find((block) => block.customType === "OBJInputBlock");
         expect(read?.primary?.path).toBe("browser-bundle.obj");
         expect(read?.companions?.map((companion) => companion.path)).toEqual(["catalog.mtl", "tiny.png"]);
 
@@ -1536,7 +1541,7 @@ test.describe("Node Assets Editor — Universal glTF aggregates", () => {
 
         const reloaded = await saveEditorGraph(page);
         const reloadedImporter = reloaded.graph.blocks.find((block) => block.customType === "ImportOBJAggregateBlock");
-        const reloadedRead = reloadedImporter?.subgraph?.blocks.find((block) => block.customType === "ReadOBJBlock");
+        const reloadedRead = reloadedImporter?.subgraph?.blocks.find((block) => block.customType === "OBJInputBlock");
         expect(reloadedRead?.primary?.path).toBe("browser-bundle.obj");
         expect(reloadedRead?.companions?.map((companion) => companion.path)).toEqual(["catalog.mtl", "tiny.png"]);
     });
@@ -1653,10 +1658,10 @@ test.describe("Node Assets Editor — Universal glTF aggregates", () => {
         await expect(propertyTextbox("Active source")).toHaveValue("TEST#1");
 
         await editor.nodeByTitle("Import Node Geometry").getByRole("button", { name: "Expand aggregate" }).click();
-        await expect(editor.nodeByTitle("Read Node Geometry")).toBeVisible();
-        await expect(editor.nodeByTitle("Node Geometry to Universal")).toBeVisible();
-        await expect(page.locator('[data-testid="graph-wire"][data-from-node-title="Read Node Geometry"][data-to-node-title="Node Geometry to Universal"]')).toHaveCount(1);
-        await editor.selectNode("Read Node Geometry");
+        await expect(editor.nodeByTitle("Node Geometry")).toBeVisible();
+        await expect(editor.nodeByTitle("Node Geometry → Universal")).toBeVisible();
+        await expect(page.locator('[data-testid="graph-wire"][data-from-node-title="Node Geometry"][data-to-node-title="Node Geometry → Universal"]')).toHaveCount(1);
+        await editor.selectNode("Node Geometry");
         await expect(propertyTextbox("Snippet ID")).toHaveValue("#TEST#1");
         await expect(propertyTextbox("Active source")).toHaveValue("TEST#1");
 
@@ -1678,7 +1683,7 @@ test.describe("Node Assets Editor — Universal glTF aggregates", () => {
         await editor.saveToLibraryButton.click();
         await editor.openLibraryButton.click();
         await page.getByRole("dialog", { name: "NodeAsset Library" }).getByRole("button", { name: "Node Geometry funnel", exact: true }).click();
-        await expect(editor.nodeByTitle("Read Node Geometry")).toBeVisible();
+        await expect(editor.nodeByTitle("Node Geometry")).toBeVisible();
         await editor.waitForSuccessfulPreviewBuild();
         await editor.selectNode("Import Node Geometry");
         await expect(propertyTextbox("Active source")).toHaveValue("box.json");
@@ -1836,10 +1841,10 @@ test.describe("Node Assets Editor — Babylon Universal funnel", () => {
         await expect(editor.previewCanvas).toBeVisible();
 
         await editor.nodeByTitle("Import Babylon").getByRole("button", { name: "Expand aggregate" }).click();
-        await expect(editor.nodeByTitle("Read Babylon")).toBeVisible();
-        await expect(editor.nodeByTitle("Babylon to Universal")).toBeVisible();
-        await expect(page.locator('[data-testid="graph-wire"][data-from-node-title="Read Babylon"][data-to-node-title="Babylon to Universal"]')).toHaveCount(1);
-        await editor.selectNode("Read Babylon");
+        await expect(editor.nodeByTitle("Babylon")).toBeVisible();
+        await expect(editor.nodeByTitle("Babylon → Universal")).toBeVisible();
+        await expect(page.locator('[data-testid="graph-wire"][data-from-node-title="Babylon"][data-to-node-title="Babylon → Universal"]')).toHaveCount(1);
+        await editor.selectNode("Babylon");
         await expect(page.getByText("URL", { exact: true })).toBeVisible();
         await expect(page.locator('input[value="triangle.babylon"]')).toBeVisible();
 
@@ -1883,11 +1888,11 @@ test.describe("Node Assets Editor — FBX Universal aggregate", () => {
         await expect(editor.previewCanvas).toBeVisible();
 
         await editor.nodeByTitle("Import FBX").getByRole("button", { name: "Expand aggregate" }).click();
-        await expect(editor.nodeByTitle("Read FBX")).toBeVisible();
+        await expect(editor.nodeByTitle("FBX")).toBeVisible();
         await expect(editor.nodeByTitle("FBX → Universal")).toBeVisible();
-        await expect(page.locator('[data-testid="graph-wire"][data-from-node-title="Read FBX"][data-to-node-title="FBX → Universal"]')).toHaveCount(1);
+        await expect(page.locator('[data-testid="graph-wire"][data-from-node-title="FBX"][data-to-node-title="FBX → Universal"]')).toHaveCount(1);
 
-        await editor.selectNode("Read FBX");
+        await editor.selectNode("FBX");
         await expect(page.getByRole("textbox").nth(2)).toHaveValue("triangle.fbx");
 
         await editor.selectNode("Export glTF");
@@ -1934,15 +1939,15 @@ def Xform "World"
         await expect(editor.previewCanvas).toBeVisible();
 
         await editor.nodeByTitle("Import USD").getByRole("button", { name: "Expand aggregate" }).click();
-        await expect(editor.nodeByTitle("Read USD")).toBeVisible();
-        await expect(editor.nodeByTitle("USD to Universal")).toBeVisible();
-        await expect(page.locator('[data-testid="graph-wire"][data-from-node-title="Read USD"][data-to-node-title="USD to Universal"]')).toHaveCount(1);
+        await expect(editor.nodeByTitle("USD")).toBeVisible();
+        await expect(editor.nodeByTitle("USD → Universal")).toBeVisible();
+        await expect(page.locator('[data-testid="graph-wire"][data-from-node-title="USD"][data-to-node-title="USD → Universal"]')).toHaveCount(1);
         await expect(editor.nodeByTitle("USD → glTF")).toHaveCount(0);
         await expect(editor.nodeByTitle("USD → Babylon")).toHaveCount(0);
         await expect(editor.nodeByTitle("USD Selector")).toHaveCount(0);
         await expect(editor.nodeByTitle("Get USD Prim")).toHaveCount(0);
 
-        await editor.selectNode("Read USD");
+        await editor.selectNode("USD");
         await expect(page.getByRole("textbox").nth(3)).toHaveValue("triangle.usda");
 
         await editor.selectNode("Export glTF");

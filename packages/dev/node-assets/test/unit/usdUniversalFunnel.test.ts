@@ -4,12 +4,12 @@ import { describe, expect, it, vi } from "vitest";
 
 import { ExportGLTFAggregateBlock } from "../../src/Blocks/exportGLTFAggregateBlock";
 import { ImportUSDAggregateBlock } from "../../src/Blocks/importUSDAggregateBlock";
-import { ReadUSDBlock } from "../../src/Blocks/readUSDBlock";
+import { USDInputBlock } from "../../src/Blocks/usdInputBlock";
 import { UniversalToGLTFBlock } from "../../src/Blocks/universalToGLTFBlock";
 import { USD2BabylonBlock } from "../../src/Blocks/usd2BabylonBlock";
 import { USD2GLTFBlock } from "../../src/Blocks/usd2GLTFBlock";
 import { USDToUniversalBlock } from "../../src/Blocks/usdToUniversalBlock";
-import { WriteGLTFBlock } from "../../src/Blocks/writeGLTFBlock";
+import { GLTFOutputBlock } from "../../src/Blocks/gltfOutputBlock";
 import { NodeAssetBlock } from "../../src/blockFoundation/nodeAssetBlock";
 import { type NodeAssetConnectionPoint } from "../../src/connection/nodeAssetConnectionPoint";
 import { NodeAssetConnectionPointType } from "../../src/connection/nodeAssetConnectionPointType";
@@ -66,10 +66,10 @@ async function ReadAssetFactsAsync(glb: Uint8Array): Promise<{ scenes: string[];
 }
 
 describe("USD Universal funnel", () => {
-    it("rejects a build before parsing when Read USD has no active source", async () => {
+    it("rejects a build before parsing when the USD input block has no active source", async () => {
         const asset = new NodeAsset("missing-usd-source");
-        const read = new ReadUSDBlock("Read USD", asset);
-        const toUniversal = new USDToUniversalBlock("USD to Universal", asset);
+        const read = new USDInputBlock("USD", asset);
+        const toUniversal = new USDToUniversalBlock("USD → Universal", asset);
         const exporter = new ExportGLTFAggregateBlock("Export glTF", asset);
         read.output.connectTo(toUniversal.input);
         toUniversal.output.connectTo(exporter.input);
@@ -79,24 +79,24 @@ describe("USD Universal funnel", () => {
 
     it("keeps the lightweight USD source kind isolated from legacy USD, glTF, Babylon, and Universal inputs", () => {
         const asset = new NodeAsset("typed-usd-source");
-        const read = new ReadUSDBlock("Read USD", asset);
-        const toUniversal = new USDToUniversalBlock("USD to Universal", asset);
+        const read = new USDInputBlock("USD", asset);
+        const toUniversal = new USDToUniversalBlock("USD → Universal", asset);
 
         expect(read.output.type).toBe(NodeAssetConnectionPointType.USD_SOURCE);
         expect(toUniversal.input.type).toBe(NodeAssetConnectionPointType.USD_SOURCE);
         expect(toUniversal.output.type).toBe(NodeAssetConnectionPointType.UNIVERSAL);
         expect(() => read.output.connectTo(new USD2GLTFBlock("legacy USD to glTF", asset).input)).toThrow(/incompatible connection point types/);
         expect(() => read.output.connectTo(new USD2BabylonBlock("legacy USD to Babylon", asset).input)).toThrow(/incompatible connection point types/);
-        expect(() => read.output.connectTo(new UniversalToGLTFBlock("Universal to glTF", asset).input)).toThrow(/incompatible connection point types/);
-        expect(() => read.output.connectTo(new WriteGLTFBlock("Write glTF", asset).input)).toThrow(/incompatible connection point types/);
+        expect(() => read.output.connectTo(new UniversalToGLTFBlock("Universal → glTF", asset).input)).toThrow(/incompatible connection point types/);
+        expect(() => read.output.connectTo(new GLTFOutputBlock("glTF", asset).input)).toThrow(/incompatible connection point types/);
         expect(() => read.output.connectTo(toUniversal.input)).not.toThrow();
     });
 
-    it("builds a valid GLB through Read USD to USD to Universal and matches the Import USD aggregate", async () => {
+    it("builds a valid GLB through the USD input block and USD → Universal and matches the Import USD aggregate", async () => {
         const primitiveAsset = new NodeAsset("primitive-usd-funnel");
-        const read = new ReadUSDBlock("Read USD", primitiveAsset);
+        const read = new USDInputBlock("USD", primitiveAsset);
         read.setUploadedSource(TriangleUsdBytes, "triangle.usda");
-        const toUniversal = new USDToUniversalBlock("USD to Universal", primitiveAsset);
+        const toUniversal = new USDToUniversalBlock("USD → Universal", primitiveAsset);
         const primitiveOperator = new RepresentativeUniversalOperator("Universal operator", primitiveAsset);
         const primitiveExport = new ExportGLTFAggregateBlock("Export glTF", primitiveAsset);
         read.output.connectTo(toUniversal.input);
@@ -139,7 +139,7 @@ describe("USD Universal funnel", () => {
             subgraph: {
                 blocks: [
                     {
-                        customType: ReadUSDBlock.ClassName,
+                        customType: USDInputBlock.ClassName,
                         source: "triangle.usda",
                         sourceKind: "upload",
                     },
@@ -158,7 +158,7 @@ describe("USD Universal funnel", () => {
 
     it("keeps the last successful URL or upload active and ignores stale URL completions", async () => {
         const asset = new NodeAsset("usd-source-choice");
-        const read = new ReadUSDBlock("Read USD", asset);
+        const read = new USDInputBlock("USD", asset);
         let resolveResponse: ((response: { ok: boolean; status: number; statusText: string; arrayBuffer: () => Promise<ArrayBuffer> }) => void) | undefined;
 
         read.setUploadedSource(new Uint8Array([1]), "first.usda");
@@ -200,7 +200,7 @@ describe("USD Universal funnel", () => {
             arrayBuffer: async () => TriangleUsdBytes.slice().buffer,
         }));
         const parsed = NodeAsset.Parse(JSON.parse(JSON.stringify(asset.serialize())));
-        const parsedRead = parsed.attachedBlocks[0] as ReadUSDBlock;
+        const parsedRead = parsed.attachedBlocks[0] as USDInputBlock;
         expect(parsedRead.source).toBe("https://example.com/final.usda");
         expect(parsedRead.sourceKind).toBe("url");
         expect(parsedRead.data).toEqual(TriangleUsdBytes);
@@ -208,7 +208,7 @@ describe("USD Universal funnel", () => {
 
     it("keeps the source cleared when an earlier URL request succeeds later", async () => {
         const asset = new NodeAsset("cleared-usd-source");
-        const read = new ReadUSDBlock("Read USD", asset);
+        const read = new USDInputBlock("USD", asset);
         let resolveResponse: ((response: { ok: boolean; status: number; statusText: string; arrayBuffer: () => Promise<ArrayBuffer> }) => void) | undefined;
         const pendingUrl = read.setUrlAsync(
             "https://example.com/delayed.usda",
@@ -234,7 +234,7 @@ describe("USD Universal funnel", () => {
 
     it.each(["URL", "upload", "clear"] as const)("does not let a delayed upload overwrite a newer successful %s action", async (replacement) => {
         const asset = new NodeAsset(`delayed-upload-${replacement}`);
-        const read = new ReadUSDBlock("Read USD", asset);
+        const read = new USDInputBlock("USD", asset);
         let resolveUpload: ((data: ArrayBuffer) => void) | undefined;
         const pendingUpload = read.setUploadedSourceAsync(
             async () =>
@@ -264,7 +264,7 @@ describe("USD Universal funnel", () => {
     });
 
     it("allows an earlier pending upload to become active after a newer URL fails", async () => {
-        const read = new ReadUSDBlock("Read USD", new NodeAsset("failed-newer-url"));
+        const read = new USDInputBlock("USD", new NodeAsset("failed-newer-url"));
         let resolveUpload: ((data: ArrayBuffer) => void) | undefined;
         const pendingUpload = read.setUploadedSourceAsync(
             async () =>

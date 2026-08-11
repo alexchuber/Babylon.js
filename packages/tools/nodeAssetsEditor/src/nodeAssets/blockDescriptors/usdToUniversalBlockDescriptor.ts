@@ -1,12 +1,12 @@
 import { USDToUniversalBlock } from "node-assets/Blocks/usdToUniversalBlock";
 
-import { ConfigureBlockForEditor, RegisterBlockDescriptor, TranscodersHeaderColor } from "../blockCatalog";
+import { ConfigureBlockForEditor, ImportersCategory, RegisterBlockDescriptor, TranscodersHeaderColor } from "../blockCatalog";
 
 RegisterBlockDescriptor({
     paletteItemId: "usd-to-universal",
     label: "USD → Universal",
     description: "Parse USD and cross explicitly into Universal.",
-    category: "USD",
+    category: ImportersCategory,
     headerColor: TranscodersHeaderColor,
     className: USDToUniversalBlock.ClassName,
     abstractedBy: "import-usd",

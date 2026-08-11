@@ -4,12 +4,12 @@ import { NodeAsset } from "node-assets/nodeAsset";
 import { CustomAggregateBlock } from "node-assets/blockFoundation/customAggregateBlock";
 import { DracoCompressionBlock } from "node-assets/Blocks/dracoCompressionBlock";
 import { ExportGLTFAggregateBlock } from "node-assets/Blocks/exportGLTFAggregateBlock";
-import { ReadFBXBlock } from "node-assets/Blocks/readFBXBlock";
+import { FBXInputBlock } from "node-assets/Blocks/fbxInputBlock";
 import { ImportGLTFAggregateBlock } from "node-assets/Blocks/importGLTFAggregateBlock";
 import { KTX2CompressionBlock } from "node-assets/Blocks/ktx2CompressionBlock";
-import { ReadOBJBlock } from "node-assets/Blocks/readOBJBlock";
-import { ReadUSDBlock } from "node-assets/Blocks/readUSDBlock";
-import { type GLTFSourceFetcher } from "node-assets/Blocks/readGLTFBlock";
+import { OBJInputBlock } from "node-assets/Blocks/objInputBlock";
+import { USDInputBlock } from "node-assets/Blocks/usdInputBlock";
+import { type GLTFSourceFetcher } from "node-assets/Blocks/gltfInputBlock";
 import { StringLiteral } from "node-assets/Blocks/stringLiteral";
 import { WeldVerticesBlock } from "node-assets/Blocks/weldVerticesBlock";
 
@@ -102,7 +102,7 @@ const HydrationSourceFixtures: readonly IHydrationSourceFixture[] = [
     {
         kind: "usd",
         label: "USD",
-        customType: ReadUSDBlock.ClassName,
+        customType: USDInputBlock.ClassName,
         url: "https://example.test/assets/scene.usdz",
         fileName: "scene.usdz",
         bytes: new Uint8Array([1, 2, 3, 4]),
@@ -110,7 +110,7 @@ const HydrationSourceFixtures: readonly IHydrationSourceFixture[] = [
     {
         kind: "obj",
         label: "OBJ",
-        customType: ReadOBJBlock.ClassName,
+        customType: OBJInputBlock.ClassName,
         url: "https://example.test/assets/mesh.obj",
         fileName: "mesh.obj",
         bytes: new Uint8Array([5, 6, 7, 8]),
@@ -118,7 +118,7 @@ const HydrationSourceFixtures: readonly IHydrationSourceFixture[] = [
     {
         kind: "fbx",
         label: "FBX",
-        customType: ReadFBXBlock.ClassName,
+        customType: FBXInputBlock.ClassName,
         url: "https://example.test/assets/character.fbx",
         fileName: "character.fbx",
         bytes: new Uint8Array([9, 10, 11, 12]),
@@ -149,16 +149,16 @@ function CreateEditorFile(graph: ReturnType<NodeAsset["serialize"]>): string {
     return JSON.stringify({ graph, editor: { blocks: [], frames: [] } });
 }
 
-function AddReadBlock(kind: HydrationSourceKind, nodeAsset: NodeAsset, name: string): void {
+function AddInputBlock(kind: HydrationSourceKind, nodeAsset: NodeAsset, name: string): void {
     switch (kind) {
         case "usd":
-            new ReadUSDBlock(name, nodeAsset);
+            new USDInputBlock(name, nodeAsset);
             return;
         case "obj":
-            new ReadOBJBlock(name, nodeAsset);
+            new OBJInputBlock(name, nodeAsset);
             return;
         case "fbx":
-            new ReadFBXBlock(name, nodeAsset);
+            new FBXInputBlock(name, nodeAsset);
             return;
     }
 }
@@ -174,14 +174,14 @@ function SetUrlOnlySource(block: Record<string, unknown>, fixture: IHydrationSou
     }
 }
 
-function CreateUrlOnlyReadGraph(fixtures: readonly IHydrationSourceFixture[], aggregateDepth = 0): string {
+function CreateUrlOnlyInputGraph(fixtures: readonly IHydrationSourceFixture[], aggregateDepth = 0): string {
     const asset = new NodeAsset("url-hydration");
     let owner = asset;
     for (let index = 0; index < aggregateDepth; index++) {
         owner = new CustomAggregateBlock(`aggregate ${index}`, owner).subgraph;
     }
     for (const fixture of fixtures) {
-        AddReadBlock(fixture.kind, owner, `Read ${fixture.label}`);
+        AddInputBlock(fixture.kind, owner, fixture.label);
     }
 
     const graph = asset.serialize();
@@ -200,13 +200,13 @@ function CreateUploadedReadGraph(fixture: IHydrationSourceFixture): string {
     const asset = new NodeAsset("uploaded-source");
     switch (fixture.kind) {
         case "usd":
-            new ReadUSDBlock("Read USD", asset).setUploadedSource(fixture.bytes, fixture.fileName);
+            new USDInputBlock("USD", asset).setUploadedSource(fixture.bytes, fixture.fileName);
             break;
         case "obj":
-            new ReadOBJBlock("Read OBJ", asset).setUploadedSource(fixture.bytes, fixture.fileName);
+            new OBJInputBlock("OBJ", asset).setUploadedSource(fixture.bytes, fixture.fileName);
             break;
         case "fbx":
-            new ReadFBXBlock("Read FBX", asset).setUploadedSource(fixture.bytes, fixture.fileName);
+            new FBXInputBlock("FBX", asset).setUploadedSource(fixture.bytes, fixture.fileName);
             break;
     }
     return CreateEditorFile(asset.serialize());
@@ -243,26 +243,26 @@ describe("NodeAssetGraphController", () => {
             const wireIdsBefore = controller.state.wires.map((wire) => wire.id);
             const serializedBefore = controller.serialize();
 
-            expect(FindNode(controller, "Universal to glTF")).toBeDefined();
-            expect(FindNode(controller, "Write glTF")).toBeDefined();
+            expect(FindNode(controller, "Universal → glTF")).toBeDefined();
+            expect(FindNode(controller, "glTF")).toBeDefined();
             expect(
                 controller
                     .getPaletteCategories({ showAggregates: false })
                     .flatMap((category) => category.items)
-                    .some((item) => item.id === "write-gltf")
+                    .some((item) => item.id === "gltf-output")
             ).toBe(true);
             expect(
                 controller
                     .getPaletteCategories({ showAggregates: true })
                     .flatMap((category) => category.items)
-                    .some((item) => item.id === "write-gltf")
+                    .some((item) => item.id === "gltf-output")
             ).toBe(true);
 
             expect(controller.state.nodes.map((node) => node.id)).toEqual(nodeIdsBefore);
             expect(controller.state.wires.map((wire) => wire.id)).toEqual(wireIdsBefore);
             expect(controller.serialize()).toBe(serializedBefore);
-            expect(FindNode(controller, "Universal to glTF")).toBeDefined();
-            expect(FindNode(controller, "Write glTF")).toBeDefined();
+            expect(FindNode(controller, "Universal → glTF")).toBeDefined();
+            expect(FindNode(controller, "glTF")).toBeDefined();
         } finally {
             controller.dispose();
         }
@@ -303,7 +303,7 @@ describe("NodeAssetGraphController", () => {
             const internalWire = controller.state.wires.find((wire) => {
                 const from = controller.state.getPortNode(wire.fromPortId);
                 const to = controller.state.getPortNode(wire.toPortId);
-                return from?.title === "Universal to glTF" && to?.title === "Write glTF";
+                return from?.title === "Universal → glTF" && to?.title === "glTF";
             });
             if (!internalWire) {
                 throw new Error("Could not find the Export glTF aggregate's internal wire.");
@@ -343,9 +343,9 @@ describe("NodeAssetGraphController", () => {
             controller.load(file);
             const innerImportNode = FindNode(controller, "inner import");
             controller.setAggregateExpanded(innerImportNode.id, true);
-            const readNode = FindNode(controller, "Read glTF");
+            const readNode = FindNode(controller, "glTF");
 
-            FindProperty(controller, readNode, "Name", "text").onChange("Authored Read glTF");
+            FindProperty(controller, readNode, "Name", "text").onChange("Authored glTF");
 
             const saved = JSON.parse(controller.serialize()) as {
                 graph: {
@@ -386,7 +386,7 @@ describe("NodeAssetGraphController", () => {
             const exposedOutputId = importNode.ports.find((port) => port.direction === "output")?.id;
             controller.setAggregateExpanded(importNode.id, true);
             const aggregateFrame = controller.state.frames.find((frame) => frame.kind === "aggregate" && frame.aggregateNodeId === importNode.id);
-            const transcoderNode = controller.state.nodes.find((node) => aggregateFrame?.nodeIds.includes(node.id) && node.title === "glTF to Universal");
+            const transcoderNode = controller.state.nodes.find((node) => aggregateFrame?.nodeIds.includes(node.id) && node.title === "glTF → Universal");
             if (!exposedOutputId || !transcoderNode) {
                 throw new Error("Could not find the Import glTF aggregate's exposed transcoder.");
             }
@@ -412,7 +412,7 @@ describe("NodeAssetGraphController", () => {
             ["Normalize a Model", ["Import OBJ", "Transform Scene", "Center Scene", "Export glTF"]],
             ["Clean Up a Model", ["Import glTF", "Deduplicate Resources", "Remove Unused Resources", "Export glTF"]],
             ["Reduce a Model", ["Import glTF", "Simplify Meshes", "Resize Textures", "Export glTF"]],
-            ["Compress a Model", ["Import glTF", "Universal to glTF", "Compress Textures (KTX2)", "Compress Geometry (Draco)", "Write glTF"]],
+            ["Compress a Model", ["Import glTF", "Universal → glTF", "Compress Textures (KTX2)", "Compress Geometry (Draco)", "glTF"]],
             [
                 "Combine Many Models",
                 [
@@ -441,10 +441,10 @@ describe("NodeAssetGraphController", () => {
                     "Strip Tangents",
                     "Generate Tangents",
                     "Quantize Attributes",
-                    "Universal to glTF",
+                    "Universal → glTF",
                     "Compress Textures (KTX2)",
                     "Compress Geometry (Draco)",
-                    "Write glTF",
+                    "glTF",
                 ],
             ],
         ] as const;
@@ -577,7 +577,7 @@ describe("NodeAssetGraphController", () => {
         }
     });
 
-    it("hydrates the active URL-only Read glTF block before worker serialization", async () => {
+    it("hydrates the active URL-only glTF input block before worker serialization", async () => {
         let resolveResponse: (() => void) | undefined;
         const responseReady = new Promise<void>((resolve) => {
             resolveResponse = resolve;
@@ -616,7 +616,7 @@ describe("NodeAssetGraphController", () => {
         const sourceFetcher = vi.fn<GLTFSourceFetcher>(async () => CreateFetchResponse(fixture.bytes));
         const controller = new NodeAssetGraphController(buildClient, sourceFetcher);
         try {
-            controller.load(CreateUrlOnlyReadGraph([fixture]));
+            controller.load(CreateUrlOnlyInputGraph([fixture]));
 
             await expect(controller.buildAsync()).resolves.toEqual(new Uint8Array([1, 2, 3]));
 
@@ -637,7 +637,7 @@ describe("NodeAssetGraphController", () => {
         const sourceFetcher = vi.fn<GLTFSourceFetcher>(async () => CreateFetchResponse(fixture.bytes));
         const controller = new NodeAssetGraphController(buildClient, sourceFetcher);
         try {
-            controller.load(CreateUrlOnlyReadGraph([fixture], 2));
+            controller.load(CreateUrlOnlyInputGraph([fixture], 2));
             await controller.loadDefaultImportAsync();
 
             expect(sourceFetcher).toHaveBeenCalledOnce();
@@ -666,7 +666,7 @@ describe("NodeAssetGraphController", () => {
         );
         const controller = new NodeAssetGraphController(buildClient, sourceFetcher);
         try {
-            controller.load(CreateUrlOnlyReadGraph(HydrationSourceFixtures));
+            controller.load(CreateUrlOnlyInputGraph(HydrationSourceFixtures));
             const build = controller.buildAsync();
 
             await vi.waitFor(() => expect(sourceFetcher).toHaveBeenCalledTimes(HydrationSourceFixtures.length));
@@ -705,7 +705,7 @@ describe("NodeAssetGraphController", () => {
         };
         const controller = new NodeAssetGraphController(buildClient, sourceFetcher);
         try {
-            controller.load(CreateUrlOnlyReadGraph([oldFixture]));
+            controller.load(CreateUrlOnlyInputGraph([oldFixture]));
             const staleBuild = controller.buildAsync();
             await vi.waitFor(() => expect(sourceFetcher).toHaveBeenCalledOnce());
 
@@ -738,7 +738,7 @@ describe("NodeAssetGraphController", () => {
         };
         const controller = new NodeAssetGraphController(buildClient, sourceFetcher);
         try {
-            controller.load(CreateUrlOnlyReadGraph([oldFixture]));
+            controller.load(CreateUrlOnlyInputGraph([oldFixture]));
             const staleBuild = controller.buildAsync();
             await vi.waitFor(() => expect(sourceFetcher).toHaveBeenCalledOnce());
 
@@ -767,7 +767,7 @@ describe("NodeAssetGraphController", () => {
         };
         const controller = new NodeAssetGraphController(buildClient, sourceFetcher);
         try {
-            controller.load(CreateUrlOnlyReadGraph([fixture]));
+            controller.load(CreateUrlOnlyInputGraph([fixture]));
 
             await expect(controller.loadDefaultImportAsync()).rejects.toThrow(fixture.url);
             expect(buildClient.buildAsync).not.toHaveBeenCalled();
@@ -927,7 +927,7 @@ describe("NodeAssetGraphController", () => {
     it("maps a structured build failure to an ephemeral node diagnostic", () => {
         const controller = new NodeAssetGraphController();
         try {
-            const exportNode = FindNode(controller, "Write glTF");
+            const exportNode = FindNode(controller, "glTF");
             const blockId = Number(exportNode.id.slice("node-".length));
 
             controller.reportBuildError(new NodeAssetBuildError("The export input is not connected.", blockId, "input"));
@@ -952,7 +952,7 @@ describe("NodeAssetGraphController", () => {
         const controller = new NodeAssetGraphController();
         try {
             const importNode = FindNode(controller, "Import glTF");
-            const exportNode = FindNode(controller, "Write glTF");
+            const exportNode = FindNode(controller, "glTF");
             const importBlockId = Number(importNode.id.slice("node-".length));
             const exportBlockId = Number(exportNode.id.slice("node-".length));
 

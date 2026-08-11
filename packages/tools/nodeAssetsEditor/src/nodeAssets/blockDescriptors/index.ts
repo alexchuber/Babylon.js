@@ -1,9 +1,17 @@
 /**
  * Imports every built-in block descriptor module for its registration side effect, so the palette
  * and load-time descriptor lookups see all built-in blocks. The import order here is the palette
- * display order. Adding a block means adding its descriptor module and one import line here.
+ * display order, both across categories and within each one. Adding a block means adding its
+ * descriptor module and one import line here.
  */
 
+// Inputs: the source boundaries, followed by the aggregates that abstract them.
+import "./babylonInputBlockDescriptor";
+import "./fbxInputBlockDescriptor";
+import "./gltfInputBlockDescriptor";
+import "./nodeGeometryInputBlockDescriptor";
+import "./objInputBlockDescriptor";
+import "./usdInputBlockDescriptor";
 import "./importGLTFBlockDescriptor";
 import "./importOBJAggregateBlockDescriptor";
 import "./importUSDBlockDescriptor";
@@ -11,7 +19,26 @@ import "./importBabylonAggregateBlockDescriptor";
 import "./importFBXAggregateBlockDescriptor";
 import "./importNodeGeometryBlockDescriptor";
 
+// Importers: transcoders that cross a source payload into Universal.
+import "./gltfToUniversalBlockDescriptor";
+import "./objToUniversalBlockDescriptor";
+import "./usdToUniversalBlockDescriptor";
+import "./babylonToUniversalBlockDescriptor";
+import "./fbxToUniversalBlockDescriptor";
+import "./nodeGeometryToUniversalBlockDescriptor";
+
+// Exporters: transcoders that cross Universal into a file representation.
 import "./universalToGLTFBlockDescriptor";
+
+// Outputs: the terminal file boundary, followed by the aggregate that abstracts it.
+import "./gltfOutputBlockDescriptor";
+import "./exportGLTFBlockDescriptor";
+
+// glTF: delivery-format operators.
+import "./dracoCompressionBlockDescriptor";
+import "./ktx2CompressionBlockDescriptor";
+
+// Universal: source-independent operators.
 import "./weldVerticesBlockDescriptor";
 import "./deduplicateResourcesBlockDescriptor";
 import "./removeUnusedResourcesBlockDescriptor";
@@ -30,24 +57,7 @@ import "./generateTangentsBlockDescriptor";
 import "./stripAttributesBlockDescriptor";
 import "./resizeTexturesBlockDescriptor";
 
-import "./dracoCompressionBlockDescriptor";
-import "./ktx2CompressionBlockDescriptor";
-import "./exportGLTFBlockDescriptor";
-
-import "./readGLTFBlockDescriptor";
-import "./readOBJBlockDescriptor";
-import "./readUSDBlockDescriptor";
-import "./readBabylonBlockDescriptor";
-import "./readFBXBlockDescriptor";
-import "./readNodeGeometryBlockDescriptor";
-import "./gltfToUniversalBlockDescriptor";
-import "./objToUniversalBlockDescriptor";
-import "./writeGLTFBlockDescriptor";
-import "./usdToUniversalBlockDescriptor";
-import "./babylonToUniversalBlockDescriptor";
-import "./fbxToUniversalBlockDescriptor";
-import "./nodeGeometryToUniversalBlockDescriptor";
-
+// Legacy and otherwise palette-hidden blocks, kept registered for load-time descriptor lookups.
 import "./legacyImportGLTFBlockDescriptor";
 import "./legacyExportGLTFBlockDescriptor";
 import "./legacyImportUSDBlockDescriptor";

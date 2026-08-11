@@ -40,7 +40,7 @@ test.describe("Node Assets Editor built-in pipeline catalog", () => {
             await editor.waitForSuccessfulPreviewBuild();
             await expect(editor.previewCanvas).toBeVisible();
 
-            const exportNodeName = entry.name === "Compress a Model" || entry.name === "Build a Production-Ready GLB" ? "Write glTF" : "Export glTF";
+            const exportNodeName = entry.name === "Compress a Model" || entry.name === "Build a Production-Ready GLB" ? "glTF" : "Export glTF";
             await editor.selectNode(exportNodeName);
             const downloadPromise = page.waitForEvent("download");
             await page.getByRole("button", { name: "Export .glb" }).click();
