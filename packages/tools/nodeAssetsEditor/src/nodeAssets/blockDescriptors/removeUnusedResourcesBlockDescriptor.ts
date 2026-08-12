@@ -1,6 +1,6 @@
 import { RemovableResourcePropertyTypes, type RemovableResourcePropertyType, RemoveUnusedResourcesBlock } from "node-assets/Blocks/removeUnusedResourcesBlock";
 
-import { CleanupFamily, OperatorHeaderColor, RegisterBlockDescriptor, UniversalCategory } from "../blockCatalog";
+import { CleanupFamily, TransformHeaderColor, RegisterBlockDescriptor, UniversalCategory } from "../blockCatalog";
 
 function SerializeKeptPropertyTypes(propertyTypes: readonly RemovableResourcePropertyType[]): string {
     return propertyTypes.join(", ");
@@ -36,7 +36,7 @@ RegisterBlockDescriptor({
     label: "Remove Unused Resources",
     description: "Remove resources that are no longer referenced by the scene.",
     keywords: ["prune", "unused", "orphaned", "resources", "cleanup"],
-    headerColor: OperatorHeaderColor,
+    headerColor: TransformHeaderColor,
     category: UniversalCategory,
     family: CleanupFamily,
     className: RemoveUnusedResourcesBlock.ClassName,

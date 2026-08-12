@@ -1,13 +1,13 @@
 import { SplitMeshesByMaterialBlock } from "node-assets/Blocks/splitMeshesByMaterialBlock";
 
-import { OperatorHeaderColor, RegisterBlockDescriptor, StructureFamily, UniversalCategory } from "../blockCatalog";
+import { TransformHeaderColor, RegisterBlockDescriptor, StructureFamily, UniversalCategory } from "../blockCatalog";
 
 RegisterBlockDescriptor({
     paletteItemId: "split-meshes-by-material",
     label: "Split Meshes by Material",
     description: "Split Universal meshes so each resulting mesh uses one material.",
     keywords: ["structure", "mesh", "material", "separate"],
-    headerColor: OperatorHeaderColor,
+    headerColor: TransformHeaderColor,
     category: UniversalCategory,
     family: StructureFamily,
     className: SplitMeshesByMaterialBlock.ClassName,

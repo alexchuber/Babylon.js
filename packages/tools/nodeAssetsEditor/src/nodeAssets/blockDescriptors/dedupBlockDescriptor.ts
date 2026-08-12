@@ -1,13 +1,13 @@
 import { DedupBlock } from "node-assets/Blocks/dedupBlock";
 
-import { OperatorCategory, OperatorHeaderColor, RegisterBlockDescriptor } from "../blockCatalog";
+import { OperatorCategory, TransformHeaderColor, RegisterBlockDescriptor } from "../blockCatalog";
 
 RegisterBlockDescriptor({
     paletteItemId: "dedup",
     label: "Dedup",
     description: "Reuse equivalent scene resources instead of storing duplicates.",
     keywords: ["optimize", "cleanup", "deduplicate", "reduce size"],
-    headerColor: OperatorHeaderColor,
+    headerColor: TransformHeaderColor,
     category: OperatorCategory,
     isPaletteVisible: false,
     className: DedupBlock.ClassName,

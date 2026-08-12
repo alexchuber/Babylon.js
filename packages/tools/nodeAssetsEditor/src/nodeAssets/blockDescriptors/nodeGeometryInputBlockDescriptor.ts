@@ -1,10 +1,9 @@
 import { NodeGeometryInputBlock } from "node-assets/Blocks/nodeGeometryInputBlock";
 
 import { type IPropertySection } from "../../nodeGraph/propertyModel";
-import { ConfigureBlockForEditor, type IPropertySectionContext, InputsCategory, RegisterBlockDescriptor } from "../blockCatalog";
+import { ConfigureBlockForEditor, type IPropertySectionContext, InputHeaderColor, InputsCategory, RegisterBlockDescriptor } from "../blockCatalog";
 import { PromptForFileAsync } from "../browserFiles";
 
-const InputHeaderColor = "#3f7d4e";
 const SourceErrors = new WeakMap<NodeGeometryInputBlock, string>();
 const PendingSourceRequests = new WeakMap<NodeGeometryInputBlock, Promise<unknown>>();
 

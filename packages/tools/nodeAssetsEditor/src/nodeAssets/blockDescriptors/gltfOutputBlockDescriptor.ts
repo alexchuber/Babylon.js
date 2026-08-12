@@ -1,9 +1,7 @@
 import { GLTFOutputBlock } from "node-assets/Blocks/gltfOutputBlock";
 
-import { ConfigureBlockForEditor, type IPropertySectionContext, OutputsCategory, RegisterBlockDescriptor } from "../blockCatalog";
+import { ConfigureBlockForEditor, type IPropertySectionContext, OutputHeaderColor, OutputsCategory, RegisterBlockDescriptor } from "../blockCatalog";
 import { type IPropertySection } from "../../nodeGraph/propertyModel";
-
-const OutputHeaderColor = "#3a6ea5";
 
 /**
  * Builds the output controls shared by the glTF output block and the Export glTF aggregate.

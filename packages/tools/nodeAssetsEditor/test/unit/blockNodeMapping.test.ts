@@ -5,13 +5,13 @@ import { NodeAssetBlock } from "node-assets/blockFoundation/nodeAssetBlock";
 import { NodeAssetConnectionPointType } from "node-assets/connection/nodeAssetConnectionPointType";
 
 import {
-    BabylonScenePortColor,
-    FBXHeaderColor,
+    BabylonPortColor,
+    FbxPortColor,
     NodeGeometryPortColor,
     NumberPortColor,
-    OBJPortColor,
-    ScenePortColor,
-    UsdStagePortColor,
+    ObjPortColor,
+    GltfPortColor,
+    UsdPortColor,
     type IBlockDescriptor,
 } from "../../src/nodeAssets/blockCatalog";
 import { BlockToNode, NodeIdForBlock, PointToPort, PortIdForPoint } from "../../src/nodeAssets/blockNodeMapping";
@@ -66,7 +66,7 @@ describe("blockNodeMapping", () => {
             id: PortIdForPoint(block, block.scene),
             name: "glTF",
             direction: "input",
-            color: ScenePortColor,
+            color: GltfPortColor,
         });
         expect(PointToPort(block, block.count)).toEqual({
             id: PortIdForPoint(block, block.count),
@@ -81,15 +81,15 @@ describe("blockNodeMapping", () => {
         const asset = new NodeAsset("representations");
         const block = new RepresentationMappingTestBlock("block", asset);
 
-        expect(FBXHeaderColor).toBe("#B35900");
-        expect(PointToPort(block, block.usd).color).toBe(UsdStagePortColor);
-        expect(PointToPort(block, block.babylon).color).toBe(BabylonScenePortColor);
+        expect(FbxPortColor).toBe("#d9995c");
+        expect(PointToPort(block, block.usd).color).toBe(UsdPortColor);
+        expect(PointToPort(block, block.babylon).color).toBe(BabylonPortColor);
         expect(PointToPort(block, block.nodeGeometry).color).toBe(NodeGeometryPortColor);
-        expect(PointToPort(block, block.usdSource)).toMatchObject({ name: "USD", color: UsdStagePortColor });
-        expect(PointToPort(block, block.fbxSource)).toMatchObject({ name: "FBX", color: FBXHeaderColor });
-        expect(PointToPort(block, block.objSource)).toMatchObject({ name: "OBJ", color: OBJPortColor });
-        expect(OBJPortColor).not.toBe(UsdStagePortColor);
-        expect(OBJPortColor).not.toBe(BabylonScenePortColor);
+        expect(PointToPort(block, block.usdSource)).toMatchObject({ name: "USD", color: UsdPortColor });
+        expect(PointToPort(block, block.fbxSource)).toMatchObject({ name: "FBX", color: FbxPortColor });
+        expect(PointToPort(block, block.objSource)).toMatchObject({ name: "OBJ", color: ObjPortColor });
+        expect(ObjPortColor).not.toBe(UsdPortColor);
+        expect(ObjPortColor).not.toBe(BabylonPortColor);
     });
 
     it("builds a node with input ports before output ports", () => {

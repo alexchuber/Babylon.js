@@ -1,10 +1,9 @@
 import { USDInputBlock } from "node-assets/Blocks/usdInputBlock";
 
 import { type IPropertySection } from "../../nodeGraph/propertyModel";
-import { ConfigureBlockForEditor, type IPropertySectionContext, InputsCategory, RegisterBlockDescriptor } from "../blockCatalog";
+import { ConfigureBlockForEditor, type IPropertySectionContext, InputHeaderColor, InputsCategory, RegisterBlockDescriptor } from "../blockCatalog";
 import { PromptForFileAsync } from "../browserFiles";
 
-const InputHeaderColor = "#3f7d4e";
 const SourceErrors = new WeakMap<USDInputBlock, string>();
 const PendingSourceRequests = new WeakMap<USDInputBlock, Promise<void>>();
 

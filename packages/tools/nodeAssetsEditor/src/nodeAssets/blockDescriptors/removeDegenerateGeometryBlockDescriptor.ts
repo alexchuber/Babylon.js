@@ -1,6 +1,6 @@
 import { RemoveDegenerateGeometryBlock } from "node-assets/Blocks/removeDegenerateGeometryBlock";
 
-import { CleanupFamily, OperatorHeaderColor, RegisterBlockDescriptor, UniversalCategory } from "../blockCatalog";
+import { CleanupFamily, TransformHeaderColor, RegisterBlockDescriptor, UniversalCategory } from "../blockCatalog";
 
 function IsValidTolerance(value: string): boolean {
     return value.trim() !== "" && Number.isFinite(Number(value)) && Number(value) >= 0;
@@ -11,7 +11,7 @@ RegisterBlockDescriptor({
     label: "Remove Degenerate Geometry",
     description: "Remove zero-area and near-zero-area triangles.",
     keywords: ["degenerate", "zero area", "triangles", "repair", "cleanup"],
-    headerColor: OperatorHeaderColor,
+    headerColor: TransformHeaderColor,
     category: UniversalCategory,
     family: CleanupFamily,
     className: RemoveDegenerateGeometryBlock.ClassName,

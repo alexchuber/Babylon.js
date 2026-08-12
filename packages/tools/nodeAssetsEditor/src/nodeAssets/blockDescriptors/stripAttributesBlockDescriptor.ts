@@ -1,6 +1,6 @@
 import { StripAttributesBlock, UniversalAttributeKind } from "node-assets/Blocks/stripAttributesBlock";
 
-import { AttributesFamily, OperatorHeaderColor, RegisterBlockDescriptor, UniversalCategory } from "../blockCatalog";
+import { AttributesFamily, TransformHeaderColor, RegisterBlockDescriptor, UniversalCategory } from "../blockCatalog";
 
 const AttributeKindOptions = [
     { kind: UniversalAttributeKind.Normal, label: "Normals" },
@@ -16,7 +16,7 @@ RegisterBlockDescriptor({
     label: "Strip Attributes",
     description: "Remove selected vertex attribute kinds.",
     keywords: ["attributes", "remove", "normals", "tangents", "texture coordinates", "colors", "joints", "weights"],
-    headerColor: OperatorHeaderColor,
+    headerColor: TransformHeaderColor,
     category: UniversalCategory,
     family: AttributesFamily,
     className: StripAttributesBlock.ClassName,

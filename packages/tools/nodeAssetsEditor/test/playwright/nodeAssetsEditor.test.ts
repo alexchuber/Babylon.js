@@ -772,58 +772,42 @@ test.describe("Node Assets Editor — maintained default pipeline", () => {
         await expect(editor.nodeByTitle(label)).toBeVisible();
     });
 
-    test("persists Show aggregates toggle (behind ?showAggregates UQP) without changing canvas or expanded aggregate nodes", async ({ page }) => {
+    test("shows aggregates by default and reveals abstracted primitives behind the ?showPrimitives UQP", async ({ page }) => {
         const editor = new NodeAssetsEditorPage(page);
-        await page.goto(editor.baseUrl + "?showAggregates", { waitUntil: "load" });
-        await expect(editor.canvas).toBeVisible({ timeout: 30_000 });
-        await expect(editor.nodes.first()).toBeVisible({ timeout: 15_000 });
-
         const palette = page.getByTestId("node-palette");
-        const categories = palette.getByTestId("palette-category");
         const items = palette.getByTestId("palette-item-label");
-        const showAggregates = page.getByRole("checkbox", { name: "Show aggregates" });
         const search = page.getByPlaceholder("Search palette");
         const inputsCategory = page.getByRole("button", { name: /^Inputs \(/ });
-        const exportNode = editor.nodeByTitle("Export glTF");
+        const importersCategory = page.getByRole("button", { name: /^Importers \(/ });
 
-        await expect(showAggregates).not.toBeChecked();
-        await expect(inputsCategory).toBeVisible();
-        await expect(editor.paletteItem("Import glTF")).toHaveCount(0);
-        await expect(editor.paletteItem("Import Babylon")).toHaveCount(0);
-        await expect(editor.paletteItem("Export glTF")).toHaveCount(0);
-        await expect(editor.paletteItem("Deduplicate Resources")).toHaveCount(0);
-        await expect(editor.paletteItemById("gltf-input")).toBeVisible();
-        await expect(editor.paletteItemById("gltf-output")).toBeVisible();
-        await expect(editor.paletteItem("glTF → Universal")).toBeVisible();
+        // Default load: aggregates are the discoverable surface; their abstracted primitives are hidden.
+        await editor.goto();
+        await expect(importersCategory).toBeVisible();
+        await expect(inputsCategory).toHaveCount(0);
+        await expect(editor.paletteItem("Import glTF")).toBeVisible();
+        await expect(editor.paletteItem("Import Babylon")).toBeVisible();
+        await expect(editor.paletteItem("Export glTF")).toBeVisible();
+        await expect(editor.paletteItem("Deduplicate Resources")).toBeVisible();
+        await expect(editor.paletteItemById("gltf-input")).toHaveCount(0);
+        await expect(editor.paletteItemById("gltf-output")).toHaveCount(0);
+        await expect(editor.paletteItem("glTF → Universal")).toHaveCount(0);
 
-        await search.fill("Import glTF");
+        // Search reaches the aggregates but not their hidden primitives.
+        await search.fill("glTF → Universal");
         await expect(items).toHaveCount(0);
         await search.clear();
 
-        await exportNode.getByRole("button", { name: "Expand aggregate" }).click();
-        await expect(editor.nodeByTitle("glTF")).toBeVisible();
-
-        await showAggregates.check();
+        // ?showPrimitives reveals the abstracted primitives alongside the aggregates.
+        await page.goto(editor.baseUrl + "?showPrimitives", { waitUntil: "load" });
+        await expect(editor.canvas).toBeVisible({ timeout: 30_000 });
+        await expect(editor.nodes.first()).toBeVisible({ timeout: 15_000 });
+        await expect(inputsCategory).toBeVisible();
         await expect(editor.paletteItem("Import glTF")).toBeVisible();
         await expect(editor.paletteItem("Export glTF")).toBeVisible();
         await expect(editor.paletteItem("Deduplicate Resources")).toBeVisible();
         await expect(editor.paletteItemById("gltf-input")).toBeVisible();
         await expect(editor.paletteItemById("gltf-output")).toBeVisible();
-
-        await search.fill("selector");
-        await expect(items).toHaveCount(0);
-        await search.clear();
-        await showAggregates.uncheck();
-        await expect(editor.paletteItem("Import glTF")).toHaveCount(0);
-        await expect(editor.paletteItem("Export glTF")).toHaveCount(0);
-        await expect(editor.paletteItemById("gltf-input")).toBeVisible();
-        await expect(editor.paletteItemById("gltf-output")).toBeVisible();
-        await expect(editor.nodeByTitle("glTF")).toBeVisible();
-
-        await showAggregates.check();
-        await page.reload({ waitUntil: "load" });
-        await expect(showAggregates).toBeChecked();
-        await expect(editor.paletteItem("Import glTF")).toBeVisible();
+        await expect(editor.paletteItem("glTF → Universal")).toBeVisible();
     });
 
     test("extends node selection with the platform multi-select modifier", async ({ page }) => {

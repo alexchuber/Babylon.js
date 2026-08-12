@@ -1,13 +1,13 @@
 import { WeldVerticesBlock } from "node-assets/Blocks/weldVerticesBlock";
 
-import { CleanupFamily, OperatorHeaderColor, RegisterBlockDescriptor, UniversalCategory } from "../blockCatalog";
+import { CleanupFamily, TransformHeaderColor, RegisterBlockDescriptor, UniversalCategory } from "../blockCatalog";
 
 RegisterBlockDescriptor({
     paletteItemId: "weld-vertices",
     label: "Weld Vertices",
     description: "Merge equivalent vertices and index mesh primitives.",
     keywords: ["weld", "vertices", "deduplicate", "topology", "cleanup"],
-    headerColor: OperatorHeaderColor,
+    headerColor: TransformHeaderColor,
     category: UniversalCategory,
     family: CleanupFamily,
     className: WeldVerticesBlock.ClassName,

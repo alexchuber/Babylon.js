@@ -13,16 +13,16 @@ import { type NodeAssetConnectionPoint } from "node-assets/connection/nodeAssetC
 
 import { type IGraphNode, type IGraphPort, type Vec2 } from "../nodeGraph/graphModel";
 import {
-    BabylonScenePortColor,
-    FBXHeaderColor,
+    BabylonPortColor,
+    FbxPortColor,
     ImagePortColor,
     JsonPortColor,
     NodeGeometryPortColor,
     NumberPortColor,
-    OBJPortColor,
-    ScenePortColor,
+    ObjPortColor,
+    GltfPortColor,
     StringPortColor,
-    UsdStagePortColor,
+    UsdPortColor,
     UniversalPortColor,
     type IBlockDescriptor,
 } from "./blockCatalog";
@@ -58,19 +58,19 @@ export function PortIdForPoint(block: NodeAssetBlock, point: NodeAssetConnection
 
 /** Per-kind port label and dot color for connection-point types currently supported by the editor. */
 const PortStyleByType: Partial<Record<NodeAssetConnectionPointType, { readonly name: string; readonly color: string }>> = {
-    [NodeAssetConnectionPointType.GLTF_DOCUMENT]: { name: "glTF", color: ScenePortColor },
+    [NodeAssetConnectionPointType.GLTF_DOCUMENT]: { name: "glTF", color: GltfPortColor },
     [NodeAssetConnectionPointType.NUMBER]: { name: "Number", color: NumberPortColor },
     [NodeAssetConnectionPointType.STRING]: { name: "String", color: StringPortColor },
     [NodeAssetConnectionPointType.JSON]: { name: "Json", color: JsonPortColor },
     [NodeAssetConnectionPointType.IMAGE]: { name: "Image", color: ImagePortColor },
-    [NodeAssetConnectionPointType.USD_STAGE]: { name: "USD Stage", color: UsdStagePortColor },
-    [NodeAssetConnectionPointType.USD_SOURCE]: { name: "USD", color: UsdStagePortColor },
-    [NodeAssetConnectionPointType.BABYLON_SCENE]: { name: "Babylon Scene", color: BabylonScenePortColor },
+    [NodeAssetConnectionPointType.USD_STAGE]: { name: "USD Stage", color: UsdPortColor },
+    [NodeAssetConnectionPointType.USD_SOURCE]: { name: "USD", color: UsdPortColor },
+    [NodeAssetConnectionPointType.BABYLON_SCENE]: { name: "Babylon Scene", color: BabylonPortColor },
     [NodeAssetConnectionPointType.NODE_GEOMETRY]: { name: "Node Geometry", color: NodeGeometryPortColor },
     [NodeAssetConnectionPointType.UNIVERSAL]: { name: "Universal", color: UniversalPortColor },
-    [NodeAssetConnectionPointType.BABYLON_SOURCE]: { name: "Babylon", color: BabylonScenePortColor },
-    [NodeAssetConnectionPointType.OBJ_SOURCE]: { name: "OBJ", color: OBJPortColor },
-    [NodeAssetConnectionPointType.FBX_SOURCE]: { name: "FBX", color: FBXHeaderColor },
+    [NodeAssetConnectionPointType.BABYLON_SOURCE]: { name: "Babylon", color: BabylonPortColor },
+    [NodeAssetConnectionPointType.OBJ_SOURCE]: { name: "OBJ", color: ObjPortColor },
+    [NodeAssetConnectionPointType.FBX_SOURCE]: { name: "FBX", color: FbxPortColor },
 };
 
 /**

@@ -1,6 +1,6 @@
 import { CenterSceneBlock, type CenterScenePivot } from "node-assets/Blocks/centerSceneBlock";
 
-import { OperatorHeaderColor, RegisterBlockDescriptor, StructureFamily, UniversalCategory } from "../blockCatalog";
+import { TransformHeaderColor, RegisterBlockDescriptor, StructureFamily, UniversalCategory } from "../blockCatalog";
 
 const PivotOptions: readonly CenterScenePivot[] = ["center", "above", "below", "custom-point"];
 
@@ -9,7 +9,7 @@ RegisterBlockDescriptor({
     label: "Center Scene",
     description: "Place a bounds-derived or custom scene pivot at the origin.",
     keywords: ["origin", "pivot", "bounds", "custom point", "recenter"],
-    headerColor: OperatorHeaderColor,
+    headerColor: TransformHeaderColor,
     category: UniversalCategory,
     family: StructureFamily,
     className: CenterSceneBlock.ClassName,

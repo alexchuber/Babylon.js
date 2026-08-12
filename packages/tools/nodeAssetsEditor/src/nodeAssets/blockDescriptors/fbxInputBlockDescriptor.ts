@@ -1,7 +1,7 @@
 import { FBXInputBlock } from "node-assets/Blocks/fbxInputBlock";
 
 import { type IPropertySection } from "../../nodeGraph/propertyModel";
-import { FBXHeaderColor, ConfigureBlockForEditor, type IPropertySectionContext, InputsCategory, RegisterBlockDescriptor } from "../blockCatalog";
+import { ConfigureBlockForEditor, type IPropertySectionContext, InputHeaderColor, InputsCategory, RegisterBlockDescriptor } from "../blockCatalog";
 import { PromptForFileAsync } from "../browserFiles";
 
 const SourceErrors = new WeakMap<FBXInputBlock, string>();
@@ -139,7 +139,7 @@ RegisterBlockDescriptor({
     description: "Read a URL or uploaded .fbx source.",
     keywords: ["read", "open", "load", "url", "upload", "fbx", "input", "source"],
     category: InputsCategory,
-    headerColor: FBXHeaderColor,
+    headerColor: InputHeaderColor,
     className: FBXInputBlock.ClassName,
     abstractedBy: "import-fbx",
     create: (nodeAsset) => ConfigureBlockForEditor(new FBXInputBlock("FBX", nodeAsset)),

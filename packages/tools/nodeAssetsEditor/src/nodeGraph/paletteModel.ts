@@ -34,13 +34,8 @@ export interface IPaletteCategory {
 export interface IPaletteProjectionOptions {
     /** User-entered search text. */
     readonly filter?: string;
-    /** Whether aggregate palette entries are discoverable alongside their primitives. */
-    readonly showAggregates?: boolean;
-}
-
-/** Persistent discovery preferences consumed by the palette view. */
-export interface IPalettePreferences {
-    showAggregates: boolean;
+    /** Whether abstracted primitive palette entries are discoverable alongside their aggregates. Aggregates always show. */
+    readonly showPrimitives?: boolean;
 }
 
 /**

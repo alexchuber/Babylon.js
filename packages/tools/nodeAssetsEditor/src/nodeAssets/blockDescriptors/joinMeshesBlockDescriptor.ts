@@ -1,13 +1,13 @@
 import { JoinMeshesBlock } from "node-assets/Blocks/joinMeshesBlock";
 
-import { OperatorHeaderColor, RegisterBlockDescriptor, StructureFamily, UniversalCategory } from "../blockCatalog";
+import { TransformHeaderColor, RegisterBlockDescriptor, StructureFamily, UniversalCategory } from "../blockCatalog";
 
 RegisterBlockDescriptor({
     paletteItemId: "join-meshes",
     label: "Join Meshes",
     description: "Join compatible Universal mesh primitives to reduce draw calls.",
     keywords: ["structure", "mesh", "batch", "draw calls"],
-    headerColor: OperatorHeaderColor,
+    headerColor: TransformHeaderColor,
     category: UniversalCategory,
     family: StructureFamily,
     className: JoinMeshesBlock.ClassName,

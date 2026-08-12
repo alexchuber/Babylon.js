@@ -5,7 +5,7 @@ import { DeduplicateTexturesBlock } from "node-assets/Blocks/deduplicateTextures
 import { ReuseIdenticalMeshesBlock } from "node-assets/Blocks/reuseIdenticalMeshesBlock";
 import { type NodeAssetBlock } from "node-assets/blockFoundation/nodeAssetBlock";
 
-import { CleanupFamily, ConfigureBlockForEditor, OperatorHeaderColor, RegisterBlockDescriptor, UniversalCategory, type IPropertySectionContext } from "../blockCatalog";
+import { CleanupFamily, ConfigureBlockForEditor, TransformHeaderColor, RegisterBlockDescriptor, UniversalCategory, type IPropertySectionContext } from "../blockCatalog";
 import { type IPropertySection } from "../../nodeGraph/propertyModel";
 
 const AggregatePaletteItemId = "deduplicate-resources";
@@ -41,7 +41,7 @@ RegisterBlockDescriptor({
     label: "Deduplicate Resources",
     description: "Reuse equivalent materials, textures, mesh resources, accessors, and skins.",
     keywords: ["optimize", "cleanup", "deduplicate", "reduce size"],
-    headerColor: OperatorHeaderColor,
+    headerColor: TransformHeaderColor,
     category: UniversalCategory,
     family: CleanupFamily,
     className: DeduplicateResourcesBlock.ClassName,
@@ -52,7 +52,7 @@ RegisterBlockDescriptor({
     paletteItemId: "deduplicate-materials",
     label: "Deduplicate Materials",
     description: "Reuse equivalent material resources.",
-    headerColor: OperatorHeaderColor,
+    headerColor: TransformHeaderColor,
     category: UniversalCategory,
     className: DeduplicateMaterialsBlock.ClassName,
     abstractedBy: AggregatePaletteItemId,
@@ -64,7 +64,7 @@ RegisterBlockDescriptor({
     paletteItemId: "deduplicate-textures",
     label: "Deduplicate Textures",
     description: "Reuse textures with equivalent image content.",
-    headerColor: OperatorHeaderColor,
+    headerColor: TransformHeaderColor,
     category: UniversalCategory,
     className: DeduplicateTexturesBlock.ClassName,
     abstractedBy: AggregatePaletteItemId,
@@ -76,7 +76,7 @@ RegisterBlockDescriptor({
     paletteItemId: "reuse-identical-meshes",
     label: "Reuse Identical Meshes",
     description: "Share equivalent mesh resources without introducing runtime GPU instancing.",
-    headerColor: OperatorHeaderColor,
+    headerColor: TransformHeaderColor,
     category: UniversalCategory,
     className: ReuseIdenticalMeshesBlock.ClassName,
     abstractedBy: AggregatePaletteItemId,
@@ -88,7 +88,7 @@ RegisterBlockDescriptor({
     paletteItemId: "deduplicate-data",
     label: "Deduplicate Data",
     description: "Reuse equivalent accessor and skin data.",
-    headerColor: OperatorHeaderColor,
+    headerColor: TransformHeaderColor,
     category: UniversalCategory,
     className: DeduplicateDataBlock.ClassName,
     abstractedBy: AggregatePaletteItemId,

@@ -1,6 +1,6 @@
 import { ExportImageBlock } from "node-assets/Blocks/exportImageBlock";
 
-import { ConfigureBlockForEditor, ImageCategory, ImageHeaderColor, RegisterBlockDescriptor } from "../blockCatalog";
+import { ConfigureBlockForEditor, ExportersCategory, ImageHeaderColor, RegisterBlockDescriptor } from "../blockCatalog";
 
 RegisterBlockDescriptor({
     paletteItemId: "export-image",
@@ -8,7 +8,7 @@ RegisterBlockDescriptor({
     description: "Write the final image pipeline result.",
     keywords: ["save", "download", "output", "texture"],
     headerColor: ImageHeaderColor,
-    category: ImageCategory,
+    category: ExportersCategory,
     isPaletteVisible: false,
     className: ExportImageBlock.ClassName,
     create: (nodeAsset) => ConfigureBlockForEditor(new ExportImageBlock("Export Image", nodeAsset)),

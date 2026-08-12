@@ -1,13 +1,13 @@
 import { GenerateTangentsBlock } from "node-assets/Blocks/generateTangentsBlock";
 
-import { AttributesFamily, OperatorHeaderColor, RegisterBlockDescriptor, UniversalCategory } from "../blockCatalog";
+import { AttributesFamily, TransformHeaderColor, RegisterBlockDescriptor, UniversalCategory } from "../blockCatalog";
 
 RegisterBlockDescriptor({
     paletteItemId: "generate-tangents",
     label: "Generate Tangents",
     description: "Generate MikkTSpace vertex tangents.",
     keywords: ["tangents", "normal map", "mikktspace"],
-    headerColor: OperatorHeaderColor,
+    headerColor: TransformHeaderColor,
     category: UniversalCategory,
     family: AttributesFamily,
     className: GenerateTangentsBlock.ClassName,

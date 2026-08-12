@@ -1,13 +1,13 @@
 import { FlattenHierarchyBlock } from "node-assets/Blocks/flattenHierarchyBlock";
 
-import { OperatorHeaderColor, RegisterBlockDescriptor, StructureFamily, UniversalCategory } from "../blockCatalog";
+import { TransformHeaderColor, RegisterBlockDescriptor, StructureFamily, UniversalCategory } from "../blockCatalog";
 
 RegisterBlockDescriptor({
     paletteItemId: "flatten-hierarchy",
     label: "Flatten Hierarchy",
     description: "Bake transforms and lift attachments to the root of the Universal scene.",
     keywords: ["structure", "hierarchy", "cleanup", "bake transforms"],
-    headerColor: OperatorHeaderColor,
+    headerColor: TransformHeaderColor,
     category: UniversalCategory,
     family: StructureFamily,
     className: FlattenHierarchyBlock.ClassName,

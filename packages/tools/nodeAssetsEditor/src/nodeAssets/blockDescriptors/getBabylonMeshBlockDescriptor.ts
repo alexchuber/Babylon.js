@@ -1,6 +1,6 @@
 import { GetBabylonMeshBlock } from "node-assets/Blocks/getBabylonMeshBlock";
 
-import { BabylonCategory, BabylonHeaderColor, RegisterBlockDescriptor } from "../blockCatalog";
+import { BabylonCategory, RegisterBlockDescriptor, SelectorsHeaderColor } from "../blockCatalog";
 
 RegisterBlockDescriptor({
     paletteItemId: "get-babylon-mesh",
@@ -9,7 +9,7 @@ RegisterBlockDescriptor({
     isPaletteVisible: false,
     description: "Read geometry and transform properties from a Babylon mesh by name.",
     keywords: ["babylon", "mesh", "geometry", "transform", "vertices", "lookup"],
-    headerColor: BabylonHeaderColor,
+    headerColor: SelectorsHeaderColor,
     className: GetBabylonMeshBlock.ClassName,
     create: (nodeAsset) => new GetBabylonMeshBlock("Get Babylon Mesh", nodeAsset),
 });

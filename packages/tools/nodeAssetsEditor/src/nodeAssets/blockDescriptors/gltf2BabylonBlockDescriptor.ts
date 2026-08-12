@@ -1,6 +1,6 @@
 import { GLTF2BabylonBlock } from "node-assets/Blocks/gltf2BabylonBlock";
 
-import { GltfCategory, GltfHeaderColor, RegisterBlockDescriptor } from "../blockCatalog";
+import { GltfCategory, RegisterBlockDescriptor, TranscoderHeaderColor } from "../blockCatalog";
 
 RegisterBlockDescriptor({
     paletteItemId: "gltf2babylon",
@@ -9,7 +9,7 @@ RegisterBlockDescriptor({
     isPaletteVisible: false,
     description: "Convert a glTF document into a Babylon scene.",
     keywords: ["convert", "transcode", "gltf", "glb", "babylon", "scene"],
-    headerColor: GltfHeaderColor,
+    headerColor: TranscoderHeaderColor,
     className: GLTF2BabylonBlock.ClassName,
     create: (nodeAsset) => new GLTF2BabylonBlock("glTF → Babylon", nodeAsset),
 });

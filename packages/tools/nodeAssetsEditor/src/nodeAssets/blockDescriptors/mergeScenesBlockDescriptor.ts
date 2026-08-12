@@ -1,13 +1,13 @@
 import { MergeScenesBlock } from "node-assets/Blocks/mergeScenesBlock";
 
-import { CompositionHeaderColor, RegisterBlockDescriptor, StructureFamily, UniversalCategory } from "../blockCatalog";
+import { TransformHeaderColor, RegisterBlockDescriptor, StructureFamily, UniversalCategory } from "../blockCatalog";
 
 RegisterBlockDescriptor({
     paletteItemId: "merge-scenes-universal",
     label: "Merge Scenes",
     description: "Merge multiple Universal sources into one scene.",
     keywords: ["structure", "combine assets", "composition", "assemble", "multi source"],
-    headerColor: CompositionHeaderColor,
+    headerColor: TransformHeaderColor,
     category: UniversalCategory,
     family: StructureFamily,
     className: MergeScenesBlock.ClassName,

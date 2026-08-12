@@ -18,7 +18,7 @@ import { NodeAssetBuildError } from "node-assets/nodeAssetBuildError";
 import { type IGraphNode } from "../../src/nodeGraph/graphModel";
 import { PaletteItemMatchesFilter } from "../../src/nodeGraph/paletteModel";
 import { type PropertyDescriptor } from "../../src/nodeGraph/propertyModel";
-import { GetBlockDescriptorByPaletteItemId } from "../../src/nodeAssets/blockCatalog";
+import { GetAllBlockDescriptors, GetBlockDescriptorByPaletteItemId } from "../../src/nodeAssets/blockCatalog";
 import { NodeIdForBlockId } from "../../src/nodeAssets/blockNodeMapping";
 import { CreateBuiltInNodeAssetLibraryEntries } from "../../src/nodeAssets/builtInLibraryEntries";
 import { BuiltInLibraryFixtures } from "../../src/nodeAssets/builtInLibraryFixtures";
@@ -247,13 +247,13 @@ describe("NodeAssetGraphController", () => {
             expect(FindNode(controller, "glTF")).toBeDefined();
             expect(
                 controller
-                    .getPaletteCategories({ showAggregates: false })
+                    .getPaletteCategories()
                     .flatMap((category) => category.items)
                     .some((item) => item.id === "gltf-output")
-            ).toBe(true);
+            ).toBe(false);
             expect(
                 controller
-                    .getPaletteCategories({ showAggregates: true })
+                    .getPaletteCategories({ showPrimitives: true })
                     .flatMap((category) => category.items)
                     .some((item) => item.id === "gltf-output")
             ).toBe(true);
@@ -1391,11 +1391,11 @@ describe("NodeAssetGraphController", () => {
         }
     });
 
-    it("projects the canonical default categories (primitives, no aggregates) through the controller", () => {
+    it("projects the canonical default categories (aggregates, no primitives) through the controller", () => {
         const controller = new NodeAssetGraphController();
         try {
             const categories = controller.getPaletteCategories().map((category) => category.label);
-            expect(categories).toEqual(expect.arrayContaining(["Universal", "glTF", "Inputs"]));
+            expect(categories).toEqual(expect.arrayContaining(["Universal", "glTF", "Importers", "Exporters"]));
         } finally {
             controller.dispose();
         }
@@ -1404,10 +1404,15 @@ describe("NodeAssetGraphController", () => {
     it("provides discovery metadata for every aggregate palette item", () => {
         const controller = new NodeAssetGraphController();
         try {
-            const defaultItems = controller.getPaletteCategories().flatMap((category) => category.items);
-            const allItems = controller.getPaletteCategories({ showAggregates: true }).flatMap((category) => category.items);
-            const defaultIds = new Set(defaultItems.map((item) => item.id));
-            const aggregateItems = allItems.filter((item) => !defaultIds.has(item.id));
+            const aggregateIds = new Set(
+                GetAllBlockDescriptors()
+                    .map((descriptor) => descriptor.abstractedBy)
+                    .filter((id): id is string => id !== undefined)
+            );
+            const aggregateItems = controller
+                .getPaletteCategories()
+                .flatMap((category) => category.items)
+                .filter((item) => aggregateIds.has(item.id));
             expect(aggregateItems.length).toBeGreaterThan(0);
             expect(aggregateItems.filter((item) => !item.description?.trim()).map((item) => item.label)).toEqual([]);
             expect(aggregateItems.filter((item) => !item.keywords?.length).map((item) => item.label)).toEqual([]);
@@ -1420,7 +1425,7 @@ describe("NodeAssetGraphController", () => {
         const controller = new NodeAssetGraphController();
         try {
             const matches = controller
-                .getPaletteCategories({ showAggregates: true })
+                .getPaletteCategories({ showPrimitives: true })
                 .flatMap((category) => category.items.filter((item) => PaletteItemMatchesFilter(item, category.label, "cleanup")).map((item) => item.id));
 
             expect(matches).toEqual(

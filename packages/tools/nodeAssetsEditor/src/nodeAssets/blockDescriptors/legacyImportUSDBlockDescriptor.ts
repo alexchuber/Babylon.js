@@ -1,6 +1,6 @@
 import { ImportUSDBlock } from "node-assets/Blocks/importUSDBlock";
 
-import { ConfigureBlockForEditor, InputsCategory, RegisterBlockDescriptor } from "../blockCatalog";
+import { ConfigureBlockForEditor, InputHeaderColor, InputsCategory, RegisterBlockDescriptor } from "../blockCatalog";
 import { PromptForFileAsync } from "../browserFiles";
 
 // eslint-disable-next-line @typescript-eslint/naming-convention
@@ -19,7 +19,7 @@ RegisterBlockDescriptor({
     label: "Import USD (legacy)",
     description: "Legacy single-block USD importer retained for saved graph compatibility.",
     category: InputsCategory,
-    headerColor: "#3f7d4e",
+    headerColor: InputHeaderColor,
     className: ImportUSDBlock.ClassName,
     isPaletteVisible: false,
     create: (nodeAsset) => ConfigureBlockForEditor(new ImportUSDBlock("Import USD", nodeAsset)),

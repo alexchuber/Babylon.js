@@ -1,13 +1,13 @@
 import { RecomputeNormalsBlock } from "node-assets/Blocks/recomputeNormalsBlock";
 
-import { AttributesFamily, OperatorHeaderColor, RegisterBlockDescriptor, UniversalCategory } from "../blockCatalog";
+import { AttributesFamily, TransformHeaderColor, RegisterBlockDescriptor, UniversalCategory } from "../blockCatalog";
 
 RegisterBlockDescriptor({
     paletteItemId: "recompute-normals",
     label: "Recompute Normals",
     description: "Recompute missing or existing vertex normals.",
     keywords: ["normals", "shading", "lighting", "mesh repair"],
-    headerColor: OperatorHeaderColor,
+    headerColor: TransformHeaderColor,
     category: UniversalCategory,
     family: AttributesFamily,
     className: RecomputeNormalsBlock.ClassName,

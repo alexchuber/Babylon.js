@@ -1,14 +1,14 @@
 import { OBJToUniversalBlock } from "node-assets/Blocks/objToUniversalBlock";
 
-import { OBJHeaderColor, ImportersCategory, RegisterBlockDescriptor } from "../blockCatalog";
+import { TranscoderHeaderColor, TranscodersCategory, RegisterBlockDescriptor } from "../blockCatalog";
 
 RegisterBlockDescriptor({
     paletteItemId: "obj-to-universal",
     label: "OBJ → Universal",
     description: "Parse an OBJ source and cross into Universal.",
     keywords: ["convert", "transcode", "obj", "Universal"],
-    category: ImportersCategory,
-    headerColor: OBJHeaderColor,
+    category: TranscodersCategory,
+    headerColor: TranscoderHeaderColor,
     className: OBJToUniversalBlock.ClassName,
     abstractedBy: "import-obj",
     create: (nodeAsset) => new OBJToUniversalBlock("OBJ → Universal", nodeAsset),

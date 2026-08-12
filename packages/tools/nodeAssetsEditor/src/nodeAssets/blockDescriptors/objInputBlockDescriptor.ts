@@ -2,7 +2,7 @@ import { OBJInputBlock } from "node-assets/Blocks/objInputBlock";
 
 import { type IPropertySection } from "../../nodeGraph/propertyModel";
 import { PromptForFilesAsync } from "../browserFiles";
-import { ConfigureBlockForEditor, type IPropertySectionContext, InputsCategory, OBJHeaderColor, RegisterBlockDescriptor } from "../blockCatalog";
+import { ConfigureBlockForEditor, type IPropertySectionContext, InputHeaderColor, InputsCategory, RegisterBlockDescriptor } from "../blockCatalog";
 
 const SourceErrors = new WeakMap<OBJInputBlock, string>();
 const PendingSourceRequests = new WeakMap<OBJInputBlock, Promise<unknown>>();
@@ -145,7 +145,7 @@ RegisterBlockDescriptor({
     description: "Read a URL or one uploaded OBJ bundle.",
     keywords: ["read", "open", "load", "url", "upload", "obj", "mtl", "input", "source"],
     category: InputsCategory,
-    headerColor: OBJHeaderColor,
+    headerColor: InputHeaderColor,
     className: OBJInputBlock.ClassName,
     abstractedBy: "import-obj",
     create: (nodeAsset) => ConfigureBlockForEditor(new OBJInputBlock("OBJ", nodeAsset)),

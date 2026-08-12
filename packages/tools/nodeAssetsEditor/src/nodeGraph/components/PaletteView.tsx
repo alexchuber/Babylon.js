@@ -1,11 +1,11 @@
 import { cloneElement, Fragment, type DragEvent, type FunctionComponent, type PointerEventHandler, type ReactElement, useEffect, useMemo, useRef, useState } from "react";
 
-import { Accordion, AccordionHeader, AccordionItem, AccordionPanel, Body1, Caption1, Checkbox, makeStyles, tokens } from "@fluentui/react-components";
+import { Accordion, AccordionHeader, AccordionItem, AccordionPanel, Body1, Caption1, makeStyles, tokens } from "@fluentui/react-components";
 import { SearchBar } from "shared-ui-components/fluent/primitives/searchBar";
 import { Tooltip } from "shared-ui-components/fluent/primitives/tooltip";
 
 import { type EditorContextValue } from "../editorContext";
-import { type IPaletteCategory, type IPaletteItem, type IPalettePreferences, PaletteDragFormat } from "../paletteModel";
+import { type IPaletteCategory, type IPaletteItem, PaletteDragFormat } from "../paletteModel";
 
 const useStyles = makeStyles({
     root: {
@@ -108,13 +108,12 @@ const PaletteItemTooltip: FunctionComponent<PaletteItemTooltipProps> = (props) =
  * @param props - Component props.
  * @returns The rendered palette pane.
  */
-export const PaletteView: FunctionComponent<{ context: EditorContextValue; preferences: IPalettePreferences }> = (props) => {
-    const { context, preferences } = props;
+export const PaletteView: FunctionComponent<{ context: EditorContextValue }> = (props) => {
+    const { context } = props;
     const classes = useStyles();
     const [filter, setFilter] = useState("");
-    const [showAggregates, setShowAggregates] = useState(() => preferences.showAggregates);
-    const showAggregatesToggle = useMemo(() => new URLSearchParams(window.location.search).has("showAggregates"), []);
-    const categories = useMemo(() => context.getPaletteCategories({ filter, showAggregates }), [context, filter, showAggregates]);
+    const showPrimitives = useMemo(() => new URLSearchParams(window.location.search).has("showPrimitives"), []);
+    const categories = useMemo(() => context.getPaletteCategories({ filter, showPrimitives }), [context, filter, showPrimitives]);
     const categoryValues = useMemo(() => categories.map(GetCategoryValue), [categories]);
     const [openCategoryValues, setOpenCategoryValues] = useState<string[]>(categoryValues);
     const isFiltering = filter.trim().length > 0;
@@ -145,17 +144,6 @@ export const PaletteView: FunctionComponent<{ context: EditorContextValue; prefe
     return (
         <div className={classes.root} data-testid="node-palette">
             <div className={classes.header}>
-                {showAggregatesToggle && (
-                    <Checkbox
-                        checked={showAggregates}
-                        label="Show aggregates"
-                        onChange={(_, data) => {
-                            const nextValue = data.checked === true;
-                            preferences.showAggregates = nextValue;
-                            setShowAggregates(nextValue);
-                        }}
-                    />
-                )}
                 <SearchBar onChange={setFilter} placeholder="Search palette" />
             </div>
             {categories.length > 0 ? (

@@ -1,10 +1,9 @@
 import { GLTFInputBlock } from "node-assets/Blocks/gltfInputBlock";
 
-import { ConfigureBlockForEditor, type IPropertySectionContext, InputsCategory, RegisterBlockDescriptor } from "../blockCatalog";
+import { ConfigureBlockForEditor, type IPropertySectionContext, InputHeaderColor, InputsCategory, RegisterBlockDescriptor } from "../blockCatalog";
 import { type IPropertySection } from "../../nodeGraph/propertyModel";
 import { PromptForFileAsync } from "../browserFiles";
 
-const InputHeaderColor = "#3f7d4e";
 const SourceErrors = new WeakMap<GLTFInputBlock, string>();
 const PendingSourceRequests = new WeakMap<GLTFInputBlock, Promise<unknown>>();
 

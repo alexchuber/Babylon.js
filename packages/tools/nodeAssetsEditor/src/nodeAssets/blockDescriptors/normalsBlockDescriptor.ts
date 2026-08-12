@@ -1,13 +1,13 @@
 import { NormalsBlock } from "node-assets/Blocks/normalsBlock";
 
-import { OperatorCategory, OperatorHeaderColor, RegisterBlockDescriptor } from "../blockCatalog";
+import { OperatorCategory, TransformHeaderColor, RegisterBlockDescriptor } from "../blockCatalog";
 
 RegisterBlockDescriptor({
     paletteItemId: "normals",
     label: "Normals",
     description: "Generate or replace vertex normals for scene meshes.",
     keywords: ["recalculate normals", "shading", "lighting", "mesh repair"],
-    headerColor: OperatorHeaderColor,
+    headerColor: TransformHeaderColor,
     category: OperatorCategory,
     isPaletteVisible: false,
     className: NormalsBlock.ClassName,

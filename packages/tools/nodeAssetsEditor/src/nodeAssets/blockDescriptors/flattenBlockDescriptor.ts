@@ -1,13 +1,13 @@
 import { FlattenBlock } from "node-assets/Blocks/flattenBlock";
 
-import { OperatorCategory, OperatorHeaderColor, RegisterBlockDescriptor } from "../blockCatalog";
+import { OperatorCategory, TransformHeaderColor, RegisterBlockDescriptor } from "../blockCatalog";
 
 RegisterBlockDescriptor({
     paletteItemId: "flatten",
     label: "Flatten",
     description: "Bake scene transforms and simplify node hierarchy.",
     keywords: ["optimize", "cleanup", "bake transforms", "hierarchy"],
-    headerColor: OperatorHeaderColor,
+    headerColor: TransformHeaderColor,
     category: OperatorCategory,
     isPaletteVisible: false,
     className: FlattenBlock.ClassName,

@@ -1,6 +1,6 @@
 import { ImportBabylonBlock } from "node-assets/Blocks/importBabylonBlock";
 
-import { BabylonHeaderColor, ConfigureBlockForEditor, RegisterBlockDescriptor } from "../blockCatalog";
+import { ConfigureBlockForEditor, InputHeaderColor, ImportersCategory, RegisterBlockDescriptor } from "../blockCatalog";
 import { PromptForFileAsync } from "../browserFiles";
 
 async function PromptForBabylonFileAsync(block: ImportBabylonBlock, refresh: () => void): Promise<void> {
@@ -15,10 +15,10 @@ async function PromptForBabylonFileAsync(block: ImportBabylonBlock, refresh: () 
 RegisterBlockDescriptor({
     paletteItemId: "legacy-import-babylon",
     label: "Legacy Import Babylon",
-    category: "Babylon",
+    category: ImportersCategory,
     description: "Load a legacy .babylon scene representation.",
     keywords: ["babylon", ".babylon", "scene", "load"],
-    headerColor: BabylonHeaderColor,
+    headerColor: InputHeaderColor,
     className: ImportBabylonBlock.ClassName,
     isPaletteVisible: false,
     create: (nodeAsset) => ConfigureBlockForEditor(new ImportBabylonBlock("Legacy Import Babylon", nodeAsset)),

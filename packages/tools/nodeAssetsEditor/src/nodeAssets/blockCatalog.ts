@@ -25,43 +25,101 @@ export interface IPropertySectionContext {
     readonly requestExport: (fileName?: string) => void;
 }
 
-/** Data-driven dot color for scene-typed ports (applied inline as visual data, not theme chrome). */
-export const ScenePortColor = "#d97b3f";
+// Node appearance is driven by two orthogonal axes: a port's color identifies the kind of data flowing
+// through it (the file/representation type), while a node's header color identifies the block's role in
+// the pipeline (input, output, transcoder, or transform).
 
-/** Data-driven dot color for Universal ports, distinct from the glTF delivery lane. */
-export const UniversalPortColor = "#2f8f83";
+// File-type port colors.
 
-/** Data-driven dot color for OBJ source ports, distinct from every existing representation lane. */
-// eslint-disable-next-line @typescript-eslint/naming-convention
-export const OBJPortColor = "#B86B3D";
+/** glTF document lane — light soft green. */
+export const GltfPortColor = "#7fc99a";
 
-/** Data-driven dot colors for the scalar port kinds, so each renders distinctly from SCENE. */
+/** OBJ source — soft black. */
+export const ObjPortColor = "#4b4b52";
+
+/** FBX source — soft orange. */
+export const FbxPortColor = "#d9995c";
+
+/** USD stage or source — soft blue. */
+export const UsdPortColor = "#6aa6d9";
+
+/** Babylon scene or source — soft purple. */
+export const BabylonPortColor = "#9b86ce";
+
+/** Node Geometry resource — dark soft green. */
+export const NodeGeometryPortColor = "#3f9060";
+
+/** Universal, the source-independent working representation — soft dark grey. */
+export const UniversalPortColor = "#6c727d";
+
+// Value and image port colors, for the non-file data types carried between auxiliary blocks.
 export const NumberPortColor = "#3f79d9";
 export const StringPortColor = "#3fa86b";
 export const JsonPortColor = "#b163c9";
+export const ImagePortColor = "#38b2c4";
 
-/** Palette category and shared node header color for the SCENE-to-SCENE operator block family. */
-export const OperatorCategory = "Operators";
-export const OperatorHeaderColor = "#2f8f83";
+// Role header colors.
 
-/** Palette category for source-independent Universal operators. */
-export const UniversalCategory = "Universal";
+/** Source boundaries that resolve a URL, snippet, or upload into a typed payload — dark purple. */
+export const InputHeaderColor = "#4a3a78";
 
-/** Palette category for the source boundaries that resolve a URL, snippet, or upload into a typed source payload. */
+/** Terminal boundaries that turn a representation into delivered bytes — dark, saturated purple. */
+export const OutputHeaderColor = "#6a25b0";
+
+/** Blocks that cross one port type into another — teal. */
+export const TranscoderHeaderColor = "#2f8f83";
+
+/** Blocks that keep the same port type on their input and output — light grey. */
+export const TransformHeaderColor = "#868d97";
+
+// Palette categories: the top-level group a block is filed under in the palette.
+
+/** Source boundaries that resolve a URL, snippet, or upload into a typed source payload. */
 export const InputsCategory = "Inputs";
 
-/** Palette category for transcoders that cross a source payload into the in-memory Universal representation. */
-export const ImportersCategory = "Importers";
-
-/** Palette category for transcoders that cross Universal into a file representation. */
-export const ExportersCategory = "Exporters";
-
-/** Palette category for the terminal boundaries that turn a file representation into delivered bytes. */
+/** Terminal boundaries that turn a file representation into delivered bytes. */
 export const OutputsCategory = "Outputs";
 
-/** Palette category and shared node header color for blocks that operate on glTF documents. */
+/** Explicit representation-crossing blocks. */
+export const TranscodersCategory = "Transcoders";
+
+export const ImportersCategory = "Importers";
+export const ExportersCategory = "Exporters";
+
+/**
+ * Top-to-bottom display order for the pipeline-stage palette categories. Categories not listed here
+ * follow, in registration order. Importers and Exporters hold only aggregate entries, which the
+ * palette projection appends last, so their placement can't be expressed through registration order.
+ */
+export const PaletteCategoryOrder: readonly string[] = [InputsCategory, TranscodersCategory, OutputsCategory, ImportersCategory, ExportersCategory];
+
+/** Source-independent Universal operators. */
+export const UniversalCategory = "Universal";
+
+/** Blocks that operate on glTF documents. */
 export const GltfCategory = "glTF";
-export const GltfHeaderColor = "#2f8f83";
+
+// Auxiliary categories and header colors for palette-hidden block families that fall outside the pipeline roles.
+export const BabylonCategory = "Babylon";
+export const UsdCategory = "USD";
+export const NodeGeometryCategory = "Node Geometry";
+export const OperatorCategory = "Operators";
+
+/** Value-literal source blocks. */
+export const ValuesCategory = "Values";
+export const ValuesHeaderColor = "#5a5fb0";
+
+/** Scene and material composition blocks (e.g. MergeScenes). */
+export const CompositionCategory = "Composition";
+export const CompositionHeaderColor = "#a84f5a";
+
+/** IMAGE boundary blocks. */
+export const ImageCategory = "Image";
+export const ImageHeaderColor = "#a0568f";
+
+/** Selector and property-access blocks. */
+export const SelectorsCategory = "Selectors";
+export const SelectorsHeaderColor = "#b0506a";
 
 /** Palette family for Universal cleanup decisions. */
 export const CleanupFamily = "Cleanup";
@@ -83,59 +141,6 @@ export const TexturesFamily = "Textures";
 
 /** Palette family for glTF encoding and output decisions. */
 export const EncodingOutputFamily = "Encoding/output";
-
-/** Palette category and shared node header color for the value-literal source block family. */
-export const ValuesCategory = "Values";
-export const ValuesHeaderColor = "#5a5fb0";
-
-/** Palette category and shared node header color for the composition block family (e.g. MergeScenes). */
-export const CompositionCategory = "Composition";
-export const CompositionHeaderColor = "#a84f5a";
-
-/** Data-driven dot color for IMAGE-typed ports, distinct from the scene and scalar port kinds. */
-export const ImagePortColor = "#38b2c4";
-
-/** Palette category and shared node header color for the IMAGE boundary block family. */
-export const ImageCategory = "Image";
-export const ImageHeaderColor = "#a0568f";
-
-/** Palette category and shared node header color for the selector/property-access block family. */
-export const SelectorsCategory = "Selectors";
-export const SelectorsHeaderColor = "#b0506a";
-
-/** Data-driven dot color for USD_STAGE-typed ports. */
-export const UsdStagePortColor = "#C4A265";
-
-/** Data-driven dot color for BABYLON_SCENE-typed ports. */
-export const BabylonScenePortColor = "#4A90D9";
-
-/** Palette header and source-port color for the FBX source lane. */
-export const FBXHeaderColor = "#B35900";
-
-/** Data-driven dot color for NODE_GEOMETRY-typed ports. */
-export const NodeGeometryPortColor = "#7B68EE";
-
-/** Palette category and shared node header color for Node Geometry resource blocks. */
-export const NodeGeometryCategory = "Node Geometry";
-export const NodeGeometryHeaderColor = "#7B68EE";
-
-/** Palette category and shared node header color for the transcoder block family. */
-export const TranscodersCategory = "Transcoders";
-export const TranscodersHeaderColor = "#6B4C8A";
-
-/** Palette category and shared node header color for the Babylon operator block family. */
-export const BabylonCategory = "Babylon";
-export const BabylonHeaderColor = "#4A90D9";
-
-/** Shared node header color for the OBJ source and transcoder block family. */
-// eslint-disable-next-line @typescript-eslint/naming-convention
-export const OBJHeaderColor = "#B86B3D";
-
-/** Palette category and shared node header color for the USD operator block family. */
-// eslint-disable-next-line @typescript-eslint/naming-convention
-export const USDCategory = "USD";
-// eslint-disable-next-line @typescript-eslint/naming-convention
-export const USDHeaderColor = "#C4A265";
 
 /**
  * Describes one palette entry: its id and label, its node header color, the backend class it maps to,

@@ -2,7 +2,7 @@ import { BabylonInputBlock } from "node-assets/Blocks/babylonInputBlock";
 
 import { type IPropertySection } from "../../nodeGraph/propertyModel";
 import { PromptForFileAsync } from "../browserFiles";
-import { BabylonHeaderColor, ConfigureBlockForEditor, type IPropertySectionContext, InputsCategory, RegisterBlockDescriptor } from "../blockCatalog";
+import { ConfigureBlockForEditor, type IPropertySectionContext, InputHeaderColor, InputsCategory, RegisterBlockDescriptor } from "../blockCatalog";
 
 const SourceErrors = new WeakMap<BabylonInputBlock, string>();
 const PendingSourceRequests = new WeakMap<BabylonInputBlock, Promise<unknown>>();
@@ -132,7 +132,7 @@ RegisterBlockDescriptor({
     description: "Read a URL or uploaded .babylon source.",
     keywords: ["read", "open", "load", "url", "upload", "babylon", "input", "source"],
     category: InputsCategory,
-    headerColor: BabylonHeaderColor,
+    headerColor: InputHeaderColor,
     className: BabylonInputBlock.ClassName,
     abstractedBy: "import-babylon",
     create: (nodeAsset) => ConfigureBlockForEditor(new BabylonInputBlock("Babylon", nodeAsset)),

@@ -1,6 +1,6 @@
 import { CenterBlock, type CenterPivot } from "node-assets/Blocks/centerBlock";
 
-import { OperatorCategory, OperatorHeaderColor, RegisterBlockDescriptor } from "../blockCatalog";
+import { OperatorCategory, TransformHeaderColor, RegisterBlockDescriptor } from "../blockCatalog";
 
 const PivotOptions: readonly CenterPivot[] = ["center", "above", "below"];
 
@@ -9,7 +9,7 @@ RegisterBlockDescriptor({
     label: "Center",
     description: "Move scene content around a chosen bounds pivot.",
     keywords: ["origin", "pivot", "position", "align", "recenter"],
-    headerColor: OperatorHeaderColor,
+    headerColor: TransformHeaderColor,
     category: OperatorCategory,
     isPaletteVisible: false,
     className: CenterBlock.ClassName,

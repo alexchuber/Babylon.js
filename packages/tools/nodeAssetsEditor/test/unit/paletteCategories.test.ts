@@ -19,45 +19,49 @@ function Descriptor(
 
 describe("BuildPaletteCategories", () => {
     it("orders the default product palette by pipeline stage", () => {
-        expect(BuildPaletteCategories(GetAllBlockDescriptors()).map((category) => category.label)).toEqual(["Inputs", "Importers", "Exporters", "Outputs", "glTF", "Universal"]);
+        expect(BuildPaletteCategories(GetAllBlockDescriptors()).map((category) => category.label)).toEqual(["Importers", "Exporters", "glTF", "Universal"]);
     });
 
-    it("publishes the default product palette without aggregates", () => {
-        const projection = BuildPaletteCategories(GetAllBlockDescriptors()).map((category) => ({
-            category: category.label,
-            items: category.items.map((item) => ({
-                family: item.family ?? null,
-                label: item.label,
-            })),
-        }));
-        const LabelsIn = (category: string) => projection.find((candidate) => candidate.category === category)?.items.map((item) => item.label);
+    it("orders the full palette with importers and exporters after outputs", () => {
+        expect(BuildPaletteCategories(GetAllBlockDescriptors(), { showPrimitives: true }).map((category) => category.label)).toEqual([
+            "Inputs",
+            "Transcoders",
+            "Outputs",
+            "Importers",
+            "Exporters",
+            "glTF",
+            "Universal",
+        ]);
+    });
 
-        // No aggregate labels appear in the default palette
-        const allLabels = projection.flatMap((c) => c.items.map((i) => i.label));
-        expect(allLabels).not.toContain("Import glTF");
-        expect(allLabels).not.toContain("Import Babylon");
-        expect(allLabels).not.toContain("Import FBX");
-        expect(allLabels).not.toContain("Import OBJ");
-        expect(allLabels).not.toContain("Import USD");
-        expect(allLabels).not.toContain("Import Node Geometry");
-        expect(allLabels).not.toContain("Export glTF");
-        expect(allLabels).not.toContain("Deduplicate Resources");
+    it("publishes the default product palette with aggregates and without abstracted primitives", () => {
+        const projection = BuildPaletteCategories(GetAllBlockDescriptors());
+        const categoryLabels = projection.map((category) => category.label);
+        const allLabels = projection.flatMap((category) => category.items.map((item) => item.label));
 
-        // Every source boundary, transcoder, and output boundary sits in its pipeline-stage category
-        expect(LabelsIn("Inputs")).toEqual(["Babylon", "FBX", "glTF", "Node Geometry", "OBJ", "USD"]);
-        expect(LabelsIn("Importers")).toEqual(["glTF → Universal", "OBJ → Universal", "USD → Universal", "Babylon → Universal", "FBX → Universal", "Node Geometry → Universal"]);
-        expect(LabelsIn("Exporters")).toEqual(["Universal → glTF"]);
-        expect(LabelsIn("Outputs")).toEqual(["glTF"]);
-        expect(LabelsIn("glTF")).toEqual(["Compress Geometry (Draco)", "Compress Textures (KTX2)"]);
+        // Aggregates lead the default palette, including their aggregate-only categories
+        expect(categoryLabels).toEqual(expect.arrayContaining(["Importers", "Exporters"]));
+        expect(allLabels).toEqual(
+            expect.arrayContaining(["Import glTF", "Import Babylon", "Import FBX", "Import OBJ", "Import USD", "Import Node Geometry", "Export glTF", "Deduplicate Resources"])
+        );
 
-        // Non-aggregate blocks still appear
+        // The decomposed primitive stages are hidden until Show primitives is enabled
+        expect(categoryLabels).not.toContain("Inputs");
+        expect(categoryLabels).not.toContain("Transcoders");
+        expect(categoryLabels).not.toContain("Outputs");
+        for (const label of ["glTF → Universal", "Babylon → Universal", "Universal → glTF", "Deduplicate Materials", "Reuse Identical Meshes"]) {
+            expect(allLabels).not.toContain(label);
+        }
+
+        // Standalone blocks without an aggregate still appear
         expect(allLabels).toContain("Weld Vertices");
         expect(allLabels).toContain("Compress Geometry (Draco)");
+        expect(allLabels).toContain("Compress Textures (KTX2)");
     });
 
-    it("adds exactly the canonical aggregates after the default product palette", () => {
+    it("adds exactly the abstracted primitives after the default product palette", () => {
         const defaultCategories = BuildPaletteCategories(GetAllBlockDescriptors());
-        const allCategories = BuildPaletteCategories(GetAllBlockDescriptors(), { showAggregates: true });
+        const allCategories = BuildPaletteCategories(GetAllBlockDescriptors(), { showPrimitives: true });
         const additions = allCategories.map((category) => {
             const defaultItemIds = new Set(defaultCategories.find((candidate) => candidate.label === category.label)?.items.map((item) => item.id) ?? []);
             return {
@@ -74,30 +78,37 @@ describe("BuildPaletteCategories", () => {
             expect.arrayContaining([
                 expect.objectContaining({
                     category: "Inputs",
-                    items: expect.arrayContaining(["Import glTF", "Import OBJ", "Import USD", "Import Babylon", "Import FBX", "Import Node Geometry"]),
+                    items: expect.arrayContaining(["Babylon", "FBX", "glTF", "Node Geometry", "OBJ", "USD"]),
                 }),
-                expect.objectContaining({ category: "Universal", items: expect.arrayContaining(["Deduplicate Resources"]) }),
-                expect.objectContaining({ category: "Outputs", items: expect.arrayContaining(["Export glTF"]) }),
+                expect.objectContaining({ category: "Transcoders", items: expect.arrayContaining(["glTF → Universal", "Universal → glTF"]) }),
+                expect.objectContaining({
+                    category: "Universal",
+                    items: expect.arrayContaining(["Deduplicate Materials", "Deduplicate Textures", "Reuse Identical Meshes", "Deduplicate Data"]),
+                }),
+                expect.objectContaining({ category: "Outputs", items: expect.arrayContaining(["glTF"]) }),
             ])
         );
     });
 
     it("uses the filtered product catalog for search", () => {
-        expect(BuildPaletteCategories(GetAllBlockDescriptors(), { filter: "selector", showAggregates: true })).toEqual([]);
+        expect(BuildPaletteCategories(GetAllBlockDescriptors(), { filter: "selector", showPrimitives: true })).toEqual([]);
         expect(BuildPaletteCategories(GetAllBlockDescriptors(), { filter: "Compress Geometry" })).toMatchObject([
             { label: "glTF", items: [{ label: "Compress Geometry (Draco)" }] },
         ]);
-        expect(BuildPaletteCategories(GetAllBlockDescriptors(), { filter: "Import glTF" })).toEqual([]);
-        expect(BuildPaletteCategories(GetAllBlockDescriptors(), { filter: "Import glTF", showAggregates: true })).toMatchObject([
-            { label: "Inputs", items: [{ label: "Import glTF" }] },
+        // Aggregates are discoverable by default; their abstracted primitives only when requested
+        expect(BuildPaletteCategories(GetAllBlockDescriptors(), { filter: "Import glTF" })).toMatchObject([{ label: "Importers", items: [{ label: "Import glTF" }] }]);
+        expect(BuildPaletteCategories(GetAllBlockDescriptors(), { filter: "glTF → Universal" })).toEqual([]);
+        expect(BuildPaletteCategories(GetAllBlockDescriptors(), { filter: "glTF → Universal", showPrimitives: true })).toMatchObject([
+            { label: "Transcoders", items: [{ label: "glTF → Universal" }] },
         ]);
     });
 
-    it("finds the FBX primitives by default and its aggregate only when requested", () => {
-        expect(BuildPaletteCategories(GetAllBlockDescriptors(), { filter: "fbx" }).flatMap((category) => category.items.map((item) => item.label))).toEqual(
-            expect.arrayContaining(["FBX", "FBX → Universal"])
-        );
-        expect(BuildPaletteCategories(GetAllBlockDescriptors(), { filter: "fbx", showAggregates: true }).flatMap((category) => category.items.map((item) => item.label))).toEqual(
+    it("finds the FBX aggregate by default and its primitives only when requested", () => {
+        const defaultLabels = BuildPaletteCategories(GetAllBlockDescriptors(), { filter: "fbx" }).flatMap((category) => category.items.map((item) => item.label));
+        expect(defaultLabels).toContain("Import FBX");
+        expect(defaultLabels).not.toContain("FBX");
+        expect(defaultLabels).not.toContain("FBX → Universal");
+        expect(BuildPaletteCategories(GetAllBlockDescriptors(), { filter: "fbx", showPrimitives: true }).flatMap((category) => category.items.map((item) => item.label))).toEqual(
             expect.arrayContaining(["Import FBX", "FBX", "FBX → Universal"])
         );
     });
@@ -141,7 +152,7 @@ describe("BuildPaletteCategories", () => {
         });
     });
 
-    it("hides aggregates by default and reveals them on request", () => {
+    it("hides abstracted primitives by default and reveals them on request", () => {
         const descriptors = [
             Descriptor("import-gltf", "Import glTF", "Inputs"),
             Descriptor("gltf-input", "glTF", "Inputs", undefined, undefined, { abstractedBy: "import-gltf" }),
@@ -151,11 +162,11 @@ describe("BuildPaletteCategories", () => {
             }),
         ];
 
-        expect(BuildPaletteCategories(descriptors).flatMap((category) => category.items.map((item) => item.label))).toEqual(["glTF"]);
-        expect(BuildPaletteCategories(descriptors, { showAggregates: true }).flatMap((category) => category.items.map((item) => item.label))).toEqual(["glTF", "Import glTF"]);
+        expect(BuildPaletteCategories(descriptors).flatMap((category) => category.items.map((item) => item.label))).toEqual(["Import glTF"]);
+        expect(BuildPaletteCategories(descriptors, { showPrimitives: true }).flatMap((category) => category.items.map((item) => item.label))).toEqual(["Import glTF", "glTF"]);
     });
 
-    it("uses the same aggregate visibility for search and omits empty aggregate-only categories", () => {
+    it("uses the same primitive visibility for search and omits empty primitive-only categories", () => {
         const descriptors = [
             Descriptor("import-babylon", "Import Babylon", "Inputs"),
             Descriptor("babylon-to-universal", "Babylon → Universal", "Babylon", "Cross into Universal.", ["convert"], {
@@ -164,8 +175,10 @@ describe("BuildPaletteCategories", () => {
             }),
         ];
 
-        expect(BuildPaletteCategories(descriptors).map((category) => category.label)).toEqual(["Babylon"]);
-        expect(BuildPaletteCategories(descriptors, { filter: "convert" })).toEqual([
+        // The abstracted primitive's category is empty until Show primitives is enabled
+        expect(BuildPaletteCategories(descriptors).map((category) => category.label)).toEqual(["Inputs"]);
+        expect(BuildPaletteCategories(descriptors, { filter: "convert" })).toEqual([]);
+        expect(BuildPaletteCategories(descriptors, { filter: "convert", showPrimitives: true })).toEqual([
             {
                 label: "Babylon",
                 items: [
@@ -178,8 +191,8 @@ describe("BuildPaletteCategories", () => {
                 ],
             },
         ]);
-        expect(BuildPaletteCategories(descriptors, { filter: "Import" })).toEqual([]);
-        expect(BuildPaletteCategories(descriptors, { filter: "Import", showAggregates: true })).toMatchObject([{ label: "Inputs", items: [{ label: "Import Babylon" }] }]);
+        // The aggregate is discoverable by default
+        expect(BuildPaletteCategories(descriptors, { filter: "Import" })).toMatchObject([{ label: "Inputs", items: [{ label: "Import Babylon" }] }]);
     });
 
     it.each([
