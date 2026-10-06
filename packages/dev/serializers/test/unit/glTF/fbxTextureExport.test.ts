@@ -32,6 +32,10 @@ describe("glTF Exporter - FBX texture loading under NullEngine", () => {
         const fbx = createTexturedFbx("textures/diffuse.png");
         const testServer = createServer((request, response) => {
             requestedPaths.push(request.url ?? "");
+            if (request.url === "/model") {
+                response.writeHead(302, { location: "/assets/model.fbx" }).end();
+                return;
+            }
             if (request.url === "/assets/model.fbx") {
                 response.writeHead(200, { "content-type": "application/octet-stream" });
                 response.end(fbx);
@@ -51,8 +55,10 @@ describe("glTF Exporter - FBX texture loading under NullEngine", () => {
         if (!address || typeof address === "string") {
             throw new Error("Expected the test HTTP server to use a TCP address.");
         }
-        const rootUrl = `http://127.0.0.1:${address.port}/assets/`;
-        const modelUrl = `${rootUrl}model.fbx`;
+        const serverUrl = `http://127.0.0.1:${address.port}/`;
+        const modelUrl = `${serverUrl}model`;
+        const resolvedModelUrl = `${serverUrl}assets/model.fbx`;
+        const rootUrl = `${serverUrl}assets/`;
         const textureUrl = `${rootUrl}textures/diffuse.png`;
 
         expect(typeof XMLHttpRequest).toBe("undefined");
@@ -63,9 +69,11 @@ describe("glTF Exporter - FBX texture loading under NullEngine", () => {
         try {
             const response = await fetch(modelUrl);
             expect(response.ok).toBe(true);
-            expect(response.url).toBe(modelUrl);
+            expect(response.url).toBe(resolvedModelUrl);
+            const resolvedRootUrl = new URL(".", response.url).href;
+            expect(resolvedRootUrl).toBe(rootUrl);
 
-            await new FBXFileLoader().loadAsync(scene, await response.arrayBuffer(), rootUrl, undefined, "model.fbx");
+            await new FBXFileLoader().loadAsync(scene, await response.arrayBuffer(), resolvedRootUrl, undefined, "model.fbx");
 
             const texture = scene.textures[0];
             expect(texture).toBeDefined();
