@@ -37,6 +37,13 @@ jobs:
                     exit 1
                   }
 
+                  # Public upstream reads do not need the fork token or its organization policies.
+                  upstream_api() {
+                    curl --fail --silent --show-error \
+                      -H "Accept: application/vnd.github+json" \
+                      "https://api.github.com/repos/$UPSTREAM_REPOSITORY$1"
+                  }
+
                   [[ -n "$GH_TOKEN" ]] || fail "Set the UPSTREAM_SYNC_TOKEN Actions secret before running this workflow."
                   [[ "$GITHUB_REPOSITORY" == "alexchuber/Babylon.js" && "$TARGET_BRANCH" == "prod" ]] ||
                     fail "Only alexchuber/Babylon.js:prod may be updated."
@@ -51,11 +58,11 @@ jobs:
                     fail "The target repository is not the expected upstream fork."
                   fi
 
-                  upstream_branch=$(gh api "repos/$UPSTREAM_REPOSITORY" --jq '.default_branch')
+                  upstream_branch=$(upstream_api "" | jq -er '.default_branch | select(type == "string" and length > 0)')
                   [[ -n "$upstream_branch" && "$upstream_branch" != "null" ]] ||
                     fail "Upstream did not return a default branch."
                   encoded_branch=$(jq -rn --arg branch "$upstream_branch" '$branch | @uri')
-                  upstream_sha=$(gh api "repos/$UPSTREAM_REPOSITORY/branches/$encoded_branch" --jq '.commit.sha')
+                  upstream_sha=$(upstream_api "/branches/$encoded_branch" | jq -er '.commit.sha')
                   [[ "$upstream_sha" =~ ^[0-9a-f]{40}$ ]] || fail "Upstream did not return a valid commit SHA."
                   gh api "repos/$GITHUB_REPOSITORY/git/commits/$upstream_sha" > /dev/null
 
