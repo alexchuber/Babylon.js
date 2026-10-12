@@ -477,6 +477,15 @@ export class Tools {
      * @returns a promise containing an ArrayBuffer corresponding to the loaded file
      */
     public static async LoadFileAsync(url: string, useArrayBuffer = true): Promise<ArrayBuffer | string> {
+        if (typeof XMLHttpRequest === "undefined" && typeof fetch !== "undefined" && /^https?:\/\//i.test(url)) {
+            const loadUrl = FileToolsOptions.BaseUrl + FileToolsOptions.PreprocessUrl(FileToolsOptions.CleanUrl(url));
+            const response = await WebRequest.FetchAsync(loadUrl);
+            if (!response.ok) {
+                throw new Error(`Failed to load "${loadUrl}": HTTP ${response.status} ${response.statusText}`.trim());
+            }
+            return useArrayBuffer ? await response.arrayBuffer() : await response.text();
+        }
+
         return await new Promise((resolve, reject) => {
             FileToolsLoadFile(
                 url,

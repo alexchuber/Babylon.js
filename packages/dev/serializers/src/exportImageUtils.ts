@@ -3,16 +3,10 @@ import { NullEngine } from "core/Engines/nullEngine";
 import { type BaseTexture } from "core/Materials/Textures/baseTexture";
 import { InternalTextureSource } from "core/Materials/Textures/internalTexture";
 import { type Texture } from "core/Materials/Textures/texture";
-import { FileToolsOptions, GetMimeType } from "core/Misc/fileTools";
+import { GetMimeType } from "core/Misc/fileTools";
 import { Tools } from "core/Misc/tools";
-import { WebRequest } from "core/Misc/webRequest";
 import { type Nullable } from "core/types";
 
-/**
- * Gets the file extension for a supported image MIME type.
- * @param mimeType image MIME type
- * @returns corresponding file extension
- */
 export function GetFileExtensionFromMimeType(mimeType: ImageMimeType): string {
     switch (mimeType) {
         case ImageMimeType.JPEG:
@@ -56,9 +50,8 @@ export async function GetCachedImageAsync(babylonTexture: BaseTexture): Promise<
 
     try {
         if (!buffer) {
-            const loadedImage = await LoadImageAsync(internalTexture.url);
-            data = loadedImage.data;
-            mimeType = loadedImage.mimeType || GetMimeType(internalTexture.url) || mimeType;
+            data = await Tools.LoadFileAsync(internalTexture.url);
+            mimeType = GetMimeType(internalTexture.url) || mimeType;
         } else if (ArrayBuffer.isView(buffer)) {
             data = buffer.buffer.slice(buffer.byteOffset, buffer.byteOffset + buffer.byteLength) as ArrayBuffer;
         } else if (buffer instanceof ArrayBuffer) {
@@ -67,13 +60,11 @@ export async function GetCachedImageAsync(babylonTexture: BaseTexture): Promise<
             data = await buffer.arrayBuffer();
             mimeType = buffer.type || mimeType;
         } else if (typeof buffer === "string") {
-            const loadedImage = await LoadImageAsync(buffer);
-            data = loadedImage.data;
-            mimeType = loadedImage.mimeType || GetMimeType(buffer) || mimeType;
+            data = await Tools.LoadFileAsync(buffer);
+            mimeType = GetMimeType(buffer) || mimeType;
         } else if (typeof HTMLImageElement !== "undefined" && buffer instanceof HTMLImageElement) {
-            const loadedImage = await LoadImageAsync(buffer.src);
-            data = loadedImage.data;
-            mimeType = loadedImage.mimeType || GetMimeType(buffer.src) || mimeType;
+            data = await Tools.LoadFileAsync(buffer.src);
+            mimeType = GetMimeType(buffer.src) || mimeType;
         }
     } catch {
         return null;
@@ -89,20 +80,4 @@ export async function GetCachedImageAsync(babylonTexture: BaseTexture): Promise<
     }
 
     return null;
-}
-
-async function LoadImageAsync(url: string): Promise<{ data: ArrayBuffer; mimeType?: string }> {
-    if (typeof XMLHttpRequest === "undefined" && /^https?:\/\//i.test(url)) {
-        const loadUrl = FileToolsOptions.BaseUrl + FileToolsOptions.PreprocessUrl(FileToolsOptions.CleanUrl(url));
-        const response = await WebRequest.FetchAsync(loadUrl);
-        if (!response.ok) {
-            throw new Error(`Failed to load image "${loadUrl}": HTTP ${response.status} ${response.statusText}`.trim());
-        }
-        return {
-            data: await response.arrayBuffer(),
-            mimeType: response.headers.get("content-type")?.split(";", 1)[0],
-        };
-    }
-
-    return { data: await Tools.LoadFileAsync(url) };
 }
