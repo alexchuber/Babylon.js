@@ -15,7 +15,7 @@ describe("Tools.LoadFileAsync", () => {
     });
 
     it("uses fetch for HTTP URLs when XMLHttpRequest is unavailable", async () => {
-        const expected = new Uint8Array([1, 2, 3]);
+        const expected = "hello";
         const testServer = createServer((_request, response) => response.end(expected));
         server = testServer;
         await new Promise<void>((resolve) => testServer.listen(0, "127.0.0.1", resolve));
@@ -26,7 +26,13 @@ describe("Tools.LoadFileAsync", () => {
         }
 
         expect(typeof XMLHttpRequest).toBe("undefined");
-        const actual = await Tools.LoadFileAsync(`http://127.0.0.1:${address.port}/file.bin`);
-        expect(new Uint8Array(actual)).toEqual(expected);
+        const previousBaseUrl = Tools.BaseUrl;
+        try {
+            Tools.BaseUrl = `http://127.0.0.1:${address.port}/`;
+            expect(new TextDecoder().decode(new Uint8Array(await Tools.LoadFileAsync("file.bin")))).toBe(expected);
+            expect(await Tools.LoadFileAsync("file.txt", false)).toBe(expected);
+        } finally {
+            Tools.BaseUrl = previousBaseUrl;
+        }
     });
 });
