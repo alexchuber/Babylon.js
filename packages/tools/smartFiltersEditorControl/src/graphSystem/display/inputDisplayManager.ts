@@ -5,7 +5,7 @@ import { type INodeData } from "shared-ui-components/nodeGraphSystem/interfaces/
 import * as styles from "../../assets/styles/graphSystem/display/inputDisplayManager.module.scss";
 import { ConnectionPointType, type AnyInputBlock } from "smart-filters";
 import { Color3, Color4 } from "core/Maths/math.color.js";
-import { GetTextureInputBlockEditorData } from "../getEditorData.js";
+import { GetTextureInputBlockEditorData, GetTextureInputBlockUrl } from "../getEditorData.js";
 
 export class InputDisplayManager implements IDisplayManager {
     public getHeaderClass(_nodeData: INodeData) {
@@ -53,6 +53,7 @@ export class InputDisplayManager implements IDisplayManager {
 
     public updatePreviewContent(nodeData: INodeData, contentArea: HTMLDivElement): void {
         let value = "";
+        let previewElement: HTMLElement | undefined;
         const inputBlock = nodeData.data as AnyInputBlock;
 
         switch (inputBlock.type) {
@@ -66,9 +67,17 @@ export class InputDisplayManager implements IDisplayManager {
                 if (inputBlock.editorData?.urlTypeHint === "video") {
                     value = "Video";
                 } else {
-                    const style = GetTextureInputBlockEditorData(inputBlock).flipY === false ? "transform: scaleY(-1); z-index: -1;" : "";
-                    const src = inputBlock.editorData?.url || inputBlock.runtimeValue.value?.getInternalTexture()?.url;
-                    value = src ? `<img src="${src}" style="${style}" class="texture-input-preview"/>` : "";
+                    const src = GetTextureInputBlockUrl(inputBlock);
+                    if (src) {
+                        const image = document.createElement("img");
+                        image.src = src;
+                        image.className = "texture-input-preview";
+                        if (GetTextureInputBlockEditorData(inputBlock).flipY === false) {
+                            image.style.transform = "scaleY(-1)";
+                            image.style.zIndex = "-1";
+                        }
+                        previewElement = image;
+                    }
                 }
                 break;
             }
@@ -76,7 +85,7 @@ export class InputDisplayManager implements IDisplayManager {
                 value = `(${inputBlock.runtimeValue.value.x.toFixed(4)}, ${inputBlock.runtimeValue.value.y.toFixed(4)})`;
         }
 
-        contentArea.innerHTML = value;
+        contentArea.replaceChildren(previewElement ?? value);
         contentArea.classList.add(styles["input-block"]!);
     }
 }

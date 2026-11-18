@@ -6,7 +6,10 @@ import * as chokidar from "chokidar";
 import { type DevPackageName } from "./packageMapping.js";
 import { BuildShader } from "./buildShaders.js";
 
+const EscapeRegExp = (value: string) => value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+
 const ProcessFile = (file: string, options: { isCore?: boolean; basePackageName?: DevPackageName; pathPrefix?: string; outputDir?: string } = {}) => {
+    file = file.replace(/\\/g, "/");
     if (!options.outputDir) {
         options.outputDir = "dist";
     }
@@ -14,7 +17,7 @@ const ProcessFile = (file: string, options: { isCore?: boolean; basePackageName?
         BuildShader(file, options.basePackageName, options.isCore);
     } else {
         if (options.pathPrefix) {
-            const regex = new RegExp(`${options.pathPrefix.replace(/\//g, "\\/")}src([/\\\\])`);
+            const regex = new RegExp(`${EscapeRegExp(options.pathPrefix)}src([/\\\\])`);
             copyFile(file, file.replace(regex, `${options.outputDir}$1`), true, true);
         } else {
             copyFile(file, file.replace(/src([/\\])/, `${options.outputDir}$1`), true, true);
@@ -27,7 +30,7 @@ export const processAssets = (options: { extensions: string[] } = { extensions: 
     const global = checkArgs("--global", true);
     const fileTypes = checkArgs(["--file-types", "-ft"], false, true);
     const extensions = fileTypes && typeof fileTypes === "string" ? fileTypes.split(",") : options.extensions;
-    const pathPrefix = (checkArgs("--path-prefix", false, true) as string) || "";
+    const pathPrefix = ((checkArgs("--path-prefix", false, true) as string) || "").replace(/\\/g, "/");
     const globDirectory = global ? `./packages/**/*/src/**/*.+(${extensions.join("|")})` : pathPrefix + `src/**/*.+(${extensions.join("|")})`;
     const isCore = !!checkArgs("--isCore", true);
     const outputDir = checkArgs(["--output-dir"], false, true) as string;
@@ -44,9 +47,20 @@ export const processAssets = (options: { extensions: string[] } = { extensions: 
     console.log(`Processing assets from ${globDirectory}`);
 
     if (checkArgs("--watch", true)) {
+        const matchesAsset = (file: string) => {
+            const segments = file.replace(/\\/g, "/").split("/");
+            return (!global || segments.includes("src")) && extensions.includes(path.extname(file).slice(1));
+        };
         // support windows path with "\\" instead of "/"
         chokidar
-            .watch(globDirectory, {
+            .watch(global ? "./packages" : pathPrefix + "src", {
+                ignored: (file, stats) => {
+                    const segments = file.replace(/\\/g, "/").split("/");
+                    if (!segments.includes("src") && (segments.includes("node_modules") || segments.includes("dist"))) {
+                        return true;
+                    }
+                    return !!stats?.isFile() && !matchesAsset(file);
+                },
                 ignoreInitial: false,
                 awaitWriteFinish: {
                     stabilityThreshold: 1000,
@@ -58,7 +72,7 @@ export const processAssets = (options: { extensions: string[] } = { extensions: 
             })
             .on("all", (event, file) => {
                 // don't track directory changes
-                if (event === "addDir" || event === "unlinkDir" || event === "unlink") {
+                if ((event !== "add" && event !== "change") || !matchesAsset(file)) {
                     return;
                 }
                 let verb: string;
@@ -81,11 +95,11 @@ export const processAssets = (options: { extensions: string[] } = { extensions: 
                     }
                 }
             })
-            .on("error", (error: NodeJS.ErrnoException) => {
-                if (error.code === "ENOENT") {
-                    verbose && console.log(`Watcher target no longer exists: ${error.path}`);
+            .on("error", (error: unknown) => {
+                if (error instanceof Error && "code" in error && error.code === "ENOENT") {
+                    verbose && console.log(`Watcher target no longer exists: ${"path" in error ? error.path : error.message}`);
                 } else {
-                    console.error("Watcher error:", error.message);
+                    console.error("Watcher error:", error instanceof Error ? error.message : error);
                 }
             });
         console.log("watching for asset changes...");
@@ -93,7 +107,7 @@ export const processAssets = (options: { extensions: string[] } = { extensions: 
         globSync(globDirectory, {
             windowsPathsNoEscape: true,
         }).forEach((file) => {
-            ProcessFile(file.replace(/\\/g, "/"), processOptions);
+            ProcessFile(file, processOptions);
         });
     }
 };

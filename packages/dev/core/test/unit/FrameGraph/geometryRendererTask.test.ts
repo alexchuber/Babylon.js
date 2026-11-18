@@ -4,13 +4,17 @@ import "core/Meshes/instancedMesh";
 import "core/Meshes/thinInstanceMesh";
 import "core/Shaders/default.fragment";
 import "core/Shaders/default.vertex";
+import "core/Shaders/geometry.fragment";
+import "core/Shaders/geometry.vertex";
 import { objectIdFunctions } from "core/Shaders/ShadersInclude/objectIdFunctions";
 import { FreeCamera } from "core/Cameras/freeCamera";
 import { Constants } from "core/Engines/constants";
 import { NullEngine } from "core/Engines/nullEngine";
+import { RenderTargetWrapper } from "core/Engines/renderTargetWrapper";
 import { FrameGraph } from "core/FrameGraph/frameGraph";
 import { FrameGraphGeometryRendererTask } from "core/FrameGraph/Tasks/Rendering/geometryRendererTask";
 import { StandardMaterial } from "core/Materials/standardMaterial";
+import { InternalTexture, InternalTextureSource } from "core/Materials/Textures/internalTexture";
 import { _GetGeometryRenderingMeshBlendTag, _GetGeometryRenderingObjectId, MaterialHelperGeometryRendering } from "core/Materials/materialHelper.geometryrendering";
 import { Matrix, Vector3 } from "core/Maths/math.vector";
 import { Mesh } from "core/Meshes/mesh";
@@ -18,6 +22,8 @@ import { MeshBuilder } from "core/Meshes/meshBuilder";
 import { Scene } from "core/scene";
 import { type Effect } from "core/Materials/effect";
 import { OutlineRenderer } from "core/Rendering/outlineRenderer";
+import { GeometryBufferRenderer } from "core/Rendering/geometryBufferRenderer";
+import { PrePassRenderer } from "core/Rendering/prePassRenderer";
 import { type SubMesh } from "core/Meshes/subMesh";
 
 describe("FrameGraphGeometryRendererTask object IDs", () => {
@@ -382,6 +388,179 @@ describe("FrameGraphGeometryRendererTask attachment routing", () => {
     });
 });
 
+describe("FrameGraphGeometryRendererTask previous world matrices", () => {
+    let engine: NullEngine;
+    let scene: Scene;
+    let camera: FreeCamera;
+
+    beforeEach(() => {
+        engine = new NullEngine();
+        engine.getCaps().maxDrawBuffers = 8;
+        engine.getCaps().drawBuffersExtension = true;
+        vi.spyOn(engine, "buildTextureLayout").mockImplementation((enabled) => enabled.map((value, index) => (value ? index + 1 : 0)));
+        vi.spyOn(engine, "createMultipleRenderTarget").mockImplementation((size, options) => {
+            const target = new RenderTargetWrapper(true, false, size, engine);
+            target.setTextures(
+                Array.from({ length: options.textureCount + (options.generateDepthTexture ? 1 : 0) }, () => new InternalTexture(engine, InternalTextureSource.MultiRenderTarget))
+            );
+            return target;
+        });
+        scene = new Scene(engine);
+        camera = new FreeCamera("camera", new Vector3(0, 0, -5), scene);
+    });
+
+    afterEach(() => {
+        scene.dispose();
+        engine.dispose();
+    });
+
+    const createGraph = (textureTypes: number[]) => {
+        const frameGraph = new FrameGraph(scene);
+        const tasks = textureTypes.map((type, index) => {
+            const task = new FrameGraphGeometryRendererTask(`geometry${index}`, frameGraph, scene);
+            task.camera = camera;
+            task.objectList = { meshes: [], particleSystems: [] };
+            task.textureDescriptions = [{ type, textureType: Constants.TEXTURETYPE_HALF_FLOAT, textureFormat: Constants.TEXTUREFORMAT_RGBA }];
+            frameGraph.addTask(task);
+            vi.spyOn(task, "_initializePasses").mockImplementation(() => {});
+            return task;
+        });
+        vi.spyOn(frameGraph.textureManager, "_allocateTextures").mockImplementation(() => {});
+        return { frameGraph, tasks };
+    };
+
+    it.each([
+        [Constants.PREPASS_VELOCITY_TEXTURE_TYPE, Constants.PREPASS_NORMAL_TEXTURE_TYPE],
+        [Constants.PREPASS_NORMAL_TEXTURE_TYPE, Constants.PREPASS_VELOCITY_TEXTURE_TYPE],
+        [Constants.PREPASS_VELOCITY_LINEAR_TEXTURE_TYPE, Constants.PREPASS_NORMAL_TEXTURE_TYPE],
+        [Constants.PREPASS_NORMAL_TEXTURE_TYPE, Constants.PREPASS_VELOCITY_LINEAR_TEXTURE_TYPE],
+    ])("keeps previous matrices with texture types %i and %i", async (firstType, secondType) => {
+        const { frameGraph, tasks } = createGraph([firstType, secondType]);
+
+        await frameGraph.buildAsync(false);
+        expect(scene.needsPreviousWorldMatrices).toBe(true);
+
+        tasks[0].textureDescriptions[0].type = Constants.PREPASS_NORMAL_TEXTURE_TYPE;
+        tasks[1].textureDescriptions[0].type = Constants.PREPASS_NORMAL_TEXTURE_TYPE;
+        await frameGraph.buildAsync(false);
+        expect(scene.needsPreviousWorldMatrices).toBe(false);
+    });
+
+    it("keeps previous matrices while another frame graph still requests velocity", async () => {
+        const { frameGraph: velocityGraph } = createGraph([Constants.PREPASS_VELOCITY_TEXTURE_TYPE]);
+        const { frameGraph: otherGraph } = createGraph([Constants.PREPASS_NORMAL_TEXTURE_TYPE]);
+
+        await velocityGraph.buildAsync(false);
+        await otherGraph.buildAsync(false);
+        expect(scene.needsPreviousWorldMatrices).toBe(true);
+
+        otherGraph.clear();
+        expect(scene.needsPreviousWorldMatrices).toBe(true);
+
+        velocityGraph.dispose();
+        expect(scene.needsPreviousWorldMatrices).toBe(false);
+    });
+
+    it("preserves a geometry buffer renderer's linear velocity request across graph builds and clears", async () => {
+        const geometryBuffer = new GeometryBufferRenderer(scene);
+        const { frameGraph, tasks } = createGraph([Constants.PREPASS_NORMAL_TEXTURE_TYPE]);
+
+        try {
+            geometryBuffer.enableVelocityLinear = true;
+            expect(scene.needsPreviousWorldMatrices).toBe(true);
+
+            await frameGraph.buildAsync(false);
+            frameGraph.clear();
+            expect(scene.needsPreviousWorldMatrices).toBe(true);
+
+            geometryBuffer.enableNormal = false;
+            expect(scene.needsPreviousWorldMatrices).toBe(true);
+
+            tasks[0].textureDescriptions[0].type = Constants.PREPASS_VELOCITY_TEXTURE_TYPE;
+            frameGraph.addTask(tasks[0]);
+            await frameGraph.buildAsync(false);
+            geometryBuffer.enableVelocityLinear = false;
+            expect(scene.needsPreviousWorldMatrices).toBe(true);
+
+            frameGraph.clear();
+            expect(scene.needsPreviousWorldMatrices).toBe(false);
+        } finally {
+            geometryBuffer.dispose();
+        }
+    });
+
+    it("preserves a pre-pass velocity request when a later effect does not need velocity", async () => {
+        const renderer = new PrePassRenderer(scene);
+        const material = new StandardMaterial("pre-pass material", scene);
+        const velocityEffect = renderer.addEffectConfiguration({ name: "velocity", texturesRequired: [Constants.PREPASS_VELOCITY_TEXTURE_TYPE], enabled: false });
+        const normalEffect = renderer.addEffectConfiguration({ name: "normal", texturesRequired: [Constants.PREPASS_NORMAL_TEXTURE_TYPE], enabled: false });
+        const { frameGraph } = createGraph([Constants.PREPASS_NORMAL_TEXTURE_TYPE]);
+        let velocityEnabled = true;
+        vi.spyOn(material, "setPrePassRenderer").mockImplementation(() => {
+            velocityEffect.enabled = velocityEnabled;
+            normalEffect.enabled = true;
+            return true;
+        });
+
+        try {
+            renderer.update();
+            expect(scene.needsPreviousWorldMatrices).toBe(true);
+
+            await frameGraph.buildAsync(false);
+            frameGraph.clear();
+            expect(scene.needsPreviousWorldMatrices).toBe(true);
+
+            velocityEnabled = false;
+            renderer.markAsDirty();
+            renderer.update();
+            expect(scene.needsPreviousWorldMatrices).toBe(false);
+
+            velocityEnabled = true;
+            renderer.markAsDirty();
+            renderer.update();
+            expect(scene.needsPreviousWorldMatrices).toBe(true);
+        } finally {
+            renderer.dispose();
+        }
+        expect(scene.needsPreviousWorldMatrices).toBe(false);
+    });
+
+    it("keeps a manual requirement independent of frame graph requests", async () => {
+        const { frameGraph } = createGraph([Constants.PREPASS_VELOCITY_TEXTURE_TYPE]);
+        scene.needsPreviousWorldMatrices = true;
+        await frameGraph.buildAsync(false);
+
+        scene.needsPreviousWorldMatrices = false;
+        expect(scene.needsPreviousWorldMatrices).toBe(true);
+
+        scene.needsPreviousWorldMatrices = true;
+        frameGraph.clear();
+        expect(scene.needsPreviousWorldMatrices).toBe(true);
+
+        scene.needsPreviousWorldMatrices = false;
+        expect(scene.needsPreviousWorldMatrices).toBe(false);
+    });
+
+    it("clears previous matrix requests when the frame graph is cleared or fails to build", async () => {
+        const { frameGraph, tasks } = createGraph([Constants.PREPASS_VELOCITY_LINEAR_TEXTURE_TYPE, Constants.PREPASS_NORMAL_TEXTURE_TYPE]);
+
+        await frameGraph.buildAsync(false);
+        expect(scene.needsPreviousWorldMatrices).toBe(true);
+
+        frameGraph.clear();
+        expect(scene.needsPreviousWorldMatrices).toBe(false);
+
+        frameGraph.addTask(tasks[0]);
+        frameGraph.addTask(tasks[1]);
+        tasks[1].samples = 2;
+        tasks[1].textureDescriptions = [
+            { type: Constants.PREPASS_OBJECT_ID_TEXTURE_TYPE, textureType: Constants.TEXTURETYPE_UNSIGNED_BYTE, textureFormat: Constants.TEXTUREFORMAT_RGBA },
+        ];
+        await expect(frameGraph.buildAsync(false)).rejects.toThrow("object ID textures currently require samples to be 1");
+        expect(scene.needsPreviousWorldMatrices).toBe(false);
+    });
+});
+
 describe("FrameGraphGeometryRendererTask mesh-blending tags", () => {
     let engine: NullEngine;
     let scene: Scene;
@@ -448,13 +627,23 @@ describe("FrameGraphGeometryRendererTask mesh-blending tags", () => {
         expect(() => (task as any)._checkParameters()).toThrow("mesh-blending tag textures require WebGL2 or WebGPU");
     });
 
-    it("rejects Native even though it reports a WebGL2-compatible version", () => {
+    it("rejects Native when the runtime does not support mesh blending", () => {
         engine._webGLVersion = 2;
         (engine as any)._shaderPlatformName = "NATIVE";
         const { task } = createTask();
         task.textureDescriptions = [meshBlendTagDescription];
 
         expect(() => (task as any)._checkParameters()).toThrow("mesh-blending tag textures require WebGL2 or WebGPU");
+    });
+
+    it("allows transparent mesh-blending tags on Native without per-target blend parameters", () => {
+        (engine as any)._shaderPlatformName = "NATIVE";
+        engine._features.supportMeshBlending = true;
+        const { task } = createTask();
+        task.renderTransparentMeshes = true;
+        task.textureDescriptions = [meshBlendTagDescription];
+
+        expect(() => (task as any)._checkParameters()).not.toThrow();
     });
 
     it("requires per-target blend parameters for transparent mesh-blending tags on WebGL2", () => {

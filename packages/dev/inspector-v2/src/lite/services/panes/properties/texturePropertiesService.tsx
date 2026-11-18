@@ -1,45 +1,72 @@
-import { type Texture2D } from "@babylonjs/lite";
-import { type FunctionComponent } from "react";
+import { getTextureMetadata, type CubeTexture, type Texture2D } from "@babylonjs/lite";
+import { createElement, type FunctionComponent } from "react";
 
-import { BooleanBadgePropertyLine } from "shared-ui-components/fluent/hoc/propertyLines/booleanBadgePropertyLine";
-import { StringifiedPropertyLine } from "shared-ui-components/fluent/hoc/propertyLines/stringifiedPropertyLine";
+import { MakeLazyComponent } from "shared-ui-components/fluent/primitives/lazyComponent";
 import { type ServiceDefinition } from "shared-ui-components/modularTool/modularity/serviceDefinition";
 
 import { type IPropertiesService, PropertiesServiceIdentity } from "../../../../services/panes/properties/propertiesService";
+import { type ISelectionService, SelectionServiceIdentity } from "../../../../services/selectionService";
+import { type IEngineContext, EngineContextIdentity } from "../../../engineContext";
+import { type ISceneResourceIndexService, SceneResourceIndexServiceIdentity } from "../scene/sceneResourceIndexService";
+import { type ITextureEditorService, TextureEditorServiceIdentity } from "../../../../services/textureEditor/textureEditorService";
 
-function IsTexture2D(entity: unknown): entity is Texture2D {
+const TextureMetadataProperties = MakeLazyComponent(async () => (await import("./textureMetadataProperties")).TextureMetadataProperties, {
+    spinnerLabel: "Loading texture metadata",
+});
+const TexturePreviewProperties = MakeLazyComponent(async () => (await import("./texturePreviewProperties")).TexturePreviewProperties, {
+    spinnerLabel: "Loading texture preview",
+});
+
+function TryGetTextureMetadata(entity: unknown): entity is Texture2D | CubeTexture {
     if (typeof entity !== "object" || entity === null) {
         return false;
     }
-
-    const texture = entity as Partial<Texture2D>;
-    return typeof texture.width === "number" && typeof texture.height === "number" && texture.texture !== undefined && texture.view !== undefined && texture.sampler !== undefined;
+    try {
+        return getTextureMetadata(entity) !== undefined;
+    } catch {
+        return false;
+    }
 }
 
-const TextureProperties: FunctionComponent<{ texture: Texture2D }> = (props) => {
-    const { texture } = props;
-
-    return (
-        <>
-            <StringifiedPropertyLine label="Width" value={texture.width} units="px" />
-            <StringifiedPropertyLine label="Height" value={texture.height} units="px" />
-            <BooleanBadgePropertyLine label="Invert Y" value={texture.invertY ?? false} />
-        </>
-    );
-};
-
-export const TexturePropertiesServiceDefinition: ServiceDefinition<[], [IPropertiesService]> = {
-    friendlyName: "Babylon Lite Texture Properties",
-    consumes: [PropertiesServiceIdentity],
-    factory: (propertiesService) =>
-        propertiesService.addSectionContent({
-            key: "Babylon Lite Texture Properties",
-            predicate: IsTexture2D,
-            content: [
-                {
-                    section: "General",
-                    component: ({ context }) => <TextureProperties texture={context} />,
+export const TexturePropertiesServiceDefinition: ServiceDefinition<[], [IPropertiesService, ISceneResourceIndexService, ISelectionService, IEngineContext, ITextureEditorService]> =
+    {
+        friendlyName: "Babylon Lite Texture Properties",
+        consumes: [PropertiesServiceIdentity, SceneResourceIndexServiceIdentity, SelectionServiceIdentity, EngineContextIdentity, TextureEditorServiceIdentity],
+        factory: (propertiesService, resourceIndexService, selectionService, engineContext, textureEditorService) => {
+            const recognizedTextures = new WeakSet<object>();
+            return propertiesService.addSectionContent({
+                key: "Babylon Lite Texture Properties",
+                predicate: (entity: unknown): entity is Texture2D | CubeTexture => {
+                    if (typeof entity !== "object" || entity === null) {
+                        return false;
+                    }
+                    if (TryGetTextureMetadata(entity) || resourceIndexService.getTextureRecord(entity)) {
+                        recognizedTextures.add(entity);
+                        return true;
+                    }
+                    return recognizedTextures.has(entity);
                 },
-            ],
-        }),
-};
+                content: [
+                    {
+                        section: "Preview",
+                        component: ((props) => {
+                            const { context } = props;
+                            return createElement(TexturePreviewProperties, {
+                                texture: context,
+                                engine: engineContext.engine,
+                                resourceIndexService,
+                                textureEditor: textureEditorService.component,
+                            });
+                        }) satisfies FunctionComponent<{ context: Texture2D | CubeTexture }>,
+                    },
+                    {
+                        section: "General",
+                        component: ((props) => {
+                            const { context } = props;
+                            return createElement(TextureMetadataProperties, { texture: context, resourceIndexService, selectionService });
+                        }) satisfies FunctionComponent<{ context: Texture2D | CubeTexture }>,
+                    },
+                ],
+            });
+        },
+    };

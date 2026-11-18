@@ -65,6 +65,11 @@ export const HelpTopics: IHelpTopic[] = [
 <p>If the playground builds its flow graph from a snippet (e.g. <code>ParseFlowGraphCoordinatorFromSnippetAsync</code>), that flow graph is automatically opened in the editor for editing. Saving it to the snippet server then publishes a new version of that same snippet.</p>`,
             },
             {
+                heading: "Loading a Scene from File",
+                html: `<p>Drop a <code>.glb</code>, <code>.gltf</code>, or <code>.babylon</code> file onto the <strong>Scene Preview</strong> pane. For files that reference separate buffers or textures, drop all files together.</p>
+<p>The preview preserves the scene's active camera, or selects its first imported camera if none is active. A default orbit camera is created only when the scene has no camera. If loading fails, the previous preview remains available.</p>`,
+            },
+            {
                 heading: "Saving and Loading Graphs",
                 html: `<ul>
 <li><b>Save to file</b> — Downloads a <code>flowGraph.json</code> file to your machine.</li>
@@ -150,6 +155,7 @@ export const HelpTopics: IHelpTopic[] = [
 <li><b>Block execution highlighting</b> — Blocks flash with a green glow when they execute.</li>
 <li><b>Port activity</b> — Input ports that received data and output ports that fired glow green.</li>
 <li><b>Flow animation</b> — Traveling dots animate along connections when signals fire or data flows, showing the direction and timing of execution.</li>
+<li><b>Event log</b> — The Log panel records which event fired and which blocks ran. Click an entry to navigate to that block.</li>
 </ul>
 <p><em>Debug mode adds some overhead. It throttles visual updates to 100ms per node to keep the editor responsive.</em></p>`,
             },
@@ -248,7 +254,7 @@ export const HelpTopics: IHelpTopic[] = [
             {
                 heading: "Live Validation",
                 html: `<p>Click the <b>Live Validation</b> toggle (⚡) to enable automatic validation whenever the graph changes. Validation runs on a debounced schedule so it doesn't slow down editing.</p>
-<p>Validation issues include the block name, severity (error/warning), and a descriptive message.</p>`,
+<p>Validation issues include the block name, severity (error/warning), and a descriptive message. Unsupported imported KHR_interactivity operations and diagnostics from failed KHR exports are also surfaced here.</p>`,
             },
         ],
     },
@@ -473,7 +479,8 @@ export const HelpTopics: IHelpTopic[] = [
             },
             {
                 heading: "Exporting KHR_interactivity",
-                html: `<p>Use <strong>Export KHR glTF</strong> or <strong>Export KHR GLB</strong> to export an imported graph set. For an imported <code>.glb</code>, <strong>Export KHR GLB</strong> saves representable graph edits into the retained source document without rewriting unrelated scene data or binary chunks. The glTF and Babylon-specific scene export actions are unavailable for that source-preserving path. The editor validates every logical node and imported composite before export and reports edits that cannot be represented.</p>
+                html: `<p>Use <strong>Export KHR glTF</strong> or <strong>Export KHR GLB</strong> to save graph edits, choosing the output format. For an asset loaded into the preview, both actions patch its retained source document rather than rebuild the scene. Unrelated asset data and original entity indices are preserved, including extension-backed pointers, computed pointer roots, and imported compatibility connections. Literal entity references are checked against the retained source collections. The editor validates every logical node and imported composite and reports edits that cannot be represented.</p>
+<p>This exports graph edits, not changes to preview geometry, materials, or scene hierarchy. External resources must remain available at their original referenced paths. Converting GLB to glTF embeds its binary buffer; GLBs containing additional binary chunks must remain GLB. Converting glTF to GLB preserves existing resource URIs rather than packing companion files.</p>
 <p>Imported multi-block operations must remain structurally intact. Unknown operations supplied by additional glTF extensions remain typed no-op blocks and round-trip without claiming runtime support.</p>
 <p><strong>Export BABYLON_flow_graph GLB</strong> remains a separate Babylon-specific option for ordinary Flow Graph JSON. It does not emit <code>KHR_interactivity</code>.</p>`,
             },
@@ -492,8 +499,10 @@ export const HelpTopics: IHelpTopic[] = [
 <li><strong>Animation Patterns</strong> — Lerp Animation</li>
 <li><strong>Communication</strong> — Custom Event Bridge</li>
 <li><strong>glTF Interactivity</strong> — Get → Set Property, Get → Set Variable</li>
+<li><strong>Reactions</strong> — Pick → Play Sound, Intersection → Play Sound, Add Reaction to Existing Event</li>
 </ul>
-<p>After dropping a template, each block can be configured individually in the property panel.</p>`,
+<p>Reaction templates create ordinary editable blocks. Select meshes, a coordinator sound asset name, or an existing custom event id in the normal property panel, then continue rewiring the graph as needed.</p>
+<p>Use the <strong>Sound Assets</strong> section of the property panel to import, preview, replace, or remove embedded audio. Replacing an asset keeps its name, so block references remain valid. Sound assets are included in file and snippet saves.</p>`,
             },
         ],
     },

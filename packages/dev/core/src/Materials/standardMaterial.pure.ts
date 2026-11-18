@@ -26,7 +26,7 @@ import { type RenderTargetTexture } from "../Materials/Textures/renderTargetText
 import { MaterialFlags } from "./materialFlags";
 import { Constants } from "../Engines/constants";
 import { EffectFallbacks } from "./effectFallbacks";
-import { type Effect, type IEffectCreationOptions } from "./effect.pure";
+import { type IEffectCreationOptions } from "./effect.pure";
 import { DetailMapConfiguration } from "./material.detailMapConfiguration";
 import { AddClipPlaneUniforms, BindClipPlane } from "./clipPlaneMaterialHelper";
 import { PrepareVertexPullingUniforms, BindVertexPullingUniforms, type IVertexPullingMetadata } from "./vertexPullingHelper.functions";
@@ -67,8 +67,6 @@ import { ImageProcessingMixin } from "./imageProcessing";
 import { RegisterClass } from "../Misc/typeStore";
 
 /* eslint-disable @typescript-eslint/naming-convention */
-
-const onCreatedEffectParameters = { effect: null as unknown as Effect, subMesh: null as unknown as Nullable<SubMesh> };
 
 class StandardMaterialDefinesBase extends PrepassDefinesMixin(UVDefinesMixin(MaterialDefines)) {}
 
@@ -150,6 +148,7 @@ export class StandardMaterialDefines extends ImageProcessingDefinesMixin(Standar
     public REFRACTIONMAP_3D = false;
     public REFLECTIONOVERALPHA = false;
     public TWOSIDEDLIGHTING = false;
+    public SKIP_OUT_OF_RANGE_LIGHTING = false;
     public SHADOWFLOAT = false;
     public MORPHTARGETS = false;
     public MORPHTARGETS_POSITION = false;
@@ -534,6 +533,16 @@ export class StandardMaterial extends StandardMaterialBase {
     @expandToProperty("_markAllSubMeshesAsLightsDirty")
     public accessor maxSimultaneousLights: number;
 
+    @serialize("skipOutOfRangeLighting")
+    private _skipOutOfRangeLighting = false;
+    /**
+     * If set to true, point and spot lights skip their lighting computations for fragments beyond the light range, where they
+     * contribute nothing. Only lights with a finite range are affected. The extra per-fragment test costs time when most fragments
+     * are within range of most lights, so only enable it for sparse lighting measured on the target devices (default: false).
+     */
+    @expandToProperty("_markAllSubMeshesAsLightsDirty")
+    public accessor skipOutOfRangeLighting: boolean;
+
     @serialize("invertNormalMapX")
     private _invertNormalMapX = false;
     /**
@@ -751,6 +760,7 @@ export class StandardMaterial extends StandardMaterialBase {
 
         // Lights
         defines._needNormals = PrepareDefinesForLights(scene, mesh, defines, true, this._maxSimultaneousLights, this._disableLighting);
+        defines.SKIP_OUT_OF_RANGE_LIGHTING = this._skipOutOfRangeLighting;
 
         if (!AreLightsTexturesReady(scene, mesh, this._maxSimultaneousLights, this._disableLighting)) {
             return false;
@@ -1279,11 +1289,7 @@ export class StandardMaterial extends StandardMaterialBase {
             this._eventInfo.customCode = undefined;
 
             if (effect) {
-                if (this._onEffectCreatedObservable) {
-                    onCreatedEffectParameters.effect = effect;
-                    onCreatedEffectParameters.subMesh = subMesh;
-                    this._onEffectCreatedObservable.notifyObservers(onCreatedEffectParameters);
-                }
+                this._notifyEffectCreated(effect, subMesh);
 
                 // Use previous effect while new one is compiling
                 if (this.allowShaderHotSwapping && previousEffect && !effect.isReady()) {
@@ -1832,7 +1838,7 @@ export class StandardMaterial extends StandardMaterialBase {
     /**
      * Makes a duplicate of the material, and gives it a new name
      * @param name defines the new name for the duplicated material
-     * @param cloneTexturesOnlyOnce - if a texture is used in more than one channel (e.g diffuse and opacity), only clone it once and reuse it on the other channels. Default false.
+     * @param cloneTexturesOnlyOnce - if a texture is used in more than one channel (e.g diffuse and opacity), only clone it once and reuse it on the other channels. Default true.
      * @param rootUrl defines the root URL to use to load textures
      * @returns the cloned material
      */

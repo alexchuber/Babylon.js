@@ -61,6 +61,7 @@ export interface IFlowGraphBlockTypeInfo {
  * They require source-asset metadata and have no meaningful standalone construction contract.
  */
 export const FlowGraphImportOnlyBlockClassNames = [
+    "FlowGraphDelayReferenceBlock",
     "FlowGraphEventReferenceBlock",
     "FlowGraphGLTFDataProvider",
     "FlowGraphObjectReferenceBlock",
@@ -112,6 +113,7 @@ export const FlowGraphBlockRegistry: Record<string, IFlowGraphBlockTypeInfo> = {
                 description: "KHR_interactivity event reference for this lifecycle event (stable string ref usable with ref/extractProperty and event equality)",
             },
         ],
+        config: { useFirstTickAsStart: "boolean — start elapsed time at the first tick and leave its delta NaN (default: false)" },
     },
 
     MeshPickEvent: {
@@ -138,6 +140,30 @@ export const FlowGraphBlockRegistry: Record<string, IFlowGraphBlockTypeInfo> = {
             stopPropagation: "boolean — whether to stop event propagation",
             targetMesh: "AbstractMesh reference — default target mesh",
         },
+    },
+
+    MeshIntersectionEvent: {
+        className: "FlowGraphMeshIntersectionEventBlock",
+        category: "Event",
+        description:
+            "Triggers when a source mesh starts or stops intersecting one of the target meshes. Uses bounding volumes checked before each frame, so no physics engine is required.",
+        signalInputs: [],
+        signalOutputs: [
+            { name: "out", description: "Fires on every enter and exit transition. Prefer onEnter / onExit." },
+            { name: "done", description: "Fires on every enter and exit transition. Prefer onEnter / onExit." },
+            { name: "error" },
+            { name: "onEnter", description: "Fires when a target mesh starts intersecting the source mesh. USE THIS for contact logic." },
+            { name: "onExit", description: "Fires when a target mesh stops intersecting the source mesh." },
+        ],
+        dataInputs: [
+            { name: "sourceMesh", type: "any", description: "The mesh to check for intersections" },
+            { name: "targetMeshes", type: "any", description: "A mesh or an array of meshes checked against the source mesh" },
+            { name: "usePreciseIntersection", type: "boolean", description: "Use oriented bounding boxes instead of axis-aligned ones (default: false)" },
+        ],
+        dataOutputs: [
+            { name: "otherMesh", type: "any", description: "The target mesh that entered or exited" },
+            { name: "isIntersecting", type: "boolean", description: "True for an enter transition, false for an exit" },
+        ],
     },
 
     PointerOverEvent: {
@@ -316,7 +342,7 @@ export const FlowGraphBlockRegistry: Record<string, IFlowGraphBlockTypeInfo> = {
             { name: "done", description: "Fires each time the sound ends. USE THIS for sound-ended logic." },
             { name: "error" },
         ],
-        dataInputs: [{ name: "sound", type: "any", description: "The sound to watch" }],
+        dataInputs: [{ name: "sound", type: "any", description: "The sound to watch (an Audio V2 sound or the name of a coordinator sound asset)" }],
         dataOutputs: [],
     },
 
@@ -406,6 +432,7 @@ export const FlowGraphBlockRegistry: Record<string, IFlowGraphBlockTypeInfo> = {
         config: {
             propertyName: "string — the property name to set",
             target: "any — default target object",
+            stopOnError: "boolean — activate only error on a failed write (default: false)",
         },
     },
 
@@ -420,6 +447,8 @@ export const FlowGraphBlockRegistry: Record<string, IFlowGraphBlockTypeInfo> = {
         config: {
             variable: "string — the variable name to set (mutually exclusive with 'variables')",
             variables: "string[] — multiple variable names to set (creates one input per name)",
+            evaluateInputsBeforeWrite: "boolean — evaluate all inputs before any variable is written (default: false)",
+            cancelVariableAnimations: "boolean — cancel animations targeting the user-variable dictionary without firing done (default: false)",
         },
     },
 
@@ -532,6 +561,7 @@ export const FlowGraphBlockRegistry: Record<string, IFlowGraphBlockTypeInfo> = {
         signalOutputs: [{ name: "out" }, { name: "error" }],
         dataInputs: [{ name: "delayIndex", type: "FlowGraphInteger", description: "Index of the delay to cancel" }],
         dataOutputs: [],
+        config: { ignoreInvalidDelay: "boolean — ignore invalid indices while still activating out (default: false)" },
     },
 
     CallCounter: {
@@ -562,6 +592,7 @@ export const FlowGraphBlockRegistry: Record<string, IFlowGraphBlockTypeInfo> = {
         signalOutputs: [{ name: "out" }, { name: "error" }],
         dataInputs: [{ name: "duration", type: "number", description: "Minimum time between executions (seconds)" }],
         dataOutputs: [{ name: "lastRemainingTime", type: "number", description: "Time remaining until next allowed execution" }],
+        config: { allowZeroDuration: "boolean — accept a zero duration and always activate out (default: false)" },
     },
 
     DoN: {
@@ -610,6 +641,7 @@ export const FlowGraphBlockRegistry: Record<string, IFlowGraphBlockTypeInfo> = {
             { name: "to", type: "number", description: "End frame (default 0 = full range)" },
             { name: "animationGroup", type: "any", description: "AnimationGroup to play" },
             { name: "animation", type: "any", description: "Animation or Animation[] to play", isOptional: true },
+            { name: "animationTargets", type: "any", description: "Optional target array matching animation order; replaces object when supplied", isOptional: true },
             { name: "object", type: "any", description: "Target object for the animation", isOptional: true },
         ],
         dataOutputs: [
@@ -739,6 +771,7 @@ export const FlowGraphBlockRegistry: Record<string, IFlowGraphBlockTypeInfo> = {
             propertyName: "string — property path to read",
             object: "any — default target object",
             resetToDefaultWhenUndefined: "boolean — reset to default when undefined",
+            invalidValue: "any — optional value returned with isValid=false when property resolution fails",
         },
     },
 
@@ -803,8 +836,12 @@ export const FlowGraphBlockRegistry: Record<string, IFlowGraphBlockTypeInfo> = {
             { name: "setFunction", type: "any", description: "Setter function for the resolved property (used internally by interpolation/animation)" },
             { name: "getFunction", type: "any", description: "Getter function for the resolved property" },
             { name: "generateAnimationsFunction", type: "any", description: "Builds animation property info for the resolved property" },
+            { name: "animationTargets", type: "any", description: "Targets in the same order as the generated animations" },
         ],
-        config: { jsonPointer: "string — the JSON pointer path" },
+        config: {
+            jsonPointer: "string — the JSON pointer path",
+            valueType: "string — require a writable accessor with this value type when setting a property",
+        },
     },
 
     DataSwitch: {
@@ -1896,7 +1933,7 @@ export const FlowGraphBlockRegistry: Record<string, IFlowGraphBlockTypeInfo> = {
         signalInputs: [{ name: "in" }],
         signalOutputs: [{ name: "out" }, { name: "error" }],
         dataInputs: [
-            { name: "sound", type: "any", description: "The sound to play" },
+            { name: "sound", type: "any", description: "The sound to play (an Audio V2 sound or the name of a coordinator sound asset)" },
             { name: "volume", type: "number", description: "Playback volume (default: 1)" },
             { name: "startOffset", type: "number", description: "Start offset in seconds (default: 0)" },
             { name: "loop", type: "boolean", description: "Whether to loop (default: false)" },
@@ -1910,7 +1947,7 @@ export const FlowGraphBlockRegistry: Record<string, IFlowGraphBlockTypeInfo> = {
         description: "Stops a currently playing sound.",
         signalInputs: [{ name: "in" }],
         signalOutputs: [{ name: "out" }, { name: "error" }],
-        dataInputs: [{ name: "sound", type: "any", description: "The sound to stop" }],
+        dataInputs: [{ name: "sound", type: "any", description: "The sound to stop (an Audio V2 sound or the name of a coordinator sound asset)" }],
         dataOutputs: [],
     },
 
@@ -1920,7 +1957,7 @@ export const FlowGraphBlockRegistry: Record<string, IFlowGraphBlockTypeInfo> = {
         description: "Pauses a currently playing sound.",
         signalInputs: [{ name: "in" }],
         signalOutputs: [{ name: "out" }, { name: "error" }],
-        dataInputs: [{ name: "sound", type: "any", description: "The sound to pause" }],
+        dataInputs: [{ name: "sound", type: "any", description: "The sound to pause (an Audio V2 sound or the name of a coordinator sound asset)" }],
         dataOutputs: [],
     },
 
@@ -1931,7 +1968,7 @@ export const FlowGraphBlockRegistry: Record<string, IFlowGraphBlockTypeInfo> = {
         signalInputs: [{ name: "in" }],
         signalOutputs: [{ name: "out" }, { name: "error" }],
         dataInputs: [
-            { name: "sound", type: "any", description: "The sound" },
+            { name: "sound", type: "any", description: "The sound (an Audio V2 sound or the name of a coordinator sound asset)" },
             { name: "volume", type: "number", description: "Volume level (default: 1)" },
         ],
         dataOutputs: [],
@@ -1947,7 +1984,7 @@ export const FlowGraphBlockRegistry: Record<string, IFlowGraphBlockTypeInfo> = {
         description: "Gets the current volume of a sound.",
         signalInputs: [],
         signalOutputs: [],
-        dataInputs: [{ name: "sound", type: "any", description: "The sound" }],
+        dataInputs: [{ name: "sound", type: "any", description: "The sound (an Audio V2 sound or the name of a coordinator sound asset)" }],
         dataOutputs: [
             { name: "value", type: "number" },
             { name: "isValid", type: "boolean" },
@@ -1960,7 +1997,7 @@ export const FlowGraphBlockRegistry: Record<string, IFlowGraphBlockTypeInfo> = {
         description: "Returns whether a sound is currently playing.",
         signalInputs: [],
         signalOutputs: [],
-        dataInputs: [{ name: "sound", type: "any", description: "The sound" }],
+        dataInputs: [{ name: "sound", type: "any", description: "The sound (an Audio V2 sound or the name of a coordinator sound asset)" }],
         dataOutputs: [
             { name: "value", type: "boolean" },
             { name: "isValid", type: "boolean" },

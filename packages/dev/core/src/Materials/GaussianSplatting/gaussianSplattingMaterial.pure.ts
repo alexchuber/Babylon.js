@@ -199,7 +199,7 @@ export class GaussianSplattingMaterial extends PushMaterial {
      * Set compensation default value is `GaussianSplattingMaterial.Compensation`
      */
     public set compensation(value: boolean) {
-        this._isDirty = this._isDirty != value;
+        this._isDirty = this._isDirty || this._compensation !== value;
         this._compensation = value;
     }
 
@@ -417,7 +417,7 @@ export class GaussianSplattingMaterial extends PushMaterial {
 
         // Compensation
         const splatMaterial = gsMesh.material as GaussianSplattingMaterial;
-        defines["COMPENSATION"] = splatMaterial && splatMaterial.compensation ? splatMaterial.compensation : GaussianSplattingMaterial.Compensation;
+        defines["COMPENSATION"] = splatMaterial?.compensation ?? GaussianSplattingMaterial.Compensation;
 
         // Get correct effect
         if (defines.isDirty) {
@@ -425,9 +425,9 @@ export class GaussianSplattingMaterial extends PushMaterial {
             scene.resetCachedMaterial();
 
             //Attributes
-            PrepareAttributesForInstances(GaussianSplattingMaterial._Attribs, defines);
-
             const attribs = GaussianSplattingMaterial._Attribs.slice();
+            PrepareAttributesForInstances(attribs, defines);
+
             const uniforms = GaussianSplattingMaterial._Uniforms.slice();
             const samplers = GaussianSplattingMaterial._Samplers.slice();
             const uniformBuffers = GaussianSplattingMaterial._UniformBuffers.slice();
@@ -876,7 +876,7 @@ export class GaussianSplattingMaterial extends PushMaterial {
                 fragment: "gaussianSplattingVoxel",
             },
             {
-                attributes: GaussianSplattingMaterial._Attribs,
+                attributes: GaussianSplattingMaterial._Attribs.slice(),
                 uniforms: GaussianSplattingMaterial._VoxelUniforms,
                 samplers: GaussianSplattingMaterial._VoxelSamplers,
                 uniformBuffers: GaussianSplattingMaterial._UniformBuffers,
@@ -933,7 +933,7 @@ export class GaussianSplattingMaterial extends PushMaterial {
                 fragment: "gaussianSplattingDepth",
             },
             {
-                attributes: GaussianSplattingMaterial._Attribs,
+                attributes: GaussianSplattingMaterial._Attribs.slice(),
                 uniforms: GaussianSplattingMaterial._Uniforms,
                 samplers: GaussianSplattingMaterial._Samplers,
                 uniformBuffers: GaussianSplattingMaterial._UniformBuffers,
@@ -963,7 +963,7 @@ export class GaussianSplattingMaterial extends PushMaterial {
                 fragment: "gaussianSplattingDepth",
             },
             {
-                attributes: GaussianSplattingMaterial._Attribs,
+                attributes: GaussianSplattingMaterial._Attribs.slice(),
                 uniforms: GaussianSplattingMaterial._Uniforms,
                 samplers: GaussianSplattingMaterial._Samplers,
                 uniformBuffers: GaussianSplattingMaterial._UniformBuffers,

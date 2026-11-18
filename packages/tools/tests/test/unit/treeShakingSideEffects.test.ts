@@ -15,7 +15,7 @@
  * Prerequisites: both packages must be compiled before running.
  */
 
-import { writeFileSync, mkdirSync, readFileSync, rmSync, statSync, existsSync } from "fs";
+import { writeFileSync, mkdirSync, readFileSync, rmSync, existsSync } from "fs";
 import { join, resolve } from "path";
 import { expect, it } from "vitest";
 
@@ -124,13 +124,15 @@ function normalizeModuleId(id: string): string {
 }
 
 function readBundleOutput(filePath: string): { content: string; size: number } {
-    if (!existsSync(filePath)) {
-        throw new Error(`Expected bundle output was not emitted: ${filePath}`);
+    try {
+        const content = readFileSync(filePath, "utf-8");
+        return { content, size: Buffer.byteLength(content) };
+    } catch (error) {
+        if (error instanceof Error && "code" in error && error.code === "ENOENT") {
+            throw new Error(`Expected bundle output was not emitted: ${filePath}`, { cause: error });
+        }
+        throw error;
     }
-
-    const size = statSync(filePath).size;
-    const content = size > 0 ? readFileSync(filePath, "utf-8") : "";
-    return { content, size };
 }
 
 // ---------------------------------------------------------------------------
@@ -285,6 +287,7 @@ const FORBIDDEN = {
     shadows: ["class ShadowGenerator {"],
     layers: ["class GlowLayer extends", "class HighlightLayer extends"],
     gaussianSplatting: ["class GaussianSplattingMesh extends", "class GaussianSplattingMeshBase extends"],
+    gaussianPointSplatting: ["class GaussianPointSplattingController ", "class GaussianPointSplattingRenderer "],
 } as const;
 
 /** Combine multiple forbidden sets into one flat array. */
@@ -356,6 +359,13 @@ const TEST_CASE_TEMPLATES: SideEffectTestCase[] = [
         entryCode: `import { Vector3 } from "%DIST%/pure.js";\nconsole.log(Vector3);\n`,
         forbiddenStrings: ['RegisterClass("BABYLON.Vector3"'],
         description: "Named import of Vector3 from root pure barrel should not contain Vector3 RegisterClass",
+    },
+    {
+        name: "gaussian-splatting-mesh-no-point-splatting",
+        entryCode: `import { GaussianSplattingMesh } from "%DIST%/Meshes/GaussianSplatting/gaussianSplattingMesh.pure.js";\nconsole.log(GaussianSplattingMesh);\n`,
+        forbiddenStrings: forbidden("gaussianPointSplatting"),
+        requiredStrings: ["class GaussianSplattingMesh extends"],
+        description: "Named import of GaussianSplattingMesh should not pull in the opt-in WebGPU compute point-splatting path",
     },
     {
         name: "depth-renderer-no-gaussian-implementation",
@@ -683,32 +693,36 @@ for (const pkg of PACKAGES) {
         for (const template of TEST_CASE_TEMPLATES) {
             describe(template.name, () => {
                 // ── Rollup ──────────────────────────────────────────────────
-                it(`[Rollup] ${template.description}`, async () => {
-                    const tc = testCases.find((t) => t.name === template.name)!;
-                    const uniqueName = `${pkg.label.replace(/[/@]/g, "_")}-${tc.name}`;
-                    const result = await bundleWithRollup(uniqueName, tc.entryCode, distDir);
+                it(
+                    `[Rollup] ${template.description}`,
+                    async () => {
+                        const tc = testCases.find((t) => t.name === template.name)!;
+                        const uniqueName = `${pkg.label.replace(/[/@]/g, "_")}-${tc.name}`;
+                        const result = await bundleWithRollup(uniqueName, tc.entryCode, distDir);
 
-                    // Size check (for bare-import tests)
-                    if (tc.maxBundleSizeBytes !== undefined) {
-                        expect(result.size, `Rollup bundle too large (${result.size} bytes, max ${tc.maxBundleSizeBytes})`).toBeLessThanOrEqual(tc.maxBundleSizeBytes);
-                    }
+                        // Size check (for bare-import tests)
+                        if (tc.maxBundleSizeBytes !== undefined) {
+                            expect(result.size, `Rollup bundle too large (${result.size} bytes, max ${tc.maxBundleSizeBytes})`).toBeLessThanOrEqual(tc.maxBundleSizeBytes);
+                        }
 
-                    // Bundle-size regression check (warn-only)
-                    checkBundleSizeRegression(baselineKey(pkg.label, "rollup", tc.name), result.size);
+                        // Bundle-size regression check (warn-only)
+                        checkBundleSizeRegression(baselineKey(pkg.label, "rollup", tc.name), result.size);
 
-                    // Forbidden string checks
-                    for (const forbidden of tc.forbiddenStrings) {
-                        expect(
-                            result.content,
-                            `Rollup bundle for "${tc.name}" should NOT contain "${forbidden}".\nBundle preview:\n${result.content.substring(0, 500)}`
-                        ).not.toContain(forbidden);
-                    }
+                        // Forbidden string checks
+                        for (const forbidden of tc.forbiddenStrings) {
+                            expect(
+                                result.content,
+                                `Rollup bundle for "${tc.name}" should NOT contain "${forbidden}".\nBundle preview:\n${result.content.substring(0, 500)}`
+                            ).not.toContain(forbidden);
+                        }
 
-                    // Required string checks (positive inclusion)
-                    for (const required of tc.requiredStrings ?? []) {
-                        expect(result.content, `Rollup bundle for "${tc.name}" SHOULD contain "${required}" but it was missing.`).toContain(required);
-                    }
-                }, 30_000);
+                        // Required string checks (positive inclusion)
+                        for (const required of tc.requiredStrings ?? []) {
+                            expect(result.content, `Rollup bundle for "${tc.name}" SHOULD contain "${required}" but it was missing.`).toContain(required);
+                        }
+                    },
+                    template.name === "root-pure-barrel-named-Color3" ? 60_000 : 30_000
+                );
 
                 // ── Webpack ─────────────────────────────────────────────────
                 it.skipIf(!hasWebpack)(

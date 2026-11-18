@@ -8,6 +8,7 @@ import { ParseFlowGraphAsync } from "core/FlowGraph";
 import { InteractivityGraphToFlowGraphParser } from "loaders/glTF/2.0/Extensions/KHR_interactivity/interactivityGraphParser";
 import { GetPathToObjectConverter } from "loaders/glTF/2.0/Extensions/objectModelMapping";
 import { IKHRInteractivity_Declaration, IKHRInteractivity_Graph, IKHRInteractivity_Node, IKHRInteractivity_Type, IKHRInteractivity_Variable } from "babylonjs-gltf2interface";
+import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 
 describe("Flow Nodes", () => {
     let engine;
@@ -23,7 +24,8 @@ describe("Flow Nodes", () => {
         declarations: IKHRInteractivity_Declaration[],
         nodes: IKHRInteractivity_Node[],
         types: IKHRInteractivity_Type[] = [],
-        variables: IKHRInteractivity_Variable[] = []
+        variables: IKHRInteractivity_Variable[] = [],
+        beforeStart?: () => void
     ) {
         const ig: IKHRInteractivity_Graph = {
             declarations: [...declarations, { op: "event/onStart" }],
@@ -50,6 +52,7 @@ describe("Flow Nodes", () => {
         graph.getContext(0).enableLogging = true;
         graph.getContext(0).logger!.logToConsole = false;
 
+        beforeStart?.();
         coordinator.start();
 
         return {
@@ -69,6 +72,9 @@ describe("Flow Nodes", () => {
 
     afterEach(() => {
         clearInterval(renderInterval);
+        scene.dispose();
+        engine.dispose();
+        vi.useRealTimers();
     });
 
     test("flow/sequence with proper IDs", async () => {
@@ -830,6 +836,9 @@ describe("Flow Nodes", () => {
     });
 
     test("variable/interpolate with float - colliding, cancel 1st", async () => {
+        clearInterval(renderInterval);
+        vi.useFakeTimers({ toFake: ["Date", "performance", "setInterval", "clearInterval", "setTimeout", "clearTimeout"] });
+        renderInterval = setInterval(() => scene.render(), 16);
         // linear interpolation from 1 to 5 in 1 second
         await generateSimpleNodeGraph(
             [{ op: "variable/interpolate" }, { op: "flow/log", extension: "BABYLON" }, { op: "variable/get" }, { op: "flow/sequence" }, { op: "flow/setDelay" }],
@@ -941,8 +950,7 @@ describe("Flow Nodes", () => {
             [{ type: 0, value: [1] }]
         );
 
-        // wait 1 second
-        await new Promise((resolve) => setTimeout(resolve, 1000 + 200));
+        await vi.advanceTimersByTimeAsync(1300);
         // only one time, and ONLY with 3! not with 5
         expect(log).toHaveBeenCalledTimes(1);
         expect(log).toHaveBeenCalledWith(3);
@@ -1417,76 +1425,81 @@ describe("Flow Nodes", () => {
 
     // flow/multiGate
     test("flow/multiGate with random", async () => {
-        // a multiGate that will trigger the logging node 3 times
-        await generateSimpleNodeGraph(
-            [{ op: "flow/multiGate" }, { op: "flow/log", extension: "BABYLON" }, { op: "flow/sequence" }],
-            [
-                // multiGate
-                {
-                    declaration: 0,
-                    configuration: {
-                        isRandom: {
-                            value: [true],
+        let random: ReturnType<typeof vi.spyOn> | undefined;
+        try {
+            await generateSimpleNodeGraph(
+                [{ op: "flow/multiGate" }, { op: "flow/log", extension: "BABYLON" }, { op: "flow/sequence" }],
+                [
+                    // multiGate
+                    {
+                        declaration: 0,
+                        configuration: {
+                            isRandom: {
+                                value: [true],
+                            },
+                        },
+                        flows: {
+                            "1": {
+                                node: 2,
+                                socket: "in",
+                            },
+                            "2": {
+                                node: 2,
+                                socket: "in",
+                            },
+                            "3": {
+                                node: 2,
+                                socket: "in",
+                            },
+                            "4": {
+                                node: 2,
+                                socket: "in",
+                            },
+                            "5": {
+                                node: 2,
+                                socket: "in",
+                            },
                         },
                     },
-                    flows: {
-                        "1": {
-                            node: 2,
-                            socket: "in",
-                        },
-                        "2": {
-                            node: 2,
-                            socket: "in",
-                        },
-                        "3": {
-                            node: 2,
-                            socket: "in",
-                        },
-                        "4": {
-                            node: 2,
-                            socket: "in",
-                        },
-                        "5": {
-                            node: 2,
-                            socket: "in",
+                    // logging, when multiGate is done
+                    {
+                        declaration: 1,
+                        values: {
+                            message: {
+                                node: 0,
+                                socket: "lastIndex",
+                            },
                         },
                     },
-                },
-                // logging, when multiGate is done
-                {
-                    declaration: 1,
-                    values: {
-                        message: {
-                            node: 0,
-                            socket: "lastIndex",
+                    // sequence node - go to logging in AND the doN loop
+                    {
+                        declaration: 2,
+                        flows: {
+                            "1": {
+                                node: 1, // logging node
+                                socket: "in",
+                            },
+                            "2": {
+                                node: 0, // multigate
+                                socket: "in",
+                            },
                         },
                     },
-                },
-                // sequence node - go to logging in AND the doN loop
-                {
-                    declaration: 2,
-                    flows: {
-                        "1": {
-                            node: 1, // logging node
-                            socket: "in",
-                        },
-                        "2": {
-                            node: 0, // multigate
-                            socket: "in",
-                        },
-                    },
-                },
-            ],
-            [{ signature: "float" }]
-        );
+                ],
+                [{ signature: "float" }],
+                [],
+                () => {
+                    random = vi.spyOn(Math, "random");
+                }
+            );
 
-        const values = log.mock.calls.map((c) => c[0].value);
-        // expect the log to be called 3 times with 0 as a value
-        expect(log).toHaveBeenCalledTimes(5);
-        // they should not be sorted!
-        expect(values).not.toEqual([0, 1, 2, 3, 4]);
-        // however, when sorted, they should be this array. Not that .sort works because it is a single digit!
-        expect(values.sort()).toEqual([0, 1, 2, 3, 4]);
+            const values = log.mock.calls.map((c) => c[0].value);
+            expect(log).toHaveBeenCalledTimes(5);
+            expect(random).toHaveBeenCalledTimes(5);
+            expect(values.sort()).toEqual([0, 1, 2, 3, 4]);
+        } finally {
+            random?.mockRestore();
+        }
     });
 
     // flow/waitAll

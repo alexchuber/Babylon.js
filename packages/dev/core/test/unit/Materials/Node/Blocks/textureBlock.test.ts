@@ -1,12 +1,43 @@
 import { describe, expect, it, vi } from "vitest";
 import { type AbstractEngine } from "core/Engines/abstractEngine";
-import { type Effect } from "core/Materials/effect";
+import { NullEngine } from "core/Engines/nullEngine";
+import { Effect } from "core/Materials/effect";
 import { ImageSourceBlock } from "core/Materials/Node/Blocks/Dual/imageSourceBlock";
 import { TextureBlock } from "core/Materials/Node/Blocks/Dual/textureBlock";
-import { type NodeMaterial } from "core/Materials/Node/nodeMaterial";
+import { NodeMaterial } from "core/Materials/Node/nodeMaterial";
+import { NodeMaterialBuildState } from "core/Materials/Node/nodeMaterialBuildState";
+import { NodeMaterialBuildStateSharedData } from "core/Materials/Node/nodeMaterialBuildStateSharedData";
+import { ShaderLanguage } from "core/Materials/shaderLanguage";
+import { RawTexture } from "core/Materials/Textures/rawTexture";
+import { type Texture } from "core/Materials/Textures/texture";
 import { ThinTexture } from "core/Materials/Textures/thinTexture";
+import { Scene } from "core/scene";
 
 describe("TextureBlock", () => {
+    it.each([
+        ["rgb, GLSL", ShaderLanguage.GLSL, "rgb", "toGammaSpace(rgb)"],
+        ["rgb, WGSL", ShaderLanguage.WGSL, "rgb", "toGammaSpaceVec3(rgb)"],
+        ["r, GLSL", ShaderLanguage.GLSL, "r", "toGammaSpace(r)"],
+        ["r, WGSL", ShaderLanguage.WGSL, "r", "toGammaSpaceVec3(vec3f(r)).x"],
+    ])("writes both conversions of a gamma space texture's color under their defines, which follow its image (%s)", (_, shaderLanguage, name, toGammaSpace) => {
+        const state = new NodeMaterialBuildState();
+        state.sharedData = new NodeMaterialBuildStateSharedData();
+        state.sharedData.nodeMaterial = { shaderLanguage } as NodeMaterial;
+        const block = new TextureBlock("texture");
+        block.texture = { gammaSpace: true, getScene: () => null } as unknown as Texture;
+        Object.assign(block, { _linearDefineName: "ISLINEAR", _gammaDefineName: "ISGAMMA" });
+        const output = name === "rgb" ? block.rgb : block.r;
+        output.associatedVariableName = name;
+
+        block["_generateConversionCode"](state, output, name);
+
+        // the image can become linear (Texture.replaceImage) without building the graph again. WGSL has no overloads: a 3-component
+        // output and a float are converted with toGammaSpaceVec3
+        const conversion = toGammaSpace.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+        expect(state.compilationString).toMatch(new RegExp(`#ifdef ISLINEAR\\s+${name} = ${conversion};\\s+#endif`));
+        expect(state.compilationString).toMatch(new RegExp(`#ifdef ISGAMMA\\s+${name} = toLinearSpace\\w*\\(${name}\\);\\s+#endif`));
+    });
+
     it("binds a default texture for missing texture resources on WebGPU", () => {
         let engine: AbstractEngine;
         const emptyTexture = { getEngine: () => engine };
@@ -67,5 +98,26 @@ describe("TextureBlock", () => {
 
         expect(setTexture).toHaveBeenCalledWith("testTexture", expect.any(ThinTexture));
         expect((setTexture.mock.calls[0][1] as ThinTexture).getInternalTexture()).toBe(emptyTexture);
+    });
+
+    it("binds the image source texture dimensions to its WebGL1 uniform", () => {
+        const engine = new NullEngine();
+        const scene = new Scene(engine);
+
+        try {
+            const block = new ImageSourceBlock("image");
+            block.texture = RawTexture.CreateRGBATexture(new Uint8Array(256 * 128 * 4), 256, 128, scene, false);
+            Object.assign(block, { _samplerName: "imageSampler", _dimensionsUniformName: "textureDimensions" });
+
+            const effect = new Effect({ vertexSource: "void main() {}", fragmentSource: "void main() {}" }, [], ["textureDimensions"], ["imageSampler"], engine);
+            const setFloat2 = vi.spyOn(effect, "setFloat2").mockReturnValue(effect);
+
+            block.bind(effect, new NodeMaterial("material", scene));
+
+            expect(setFloat2).toHaveBeenCalledExactlyOnceWith("textureDimensions", 256, 128);
+        } finally {
+            scene.dispose();
+            engine.dispose();
+        }
     });
 });

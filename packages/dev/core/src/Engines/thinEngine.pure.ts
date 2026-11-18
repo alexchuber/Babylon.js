@@ -229,6 +229,7 @@ export class ThinEngine extends AbstractEngine {
     private _currentBufferPointers = new Array<BufferPointer>();
     private _currentInstanceLocations = new Array<number>();
     private _currentInstanceBuffers = new Array<DataBuffer>();
+    private _cachedVertexBuffersSetInstanceDivisors = false;
     private _textureUnits: Int32Array;
 
     /** @internal */
@@ -249,8 +250,9 @@ export class ThinEngine extends AbstractEngine {
 
     /**
      * Creates a new snapshot at the next frame using the current snapshotRenderingMode
+     * @param _forceFullRecording reuses none of the recorded commands (WebGPU only, see WebGPUEngine.snapshotRenderingReuseDraws)
      */
-    public snapshotRenderingReset(): void {
+    public snapshotRenderingReset(_forceFullRecording = false): void {
         this.snapshotRendering = false;
     }
 
@@ -804,7 +806,7 @@ export class ThinEngine extends AbstractEngine {
 
         // Depth buffer
         this._depthCullingState.depthTest = true;
-        this._depthCullingState.depthFunc = this._gl.LEQUAL;
+        this._depthCullingState.depthFunc = this.useReverseDepthBuffer ? this._gl.GEQUAL : this._gl.LEQUAL;
         this._depthCullingState.depthMask = true;
 
         // Texture maps
@@ -836,6 +838,7 @@ export class ThinEngine extends AbstractEngine {
             supportMSAA: this._webGLVersion !== 1,
             supportSSAO2: this._webGLVersion !== 1,
             supportIBLShadows: this._webGLVersion !== 1,
+            supportMeshBlending: this._webGLVersion !== 1,
             supportExtendedTextureFormats: this._webGLVersion !== 1,
             supportSwitchCaseInShader: this._webGLVersion !== 1,
             supportSyncTextureRead: true,
@@ -1598,6 +1601,7 @@ export class ThinEngine extends AbstractEngine {
                         if (!this._vaoRecordInProgress) {
                             this._currentInstanceLocations.push(order);
                             this._currentInstanceBuffers.push(buffer);
+                            this._cachedVertexBuffersSetInstanceDivisors = true;
                         }
                     }
                 }
@@ -1745,6 +1749,13 @@ export class ThinEngine extends AbstractEngine {
         }
         this._currentInstanceBuffers.length = 0;
         this._currentInstanceLocations.length = 0;
+
+        // The cached bindBuffers() binding set some of the divisors just reset: a later bindBuffers() call
+        // with the same buffers and effect must rebind instead of drawing with divisor 0.
+        if (this._cachedVertexBuffersSetInstanceDivisors) {
+            this._cachedVertexBuffersSetInstanceDivisors = false;
+            this._cachedVertexBuffers = null;
+        }
     }
 
     /**
@@ -2152,11 +2163,32 @@ export class ThinEngine extends AbstractEngine {
         context?: WebGLRenderingContext,
         transformFeedbackVaryings: Nullable<string[]> = null
     ): WebGLProgram {
+        const beforeState = this.onBeforeShaderCompilationObservable._eventState;
+        const beforeTarget = beforeState.target;
+        try {
+            this.onBeforeShaderCompilationObservable.notifyObservers(this, -1, pipelineContext);
+        } finally {
+            beforeState.target = beforeTarget;
+        }
+
         const stateObject = getStateObject(this._gl);
         // assure the state object is correct
         stateObject._contextWasLost = this._contextWasLost;
         stateObject.validateShaderPrograms = this.validateShaderPrograms;
-        return createShaderProgram(pipelineContext, vertexCode, fragmentCode, defines, context || this._gl, transformFeedbackVaryings);
+
+        const program = createShaderProgram(pipelineContext, vertexCode, fragmentCode, defines, context || this._gl, transformFeedbackVaryings);
+
+        this._executeWhenRenderingStateIsCompiled(pipelineContext, () => {
+            const afterState = this.onAfterShaderCompilationObservable._eventState;
+            const afterTarget = afterState.target;
+            try {
+                this.onAfterShaderCompilationObservable.notifyObservers(this, -1, pipelineContext);
+            } finally {
+                afterState.target = afterTarget;
+            }
+        });
+
+        return program;
     }
 
     /**

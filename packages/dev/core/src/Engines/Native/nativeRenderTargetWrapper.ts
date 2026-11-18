@@ -1,11 +1,15 @@
 import { type Nullable } from "../../types";
 import { type InternalTexture } from "../../Materials/Textures/internalTexture";
 import { type TextureSize } from "../../Materials/Textures/textureCreationOptions";
+import { Constants } from "../constants";
 import { RenderTargetWrapper } from "../renderTargetWrapper";
 import { type NativeFramebuffer } from "./nativeInterfaces";
 import { type ThinNativeEngine } from "../thinNativeEngine";
+import { Logger } from "../../Misc/logger";
 
 export class NativeRenderTargetWrapper extends RenderTargetWrapper {
+    private static _HasWarnedAboutGeneratedDepthSharing = false;
+
     public override readonly _engine: ThinNativeEngine;
 
     // eslint-disable-next-line @typescript-eslint/naming-convention
@@ -15,6 +19,30 @@ export class NativeRenderTargetWrapper extends RenderTargetWrapper {
     // Per-face framebuffers for cube render targets (index = cube face 0..5).
     // eslint-disable-next-line @typescript-eslint/naming-convention
     private __framebuffers: Nullable<NativeFramebuffer[]> = null;
+
+    // Lazily-built per-(mip, layer) framebuffers for 3D render targets (IBL voxel grid + its
+    // procedural mip chain). Keyed by `mip * depth + layer`; each slice/mip is rendered through
+    // its own bgfx framebuffer selected by bindFramebuffer(lodLevel, layer).
+    // eslint-disable-next-line @typescript-eslint/naming-convention
+    public _layerFramebuffers: Nullable<Map<number, NativeFramebuffer>> = null;
+    // The attachment layout (ordered color handles, per-attachment layers, explicit depth, samples, mip policies) the layered
+    // MRT framebuffer was last built from. It is rebuilt on bind when any of them change, e.g. when
+    // setInternalTexture swaps a texture in or setLayerAndFaceIndex retargets an attachment.
+    // eslint-disable-next-line @typescript-eslint/naming-convention
+    public _layeredFramebufferKey: Nullable<{ colors: unknown[]; layers: number[]; depth: unknown; samples: number; autoGenerateMips: boolean[] }> = null;
+
+    // True for a mixed-type MRT whose color attachments target specific layers of 2D-array textures and/or
+    // faces of cube textures (plus plain 2D). Its multi-attachment framebuffer is built lazily on first bind
+    // (via _bindLayeredMultiFramebuffer) so per-attachment layer/face and post-creation setInternalTexture
+    // (a shared texture swapped into an attachment) are honored. The 3D voxelization MRT uses the is3D route.
+    // eslint-disable-next-line @typescript-eslint/naming-convention
+    public _isMixedTypeMRT: boolean = false;
+
+    /** @internal */
+    public _generatedDepthShareSource: Nullable<NativeRenderTargetWrapper> = null;
+
+    private _pendingGeneratedDepthShares: Nullable<Set<NativeRenderTargetWrapper>> = null;
+    private _pendingGeneratedDepthShareSources: Nullable<Set<NativeRenderTargetWrapper>> = null;
 
     public get _framebuffer(): Nullable<NativeFramebuffer> {
         return this.__framebuffer;
@@ -58,20 +86,422 @@ export class NativeRenderTargetWrapper extends RenderTargetWrapper {
         this._engine = engine;
     }
 
+    /**
+     * Releases the lazily-built per-(mip, layer/face) framebuffers, e.g. when the underlying texture is recreated.
+     * @internal
+     */
+    public _releaseLayerFramebuffers(): void {
+        if (this._layerFramebuffers) {
+            for (const framebuffer of this._layerFramebuffers.values()) {
+                this._engine._releaseFramebufferObjects(framebuffer);
+            }
+            this._layerFramebuffers = null;
+        }
+    }
+
+    /**
+     * True when the multi-attachment framebuffer is built lazily on bind with per-attachment layers/faces.
+     * @internal
+     */
+    public get _usesLayeredFramebuffer(): boolean {
+        return this.isMulti && (this.is3D || this._isMixedTypeMRT || this._layeredFramebufferKey !== null);
+    }
+
+    /**
+     * Drops the layered multi-attachment framebuffer so the next bind rebuilds it with its per-attachment layers.
+     * @internal
+     */
+    public _invalidateLayeredFramebuffer(): void {
+        this._framebuffer = null;
+        this._layeredFramebufferKey = null;
+    }
+
+    /**
+     * Attaches a texture to one of the color attachments of this render target.
+     * @param texture The texture to attach
+     * @param index The index of the color attachment
+     * @param disposePrevious Whether to dispose the texture currently attached at this index
+     */
     public override setTexture(texture: InternalTexture, index: number = 0, disposePrevious: boolean = true): void {
         const previous = this.textures?.[index];
+
         super.setTexture(texture, index, disposePrevious);
 
-        // bgfx binds a fixed attachment set when a framebuffer is created and cannot re-point an individual
-        // attachment the way GL's framebufferTexture2D can. When a multi render target attachment is swapped
-        // after creation (e.g. the OIT depth-peeling renderer replaces every attachment via
-        // MultiRenderTarget.setInternalTexture), recreate the whole framebuffer from the new attachment set.
-        if (this.isMulti && this.textures?.[index] !== previous) {
+        if (previous === texture) {
+            return;
+        }
+
+        if (!this.isMulti && index === 0) {
+            this._releaseLayerFramebuffers();
+        }
+
+        if (this._framebufferDepthStencil) {
+            this._engine._rebuildRenderTargetFramebuffersAfterDepthChange(this);
+            return;
+        }
+
+        // Layered MRTs build their framebuffer on bind from every attachment's layer/face; a flat rebuild here
+        // would drop those selections, so just invalidate it.
+        if (this._usesLayeredFramebuffer) {
+            this._invalidateLayeredFramebuffer();
+            return;
+        }
+
+        // A frame graph framebuffer is built lazily, once, from the wrapper's attachment list (see
+        // ThinNativeEngine._buildFrameGraphFramebuffer) and does not track later attachment changes. The frame
+        // graph swaps the ping/pong textures of a history texture (TAA, IBL shadows accumulation, ...) through
+        // setTexture on every frame, so the framebuffer must be dropped here: otherwise the pass keeps rendering
+        // into the texture the framebuffer was originally built from, the read texture is never written and the
+        // history stays black. Dropping it makes the next bind rebuild it against the texture actually written
+        // this frame.
+        if (this.__framebuffer && this._engine._isFrameGraphFramebuffer(this.__framebuffer)) {
+            this._framebuffer = null;
+            return;
+        }
+
+        // Multi non-FG wrappers (e.g. OIT depth-peeling) create a framebuffer eagerly, then replace every
+        // color attachment via MultiRenderTarget.setInternalTexture. bgfx cannot re-point attachments, so
+        // rebuild from the textures actually held by the wrapper.
+        //
+        // Only rebuild when a non-FG framebuffer already exists. Frame graph wrappers are created with
+        // dontCreateTextures and attach textures while _framebuffer is still null; building here would
+        // create a non-refcounted multi FB that bypasses _buildFrameGraphFramebuffer (regressed DoF/
+        // shadows/custom rendering when we rebuilt unconditionally on isMulti).
+        if (this.isMulti && this.__framebuffer) {
             this._engine._createMultiRenderTargetFramebuffer(this);
         }
     }
 
+    public override setDepthStencilTexture(texture: Nullable<InternalTexture>, disposeExisting = true): void {
+        if (texture) {
+            this._engine._assertDepthAttachmentCompatible(this, texture.samples);
+        }
+
+        this._cancelPendingGeneratedDepthShares();
+        this._generatedDepthShareSource = null;
+        const previous = this._depthStencilTexture;
+        super.setDepthStencilTexture(texture, disposeExisting);
+
+        if (previous !== texture) {
+            this._engine._rebuildRenderTargetFramebuffersAfterDepthChange(this);
+        }
+    }
+
+    public override createDepthStencilTexture(
+        comparisonFunction: number = 0,
+        bilinearFiltering: boolean = true,
+        generateStencil: boolean = false,
+        samples: number = 1,
+        format: number = Constants.TEXTUREFORMAT_DEPTH32_FLOAT,
+        label?: string
+    ): InternalTexture {
+        // Validate before the base class disposes the current depth texture.
+        this._engine._assertDepthAttachmentCompatible(this, samples);
+        this._cancelPendingGeneratedDepthShares();
+        this._generatedDepthShareSource = null;
+        return super.createDepthStencilTexture(comparisonFunction, bilinearFiltering, generateStencil, samples, format, label);
+    }
+
+    protected override _cloneRenderTargetWrapper(): Nullable<RenderTargetWrapper> {
+        if (this.isMulti) {
+            const textureArray = this.textures;
+            if (!textureArray?.length) {
+                return super._cloneRenderTargetWrapper();
+            }
+
+            const samplingModes: number[] = [];
+            const types: number[] = [];
+            const formats: number[] = [];
+            const useSRGBBuffers: boolean[] = [];
+            const targetTypes: number[] = [];
+            const faceIndex: number[] = [];
+            const layerIndex: number[] = [];
+            const layerCounts: number[] = [];
+            const internalTexture2Index: Record<number, number> = {};
+
+            for (let i = 0; i < textureArray.length; i++) {
+                const texture = textureArray[i];
+                samplingModes.push(texture.samplingMode);
+                types.push(texture.type);
+                formats.push(texture.format);
+                useSRGBBuffers.push(texture._useSRGBBuffer);
+
+                const existingIndex = internalTexture2Index[texture.uniqueId];
+                if (existingIndex !== undefined) {
+                    targetTypes.push(-1);
+                    layerCounts.push(0);
+                } else {
+                    internalTexture2Index[texture.uniqueId] = i;
+                    if (texture.is2DArray) {
+                        targetTypes.push(Constants.TEXTURE_2D_ARRAY);
+                        layerCounts.push(texture.depth);
+                    } else if (texture.isCube) {
+                        targetTypes.push(Constants.TEXTURE_CUBE_MAP);
+                        layerCounts.push(0);
+                    } else if (texture.is3D) {
+                        targetTypes.push(Constants.TEXTURE_3D);
+                        layerCounts.push(texture.depth);
+                    } else {
+                        targetTypes.push(Constants.TEXTURE_2D);
+                        layerCounts.push(0);
+                    }
+                }
+
+                if (this.faceIndices) {
+                    faceIndex.push(this.faceIndices[i] ?? 0);
+                }
+                if (this.layerIndices) {
+                    layerIndex.push(this.layerIndices[i] ?? 0);
+                }
+            }
+
+            const rtw = this._engine.createMultipleRenderTarget(
+                { width: this.width, height: this.height, depth: this.depth },
+                {
+                    samplingModes,
+                    generateMipMaps: textureArray[0].generateMipMaps,
+                    generateDepthBuffer: this._generateDepthBuffer,
+                    generateStencilBuffer: this._generateStencilBuffer,
+                    types,
+                    formats,
+                    useSRGBBuffers,
+                    textureCount: textureArray.length,
+                    samples: this.samples,
+                    targetTypes,
+                    faceIndex,
+                    layerIndex,
+                    layerCounts,
+                    label: this.label,
+                }
+            ) as NativeRenderTargetWrapper;
+            const replacementTextures = rtw.textures;
+            if (!replacementTextures) {
+                return rtw;
+            }
+
+            for (let i = 0; i < textureArray.length; i++) {
+                if (targetTypes[i] === -1) {
+                    rtw.setTexture(replacementTextures[internalTexture2Index[textureArray[i].uniqueId]], i);
+                }
+            }
+
+            let framebufferNeedsRebuild = false;
+            const processed = new Set<InternalTexture>();
+            for (let i = 0; i < textureArray.length; i++) {
+                const source = textureArray[i];
+                const replacement = replacementTextures[i];
+                if (!source || !replacement || processed.has(replacement)) {
+                    continue;
+                }
+                processed.add(replacement);
+                if (this._engine._hasMipStorage(source)) {
+                    framebufferNeedsRebuild = this._engine._ensureRenderTargetMipStorage(replacement) || framebufferNeedsRebuild;
+                }
+                if (replacement.generateMipMaps !== source.generateMipMaps) {
+                    replacement.generateMipMaps = source.generateMipMaps;
+                    framebufferNeedsRebuild = true;
+                }
+            }
+
+            if (framebufferNeedsRebuild) {
+                if (rtw._usesLayeredFramebuffer) {
+                    rtw._invalidateLayeredFramebuffer();
+                } else {
+                    this._engine._createMultiRenderTargetFramebuffer(rtw);
+                }
+            }
+            return rtw;
+        }
+
+        if (!this.isMulti && this.texture) {
+            const texture = this.texture;
+            const options = {
+                generateDepthBuffer: this._generateDepthBuffer,
+                generateMipMaps: texture.generateMipMaps,
+                createMipMaps: this._engine._hasMipStorage(texture),
+                generateStencilBuffer: this._generateStencilBuffer,
+                samplingMode: texture.samplingMode,
+                type: texture.type,
+                format: texture.format,
+                samples: this.samples,
+                useSRGBBuffer: texture._useSRGBBuffer,
+                label: this.label,
+            };
+            const rtw = this.isCube
+                ? this._engine.createRenderTargetCubeTexture(this.width, options)
+                : this._engine.createRenderTargetTexture(
+                      {
+                          width: this.width,
+                          height: this.height,
+                          layers: this.is2DArray ? this.layers : undefined,
+                          depth: this.is3D ? this.depth : undefined,
+                      },
+                      options
+                  );
+            if (rtw.texture) {
+                rtw.texture.isReady = true;
+            }
+            return rtw;
+        }
+
+        return super._cloneRenderTargetWrapper();
+    }
+
+    protected override _swapRenderTargetWrapper(target: NativeRenderTargetWrapper): void {
+        super._swapRenderTargetWrapper(target);
+
+        // Transfer the framebuffers created for the rebuilt textures to the target so that disposing this
+        // temporary wrapper doesn't release them. This only runs after a context loss, when the target's
+        // previous handles are stale, so they are overwritten rather than released (like the WebGL wrapper).
+        target.__framebuffer = this.__framebuffer;
+        target.__framebuffers = this.__framebuffers;
+        target.__framebufferDepthStencil = this.__framebufferDepthStencil;
+
+        this.__framebuffer = this.__framebuffers = this.__framebufferDepthStencil = null;
+
+        // Lazily-built per-layer/mip framebuffers reference the target's stale textures; drop them so they are
+        // rebuilt against the new textures on the next bind.
+        target._layerFramebuffers = this._layerFramebuffers;
+        target._layeredFramebufferKey = null;
+        this._layerFramebuffers = null;
+    }
+
+    /**
+     * Shares this wrapper's depth texture with another render target and rebuilds the destination
+     * framebuffer when needed so Native actually uses the shared depth (bgfx attaches depth at
+     * framebuffer creation time; a pointer-only shareDepth would leave the auto-depth from creation).
+     * An auto-generated depth buffer is handed over as is, keeping its contents, like WebGL shares its depth
+     * renderbuffer. Runtimes that cannot share generated depth leave both wrappers unchanged.
+     * @param renderTarget The render target that receives the shared depth texture
+     */
+    public override shareDepth(renderTarget: RenderTargetWrapper): void {
+        this._applyDepthShare(renderTarget, false);
+    }
+
+    private _applyDepthShare(renderTarget: RenderTargetWrapper, resolvingDeferredShare: boolean): boolean {
+        const dest = renderTarget as NativeRenderTargetWrapper;
+        if (!this._depthStencilTexture && (this._generateDepthBuffer || this._generateStencilBuffer) && dest && dest !== this && dest._engine === this._engine) {
+            if (!this._engine._supportsGeneratedDepthSharing()) {
+                this._warnGeneratedDepthSharingUnsupported();
+                return true;
+            }
+
+            // Validate before asking Native to transfer ownership so a rejected share leaves both wrappers untouched.
+            this._engine._assertDepthAttachmentCompatible(dest, this.samples);
+            if (!this._framebuffer && !this._layerFramebuffers?.size) {
+                if (!resolvingDeferredShare) {
+                    dest._cancelPendingGeneratedDepthShares();
+                    (this._pendingGeneratedDepthShares ??= new Set()).add(dest);
+                    (dest._pendingGeneratedDepthShareSources ??= new Set()).add(this);
+                }
+                return false;
+            }
+
+            const generatedDepth = this._engine._wrapGeneratedDepthStencil(this);
+            if (!generatedDepth) {
+                this._warnGeneratedDepthSharingUnsupported();
+                return true;
+            }
+            this._depthStencilTexture = generatedDepth;
+            this._generatedDepthShareSource = this;
+        }
+
+        if (this._depthStencilTexture && dest?._engine === this._engine) {
+            // Validate before the base class releases the destination's current depth texture.
+            this._engine._assertDepthAttachmentCompatible(dest, this._depthStencilTexture.samples);
+        }
+
+        if (!resolvingDeferredShare && dest?._engine === this._engine) {
+            dest._cancelPendingGeneratedDepthShares();
+        }
+        super.shareDepth(renderTarget);
+
+        if (!dest || dest._engine !== this._engine) {
+            return true;
+        }
+
+        dest._generatedDepthShareSource = this._generatedDepthShareSource;
+        this._engine._rebuildRenderTargetFramebuffersAfterDepthChange(dest);
+        return true;
+    }
+
+    /** @internal */
+    public _resolvePendingGeneratedDepthShares(): void {
+        const pendingShares = this._pendingGeneratedDepthShares;
+        if (!pendingShares) {
+            return;
+        }
+
+        for (const destination of pendingShares) {
+            if (this._applyDepthShare(destination, true)) {
+                this._removePendingGeneratedDepthShare(destination);
+            }
+        }
+    }
+
+    /** @internal */
+    public _resolvePendingGeneratedDepthShareSources(): void {
+        const pendingSources = this._pendingGeneratedDepthShareSources;
+        if (!pendingSources) {
+            return;
+        }
+
+        for (const source of pendingSources) {
+            this._engine._resolvePendingGeneratedDepthShares(source);
+        }
+    }
+
+    private _removePendingGeneratedDepthShare(destination: NativeRenderTargetWrapper): void {
+        this._pendingGeneratedDepthShares?.delete(destination);
+        if (this._pendingGeneratedDepthShares?.size === 0) {
+            this._pendingGeneratedDepthShares = null;
+        }
+
+        destination._pendingGeneratedDepthShareSources?.delete(this);
+        if (destination._pendingGeneratedDepthShareSources?.size === 0) {
+            destination._pendingGeneratedDepthShareSources = null;
+        }
+    }
+
+    private _cancelPendingGeneratedDepthShares(): void {
+        const pendingSources = this._pendingGeneratedDepthShareSources;
+        if (!pendingSources) {
+            return;
+        }
+
+        for (const source of pendingSources) {
+            source._removePendingGeneratedDepthShare(this);
+        }
+    }
+
+    private _cancelPendingGeneratedDepthShareDestinations(): void {
+        const pendingDestinations = this._pendingGeneratedDepthShares;
+        if (!pendingDestinations) {
+            return;
+        }
+
+        for (const destination of pendingDestinations) {
+            this._removePendingGeneratedDepthShare(destination);
+        }
+    }
+
+    private _warnGeneratedDepthSharingUnsupported(): void {
+        if (!NativeRenderTargetWrapper._HasWarnedAboutGeneratedDepthSharing) {
+            Logger.Warn(
+                "shareDepth: this Babylon Native runtime cannot share an auto-generated depth/stencil buffer. Continuing with separate depth buffers; create an explicit depth/stencil texture before sharing, or update Babylon Native."
+            );
+            NativeRenderTargetWrapper._HasWarnedAboutGeneratedDepthSharing = true;
+        }
+    }
+
     public override dispose(disposeOnlyFramebuffers = false): void {
+        if (!disposeOnlyFramebuffers) {
+            this._cancelPendingGeneratedDepthShares();
+            this._cancelPendingGeneratedDepthShareDestinations();
+        }
+        this._releaseLayerFramebuffers();
+        this._layeredFramebufferKey = null;
+
         if (this.__framebuffers) {
             // Releases all six per-face framebuffers (face 0 is aliased by __framebuffer, so
             // clear that alias here without releasing it again).
